@@ -23,6 +23,12 @@ const CLAUDE_DOTTED_THINKING_REGEX =
 const DEPRECATED_ANTIGRAVITY_SONNET_46_THINKING_REGEX =
   /claude-sonnet-4(?:[.-])6-thinking(?=(?:$|-|\[|\(|\/))/gi;
 const CANONICAL_ANTIGRAVITY_SONNET_46_MODEL = 'claude-sonnet-4-6';
+const DEPRECATED_ANTIGRAVITY_OPUS_45_THINKING_REGEX =
+  /claude-opus-4(?:[.-])5-thinking(?=(?:$|-|\[|\(|\/))/gi;
+const CANONICAL_ANTIGRAVITY_OPUS_46_THINKING_MODEL = 'claude-opus-4-6-thinking';
+const DEPRECATED_ANTIGRAVITY_SONNET_45_THINKING_REGEX =
+  /claude-sonnet-4(?:[.-])5-thinking(?=(?:$|-|\[|\(|\/))/gi;
+const DEPRECATED_ANTIGRAVITY_SONNET_45_REGEX = /claude-sonnet-4(?:[.-])5(?=(?:$|-|\[|\(|\/))/gi;
 const CODEX_EFFORT_SUFFIX_REGEX = /-(xhigh|high|medium)$/i;
 
 function trimModelId(model: string): string {
@@ -86,10 +92,17 @@ export function normalizeClaudeDottedThinkingMajorMinor(model: string): string {
  * Canonicalize legacy aliases to `claude-sonnet-4-6` while preserving suffixes.
  */
 export function normalizeDeprecatedAntigravityModelAliases(model: string): string {
-  return model.replace(
-    DEPRECATED_ANTIGRAVITY_SONNET_46_THINKING_REGEX,
-    CANONICAL_ANTIGRAVITY_SONNET_46_MODEL
-  );
+  return model
+    .replace(
+      DEPRECATED_ANTIGRAVITY_OPUS_45_THINKING_REGEX,
+      CANONICAL_ANTIGRAVITY_OPUS_46_THINKING_MODEL
+    )
+    .replace(DEPRECATED_ANTIGRAVITY_SONNET_45_THINKING_REGEX, CANONICAL_ANTIGRAVITY_SONNET_46_MODEL)
+    .replace(DEPRECATED_ANTIGRAVITY_SONNET_45_REGEX, CANONICAL_ANTIGRAVITY_SONNET_46_MODEL)
+    .replace(
+      DEPRECATED_ANTIGRAVITY_SONNET_46_THINKING_REGEX,
+      CANONICAL_ANTIGRAVITY_SONNET_46_MODEL
+    );
 }
 
 /**

@@ -92,18 +92,6 @@ export const MODEL_CATALOG: Partial<Record<CLIProxyProvider, ProviderCatalog>> =
         extendedContext: false,
       },
       {
-        id: 'claude-opus-4-5-thinking',
-        name: 'Claude Opus 4.5 Thinking',
-        description: 'Previous flagship, extended thinking',
-        thinking: {
-          type: 'budget',
-          min: 1024,
-          max: 100000,
-          zeroAllowed: false,
-          dynamicAllowed: true,
-        },
-      },
-      {
         id: 'claude-sonnet-4-6',
         name: 'Claude Sonnet 4.6',
         description: 'Latest Sonnet with thinking budget support',
@@ -114,24 +102,6 @@ export const MODEL_CATALOG: Partial<Record<CLIProxyProvider, ProviderCatalog>> =
           zeroAllowed: true,
           dynamicAllowed: true,
         },
-      },
-      {
-        id: 'claude-sonnet-4-5-thinking',
-        name: 'Claude Sonnet 4.5 Thinking',
-        description: 'Balanced with extended thinking',
-        thinking: {
-          type: 'budget',
-          min: 1024,
-          max: 100000,
-          zeroAllowed: false,
-          dynamicAllowed: true,
-        },
-      },
-      {
-        id: 'claude-sonnet-4-5',
-        name: 'Claude Sonnet 4.5',
-        description: 'Fast and capable',
-        thinking: { type: 'none' },
       },
       {
         id: 'gemini-3-pro-preview',

@@ -64,6 +64,13 @@ describe('model-id-normalizer', () => {
       expect(normalizeModelIdForProvider('claude-opus-4.6-thinking', 'agy')).toBe(
         'claude-opus-4-6-thinking'
       );
+      expect(normalizeModelIdForProvider('claude-opus-4.5-thinking', 'agy')).toBe(
+        'claude-opus-4-6-thinking'
+      );
+      expect(normalizeModelIdForProvider('claude-sonnet-4.5-thinking', 'agy')).toBe(
+        'claude-sonnet-4-6'
+      );
+      expect(normalizeModelIdForProvider('claude-sonnet-4.5', 'agy')).toBe('claude-sonnet-4-6');
       expect(normalizeModelIdForProvider('claude-opus-4.6-thinking', 'gemini')).toBe(
         'claude-opus-4.6-thinking'
       );
@@ -98,9 +105,9 @@ describe('model-id-normalizer', () => {
   describe('env normalization', () => {
     it('normalizes model env vars for antigravity only', () => {
       const input: NodeJS.ProcessEnv = {
-        ANTHROPIC_MODEL: 'claude-sonnet-4.6-thinking',
-        ANTHROPIC_DEFAULT_OPUS_MODEL: 'claude-opus-4.6-thinking',
-        ANTHROPIC_DEFAULT_SONNET_MODEL: 'claude-sonnet-4.6',
+        ANTHROPIC_MODEL: 'claude-sonnet-4.5-thinking',
+        ANTHROPIC_DEFAULT_OPUS_MODEL: 'claude-opus-4.5-thinking',
+        ANTHROPIC_DEFAULT_SONNET_MODEL: 'claude-sonnet-4.5',
         ANTHROPIC_DEFAULT_HAIKU_MODEL: 'claude-haiku-4.5',
         UNRELATED: 'keep-me',
       };
@@ -113,7 +120,7 @@ describe('model-id-normalizer', () => {
       expect(normalized.UNRELATED).toBe('keep-me');
 
       const unchanged = normalizeModelEnvVarsForProvider(input, 'gemini');
-      expect(unchanged.ANTHROPIC_MODEL).toBe('claude-sonnet-4.6-thinking');
+      expect(unchanged.ANTHROPIC_MODEL).toBe('claude-sonnet-4.5-thinking');
       expect(unchanged.UNRELATED).toBe('keep-me');
     });
   });

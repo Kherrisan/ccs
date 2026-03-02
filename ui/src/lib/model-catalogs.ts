@@ -27,17 +27,6 @@ export const MODEL_CATALOGS: Record<string, ProviderCatalog> = {
         },
       },
       {
-        id: 'claude-opus-4-5-thinking',
-        name: 'Claude Opus 4.5 Thinking',
-        description: 'Previous flagship, extended thinking',
-        presetMapping: {
-          default: 'claude-opus-4-5-thinking',
-          opus: 'claude-opus-4-5-thinking',
-          sonnet: 'claude-sonnet-4-6',
-          haiku: 'claude-sonnet-4-6',
-        },
-      },
-      {
         id: 'claude-sonnet-4-6',
         name: 'Claude Sonnet 4.6',
         description: 'Latest Sonnet with thinking budget support',
@@ -46,28 +35,6 @@ export const MODEL_CATALOGS: Record<string, ProviderCatalog> = {
           opus: 'claude-opus-4-6-thinking',
           sonnet: 'claude-sonnet-4-6',
           haiku: 'claude-sonnet-4-6',
-        },
-      },
-      {
-        id: 'claude-sonnet-4-5-thinking',
-        name: 'Claude Sonnet 4.5 Thinking',
-        description: 'Balanced with extended thinking',
-        presetMapping: {
-          default: 'claude-sonnet-4-5-thinking',
-          opus: 'claude-opus-4-6-thinking',
-          sonnet: 'claude-sonnet-4-5-thinking',
-          haiku: 'claude-sonnet-4-5',
-        },
-      },
-      {
-        id: 'claude-sonnet-4-5',
-        name: 'Claude Sonnet 4.5',
-        description: 'Fast and capable',
-        presetMapping: {
-          default: 'claude-sonnet-4-5',
-          opus: 'claude-opus-4-6-thinking',
-          sonnet: 'claude-sonnet-4-5',
-          haiku: 'claude-sonnet-4-5',
         },
       },
       {
