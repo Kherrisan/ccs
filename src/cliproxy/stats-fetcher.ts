@@ -56,7 +56,7 @@ export interface CliproxyStats {
 }
 
 /** Request detail from CLIProxyAPI */
-interface RequestDetail {
+export interface CliproxyRequestDetail {
   timestamp: string;
   source: string;
   auth_index: number;
@@ -70,8 +70,11 @@ interface RequestDetail {
   failed: boolean;
 }
 
+/** @deprecated Use CliproxyRequestDetail instead */
+type RequestDetail = CliproxyRequestDetail;
+
 /** Usage API response from CLIProxyAPI /v0/management/usage endpoint */
-interface UsageApiResponse {
+export interface CliproxyUsageApiResponse {
   failed_requests?: number;
   usage?: {
     total_requests?: number;
@@ -130,7 +133,7 @@ export async function fetchCliproxyStats(port?: number): Promise<CliproxyStats |
       return null;
     }
 
-    const data = (await response.json()) as UsageApiResponse;
+    const data = (await response.json()) as CliproxyUsageApiResponse;
     const usage = data.usage;
 
     // Extract models, providers, and per-account stats from the nested API structure
@@ -206,6 +209,44 @@ export async function fetchCliproxyStats(port?: number): Promise<CliproxyStats |
     };
   } catch {
     // CLIProxyAPI not running or stats endpoint not available
+    return null;
+  }
+}
+
+/**
+ * Fetch raw usage response from CLIProxyAPI management API
+ * Returns the unprocessed API response for transformation by cliproxy-usage-transformer
+ */
+export async function fetchCliproxyUsageRaw(
+  port?: number
+): Promise<CliproxyUsageApiResponse | null> {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+    const target = getProxyTarget();
+    if (port !== undefined && !target.isRemote) {
+      target.port = port;
+    }
+    const url = buildProxyUrl(target, '/v0/management/usage');
+
+    const headers = target.isRemote
+      ? buildManagementHeaders(target)
+      : { Accept: 'application/json', Authorization: `Bearer ${getEffectiveManagementSecret()}` };
+
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      return null;
+    }
+
+    return (await response.json()) as CliproxyUsageApiResponse;
+  } catch {
     return null;
   }
 }

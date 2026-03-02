@@ -25,6 +25,11 @@ import {
 } from './disk-cache';
 import { ok, info, fail } from '../../utils/ui';
 import { getCcsDir } from '../../utils/config-manager';
+import {
+  loadCachedCliproxyData,
+  startCliproxySync,
+  stopCliproxySync,
+} from './cliproxy-usage-syncer';
 
 // ============================================================================
 // Multi-Instance Support - Aggregate usage from CCS profiles
@@ -327,6 +332,19 @@ async function refreshFromSource(): Promise<{
     console.log(info(`Aggregated usage data from ${instanceDataResults.length} CCS instance(s)`));
   }
 
+  // Load CLIProxy usage data (from local snapshot cache)
+  try {
+    const cliproxyData = await loadCachedCliproxyData();
+    if (cliproxyData.daily.length > 0) {
+      allDailySources.push(cliproxyData.daily);
+      allHourlySources.push(cliproxyData.hourly);
+      allMonthlySources.push(cliproxyData.monthly);
+      console.log(info('Included CLIProxy usage data'));
+    }
+  } catch (err) {
+    console.error(fail(`Failed to load CLIProxy usage data: ${err}`));
+  }
+
   // Merge all data sources
   const daily = mergeDailyData(allDailySources);
   const hourly = mergeHourlyData(allHourlySources);
@@ -479,6 +497,9 @@ export async function prewarmUsageCache(): Promise<{
   console.log(info('Pre-warming usage cache...'));
 
   try {
+    // Start CLIProxy usage syncer early (runs in background every 5 min)
+    startCliproxySync();
+
     const diskCache = readDiskCache();
 
     // Fresh disk cache - use it directly
@@ -538,4 +559,11 @@ export async function prewarmUsageCache(): Promise<{
     console.error(fail(`Failed to prewarm usage cache: ${err}`));
     throw err;
   }
+}
+
+/**
+ * Shutdown usage aggregator cleanly (stops background syncer)
+ */
+export function shutdownUsageAggregator(): void {
+  stopCliproxySync();
 }
