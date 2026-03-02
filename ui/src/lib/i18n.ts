@@ -2336,7 +2336,7 @@ const resources = {
         invokeHintPrefix: 'Sử dụng tên này để gọi:',
         model: 'Mô hình',
         modelPlaceholder: 'ví dụ: gemini-2.5-pro, claude-opus-4-5',
-        choosePresetInstead: 'Thay vào đó hãy chọn từ các cài đặt trước',
+        choosePresetInstead: 'Hoặc chọn từ preset có sẵn',
         selectModel: 'Chọn mô hình',
         customModelName: 'Tên mô hình tùy chỉnh...',
         enterAnyModel: 'Nhập bất kỳ tên mô hình nào được CLIProxy hỗ trợ',
@@ -2394,8 +2394,8 @@ const resources = {
         broken: 'BROKEN',
         deprecated: 'DEPRECATED',
         paid: 'PAID',
-        freeTier: 'Bậc miễn phí',
-        paidTier: 'Cấp trả phí',
+        freeTier: 'Gói miễn phí',
+        paidTier: 'Gói trả phí',
         modelKnownIssues: 'Mô hình này có vấn đề đã biết',
         viewIssueDetails: 'Xem chi tiết vấn đề',
         modelDeprecated: 'Mô hình này không được dùng nữa',
@@ -2595,7 +2595,7 @@ const resources = {
         invalidGroup: 'Nhập tên nhóm hợp lệ bắt đầu bằng một chữ cái.',
         continuityDepth: 'Độ sâu liên tục',
         selectContinuityDepth: 'Chọn độ sâu liên tục',
-        standardOption: 'tiêu chuẩn (chỉ dự án)',
+        standardOption: 'tiêu chuẩn (chỉ đồng bộ project)',
         deeperOption: 'tính liên tục sâu hơn (nâng cao)',
         deeperHint:
           'Chế độ nâng cao cũng đồng bộ hóa phiên-env, lịch sử tệp, ảnh chụp nhanh shell và todos.',
@@ -2612,7 +2612,7 @@ const resources = {
           'Tách biệt -> Chia sẻ -> Sâu hơn. Dùng Sync trên từng dòng để áp dụng thay đổi.',
         learningMap: 'Bản đồ học tập',
         isolated: 'Tách biệt',
-        shared: 'Đã chia sẻ',
+        shared: 'Chia sẻ',
         deeper: 'Sâu hơn',
         cliproxyManaged_one:
           '{{count}} Tài khoản nhóm CLIProxy Claude được quản lý trong trang Action Center / CLIProxy.',
@@ -2624,7 +2624,7 @@ const resources = {
           'Hộp thoại đồng bộ hóa cho phép người dùng di chuyển giữa cách ly/chia sẻ và chọn tính liên tục sâu hơn.',
         historySyncGroup: 'Nhóm đồng bộ hóa lịch sử',
         historySyncGroupDesc:
-          'Cùng một nhóm có nghĩa là làn đường bối cảnh dự án được chia sẻ. Dự phòng mặc định là mặc định.',
+          'Cùng một nhóm nghĩa là chia sẻ cùng bối cảnh project. Nếu để trống sẽ dùng nhóm mặc định.',
       },
       accountsTable: {
         name: 'Tên',
@@ -2913,7 +2913,7 @@ const resources = {
         stopProxyToSwitch:
           'Dừng proxy đang chạy trong Trạng thái phiên bản trước khi chuyển backend.',
         default: 'Mặc định',
-        plusDesc: 'Hỗ trợ nhà cung cấp đầy đủ bao gồm Kiro và GitHub Copilot',
+        plusDesc: 'Hỗ trợ đầy đủ nhà cung cấp, bao gồm Kiro và GitHub Copilot',
         originalDesc: 'Binary gốc (chỉ Gemini, Codex, Antigravity)',
         variantsIncompatible:
           'Các biến thể Kiro/Copilot hiện tại sẽ không hoạt động với CLIProxyAPI. Chuyển sang CLIProxyAPIPlus hoặc xóa các biến thể đó.',
@@ -2922,7 +2922,7 @@ const resources = {
         agyModeDesc:
           'Bỏ qua danh sách kiểm tra trách nhiệm AGY trong quy trình Thêm tài khoản và `ccs agy`.',
         agyWarning:
-          'Chỉ sử dụng nếu bạn hiểu đầy đủ về mẫu rủi ro bị đình chỉ/cấm OAuth (#509). CCS không thể chịu trách nhiệm về việc mất tài khoản.',
+          'Chỉ bật nếu bạn hiểu rõ rủi ro bị đình chỉ/cấm OAuth (#509). CCS không chịu trách nhiệm khi mất tài khoản.',
         finalConfirm: 'Xác nhận cuối cùng',
         finalConfirmDesc:
           'Việc bật tính năng này sẽ bỏ qua các điểm kiểm tra an toàn AGY trong cả bảng điều khiển và CLI. Xem lại vấn đề #509 và nhập cụm từ chính xác để tiếp tục.',
@@ -3053,7 +3053,7 @@ const resources = {
         authClaudeInPool: 'Xác thực Claude trong Pool',
         openClaudePoolSettings: 'Mở cài đặt Claude pool',
         openCliProxyClaudePool: 'Mở CLIProxy Claude Pool',
-        migrationFollowup: 'Theo dõi di chuyển',
+        migrationFollowup: 'Theo dõi sau di chuyển',
         legacyContextPending: '{{count}} tài khoản vẫn cần xác nhận chế độ lần đầu.',
         legacyContextPending_other: '{{count}} tài khoản vẫn cần xác nhận chế độ lần đầu.',
         legacyContinuityPending:
@@ -3100,7 +3100,7 @@ const resources = {
         platform: 'Nền tảng',
         liveMonitoring: 'Giám sát trực tiếp đang hoạt động',
         copied: 'Đã sao chép vào bảng nhớ tạm',
-        refreshing: 'Đang làm mới trạng thái...',
+        refreshing: 'Đang làm mới kiểm tra trạng thái...',
         fix: 'Sửa chữa',
         applyFix: 'Áp dụng bản sửa lỗi',
         healthLabel: 'trạng thái',
