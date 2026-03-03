@@ -1,3 +1,9 @@
+## [7.52.1](https://github.com/kaitranntt/ccs/compare/v7.52.0...v7.52.1) (2026-03-03)
+
+### Bug Fixes
+
+* **ci:** strip ANSI codes before detecting published release ([6e16f1c](https://github.com/kaitranntt/ccs/commit/6e16f1cf3e2a3d43fa600a6fbadd35a513bf5db7))
+
 ## [7.52.0](https://github.com/kaitranntt/ccs/compare/v7.51.0...v7.52.0) (2026-03-03)
 
 ### Features
