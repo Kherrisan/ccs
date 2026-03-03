@@ -84,6 +84,42 @@ describe('model-pricing', () => {
       expect(opus.inputPerMillion).toBeGreaterThan(sonnet.inputPerMillion);
       expect(sonnet.inputPerMillion).toBeGreaterThan(haiku.inputPerMillion);
     });
+
+    it('should return correct pricing for Claude Opus 4.6 (not 3x Opus 4 rate)', () => {
+      const opus46 = getModelPricing('claude-opus-4-6');
+      expect(opus46.inputPerMillion).toBe(5.0);
+      expect(opus46.outputPerMillion).toBe(25.0);
+    });
+
+    it('should return correct pricing for Claude Opus 4.6 thinking variant', () => {
+      const opus46t = getModelPricing('claude-opus-4-6-thinking');
+      expect(opus46t.inputPerMillion).toBe(5.0);
+      expect(opus46t.outputPerMillion).toBe(25.0);
+    });
+
+    it('should return correct pricing for Claude Sonnet 4.6', () => {
+      const sonnet46 = getModelPricing('claude-sonnet-4-6');
+      expect(sonnet46.inputPerMillion).toBe(3.0);
+      expect(sonnet46.outputPerMillion).toBe(15.0);
+    });
+
+    it('should match date-stamped Claude Opus 4.6 to correct pricing', () => {
+      const opus46dated = getModelPricing('claude-opus-4-6-20260101');
+      expect(opus46dated.inputPerMillion).toBe(5.0);
+      expect(opus46dated.outputPerMillion).toBe(25.0);
+    });
+
+    it('should match date-stamped Claude Sonnet 4.6 to correct pricing', () => {
+      const sonnet46dated = getModelPricing('claude-sonnet-4-6-20260115');
+      expect(sonnet46dated.inputPerMillion).toBe(3.0);
+      expect(sonnet46dated.outputPerMillion).toBe(15.0);
+    });
+
+    it('should match provider-prefixed date-stamped model to correct pricing', () => {
+      const opus46 = getModelPricing('anthropic/claude-opus-4-6-20260101');
+      expect(opus46.inputPerMillion).toBe(5.0);
+      expect(opus46.outputPerMillion).toBe(25.0);
+    });
   });
 
   describe('calculateCost', () => {

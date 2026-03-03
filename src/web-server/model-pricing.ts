@@ -151,6 +151,19 @@ const PRICING_REGISTRY: Record<string, ModelPricing> = {
     cacheCreationPerMillion: 3.75,
     cacheReadPerMillion: 0.3,
   },
+  // Claude 4.6 Sonnet ($3/$15)
+  'claude-sonnet-4-6': {
+    inputPerMillion: 3.0,
+    outputPerMillion: 15.0,
+    cacheCreationPerMillion: 3.75,
+    cacheReadPerMillion: 0.3,
+  },
+  'claude-sonnet-4-6-thinking': {
+    inputPerMillion: 3.0,
+    outputPerMillion: 15.0,
+    cacheCreationPerMillion: 3.75,
+    cacheReadPerMillion: 0.3,
+  },
   // Claude 4 Opus ($15/$75)
   'claude-4-opus-20250514': {
     inputPerMillion: 15.0,
@@ -197,6 +210,19 @@ const PRICING_REGISTRY: Record<string, ModelPricing> = {
     cacheReadPerMillion: 0.5,
   },
   'claude-opus-4-5-thinking': {
+    inputPerMillion: 5.0,
+    outputPerMillion: 25.0,
+    cacheCreationPerMillion: 6.25,
+    cacheReadPerMillion: 0.5,
+  },
+  // Claude 4.6 Opus ($5/$25)
+  'claude-opus-4-6': {
+    inputPerMillion: 5.0,
+    outputPerMillion: 25.0,
+    cacheCreationPerMillion: 6.25,
+    cacheReadPerMillion: 0.5,
+  },
+  'claude-opus-4-6-thinking': {
     inputPerMillion: 5.0,
     outputPerMillion: 25.0,
     cacheCreationPerMillion: 6.25,
@@ -708,7 +734,7 @@ const UNKNOWN_MODEL_PRICING: ModelPricing = {
 
 /**
  * Normalize model name for matching
- * Handles variations like provider prefixes and case differences
+ * Handles variations like provider prefixes, case differences, and date suffixes
  */
 function normalizeModelName(model: string): string {
   // Remove provider prefixes (e.g., "anthropic/claude-..." -> "claude-...")
@@ -717,6 +743,14 @@ function normalizeModelName(model: string): string {
     .toLowerCase()
     .replace(/^[^/]+\//, '');
   return normalized;
+}
+
+/**
+ * Strip trailing date suffix from model name (e.g., "-20260101")
+ * Only strips 8-digit YYYYMMDD suffixes at the end of the string.
+ */
+function stripDateSuffix(model: string): string {
+  return model.replace(/-\d{8}$/, '');
 }
 
 const NORMALIZED_PRICING_REGISTRY: Record<string, ModelPricing> = Object.entries(
@@ -730,7 +764,22 @@ function getLookupCandidates(model: string): string[] {
   const normalized = normalizeModelName(model);
   const baseModel = normalized.split(':')[0];
 
-  return baseModel === normalized ? [normalized] : [normalized, baseModel];
+  const candidates: string[] = [normalized];
+  if (baseModel !== normalized) {
+    candidates.push(baseModel);
+  }
+
+  // Add date-stripped variants (e.g., "claude-opus-4-6-20260101" -> "claude-opus-4-6")
+  const stripped = stripDateSuffix(normalized);
+  if (stripped !== normalized && !candidates.includes(stripped)) {
+    candidates.push(stripped);
+  }
+  const baseStripped = stripDateSuffix(baseModel);
+  if (baseStripped !== baseModel && !candidates.includes(baseStripped)) {
+    candidates.push(baseStripped);
+  }
+
+  return candidates;
 }
 
 function getDirectOrAliasPricing(model: string): ModelPricing | undefined {
