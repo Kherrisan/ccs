@@ -10,27 +10,67 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as http from 'http';
 import { CopilotDaemonStatus } from './types';
-import { CopilotConfig } from '../config/unified-config-types';
+import { CopilotConfig, DEFAULT_COPILOT_CONFIG } from '../config/unified-config-types';
+import { loadOrCreateUnifiedConfig } from '../config/unified-config-loader';
 import { getCopilotDir, getCopilotApiBinPath } from './copilot-package-manager';
+import { verifyProcessOwnership } from '../cursor/daemon-process-ownership';
 
-const PID_FILE = path.join(getCopilotDir(), 'daemon.pid');
+const DAEMON_HEALTH_MARKER = 'server running';
+const MIN_PORT = 1;
+const MAX_PORT = 65535;
+
+function isValidPort(port: number): boolean {
+  return Number.isInteger(port) && port >= MIN_PORT && port <= MAX_PORT;
+}
+
+function getConfiguredCopilotPort(): number {
+  try {
+    const config = loadOrCreateUnifiedConfig();
+    const port = config.copilot?.port ?? DEFAULT_COPILOT_CONFIG.port;
+    return isValidPort(port) ? port : DEFAULT_COPILOT_CONFIG.port;
+  } catch {
+    return DEFAULT_COPILOT_CONFIG.port;
+  }
+}
+
+function getPidFilePath(): string {
+  return path.join(getCopilotDir(), 'daemon.pid');
+}
 
 /**
  * Check if copilot-api daemon is running on the specified port.
  * Uses 127.0.0.1 instead of localhost for more reliable local connections.
  */
 export async function isDaemonRunning(port: number): Promise<boolean> {
+  if (!isValidPort(port)) {
+    return false;
+  }
+
   return new Promise((resolve) => {
     const req = http.request(
       {
         hostname: '127.0.0.1',
         port,
-        path: '/usage',
+        path: '/',
         method: 'GET',
         timeout: 3000,
       },
       (res) => {
-        resolve(res.statusCode === 200);
+        let body = '';
+        res.setEncoding('utf8');
+
+        res.on('data', (chunk) => {
+          body += chunk;
+        });
+
+        res.on('end', () => {
+          if (res.statusCode !== 200) {
+            resolve(false);
+            return;
+          }
+
+          resolve(body.trim().toLowerCase().includes(DAEMON_HEALTH_MARKER));
+        });
       }
     );
 
@@ -65,9 +105,10 @@ export async function getDaemonStatus(port: number): Promise<CopilotDaemonStatus
  * Read PID from file.
  */
 function getPidFromFile(): number | null {
+  const pidFile = getPidFilePath();
   try {
-    if (fs.existsSync(PID_FILE)) {
-      const content = fs.readFileSync(PID_FILE, 'utf8').trim();
+    if (fs.existsSync(pidFile)) {
+      const content = fs.readFileSync(pidFile, 'utf8').trim();
       const pid = parseInt(content, 10);
       return isNaN(pid) ? null : pid;
     }
@@ -81,12 +122,13 @@ function getPidFromFile(): number | null {
  * Write PID to file.
  */
 function writePidToFile(pid: number): void {
+  const pidFile = getPidFilePath();
   try {
-    const dir = path.dirname(PID_FILE);
+    const dir = path.dirname(pidFile);
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
     }
-    fs.writeFileSync(PID_FILE, pid.toString(), { mode: 0o600 });
+    fs.writeFileSync(pidFile, pid.toString(), { mode: 0o600 });
   } catch {
     // Ignore errors
   }
@@ -96,9 +138,10 @@ function writePidToFile(pid: number): void {
  * Remove PID file.
  */
 function removePidFile(): void {
+  const pidFile = getPidFilePath();
   try {
-    if (fs.existsSync(PID_FILE)) {
-      fs.unlinkSync(PID_FILE);
+    if (fs.existsSync(pidFile)) {
+      fs.unlinkSync(pidFile);
     }
   } catch {
     // Ignore errors
@@ -114,6 +157,13 @@ function removePidFile(): void {
 export async function startDaemon(
   config: CopilotConfig
 ): Promise<{ success: boolean; pid?: number; error?: string }> {
+  if (!isValidPort(config.port)) {
+    return {
+      success: false,
+      error: `Invalid Copilot daemon port ${config.port}. Expected integer between ${MIN_PORT} and ${MAX_PORT}.`,
+    };
+  }
+
   // Check if already running
   if (await isDaemonRunning(config.port)) {
     return { success: true, pid: getPidFromFile() ?? undefined };
@@ -137,6 +187,20 @@ export async function startDaemon(
 
   return new Promise((resolve) => {
     let proc: ChildProcess;
+    let resolved = false;
+    let checkTimeout: NodeJS.Timeout | null = null;
+
+    const safeResolve = (result: { success: boolean; pid?: number; error?: string }) => {
+      if (resolved) return;
+      resolved = true;
+      if (checkTimeout) {
+        clearTimeout(checkTimeout);
+      }
+      if (!result.success) {
+        removePidFile();
+      }
+      resolve(result);
+    };
 
     try {
       proc = spawn(binPath, args, {
@@ -155,30 +219,53 @@ export async function startDaemon(
       // Wait for daemon to be ready (poll for up to 30 seconds)
       let attempts = 0;
       const maxAttempts = 30;
-      const checkInterval = setInterval(async () => {
+      const pollHealth = async () => {
+        if (resolved) return;
         attempts++;
 
         if (await isDaemonRunning(config.port)) {
-          clearInterval(checkInterval);
-          resolve({ success: true, pid: proc.pid });
+          safeResolve({ success: true, pid: proc.pid });
         } else if (attempts >= maxAttempts) {
-          clearInterval(checkInterval);
-          resolve({
+          if (proc.pid) {
+            try {
+              process.kill(proc.pid, 'SIGTERM');
+            } catch {
+              // Already exited
+            }
+          }
+          safeResolve({
             success: false,
             error: 'Daemon did not start within 30 seconds',
           });
+        } else {
+          checkTimeout = setTimeout(pollHealth, 1000);
         }
-      }, 1000);
+      };
+      checkTimeout = setTimeout(pollHealth, 1000);
 
       proc.on('error', (err) => {
-        clearInterval(checkInterval);
-        resolve({
+        safeResolve({
           success: false,
           error: `Failed to start daemon: ${err.message}`,
         });
       });
+
+      proc.on('exit', (code, signal) => {
+        if (code === null) {
+          safeResolve({
+            success: false,
+            error: `Daemon process was killed by signal ${signal}`,
+          });
+          return;
+        }
+
+        safeResolve({
+          success: false,
+          error: `Daemon process exited with code ${code}`,
+        });
+      });
     } catch (err) {
-      resolve({
+      safeResolve({
         success: false,
         error: `Failed to spawn daemon: ${(err as Error).message}`,
       });
@@ -191,6 +278,7 @@ export async function startDaemon(
  */
 export async function stopDaemon(): Promise<{ success: boolean; error?: string }> {
   const pid = getPidFromFile();
+  const configuredPort = getConfiguredCopilotPort();
 
   if (!pid) {
     // No PID file, try to find by port
@@ -199,6 +287,44 @@ export async function stopDaemon(): Promise<{ success: boolean; error?: string }
   }
 
   try {
+    const ownership = verifyProcessOwnership(pid, (commandLine) => {
+      const lower = commandLine.toLowerCase();
+      const hasCopilotApiBinary = /copilot-api(\.cmd|\.exe)?/.test(lower);
+      const hasStartCommand = /\bstart\b/.test(lower);
+      const hasPortArgument = /--port(?:\s+|=)\d+\b/.test(lower);
+      // copilot-api is launched as `... copilot-api start --port <n>`
+      return hasCopilotApiBinary && hasStartCommand && hasPortArgument;
+    });
+    if (ownership === 'not-running') {
+      removePidFile();
+      return { success: true };
+    }
+
+    if (ownership === 'not-owned') {
+      // PID was reused by an unrelated process.
+      // If daemon is still live on configured port, report failure (stop not completed).
+      if (await isDaemonRunning(configuredPort)) {
+        return {
+          success: false,
+          error: `Refusing to clear PID ${pid}: unrelated process owns PID and daemon is still responding on port ${configuredPort}`,
+        };
+      }
+      removePidFile();
+      return { success: true };
+    }
+
+    if (ownership === 'unknown') {
+      // If daemon is not reachable, allow stale PID cleanup.
+      if (!(await isDaemonRunning(configuredPort))) {
+        removePidFile();
+        return { success: true };
+      }
+      return {
+        success: false,
+        error: `Refusing to stop PID ${pid}: unable to verify daemon ownership`,
+      };
+    }
+
     // Send SIGTERM to the process
     process.kill(pid, 'SIGTERM');
 

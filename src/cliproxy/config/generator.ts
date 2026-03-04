@@ -10,7 +10,6 @@ import { getProviderDisplayName } from '../provider-capabilities';
 import { getModelMappingFromConfig } from '../base-config-loader';
 import { loadOrCreateUnifiedConfig } from '../../config/unified-config-loader';
 import { getEffectiveApiKey, getEffectiveManagementSecret } from '../auth-token-manager';
-import { getCachedCatalog } from '../catalog-cache';
 import { getDeniedModelIdReasonForProvider } from '../model-id-normalizer';
 import { getAuthDir, getProviderAuthDir, getConfigPathForPort } from './path-resolver';
 import { CLIPROXY_DEFAULT_PORT } from './port-manager';
@@ -35,8 +34,9 @@ export const CCS_CONTROL_PANEL_SECRET = 'ccs';
  * v10: Migrated deprecated gemini-claude-* aliases to upstream claude-* aliases
  * v11: Migrated deprecated claude-sonnet-4-6-thinking aliases to claude-sonnet-4-6
  * v12: Removed denylisted Antigravity Claude 4.5 aliases
+ * v13: Removed aggressive Gemini alias expansion to reduce model list noise in Control Panel
  */
-export const CLIPROXY_CONFIG_VERSION = 12;
+export const CLIPROXY_CONFIG_VERSION = 13;
 
 interface OAuthModelAliasEntry {
   name: string;
@@ -44,7 +44,6 @@ interface OAuthModelAliasEntry {
   fork?: boolean;
 }
 
-const GEMINI_MINOR_COMPAT_RANGE = [1, 2, 3, 4, 5, 6, 7, 8, 9] as const;
 const DEPRECATED_ANTIGRAVITY_ALIAS_PREFIX = 'gemini-claude-';
 const UPSTREAM_CLAUDE_ALIAS_PREFIX = 'claude-';
 const DEPRECATED_ANTIGRAVITY_SONNET_46_THINKING_REGEX = /^claude-sonnet-4(?:[.-])6-thinking$/i;
@@ -227,16 +226,6 @@ function buildGeminiCompatibilityAliases(alias: string): string[] {
     queue.push(candidate);
   };
 
-  const basePreviewMatch = alias.match(/^gemini-(\d+)-(pro|flash)-preview(?:-customtools)?$/);
-  if (basePreviewMatch) {
-    const major = basePreviewMatch[1];
-    const family = basePreviewMatch[2];
-    for (const minor of GEMINI_MINOR_COMPAT_RANGE) {
-      enqueue(`gemini-${major}.${minor}-${family}-preview`);
-      enqueue(`gemini-${major}-${minor}-${family}-preview`);
-    }
-  }
-
   const visited = new Set<string>();
   while (queue.length > 0) {
     const current = queue.pop();
@@ -259,56 +248,6 @@ function buildGeminiCompatibilityAliases(alias: string): string[] {
   }
 
   return [...variants];
-}
-
-function getGeminiPreviewFamily(alias: string): string | null {
-  const withoutCustomTools = alias.replace(/-customtools$/, '');
-  const normalized = toHyphenatedGeminiVersionAlias(withoutCustomTools) || withoutCustomTools;
-
-  const majorMinorMatch = normalized.match(/^gemini-(\d+)-(\d+)-(.+-preview(?:-[0-9-]+)?)$/);
-  if (majorMinorMatch) {
-    return `gemini-${majorMinorMatch[1]}-${majorMinorMatch[3]}`;
-  }
-
-  const majorOnlyMatch = normalized.match(/^gemini-(\d+)-(.+-preview(?:-[0-9-]+)?)$/);
-  if (majorOnlyMatch) {
-    return `gemini-${majorOnlyMatch[1]}-${majorOnlyMatch[2]}`;
-  }
-
-  return null;
-}
-
-function getCacheDerivedAntigravityAliases(
-  currentEntries: OAuthModelAliasEntry[]
-): OAuthModelAliasEntry[] {
-  const cached = getCachedCatalog();
-  const remoteAgyModels = cached?.providers?.agy;
-  if (!remoteAgyModels || remoteAgyModels.length === 0) return [];
-
-  const familyToName = new Map<string, string>();
-  for (const entry of currentEntries) {
-    const family = getGeminiPreviewFamily(entry.alias);
-    if (family && !familyToName.has(family)) {
-      familyToName.set(family, entry.name);
-    }
-  }
-
-  const derivedAliases: OAuthModelAliasEntry[] = [];
-  for (const remoteModel of remoteAgyModels) {
-    if (!remoteModel || typeof remoteModel.id !== 'string') continue;
-    const family = getGeminiPreviewFamily(remoteModel.id);
-    if (!family) continue;
-
-    const mappedName = familyToName.get(family);
-    if (mappedName) {
-      derivedAliases.push({
-        name: mappedName,
-        alias: remoteModel.id,
-      });
-    }
-  }
-
-  return derivedAliases;
 }
 
 function getCompatibilityAliases(entries: OAuthModelAliasEntry[]): OAuthModelAliasEntry[] {
@@ -347,12 +286,7 @@ function generateOAuthModelAliasSection(existingAliases?: string): string {
     }
   }
 
-  // Pull latest known aliases from cached remote catalog when available.
-  for (const alias of getCacheDerivedAntigravityAliases(aliasEntries)) {
-    addAliasEntry(aliasEntries, aliasIndexByKey, alias);
-  }
-
-  // Expand compatibility aliases to reduce breakage on upstream naming drift.
+  // Expand lightweight compatibility aliases (dot/hyphen + customtools toggle).
   for (const alias of getCompatibilityAliases(aliasEntries)) {
     addAliasEntry(aliasEntries, aliasIndexByKey, alias);
   }

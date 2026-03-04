@@ -16,12 +16,13 @@ import {
 import { loadOrCreateUnifiedConfig, saveUnifiedConfig } from '../config/unified-config-loader';
 import { DEFAULT_COPILOT_CONFIG } from '../config/unified-config-types';
 import { ok, fail, info, color } from '../utils/ui';
+import { normalizeCopilotSubcommand } from '../copilot/constants';
 
 /**
  * Handle copilot subcommand.
  */
 export async function handleCopilotCommand(args: string[]): Promise<number> {
-  const subcommand = args[0];
+  const subcommand = normalizeCopilotSubcommand(args[0]);
 
   switch (subcommand) {
     case 'auth':
@@ -48,7 +49,8 @@ export async function handleCopilotCommand(args: string[]): Promise<number> {
     default:
       console.error(fail(`Unknown subcommand: ${subcommand}`));
       console.error('');
-      return handleHelp();
+      handleHelp();
+      return 1;
   }
 }
 
@@ -77,6 +79,11 @@ function handleHelp(): number {
   console.log('  3. ccs copilot start    # Start daemon');
   console.log('  4. ccs copilot usage    # Check quota usage');
   console.log('');
+  console.log('Flag aliases:');
+  console.log(
+    '  ccs copilot --auth | --status | --models | --usage | --start | --stop | --enable | --disable'
+  );
+  console.log('');
   console.log('Or use the web UI: ccs config → Copilot tab');
   console.log('');
   return 0;
@@ -101,7 +108,8 @@ async function handleAuth(): Promise<number> {
     console.log('');
     console.log('Next steps:');
     console.log('  1. Enable copilot: ccs copilot enable');
-    console.log('  2. Start daemon:   npx copilot-api start');
+    console.log('  2. Start daemon:   ccs copilot start');
+    console.log('     (fallback:      npx copilot-api start)');
     console.log('  3. Use copilot:    ccs copilot');
     return 0;
   } else {

@@ -709,7 +709,7 @@ oauth-model-alias:
       );
     });
 
-    it('enriches aliases from cached catalog for unseen preview minor versions', () => {
+    it('does not auto-enrich aliases from cached catalog to avoid model list bloat', () => {
       const cliproxyDir = path.join(testDir, '.ccs', 'cliproxy');
       const cachePath = path.join(testDir, '.ccs', 'model-catalog-cache.json');
       fs.mkdirSync(path.dirname(cachePath), { recursive: true });
@@ -734,12 +734,20 @@ oauth-model-alias:
 
       const afterCacheConfig = fs.readFileSync(path.join(cliproxyDir, 'config.yaml'), 'utf-8');
       assert(
-        afterCacheConfig.includes('alias: gemini-3.11-pro-preview'),
-        'Should include cache-derived unseen minor alias'
+        !afterCacheConfig.includes('alias: gemini-3.11-pro-preview'),
+        'Should not include cache-derived unseen minor alias'
       );
       assert(
-        afterCacheConfig.includes('alias: gemini-3.11-pro-preview-customtools'),
-        'Should include compatibility alias for cache-derived entry'
+        !afterCacheConfig.includes('alias: gemini-3.11-pro-preview-customtools'),
+        'Should not include compatibility alias for cache-derived entry'
+      );
+      assert(
+        afterCacheConfig.includes('alias: gemini-3-pro-preview'),
+        'Should keep baseline Gemini preview alias generation'
+      );
+      assert(
+        afterCacheConfig.includes('alias: gemini-3-pro-preview-customtools'),
+        'Should keep baseline compatibility alias generation'
       );
     });
 

@@ -52,7 +52,10 @@ function getProcessCommandLine(pid: number): string | null {
   return null;
 }
 
-export function verifyDaemonOwnership(pid: number): DaemonOwnershipStatus {
+export function verifyProcessOwnership(
+  pid: number,
+  ownershipMatcher: (commandLine: string) => boolean
+): DaemonOwnershipStatus {
   try {
     process.kill(pid, 0);
   } catch (err) {
@@ -68,8 +71,13 @@ export function verifyDaemonOwnership(pid: number): DaemonOwnershipStatus {
     return 'unknown';
   }
 
-  const looksLikeCursorDaemon =
-    commandLine.includes('--ccs-daemon') && commandLine.includes('cursor-daemon-entry');
+  return ownershipMatcher(commandLine) ? 'owned' : 'not-owned';
+}
 
-  return looksLikeCursorDaemon ? 'owned' : 'not-owned';
+export function verifyDaemonOwnership(pid: number): DaemonOwnershipStatus {
+  return verifyProcessOwnership(
+    pid,
+    (commandLine) =>
+      commandLine.includes('--ccs-daemon') && commandLine.includes('cursor-daemon-entry')
+  );
 }
