@@ -4,7 +4,14 @@
  */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api, type CreateProfile, type UpdateProfile } from '@/lib/api-client';
+import {
+  api,
+  type CreateProfile,
+  type UpdateProfile,
+  type RegisterProfileOrphansRequest,
+  type CopyProfileRequest,
+  type ImportProfileRequest,
+} from '@/lib/api-client';
 import { toast } from 'sonner';
 
 export function useProfiles() {
@@ -53,6 +60,71 @@ export function useDeleteProfile() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['profiles'] });
       toast.success('Profile deleted successfully');
+    },
+    onError: (error: Error) => {
+      toast.error(error.message);
+    },
+  });
+}
+
+export function useDiscoverProfileOrphans() {
+  return useMutation({
+    mutationFn: () => api.profiles.discoverOrphans(),
+    onError: (error: Error) => {
+      toast.error(error.message);
+    },
+  });
+}
+
+export function useRegisterProfileOrphans() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: RegisterProfileOrphansRequest) => api.profiles.registerOrphans(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['profiles'] });
+      toast.success('Orphan profiles registration complete');
+    },
+    onError: (error: Error) => {
+      toast.error(error.message);
+    },
+  });
+}
+
+export function useCopyProfile() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ name, data }: { name: string; data: CopyProfileRequest }) =>
+      api.profiles.copy(name, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['profiles'] });
+      toast.success('Profile copied successfully');
+    },
+    onError: (error: Error) => {
+      toast.error(error.message);
+    },
+  });
+}
+
+export function useExportProfile() {
+  return useMutation({
+    mutationFn: ({ name, includeSecrets }: { name: string; includeSecrets?: boolean }) =>
+      api.profiles.export(name, includeSecrets ?? false),
+    onError: (error: Error) => {
+      toast.error(error.message);
+    },
+  });
+}
+
+export function useImportProfile() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: ImportProfileRequest) => api.profiles.import(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['profiles'] });
+      toast.success('Profile imported successfully');
     },
     onError: (error: Error) => {
       toast.error(error.message);

@@ -141,6 +141,10 @@ Run ${color('ccs config', 'command')} for web dashboard`.trim();
       ['ccs ollama-cloud', 'Ollama Cloud (API key required)'],
       ['', ''], // Spacer
       ['ccs api create', 'Create custom API profile'],
+      ['ccs api discover --register', 'Discover/register orphan settings files'],
+      ['ccs api copy <src> <dest>', 'Duplicate API profile'],
+      ['ccs api export <name>', 'Export profile bundle'],
+      ['ccs api import <file>', 'Import profile bundle'],
       ['ccs api remove', 'Remove an API profile'],
       ['ccs api list', 'List all API profiles'],
     ]
