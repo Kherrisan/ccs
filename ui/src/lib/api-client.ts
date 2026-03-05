@@ -164,6 +164,13 @@ export interface CopyProfileRequest {
   force?: boolean;
 }
 
+export interface CopyProfileResponse {
+  success: boolean;
+  name?: string;
+  settingsPath?: string;
+  warnings?: string[];
+}
+
 export interface ApiProfileExportBundle {
   schemaVersion: 1;
   exportedAt: string;
@@ -711,7 +718,7 @@ export const api = {
         body: JSON.stringify(data),
       }),
     copy: (name: string, data: CopyProfileRequest) =>
-      request(`/profiles/${name}/copy`, {
+      request<CopyProfileResponse>(`/profiles/${name}/copy`, {
         method: 'POST',
         body: JSON.stringify(data),
       }),

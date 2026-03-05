@@ -95,6 +95,42 @@ describe('profile-routes lifecycle endpoints', () => {
     expect(body.skipped).toEqual([]);
   });
 
+  it('rejects malformed names payload for orphan registration', async () => {
+    const response = await fetch(`${baseUrl}/api/profiles/orphans/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ names: 'lonely' }),
+    });
+
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as { error: string };
+    expect(body.error).toContain('names must be an array');
+  });
+
+  it('rejects import bundle with invalid profile target', async () => {
+    const response = await fetch(`${baseUrl}/api/profiles/import`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        bundle: {
+          schemaVersion: 1,
+          exportedAt: new Date().toISOString(),
+          profile: { name: 'demo', target: 'invalid' },
+          settings: {
+            env: {
+              ANTHROPIC_BASE_URL: 'https://api.example.com',
+              ANTHROPIC_AUTH_TOKEN: 'token',
+            },
+          },
+        },
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as { error: string };
+    expect(body.error).toContain('Invalid bundle profile target');
+  });
+
   it('validates source profile name on export endpoint', async () => {
     const response = await fetch(`${baseUrl}/api/profiles/1invalid/export`, {
       method: 'POST',
@@ -107,4 +143,3 @@ describe('profile-routes lifecycle endpoints', () => {
     expect(body.error).toContain('API name must start with letter');
   });
 });
-

@@ -181,9 +181,28 @@ router.post('/orphans/register', (req: Request, res: Response): void => {
   }
 
   const payload = shape.payload;
-  const names = Array.isArray(payload.names)
-    ? payload.names.filter((value): value is string => typeof value === 'string')
-    : undefined;
+  let names: string[] | undefined;
+  if (payload.names !== undefined) {
+    if (!Array.isArray(payload.names)) {
+      res.status(400).json({ error: 'names must be an array of profile names' });
+      return;
+    }
+
+    const invalidNameEntry = payload.names.find(
+      (value) => typeof value !== 'string' || value.trim().length === 0
+    );
+    if (invalidNameEntry !== undefined) {
+      res.status(400).json({ error: 'names must contain non-empty strings only' });
+      return;
+    }
+
+    names = payload.names.map((value) => value.trim());
+    const invalidName = names.find((name) => validateApiName(name) !== null);
+    if (invalidName) {
+      res.status(400).json({ error: `Invalid profile name in names: ${invalidName}` });
+      return;
+    }
+  }
   const target = parseTarget(payload.target);
   const force = payload.force === true;
 
@@ -284,7 +303,18 @@ router.post('/import', (req: Request, res: Response): void => {
     return;
   }
 
-  const result = importApiProfileBundle(shape.payload.bundle, {
+  const bundle = shape.payload.bundle;
+  if (!bundle || typeof bundle !== 'object' || Array.isArray(bundle)) {
+    res.status(400).json({ error: 'bundle must be a JSON object' });
+    return;
+  }
+  const bundleTarget = (bundle as { profile?: { target?: unknown } }).profile?.target;
+  if (bundleTarget !== undefined && parseTarget(bundleTarget) === null) {
+    res.status(400).json({ error: 'Invalid bundle profile target. Expected: claude or droid' });
+    return;
+  }
+
+  const result = importApiProfileBundle(bundle, {
     name: typeof shape.payload.name === 'string' ? shape.payload.name : undefined,
     target: target || undefined,
     force: shape.payload.force === true,

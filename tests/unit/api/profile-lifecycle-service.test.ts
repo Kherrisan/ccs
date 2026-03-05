@@ -6,6 +6,7 @@ import {
   copyApiProfile,
   discoverApiProfileOrphans,
   exportApiProfile,
+  importApiProfileBundle,
   registerApiProfileOrphans,
 } from '../../../src/api/services/profile-lifecycle-service';
 
@@ -113,5 +114,50 @@ describe('profile lifecycle service', () => {
     expect(result.success).toBe(false);
     expect(result.error).toContain('Invalid source profile name');
   });
-});
 
+  it('rejects import bundle with invalid profile target', () => {
+    const result = importApiProfileBundle({
+      schemaVersion: 1,
+      exportedAt: new Date().toISOString(),
+      profile: { name: 'glm', target: 'invalid-target' },
+      settings: {
+        env: {
+          ANTHROPIC_BASE_URL: 'https://api.example.com',
+          ANTHROPIC_AUTH_TOKEN: 'token',
+        },
+      },
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('Invalid bundle profile target');
+  });
+
+  it('clears and warns for all redacted sensitive env keys on import', () => {
+    const ccsDir = path.join(tempHome, '.ccs');
+    fs.mkdirSync(ccsDir, { recursive: true });
+    fs.writeFileSync(path.join(ccsDir, 'config.json'), JSON.stringify({ profiles: {} }, null, 2) + '\n');
+
+    const result = importApiProfileBundle({
+      schemaVersion: 1,
+      exportedAt: new Date().toISOString(),
+      profile: { name: 'redacted-import', target: 'claude' },
+      settings: {
+        env: {
+          ANTHROPIC_BASE_URL: 'https://api.example.com',
+          ANTHROPIC_AUTH_TOKEN: '__CCS_REDACTED__',
+          OPENROUTER_API_KEY: '__CCS_REDACTED__',
+        },
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.warnings?.length).toBeGreaterThan(0);
+
+    const settingsPath = path.join(ccsDir, 'redacted-import.settings.json');
+    const parsed = JSON.parse(fs.readFileSync(settingsPath, 'utf8')) as {
+      env: Record<string, string>;
+    };
+    expect(parsed.env.ANTHROPIC_AUTH_TOKEN).toBe('');
+    expect(parsed.env.OPENROUTER_API_KEY).toBe('');
+  });
+});

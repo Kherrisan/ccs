@@ -926,7 +926,9 @@ async function showHelp(): Promise<void> {
   console.log(`  ${color('--out <file>', 'command')}         Export bundle output path`);
   console.log(`  ${color('--include-secrets', 'command')}    Include token in export bundle`);
   console.log(`  ${color('--name <name>', 'command')}        Override profile name during import`);
-  console.log(`  ${color('--force', 'command')}              Overwrite existing (create)`);
+  console.log(
+    `  ${color('--force', 'command')}              Overwrite existing or bypass validation (create/discover/copy/import)`
+  );
   console.log(`  ${color('--yes, -y', 'command')}            Skip confirmation prompts`);
   console.log('');
   console.log(subheader('Provider Presets'));

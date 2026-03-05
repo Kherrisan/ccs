@@ -32,6 +32,13 @@ import type {
 const SETTINGS_FILE_SUFFIX = '.settings.json';
 const REDACTED_TOKEN_SENTINEL = '__CCS_REDACTED__';
 
+function parseTargetValue(value: unknown): TargetType | null {
+  if (value === 'claude' || value === 'droid') {
+    return value;
+  }
+  return null;
+}
+
 function validateProfileNameForPath(name: string, label: string): string | null {
   const validationError = validateApiName(name);
   if (validationError) {
@@ -195,6 +202,15 @@ export function registerApiProfileOrphans(options?: {
 
   const result: RegisterApiProfileOrphansResult = { registered: [], skipped: [] };
   for (const orphan of selected) {
+    const nameError = validateApiName(orphan.name);
+    if (nameError) {
+      result.skipped.push({
+        name: orphan.name,
+        reason: `Invalid profile name: ${nameError}`,
+      });
+      continue;
+    }
+
     if (!options?.force && !orphan.validation.valid) {
       result.skipped.push({
         name: orphan.name,
@@ -336,12 +352,29 @@ export function importApiProfileBundle(
   const nameError = validateApiName(name);
   if (nameError) return { success: false, error: nameError };
 
+  const bundleTarget = parseTargetValue(input.profile.target);
+  if (input.profile.target !== undefined && bundleTarget === null) {
+    return {
+      success: false,
+      error: 'Invalid bundle profile target. Expected: claude or droid.',
+    };
+  }
+
   const settings = JSON.parse(JSON.stringify(input.settings)) as Record<string, unknown>;
   const env = settings.env as Record<string, unknown> | undefined;
   const warnings: string[] = [];
-  if (env?.ANTHROPIC_AUTH_TOKEN === REDACTED_TOKEN_SENTINEL) {
-    env.ANTHROPIC_AUTH_TOKEN = '';
-    warnings.push('Imported bundle had redacted token. Set ANTHROPIC_AUTH_TOKEN before use.');
+  if (env) {
+    const redactedKeys = Object.entries(env)
+      .filter(([key, value]) => isSensitiveKey(key) && value === REDACTED_TOKEN_SENTINEL)
+      .map(([key]) => key);
+    if (redactedKeys.length > 0) {
+      for (const key of redactedKeys) {
+        env[key] = '';
+      }
+      warnings.push(
+        `Imported bundle had redacted values for ${redactedKeys.join(', ')}. Set secrets before use.`
+      );
+    }
   }
 
   const validation = validateApiProfileSettingsPayload(settings);
@@ -357,11 +390,7 @@ export function importApiProfileBundle(
     writeJsonObjectAtomically(settingsPath, settings);
     ensureProfileHooks(name);
     try {
-      registerApiProfileInConfig(
-        name,
-        options?.target || input.profile.target || 'claude',
-        options?.force
-      );
+      registerApiProfileInConfig(name, options?.target || bundleTarget || 'claude', options?.force);
     } catch (registrationError) {
       rollbackSettingsFile(settingsPath, previousSettingsContent, settingsExisted);
       throw registrationError;

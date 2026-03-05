@@ -82,6 +82,8 @@ export function ApiPage() {
       onSuccess: () => {
         if (selectedProfile === name) {
           setSelectedProfile(null);
+          setEditorHasChanges(false);
+          setPendingSwitch(null);
         }
         setDeleteConfirm(null);
       },
@@ -135,18 +137,26 @@ export function ApiPage() {
 
   const handleCopySelectedProfile = async () => {
     if (!selectedProfileData) return;
-    const destination = window.prompt(
+    const destinationInput = window.prompt(
       `Copy profile "${selectedProfileData.name}" to new profile name:`,
       `${selectedProfileData.name}-copy`
     );
-    if (!destination) return;
+    if (!destinationInput) return;
+    const destination = destinationInput.trim();
+    if (!destination) {
+      toast.error('Destination profile name cannot be empty');
+      return;
+    }
 
     try {
-      await copyProfileMutation.mutateAsync({
+      const result = await copyProfileMutation.mutateAsync({
         name: selectedProfileData.name,
-        data: { destination: destination.trim() },
+        data: { destination },
       });
-      switchToProfile(destination.trim());
+      switchToProfile(destination);
+      if (result.warnings && result.warnings.length > 0) {
+        toast.info(result.warnings.join('\n'));
+      }
     } catch (error) {
       toast.error((error as Error).message);
     }
@@ -210,6 +220,8 @@ export function ApiPage() {
                   variant="outline"
                   onClick={() => void handleDiscoverOrphans()}
                   disabled={discoverOrphansMutation.isPending || registerOrphansMutation.isPending}
+                  aria-label="Discover orphan profiles"
+                  title="Discover orphan profiles"
                 >
                   <RefreshCw
                     className={`w-4 h-4 ${discoverOrphansMutation.isPending ? 'animate-spin' : ''}`}
@@ -220,6 +232,8 @@ export function ApiPage() {
                   variant="outline"
                   onClick={handleImportClick}
                   disabled={importProfileMutation.isPending}
+                  aria-label="Import profile bundle"
+                  title="Import profile bundle"
                 >
                   <Upload className="w-4 h-4" />
                 </Button>

@@ -70,9 +70,6 @@ export function useDeleteProfile() {
 export function useDiscoverProfileOrphans() {
   return useMutation({
     mutationFn: () => api.profiles.discoverOrphans(),
-    onError: (error: Error) => {
-      toast.error(error.message);
-    },
   });
 }
 
@@ -84,9 +81,6 @@ export function useRegisterProfileOrphans() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['profiles'] });
       toast.success('Orphan profiles registration complete');
-    },
-    onError: (error: Error) => {
-      toast.error(error.message);
     },
   });
 }
@@ -101,9 +95,6 @@ export function useCopyProfile() {
       queryClient.invalidateQueries({ queryKey: ['profiles'] });
       toast.success('Profile copied successfully');
     },
-    onError: (error: Error) => {
-      toast.error(error.message);
-    },
   });
 }
 
@@ -111,9 +102,6 @@ export function useExportProfile() {
   return useMutation({
     mutationFn: ({ name, includeSecrets }: { name: string; includeSecrets?: boolean }) =>
       api.profiles.export(name, includeSecrets ?? false),
-    onError: (error: Error) => {
-      toast.error(error.message);
-    },
   });
 }
 
@@ -125,9 +113,6 @@ export function useImportProfile() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['profiles'] });
       toast.success('Profile imported successfully');
-    },
-    onError: (error: Error) => {
-      toast.error(error.message);
     },
   });
 }
