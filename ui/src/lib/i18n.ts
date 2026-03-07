@@ -286,12 +286,18 @@ const resources = {
         stable: '(stable)',
         install: 'Install',
         versionsAboveUnstable: 'Versions above {{version}} have known issues',
+        versionsKnownIssues: 'Version {{version}} has known issues',
         lastChecked: 'Last checked {{time}}',
         notRunning: 'Not running',
         start: 'Start',
         port: 'Port {{port}}',
         sessionCount: '{{count}} session',
         sessionCount_other: '{{count}} sessions',
+        installFaultyTitle: 'Install Version With Known Issues?',
+        installFaultyDesc:
+          'You are about to install <strong>v{{version}}</strong>, which falls inside the known faulty range <strong>{{range}}</strong>.',
+        installFaultyWarning:
+          'This version has known bugs and may fail or leave the proxy in a bad state.',
         installUnstableTitle: 'Install Unstable Version?',
         installUnstableDesc:
           'You are about to install <strong>v{{version}}</strong>, which is above the maximum stable version <strong>v{{maxStable}}</strong>.',
@@ -1427,12 +1433,17 @@ const resources = {
         stable: '（稳定版）',
         install: '安装',
         versionsAboveUnstable: '高于 {{version}} 的版本存在已知问题',
+        versionsKnownIssues: '版本 {{version}} 存在已知问题',
         lastChecked: '上次检查 {{time}}',
         notRunning: '未运行',
         start: '启动',
         port: '端口 {{port}}',
         sessionCount: '{{count}} 个会话',
         sessionCount_other: '{{count}} 个会话',
+        installFaultyTitle: '安装存在已知问题的版本？',
+        installFaultyDesc:
+          '即将安装 <strong>v{{version}}</strong>，该版本位于已知故障范围 <strong>{{range}}</strong> 内。',
+        installFaultyWarning: '该版本存在已知缺陷，可能安装失败或让代理处于异常状态。',
         installUnstableTitle: '安装非稳定版本？',
         installUnstableDesc:
           '即将安装 <strong>v{{version}}</strong>，该版本高于当前最大稳定版 <strong>v{{maxStable}}</strong>。',
@@ -2539,12 +2550,18 @@ const resources = {
         stable: '(ổn định)',
         install: 'Cài đặt',
         versionsAboveUnstable: 'Các phiên bản trên {{version}} có vấn đề đã biết',
+        versionsKnownIssues: 'Phiên bản {{version}} có vấn đề đã biết',
         lastChecked: 'Đã kiểm tra lần cuối {{time}}',
         notRunning: 'Không chạy',
         start: 'Bắt đầu',
         port: 'Cổng {{port}}',
         sessionCount: '{{count}} phiên',
         sessionCount_other: '{{count}} phiên',
+        installFaultyTitle: 'Cài đặt phiên bản có lỗi đã biết?',
+        installFaultyDesc:
+          'Bạn sắp cài đặt <strong>v{{version}}</strong>, phiên bản này nằm trong dải lỗi đã biết <strong>{{range}}</strong>.',
+        installFaultyWarning:
+          'Phiên bản này có lỗi đã biết và có thể cài đặt thất bại hoặc làm proxy ở trạng thái xấu.',
         installUnstableTitle: 'Cài đặt phiên bản không ổn định?',
         installUnstableDesc:
           'Bạn sắp cài đặt <strong>v{{version}}</strong>, phiên bản này cao hơn phiên bản ổn định tối đa <strong>v{{maxStable}}</strong>.',

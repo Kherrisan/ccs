@@ -949,6 +949,8 @@ router.post('/install', async (req: Request, res: Response): Promise<void> => {
     if (isFaulty && !force) {
       res.json({
         success: false,
+        isFaulty,
+        isExperimental,
         requiresConfirmation: true,
         message: `Version ${version} has known bugs (v${CLIPROXY_FAULTY_RANGE.min.replace(/-\d+$/, '')}-${CLIPROXY_FAULTY_RANGE.max.replace(/-\d+$/, '')}). Set force=true to proceed.`,
       });
@@ -958,6 +960,8 @@ router.post('/install', async (req: Request, res: Response): Promise<void> => {
     if (isExperimental && !force) {
       res.json({
         success: false,
+        isFaulty,
+        isExperimental,
         requiresConfirmation: true,
         message: `Version ${version} is experimental (above stable ${CLIPROXY_MAX_STABLE_VERSION.replace(/-\d+$/, '')}). Set force=true to proceed.`,
       });
