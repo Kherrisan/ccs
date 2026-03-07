@@ -606,6 +606,8 @@ export interface CliproxyVersionsResponse {
 export interface CliproxyInstallResult {
   success: boolean;
   version?: string;
+  restarted?: boolean;
+  port?: number;
   isUnstable?: boolean;
   requiresConfirmation?: boolean;
   message?: string;
