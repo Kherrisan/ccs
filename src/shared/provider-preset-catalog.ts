@@ -8,9 +8,11 @@
 export type PresetCategory = 'recommended' | 'alternative';
 
 export const PROVIDER_PRESET_IDS = [
+  'anthropic',
   'openrouter',
   'alibaba-coding-plan',
   'ollama',
+  'llamacpp',
   'glm',
   'glmt',
   'km',
@@ -58,6 +60,20 @@ export const PROVIDER_PRESET_ALIASES: Readonly<Record<string, ProviderPresetId>>
 
 const RAW_PROVIDER_PRESET_DEFINITIONS: readonly ProviderPresetDefinition[] = [
   {
+    id: 'anthropic',
+    name: 'Anthropic (Direct API)',
+    description: 'Use your own Anthropic API key (sk-ant-...)',
+    baseUrl: '',
+    defaultProfileName: 'anthropic',
+    defaultModel: 'claude-sonnet-4-5-20250929',
+    apiKeyPlaceholder: 'sk-ant-api03-...',
+    apiKeyHint: 'Get key at console.anthropic.com/settings/keys',
+    category: 'recommended',
+    requiresApiKey: true,
+    badge: 'Direct',
+    featured: true,
+  },
+  {
     id: 'openrouter',
     name: 'OpenRouter',
     description: '349+ models from OpenAI, Anthropic, Google, Meta',
@@ -101,6 +117,20 @@ const RAW_PROVIDER_PRESET_DEFINITIONS: readonly ProviderPresetDefinition[] = [
     badge: 'Local',
     featured: true,
     icon: '/icons/ollama.svg',
+  },
+  {
+    id: 'llamacpp',
+    name: 'llama.cpp (Local)',
+    description: 'Local inference via llama.cpp (LLaMA models)',
+    baseUrl: 'http://127.0.0.1:8080',
+    defaultProfileName: 'llamacpp',
+    defaultModel: 'llama3-8b',
+    apiKeyPlaceholder: 'llamacpp',
+    apiKeyHint: 'Run llama.cpp server: ./server --host 0.0.0.0 --port 8080 -m model.gguf',
+    category: 'recommended',
+    requiresApiKey: false,
+    badge: 'Local',
+    featured: true,
   },
   {
     id: 'glm',

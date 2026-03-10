@@ -102,6 +102,7 @@ The dashboard provides visual management for all account types:
 | **Antigravity** | OAuth | `ccs agy` | Alternative routing |
 | **OpenRouter** | API Key | `ccs openrouter` | 300+ models, unified API |
 | **Ollama** | Local | `ccs ollama` | Local open-source models, privacy |
+| **llama.cpp** | Local | `ccs llamacpp` | Local GGUF inference via llama.cpp server |
 | **Ollama Cloud** | API Key | `ccs ollama-cloud` | Cloud-hosted open-source models |
 | **GLM** | API Key | `ccs glm` | Cost-optimized execution |
 | **KM (Kimi API)** | API Key | `ccs km` | Long-context, thinking mode |
@@ -118,6 +119,8 @@ The dashboard provides visual management for all account types:
 **Alibaba Coding Plan Integration**: Configure via `ccs api create --preset alibaba-coding-plan` (or preset alias `alibaba`) with Coding Plan keys (`sk-sp-...`) and endpoint `https://coding-intl.dashscope.aliyuncs.com/apps/anthropic`.
 
 **Ollama Integration**: Run local open-source models (qwen3-coder, gpt-oss:20b) with full privacy. Use `ccs api create --preset ollama` - requires [Ollama v0.14.0+](https://ollama.com) installed. For cloud models, use `ccs api create --preset ollama-cloud`.
+
+**llama.cpp Integration**: Run a local llama.cpp OpenAI-compatible server and create a profile with `ccs api create --preset llamacpp`. CCS defaults to `http://127.0.0.1:8080`, matching the standard llama.cpp server port.
 
 **Azure Foundry**: Use `ccs api create --preset foundry` to set up Claude via Microsoft Azure AI Foundry. Requires Azure resource and API key from [ai.azure.com](https://ai.azure.com).
 
@@ -149,9 +152,14 @@ ccs ghcp      # GitHub Copilot (OAuth device flow)
 ccs agy       # Antigravity (OAuth)
 ccs qwen      # Qwen Code (OAuth via CLIProxy)
 ccs ollama    # Local Ollama (no API key needed)
+ccs llamacpp  # Local llama.cpp (no API key needed)
 ccs glm       # GLM (API key)
 ccs km        # Kimi API profile (API key)
 ccs api create --preset alibaba-coding-plan  # Alibaba Coding Plan profile
+ccs api discover --register                  # Auto-register orphan *.settings.json
+ccs api copy glm glm-backup                  # Duplicate profile config + settings
+ccs api export glm --out ./glm.ccs-profile.json  # Export for cross-device transfer
+ccs api import ./glm.ccs-profile.json        # Import exported profile bundle
 ```
 
 ### Droid Alias (`argv[0]` pattern)

@@ -1,6 +1,6 @@
 /**
  * Provider Presets Configuration
- * Shared catalog from backend source-of-truth with UI-only presentation overrides.
+ * Shared catalog from backend source-of-truth.
  */
 
 import {
@@ -9,7 +9,6 @@ import {
   normalizeProviderPresetId,
   type PresetCategory,
   type ProviderPresetDefinition,
-  type ProviderPresetId,
 } from '../../../src/shared/provider-preset-catalog';
 
 export { OPENROUTER_BASE_URL };
@@ -17,29 +16,26 @@ export type { PresetCategory };
 
 export type ProviderPreset = ProviderPresetDefinition;
 
-/**
- * UI-only overrides for presentation details that differ from CLI semantics.
- * Keep this tiny; provider data itself belongs in shared catalog.
- */
-type UiPresetOverride = Pick<ProviderPreset, 'apiKeyPlaceholder'>;
-
-const UI_PRESET_OVERRIDES: Readonly<Partial<Record<ProviderPresetId, UiPresetOverride>>> =
-  Object.freeze({
-    ollama: {
-      apiKeyPlaceholder: '',
-    },
-  });
-
-function withUiOverrides(preset: ProviderPresetDefinition): ProviderPreset {
-  const overrides = UI_PRESET_OVERRIDES[preset.id];
-  return overrides ? { ...preset, ...overrides } : { ...preset };
-}
-
 const BASE_PROVIDER_PRESETS = createProviderPresetDefinitions();
 
 export const PROVIDER_PRESETS: readonly ProviderPreset[] = Object.freeze(
-  BASE_PROVIDER_PRESETS.map(withUiOverrides)
+  BASE_PROVIDER_PRESETS.map((preset) => ({ ...preset }))
 );
+
+export function resolvePresetApiKeyValue(
+  preset: ProviderPreset | null | undefined,
+  apiKey: string
+): string {
+  if (apiKey) {
+    return apiKey;
+  }
+
+  if (preset?.requiresApiKey === false) {
+    return preset.apiKeyPlaceholder || preset.id;
+  }
+
+  return '';
+}
 
 /** Get presets by category */
 export function getPresetsByCategory(category: PresetCategory): ProviderPreset[] {

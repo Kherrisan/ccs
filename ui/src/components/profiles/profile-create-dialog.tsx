@@ -38,6 +38,7 @@ import {
   PROVIDER_PRESETS,
   getPresetsByCategory,
   getPresetById,
+  resolvePresetApiKeyValue,
   type ProviderPreset,
 } from '@/lib/provider-presets';
 import {
@@ -51,12 +52,18 @@ import type { CategorizedModel } from '@/lib/openrouter-types';
 import type { CliTarget } from '@/lib/api-client';
 import i18n from '@/lib/i18n';
 
+const optionalUrlSchema = z
+  .string()
+  .refine((value) => value.trim().length === 0 || z.string().url().safeParse(value).success, {
+    message: 'Invalid URL format',
+  });
+
 const schema = z.object({
   name: z
     .string()
     .min(1, 'Name is required')
     .regex(/^[a-zA-Z][a-zA-Z0-9._-]*$/, 'Must start with letter, only letters/numbers/.-_'),
-  baseUrl: z.string().url('Invalid URL format'),
+  baseUrl: optionalUrlSchema,
   apiKey: z.string(), // Validation handled conditionally in onSubmit
   model: z.string().optional(),
   opusModel: z.string().optional(),
@@ -251,8 +258,7 @@ export function ProfileCreateDialog({
     // Use user-provided baseUrl (allows customization of preset URLs)
     const finalData = {
       ...data,
-      // Use provided API key, or empty string if not provided (for optional auth providers)
-      apiKey: data.apiKey || '',
+      apiKey: resolvePresetApiKeyValue(currentPreset, data.apiKey),
     };
     try {
       await createMutation.mutateAsync(finalData);
@@ -389,9 +395,7 @@ export function ProfileCreateDialog({
 
                 {/* Base URL - always editable, pre-filled from preset */}
                 <div className="space-y-1.5">
-                  <Label htmlFor="baseUrl">
-                    API Base URL <span className="text-destructive">*</span>
-                  </Label>
+                  <Label htmlFor="baseUrl">API Base URL</Label>
                   <Input
                     id="baseUrl"
                     {...register('baseUrl')}
@@ -406,7 +410,9 @@ export function ProfileCreateDialog({
                     </div>
                   ) : currentPreset ? (
                     <p className="text-xs text-muted-foreground">
-                      Pre-filled from {currentPreset.name}. You can customize if needed.
+                      {currentPreset.baseUrl
+                        ? `Pre-filled from ${currentPreset.name}. You can customize if needed.`
+                        : `Optional for ${currentPreset.name}. Leave blank to use native Anthropic auth.`}
                     </p>
                   ) : (
                     <p className="text-xs text-muted-foreground">
@@ -453,7 +459,7 @@ export function ProfileCreateDialog({
                     <p className="text-xs text-destructive">{errors.apiKey.message}</p>
                   ) : currentPreset?.requiresApiKey === false ? (
                     <p className="text-xs text-muted-foreground">
-                      Only needed if you have configured Ollama authentication
+                      Only needed if your local endpoint has authentication enabled
                     </p>
                   ) : (
                     currentPreset?.apiKeyHint && (

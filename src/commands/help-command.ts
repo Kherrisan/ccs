@@ -138,9 +138,15 @@ Run ${color('ccs config', 'command')} for web dashboard`.trim();
         'Alibaba Coding Plan (Anthropic-compatible API key)',
       ],
       ['ccs ollama', 'Local Ollama (http://localhost:11434)'],
+      ['ccs llamacpp', 'Local llama.cpp (http://127.0.0.1:8080)'],
       ['ccs ollama-cloud', 'Ollama Cloud (API key required)'],
       ['', ''], // Spacer
+      ['ccs api create --preset anthropic', 'Anthropic direct API key (sk-ant-...)'],
       ['ccs api create', 'Create custom API profile'],
+      ['ccs api discover --register', 'Discover/register orphan settings files'],
+      ['ccs api copy <src> <dest>', 'Duplicate API profile'],
+      ['ccs api export <name>', 'Export profile bundle'],
+      ['ccs api import <file>', 'Import profile bundle'],
       ['ccs api remove', 'Remove an API profile'],
       ['ccs api list', 'List all API profiles'],
     ]
@@ -156,7 +162,7 @@ Run ${color('ccs config', 'command')} for web dashboard`.trim();
       ['ccs auth --help', 'Show account management commands'],
       [
         'ccs auth create <name>',
-        'Create account profile (supports shared groups + --deeper-continuity)',
+        'Create account profile (supports --bare, shared groups, --deeper-continuity)',
       ],
       ['ccs config', 'Dashboard: Accounts table can edit context mode/group/continuity depth'],
       [

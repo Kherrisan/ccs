@@ -23,6 +23,14 @@ describe('provider-presets', () => {
     expect(preset?.id).toBe('km');
   });
 
+  it('resolves llama.cpp preset with local-provider sentinel token', () => {
+    const preset = getPresetById('llamacpp');
+    expect(preset?.id).toBe('llamacpp');
+    expect(preset?.requiresApiKey).toBe(false);
+    expect(preset?.apiKeyPlaceholder).toBe('llamacpp');
+    expect(preset?.baseUrl).toBe('http://127.0.0.1:8080');
+  });
+
   it('resolves legacy kimi preset alias to km', () => {
     const preset = getPresetById('kimi');
     expect(preset?.id).toBe('km');
