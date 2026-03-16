@@ -90,6 +90,12 @@ describe('translateAnthropicRequest', () => {
     ]);
   });
 
+  it('handles empty messages arrays', () => {
+    const translated = translateAnthropicRequest({ messages: [] });
+
+    expect(translated.messages).toEqual([]);
+  });
+
   it('uses a distinct fallback prefix for missing tool_use ids', () => {
     const translated = translateAnthropicRequest({
       messages: [
@@ -121,6 +127,25 @@ describe('translateAnthropicRequest', () => {
         role: 'tool',
         tool_call_id: 'toolu_1',
         content: '[unserializable content]',
+      },
+    ]);
+  });
+
+  it('returns empty string for tool_result blocks without content', () => {
+    const translated = translateAnthropicRequest({
+      messages: [
+        {
+          role: 'user',
+          content: [{ type: 'tool_result', tool_use_id: 'toolu_1' }],
+        },
+      ],
+    });
+
+    expect(translated.messages).toEqual([
+      {
+        role: 'tool',
+        tool_call_id: 'toolu_1',
+        content: '',
       },
     ]);
   });
@@ -205,6 +230,61 @@ describe('createAnthropicProxyResponse', () => {
     expect(body.content[0]?.thinking).toContain('Need to call the tool first');
     expect(body.content[2]?.name).toBe('search');
     expect(body.content[2]?.input).toEqual({ q: 'cursor daemon' });
+  });
+
+  it('returns 502 when Cursor returns invalid JSON', async () => {
+    const transformed = await createAnthropicProxyResponse(
+      new Response('not json', {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    );
+
+    expect(transformed.status).toBe(502);
+    const body = (await transformed.json()) as { error?: { type?: string; message?: string } };
+    expect(body.error?.type).toBe('api_error');
+    expect(body.error?.message).toBe('Failed to translate Cursor JSON response');
+  });
+
+  it('returns 502 when Cursor response is missing choices', async () => {
+    const transformed = await createAnthropicProxyResponse(
+      new Response(
+        JSON.stringify({
+          id: 'chatcmpl_missing_choices',
+          model: 'claude-sonnet-4.5',
+        }),
+        {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }
+      )
+    );
+
+    expect(transformed.status).toBe(502);
+    const body = (await transformed.json()) as { error?: { type?: string; message?: string } };
+    expect(body.error?.type).toBe('api_error');
+    expect(body.error?.message).toBe('Failed to translate Cursor JSON response');
+  });
+
+  it('returns 502 when Cursor response has empty choices', async () => {
+    const transformed = await createAnthropicProxyResponse(
+      new Response(
+        JSON.stringify({
+          id: 'chatcmpl_empty_choices',
+          model: 'claude-sonnet-4.5',
+          choices: [],
+        }),
+        {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }
+      )
+    );
+
+    expect(transformed.status).toBe(502);
+    const body = (await transformed.json()) as { error?: { type?: string; message?: string } };
+    expect(body.error?.type).toBe('api_error');
+    expect(body.error?.message).toBe('Failed to translate Cursor JSON response');
   });
 
   it('converts OpenAI SSE chunks into Anthropic SSE events', async () => {

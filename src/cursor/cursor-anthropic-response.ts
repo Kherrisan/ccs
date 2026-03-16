@@ -3,6 +3,9 @@ import { GlmtTransformer } from '../glmt/glmt-transformer';
 import { SSEParser } from '../glmt/sse-parser';
 import type { OpenAIResponse, SSEEvent } from '../glmt/pipeline';
 
+const JSON_TRANSLATION_ERROR_MESSAGE = 'Failed to translate Cursor JSON response';
+const STREAM_TRANSLATION_ERROR_MESSAGE = 'Failed to translate Cursor SSE response';
+
 function createErrorResponse(message: string): Response {
   return new Response(
     JSON.stringify({
@@ -22,18 +25,29 @@ function formatSseEvent(event: string, data: Record<string, unknown>): string {
   return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
 }
 
+function hasTranslatableChoices(value: unknown): value is OpenAIResponse {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+
+  const { choices } = value as OpenAIResponse;
+  return Array.isArray(choices) && choices.length > 0;
+}
+
 async function createAnthropicJsonResponse(response: Response): Promise<Response> {
   try {
-    const openAiResponse = (await response.json()) as OpenAIResponse;
+    const openAiResponse = await response.json();
+    if (!hasTranslatableChoices(openAiResponse)) {
+      return createErrorResponse(JSON_TRANSLATION_ERROR_MESSAGE);
+    }
+
     const anthropicResponse = new GlmtTransformer().transformResponse(openAiResponse);
     return new Response(JSON.stringify(anthropicResponse), {
       status: response.status,
       headers: { 'Content-Type': 'application/json' },
     });
-  } catch (error) {
-    return createErrorResponse(
-      `Failed to translate Cursor JSON response: ${(error as Error).message}`
-    );
+  } catch {
+    return createErrorResponse(JSON_TRANSLATION_ERROR_MESSAGE);
   }
 }
 
@@ -80,14 +94,14 @@ function createAnthropicStreamingResponse(response: Response): Response {
             );
           });
         }
-      } catch (error) {
+      } catch {
         controller.enqueue(
           encoder.encode(
             formatSseEvent('error', {
               type: 'error',
               error: {
                 type: 'api_error',
-                message: `Failed to translate Cursor SSE response: ${(error as Error).message}`,
+                message: STREAM_TRANSLATION_ERROR_MESSAGE,
               },
             })
           )
