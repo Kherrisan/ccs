@@ -19,7 +19,7 @@ If you are new to the project, start with a docs fix, a focused bug fix, or an i
 | CLI runtime | `src/`, `lib/`, `config/`, `scripts/` | Add or update tests in `tests/` |
 | Dashboard UI | `ui/src/` | Run `cd ui && bun run validate` |
 | Web server and config APIs | `src/web-server/`, `src/api/`, `src/config/` | Add unit or integration coverage |
-| Documentation | `README.md`, `docs/`, `CONTRIBUTING.md` | Keep user-facing docs in sync |
+| Documentation | `https://docs.ccs.kaitran.ca`, `README.md`, `docs/`, `CONTRIBUTING.md` | Keep user-facing docs in sync |
 | Static assets | `assets/` | Verify screenshots and references still match |
 
 Useful directories:
@@ -195,6 +195,7 @@ Releases are automated with semantic-release.
 
 - Bugs and features: https://github.com/kaitranntt/ccs/issues
 - Questions and discussion: https://github.com/kaitranntt/ccs/discussions
+- Hosted docs: https://docs.ccs.kaitran.ca
 - User-facing docs: [README.md](./README.md)
 - Internal architecture notes: [docs/](./docs)
 - Community expectations: [`.github/CODE_OF_CONDUCT.md`](./.github/CODE_OF_CONDUCT.md)
