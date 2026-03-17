@@ -1,6 +1,6 @@
 # CCS Codebase Summary
 
-Last Updated: 2026-03-16
+Last Updated: 2026-03-17
 
 Comprehensive overview of the modularized CCS codebase structure following the Phase 9 modularization effort (Settings, Analytics, Auth Monitor splits + Test Infrastructure), v7.1 Remote CLIProxy feature, v7.2 Kiro + GitHub Copilot (ghcp) OAuth providers, v7.14 Hybrid Quota Management, v7.34 Image Analysis Hook, and account-context validation hardening.
 
@@ -365,6 +365,7 @@ ui/src/
 │       ├── button.tsx
 │       ├── card.tsx
 │       ├── dialog.tsx
+│       ├── searchable-select.tsx  # Shared searchable combobox for model pickers
 │       ├── sidebar.tsx       # Custom sidebar (674 lines)
 │       └── [UI primitives...]
 │

@@ -1,6 +1,6 @@
 # CCS Project Roadmap
 
-Last Updated: 2026-03-16
+Last Updated: 2026-03-17
 
 Forward-looking roadmap documenting current priorities, GitHub issues, and future feature plans.
 
@@ -42,6 +42,7 @@ All major modularization work is complete. The codebase evolved from monolithic 
 ### Recent Fixes
 
 - **#724**: Codex startup is now free-plan safe. CCS defaults new Codex sessions to a cross-plan model and auto-repairs stale paid-only Codex defaults when the active account is on the free plan.
+- **#737**: Dashboard model pickers in Cursor, Copilot, and CLIProxy now use a searchable combobox with autofocus and explicit no-results states for large model catalogs.
 
 ### Maintainability Hardening Kickoff
 

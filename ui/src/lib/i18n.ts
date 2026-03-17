@@ -148,6 +148,10 @@ const resources = {
         availableModelsCount: 'Available Models ({{count}})',
         preview: 'Preview',
       },
+      searchableSelect: {
+        searchModels: 'Search models...',
+        noResults: 'No results found.',
+      },
       copilotSettings: {
         enableCopilot: 'Enable Copilot',
         enableCopilotDesc: 'Allow using GitHub Copilot subscription',
@@ -1318,6 +1322,10 @@ const resources = {
         availableModelsCount: '可用模型（{{count}}）',
         preview: '预览',
       },
+      searchableSelect: {
+        searchModels: '搜索模型...',
+        noResults: '未找到匹配结果。',
+      },
       copilotSettings: {
         enableCopilot: '启用 Copilot',
         enableCopilotDesc: '允许使用 GitHub Copilot 订阅',
@@ -2450,6 +2458,10 @@ const resources = {
         selectModel: 'Chọn mô hình',
         availableModelsCount: 'Mô hình khả dụng ({{count}})',
         preview: 'Xem trước',
+      },
+      searchableSelect: {
+        searchModels: 'Tìm mô hình...',
+        noResults: 'Không tìm thấy kết quả phù hợp.',
       },
       copilotSettings: {
         enableCopilot: 'Bật Copilot',
@@ -3640,6 +3652,10 @@ const resources = {
         selectModel: 'モデルを選択',
         availableModelsCount: '利用可能なモデル ({{count}})',
         preview: 'プレビュー',
+      },
+      searchableSelect: {
+        searchModels: 'モデルを検索...',
+        noResults: '一致する結果がありません。',
       },
       copilotSettings: {
         enableCopilot: 'Copilot を有効化',

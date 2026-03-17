@@ -82,7 +82,7 @@ Available controls:
 - Auth actions (auto-detect, manual import)
 - Daemon actions (start/stop)
 - Runtime config (port, auto-start, ghost mode)
-- Models list
+- Models list with searchable combobox filtering for large catalogs
 - Raw editor for `~/.ccs/cursor.settings.json`
 
 ## Raw Settings and Unified Config Sync
