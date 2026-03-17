@@ -171,8 +171,7 @@ export function HistorySyncLearningMap({
 
             {legacyTargetCount > 0 && (
               <div className="mt-2 rounded-md border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
-                {legacyTargetCount} legacy account
-                {legacyTargetCount > 1 ? 's still need' : ' still needs'} explicit confirmation.
+                {t('historySyncLearningMap.legacyConfirmation', { count: legacyTargetCount })}
               </div>
             )}
           </CollapsibleContent>

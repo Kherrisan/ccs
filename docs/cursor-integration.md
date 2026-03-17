@@ -5,6 +5,7 @@ This guide covers the local Cursor integration in CCS, including CLI setup, daem
 ## What It Provides
 
 - OpenAI-compatible local endpoint powered by Cursor credentials.
+- Anthropic-compatible local endpoint at `/v1/messages` for Claude-native clients.
 - Cursor model list and chat completions via local daemon.
 - Dedicated dashboard page: `ccs config` -> `Cursor IDE`.
 
@@ -61,6 +62,7 @@ ccs cursor stop
 - `auto_start`: disabled
 - Model list resolution: authenticated live fetch when available, with cached/default fallback.
 - Request model validation: if a requested model is not present in the available Cursor model catalog, daemon falls back to the resolved default model.
+- Daemon API surface: `POST /v1/chat/completions`, `POST /v1/messages`, and `GET /v1/models`.
 
 These values are managed in unified config and can be updated from CLI or dashboard.
 
@@ -80,7 +82,7 @@ Available controls:
 - Auth actions (auto-detect, manual import)
 - Daemon actions (start/stop)
 - Runtime config (port, auto-start, ghost mode)
-- Models list
+- Models list with searchable combobox filtering for large catalogs
 - Raw editor for `~/.ccs/cursor.settings.json`
 
 ## Raw Settings and Unified Config Sync

@@ -4,6 +4,8 @@ import * as os from 'os';
 import * as path from 'path';
 import * as lockfile from 'proper-lockfile';
 import { handlePersistCommand } from '../../../src/commands/persist-command';
+import { createEmptyUnifiedConfig } from '../../../src/config/unified-config-types';
+import { saveUnifiedConfig } from '../../../src/config/unified-config-loader';
 
 interface RestoreFixture {
   claudeDir: string;
@@ -16,6 +18,7 @@ interface RestoreFixture {
 
 let tempRoot: string;
 let originalClaudeConfigDir: string | undefined;
+let originalCcsHome: string | undefined;
 let originalProcessExit: typeof process.exit;
 let originalFsOpen: typeof fs.promises.open;
 let originalFsRename: typeof fs.promises.rename;
@@ -66,9 +69,11 @@ function stubProcessExit(): void {
 beforeEach(async () => {
   tempRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ccs-persist-handler-test-'));
   originalClaudeConfigDir = process.env.CLAUDE_CONFIG_DIR;
+  originalCcsHome = process.env.CCS_HOME;
   originalProcessExit = process.exit;
   originalFsOpen = fs.promises.open;
   originalFsRename = fs.promises.rename;
+  process.env.CCS_HOME = tempRoot;
 });
 
 afterEach(async () => {
@@ -80,6 +85,12 @@ afterEach(async () => {
     delete process.env.CLAUDE_CONFIG_DIR;
   } else {
     process.env.CLAUDE_CONFIG_DIR = originalClaudeConfigDir;
+  }
+
+  if (originalCcsHome === undefined) {
+    delete process.env.CCS_HOME;
+  } else {
+    process.env.CCS_HOME = originalCcsHome;
   }
 
   if (tempRoot) {
@@ -269,5 +280,107 @@ describe('persist command restore failure handling', () => {
     } finally {
       console.log = originalConsoleLog;
     }
+  });
+});
+
+describe('persist command Claude extension parity', () => {
+  async function writeUnifiedConfig(): Promise<void> {
+    const config = createEmptyUnifiedConfig();
+    config.accounts.work = {
+      created: '2026-03-15T00:00:00.000Z',
+      last_used: null,
+      context_mode: 'isolated',
+    };
+    config.default = 'work';
+    config.profiles.glm = {
+      type: 'api',
+      settings: path.join(tempRoot, '.ccs', 'glm.settings.json'),
+    };
+
+    await fs.promises.mkdir(path.join(tempRoot, '.ccs'), { recursive: true });
+    await fs.promises.writeFile(
+      path.join(tempRoot, '.ccs', 'glm.settings.json'),
+      JSON.stringify(
+        {
+          env: {
+            ANTHROPIC_BASE_URL: 'https://api.example.test',
+            ANTHROPIC_API_KEY: 'sk-ant-test-123456',
+            ANTHROPIC_MODEL: 'claude-sonnet-4-5',
+          },
+        },
+        null,
+        2
+      ) + '\n',
+      'utf8'
+    );
+    saveUnifiedConfig(config);
+  }
+
+  it('persists account profiles via CLAUDE_CONFIG_DIR and clears stale managed env keys', async () => {
+    await writeUnifiedConfig();
+
+    const settingsPath = path.join(tempRoot, '.claude', 'settings.json');
+    await fs.promises.mkdir(path.dirname(settingsPath), { recursive: true });
+    await fs.promises.writeFile(
+      settingsPath,
+      JSON.stringify(
+        {
+          env: {
+            ANTHROPIC_API_KEY: 'stale-key',
+            ANTHROPIC_BASE_URL: 'http://127.0.0.1:8317',
+            KEEP_ME: 'still-here',
+          },
+        },
+        null,
+        2
+      ) + '\n',
+      'utf8'
+    );
+
+    await handlePersistCommand(['work', '--yes']);
+
+    const persisted = JSON.parse(await fs.promises.readFile(settingsPath, 'utf8')) as {
+      env: Record<string, string>;
+    };
+
+    expect(persisted.env.KEEP_ME).toBe('still-here');
+    expect(persisted.env.ANTHROPIC_API_KEY).toBeUndefined();
+    expect(persisted.env.ANTHROPIC_BASE_URL).toBeUndefined();
+    expect(persisted.env.CLAUDE_CONFIG_DIR).toBe(path.join(tempRoot, '.ccs', 'instances', 'work'));
+    expect(fs.existsSync(persisted.env.CLAUDE_CONFIG_DIR)).toBe(true);
+  });
+
+  it('persists default profile using mapped account continuity and preserves unrelated env', async () => {
+    await writeUnifiedConfig();
+
+    const settingsPath = path.join(tempRoot, '.claude', 'settings.json');
+    await fs.promises.mkdir(path.dirname(settingsPath), { recursive: true });
+    await fs.promises.writeFile(
+      settingsPath,
+      JSON.stringify(
+        {
+          env: {
+            ANTHROPIC_AUTH_TOKEN: 'stale-token',
+            ANTHROPIC_MODEL: 'stale-model',
+            KEEP_ME: 'still-here',
+          },
+        },
+        null,
+        2
+      ) + '\n',
+      'utf8'
+    );
+
+    await handlePersistCommand(['default', '--yes']);
+
+    const persisted = JSON.parse(await fs.promises.readFile(settingsPath, 'utf8')) as {
+      env: Record<string, string>;
+    };
+
+    expect(persisted.env.KEEP_ME).toBe('still-here');
+    expect(persisted.env.ANTHROPIC_AUTH_TOKEN).toBeUndefined();
+    expect(persisted.env.ANTHROPIC_MODEL).toBeUndefined();
+    expect(persisted.env.CLAUDE_CONFIG_DIR).toBe(path.join(tempRoot, '.ccs', 'instances', 'work'));
+    expect(fs.existsSync(persisted.env.CLAUDE_CONFIG_DIR)).toBe(true);
   });
 });

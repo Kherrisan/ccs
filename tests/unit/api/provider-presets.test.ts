@@ -1,5 +1,11 @@
+import { existsSync } from 'fs';
+import { resolve } from 'path';
 import { describe, expect, it } from 'bun:test';
-import { getPresetById, isValidPresetId } from '../../../src/api/services/provider-presets';
+import {
+  PROVIDER_PRESETS,
+  getPresetById,
+  isValidPresetId,
+} from '../../../src/api/services/provider-presets';
 
 describe('provider-presets', () => {
   it('resolves Alibaba Coding Plan preset id', () => {
@@ -29,11 +35,18 @@ describe('provider-presets', () => {
     expect(preset?.requiresApiKey).toBe(false);
     expect(preset?.apiKeyPlaceholder).toBe('llamacpp');
     expect(preset?.baseUrl).toBe('http://127.0.0.1:8080');
+    expect(preset?.icon).toBe('/assets/providers/llama-cpp.svg');
   });
 
   it('resolves legacy kimi preset alias to km', () => {
     const preset = getPresetById('kimi');
     expect(preset?.id).toBe('km');
+  });
+
+  it('resolves legacy glmt preset alias to glm', () => {
+    const preset = getPresetById('glmt');
+    expect(preset?.id).toBe('glm');
+    expect(preset?.baseUrl).toBe('https://api.z.ai/api/anthropic');
   });
 
   it('resolves preset id with extra whitespace', () => {
@@ -50,8 +63,31 @@ describe('provider-presets', () => {
     expect(isValidPresetId('kimi')).toBe(true);
   });
 
+  it('keeps glmt out of the canonical preset catalog while preserving alias compatibility', () => {
+    expect(PROVIDER_PRESETS.some((preset) => preset.id === 'glmt')).toBe(false);
+    expect(isValidPresetId('glmt')).toBe(true);
+  });
+
   it('uses non-reserved default profile name for qwen API preset', () => {
     const preset = getPresetById('qwen');
     expect(preset?.defaultProfileName).toBe('qwen-api');
+  });
+
+  it('keeps Anthropic direct last in the recommended preset order and reuses the Claude logo', () => {
+    const recommendedPresetIds = PROVIDER_PRESETS.filter(
+      (preset) => preset.category === 'recommended'
+    ).map((preset) => preset.id);
+
+    expect(recommendedPresetIds.at(-1)).toBe('anthropic');
+    expect(getPresetById('anthropic')?.icon).toBe('/assets/providers/claude.svg');
+  });
+
+  it('only references provider preset icons that exist in ui/public', () => {
+    for (const preset of PROVIDER_PRESETS) {
+      if (!preset.icon) continue;
+
+      const iconPath = resolve(import.meta.dir, '../../../ui/public', preset.icon.replace(/^\/+/, ''));
+      expect(existsSync(iconPath)).toBe(true);
+    }
   });
 });

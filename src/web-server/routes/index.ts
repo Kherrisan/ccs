@@ -27,6 +27,7 @@ import cliproxyServerRoutes from './proxy-routes';
 import authRoutes from './auth-routes';
 import persistRoutes from './persist-routes';
 import catalogRoutes from './catalog-routes';
+import claudeExtensionRoutes from './claude-extension-routes';
 
 // Create the main API router
 export const apiRoutes = Router();
@@ -49,6 +50,7 @@ apiRoutes.use('/auth', authRoutes);
 
 // ==================== Persist (Backup Management) ====================
 apiRoutes.use('/persist', persistRoutes);
+apiRoutes.use('/claude-extension', claudeExtensionRoutes);
 
 // ==================== CLIProxy ====================
 // Variants, auth, accounts, stats, status, models, error logs

@@ -8,11 +8,46 @@
  */
 
 import { initUI, header, subheader, color, dim, fail } from '../../utils/ui';
+import { dispatchNamedCommand, type NamedCommandRoute } from '../named-command-router';
 
 // Import command handlers
 import { handleSetup } from './setup-command';
 import { handleShow } from './show-command';
 import { handleDisable } from './disable-command';
+
+async function ensureNoConfigAuthArgs(command: string, args: string[]): Promise<void> {
+  if (args.length === 0) {
+    return;
+  }
+
+  await initUI();
+  console.log(fail(`Unexpected arguments for "config auth ${command}": ${args.join(' ')}`));
+  console.log('');
+  console.log('Run for help:');
+  console.log(`  ${color('ccs config auth --help', 'command')}`);
+  process.exit(1);
+}
+
+function createZeroArgConfigAuthRoute(
+  name: string,
+  handler: () => Promise<unknown>,
+  aliases?: readonly string[]
+): NamedCommandRoute {
+  return {
+    name,
+    aliases,
+    handle: async (args) => {
+      await ensureNoConfigAuthArgs(name, args);
+      await handler();
+    },
+  };
+}
+
+const CONFIG_AUTH_ROUTES: readonly NamedCommandRoute[] = [
+  createZeroArgConfigAuthRoute('setup', handleSetup),
+  createZeroArgConfigAuthRoute('show', handleShow, ['status']),
+  createZeroArgConfigAuthRoute('disable', handleDisable),
+];
 
 /**
  * Show help for config auth commands
@@ -58,36 +93,20 @@ async function showHelp(): Promise<void> {
  * Route config auth command to appropriate handler
  */
 export async function handleConfigAuthCommand(args: string[]): Promise<void> {
-  // Default to help if no subcommand
-  if (args.length === 0 || args[0] === '--help' || args[0] === '-h' || args[0] === 'help') {
-    await showHelp();
-    return;
-  }
-
-  const command = args[0];
-
-  switch (command) {
-    case 'setup':
-      await handleSetup();
-      break;
-
-    case 'show':
-    case 'status':
-      await handleShow();
-      break;
-
-    case 'disable':
-      await handleDisable();
-      break;
-
-    default:
+  await dispatchNamedCommand({
+    args,
+    routes: CONFIG_AUTH_ROUTES,
+    onHelp: showHelp,
+    allowEmptyHelp: true,
+    onUnknown: async (command) => {
       await initUI();
       console.log(fail(`Unknown command: ${command}`));
       console.log('');
       console.log('Run for help:');
       console.log(`  ${color('ccs config auth --help', 'command')}`);
       process.exit(1);
-  }
+    },
+  });
 }
 
 // Re-export types

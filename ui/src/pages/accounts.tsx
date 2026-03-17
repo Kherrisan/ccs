@@ -232,7 +232,7 @@ export function AccountsPage() {
               {t('accountsPage.tableScopePrefix')}
               <code className="mx-1 rounded bg-muted px-1 py-0.5">ccs auth</code>
               {t('accountsPage.tableScopeMiddle')}
-              <code className="mx-1 rounded bg-muted px-1 py-0.5">Sync</code>
+              <code className="mx-1 rounded bg-muted px-1 py-0.5">{t('accountsTable.sync')}</code>
               {t('accountsPage.tableScopeSuffix')}
             </p>
           </div>

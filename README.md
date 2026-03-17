@@ -11,7 +11,7 @@ Run Claude, Gemini, GLM, and any Anthropic-compatible API - concurrently, withou
 [![npm](https://img.shields.io/npm/v/@kaitranntt/ccs?style=for-the-badge&logo=npm)](https://www.npmjs.com/package/@kaitranntt/ccs)
 [![PoweredBy](https://img.shields.io/badge/PoweredBy-ClaudeKit-C15F3C?style=for-the-badge)](https://claudekit.cc?ref=HMNKXOHN)
 
-**[Features & Pricing](https://ccs.kaitran.ca)** | **[Documentation](https://docs.ccs.kaitran.ca)**
+**[Features & Pricing](https://ccs.kaitran.ca)** | **[Documentation Hub](https://docs.ccs.kaitran.ca)**
 
 </div>
 
@@ -28,6 +28,9 @@ Run Claude, Gemini, GLM, and any Anthropic-compatible API - concurrently, withou
 <br>
 
 ## Quick Start
+
+Looking for the full setup guide, command reference, provider guides, or troubleshooting?
+Start at **https://docs.ccs.kaitran.ca**.
 
 ### 1. Install
 
@@ -50,12 +53,26 @@ bun add -g @kaitranntt/ccs         # bun (30x faster)
 
 ```bash
 ccs config
-# Opens http://localhost:3000
+# Opens a local browser URL
 ```
+
+CCS uses the runtime's system-default bind. If that bind is reachable beyond loopback,
+the CLI also prints bind/network details plus an auth reminder.
+
+Force all-interface binding for remote devices:
+
+```bash
+ccs config --host 0.0.0.0
+# Terminal prints the reachable URLs to open from the other device
+```
+
+If you expose the dashboard beyond localhost, protect it first with `ccs config auth setup`.
+
+Use `ccs config --host 127.0.0.1` to force local-only binding.
 
 Dashboard updates hub: `http://localhost:3000/updates`
 
-Want to run the dashboard in Docker? See `docker/README.md`.
+Want to run the dashboard in Docker or pull the prebuilt image? See `docker/README.md`.
 
 ### 3. Configure Your Accounts
 
@@ -110,6 +127,7 @@ The dashboard provides visual management for all account types:
 | **Azure Foundry** | API Key | `ccs foundry` | Claude via Microsoft Azure |
 | **Minimax** | API Key | `ccs mm` | M2 series, 1M context |
 | **DeepSeek** | API Key | `ccs deepseek` | V3.2 and R1 reasoning |
+| **Novita AI** | API Key | `ccs api create --preset novita` | Anthropic-compatible Novita endpoint for Claude Code |
 | **Qwen (OAuth)** | OAuth | `ccs qwen` | Qwen Code via CLIProxy |
 | **Qwen API** | API Key | `ccs api create --preset qwen` | DashScope Anthropic-compatible API |
 | **Alibaba Coding Plan** | API Key | `ccs api create --preset alibaba-coding-plan` | Model Studio Coding Plan endpoint |
@@ -119,6 +137,8 @@ The dashboard provides visual management for all account types:
 **Alibaba Coding Plan Integration**: Configure via `ccs api create --preset alibaba-coding-plan` (or preset alias `alibaba`) with Coding Plan keys (`sk-sp-...`) and endpoint `https://coding-intl.dashscope.aliyuncs.com/apps/anthropic`.
 
 **Ollama Integration**: Run local open-source models (qwen3-coder, gpt-oss:20b) with full privacy. Use `ccs api create --preset ollama` - requires [Ollama v0.14.0+](https://ollama.com) installed. For cloud models, use `ccs api create --preset ollama-cloud`.
+
+> **Copilot config behavior:** Opening the dashboard or other read-only Copilot endpoints does not rewrite `~/.ccs/copilot.settings.json`. If CCS detects deprecated Copilot model IDs such as `raptor-mini`, it shows warnings immediately and only persists replacements when you explicitly save the Copilot configuration.
 
 **llama.cpp Integration**: Run a local llama.cpp OpenAI-compatible server and create a profile with `ccs api create --preset llamacpp`. CCS defaults to `http://127.0.0.1:8080`, matching the standard llama.cpp server port.
 
@@ -257,6 +277,44 @@ Defaults:
 - Dashboard page: `ccs config` -> `Cursor IDE`
 
 Detailed guide: [`docs/cursor-integration.md`](./docs/cursor-integration.md)
+
+### Claude IDE Extension Setup
+
+CCS now has a native setup flow for the Anthropic Claude extension in VS Code and compatible hosts.
+Use the same resolver in both the CLI and dashboard, so API profiles, CCS auth accounts,
+CLIProxy-backed profiles, Copilot, and default-profile continuity all map to the correct env shape.
+
+Preferred shared-settings path:
+
+```bash
+ccs persist glm
+ccs persist work
+ccs persist default
+```
+
+This writes the resolved setup to `~/.claude/settings.json`, which is the best option when you want
+the Claude CLI and the IDE extension to share one CCS profile.
+
+IDE-local snippet path:
+
+```bash
+ccs env glm --format claude-extension --ide vscode
+ccs env work --format claude-extension --ide cursor
+ccs env default --format claude-extension --ide windsurf
+```
+
+This prints a copy-ready `settings.json` snippet for the installed Claude extension host:
+
+- `vscode` / `cursor`: `claudeCode.environmentVariables` plus `claudeCode.disableLoginPrompt`
+- `windsurf`: `claude-code.environmentVariables`
+
+Account and continuity-aware flows use `CLAUDE_CONFIG_DIR` instead of Anthropic transport env vars.
+CLIProxy and Copilot flows emit the required `ANTHROPIC_*` variables and still depend on their local
+proxy/daemon being reachable.
+
+Dashboard parity:
+- `ccs config` -> `Claude Extension`
+- Select a CCS profile and IDE host to copy either the shared `~/.claude/settings.json` payload or the IDE-local extension snippet
 
 ### Parallel Workflows
 
@@ -553,10 +611,14 @@ Notes:
 
 <br>
 
-## Documentation
+## Documentation Hub
+
+If you are not sure where to start, open **https://docs.ccs.kaitran.ca** first.
+The hosted docs are the best entry point for setup, command reference, provider guides, and troubleshooting.
 
 | Topic | Link |
 |-------|------|
+| Docs Home | [docs.ccs.kaitran.ca](https://docs.ccs.kaitran.ca) |
 | Installation | [docs.ccs.kaitran.ca/getting-started/installation](https://docs.ccs.kaitran.ca/getting-started/installation) |
 | Configuration | [docs.ccs.kaitran.ca/getting-started/configuration](https://docs.ccs.kaitran.ca/getting-started/configuration) |
 | OAuth Providers | [docs.ccs.kaitran.ca/providers/oauth-providers](https://docs.ccs.kaitran.ca/providers/oauth-providers) |
@@ -618,6 +680,6 @@ MIT License - see [LICENSE](LICENSE).
 
 ---
 
-**[ccs.kaitran.ca](https://ccs.kaitran.ca)** | [Report Issues](https://github.com/kaitranntt/ccs/issues) | [Star on GitHub](https://github.com/kaitranntt/ccs)
+**[ccs.kaitran.ca](https://ccs.kaitran.ca)** | **[docs.ccs.kaitran.ca](https://docs.ccs.kaitran.ca)** | [Report Issues](https://github.com/kaitranntt/ccs/issues) | [Star on GitHub](https://github.com/kaitranntt/ccs)
 
 </div>

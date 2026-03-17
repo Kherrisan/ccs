@@ -1,5 +1,5 @@
 /**
- * GlmtProxy - Embedded HTTP proxy for GLM thinking support
+ * GlmtProxy - Legacy embedded HTTP proxy retained for compatibility work.
  *
  * Architecture:
  * - Intercepts Claude CLI → Z.AI calls
@@ -7,8 +7,9 @@
  * - Converts reasoning_content → thinking blocks
  * - Supports both streaming and buffered modes
  *
- * Lifecycle:
- * - Spawned by bin/ccs.js when 'glmt' profile detected
+ * Current status:
+ * - No longer started by the normal `ccs glmt` runtime path
+ * - Kept for legacy/internal compatibility and transformer-adjacent tests
  * - Binds to 127.0.0.1:random_port (security + avoid conflicts)
  * - Terminates when parent process exits
  *

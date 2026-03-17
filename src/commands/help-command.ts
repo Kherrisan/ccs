@@ -131,7 +131,6 @@ Run ${color('ccs config', 'command')} for web dashboard`.trim();
     [
       ['ccs', 'Use default Claude account'],
       ['ccs glm', 'GLM 5 (API key required)'],
-      ['ccs glmt', 'GLM with thinking mode'],
       ['ccs km', 'Kimi for Coding (API key)'],
       [
         'ccs api create --preset alibaba-coding-plan',
@@ -305,7 +304,7 @@ Run ${color('ccs config', 'command')} for web dashboard`.trim();
     ['ccs setup', 'First-time setup wizard'],
     ['ccs doctor', 'Run health check and diagnostics'],
     ['ccs cleanup', 'Remove old CLIProxy logs'],
-    ['ccs config', 'Open web configuration dashboard'],
+    ['ccs config', 'Open web dashboard (includes Claude IDE Extension setup page)'],
     ['ccs config auth setup', 'Configure dashboard login'],
     ['ccs config auth show', 'Show dashboard auth status'],
     ['ccs config image-analysis', 'Show image analysis settings'],
@@ -314,7 +313,8 @@ Run ${color('ccs config', 'command')} for web dashboard`.trim();
     ['ccs config thinking --mode auto', 'Set thinking mode'],
     ['ccs config thinking --clear-provider-override codex', 'Clear provider overrides'],
     ['ccs config --port 3000', 'Use specific port'],
-    ['ccs persist <profile>', 'Write profile env to ~/.claude/settings.json'],
+    ['ccs config --host 0.0.0.0', 'Force all-interface binding for remote devices'],
+    ['ccs persist <profile>', 'Write profile setup to ~/.claude/settings.json'],
     ['ccs persist --list-backups', 'List available settings.json backups'],
     ['ccs persist --restore', 'Restore settings.json from latest backup'],
     ['ccs sync', 'Sync delegation commands and skills'],
@@ -329,6 +329,14 @@ Run ${color('ccs config', 'command')} for web dashboard`.trim();
     ['ccs env <profile> --format openai', 'OpenAI-compatible vars (OpenCode/Cursor)'],
     ['ccs env <profile> --format anthropic', 'Anthropic vars (default)'],
     ['ccs env <profile> --format raw', 'All effective env vars'],
+    [
+      'ccs env <profile> --format claude-extension --ide vscode',
+      'VS Code/Cursor Claude extension settings JSON',
+    ],
+    [
+      'ccs env <profile> --format claude-extension --ide windsurf',
+      'Windsurf Claude extension settings JSON',
+    ],
     ['ccs env <profile> --shell fish', 'Fish shell syntax'],
   ]);
 

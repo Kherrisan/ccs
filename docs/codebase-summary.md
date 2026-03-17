@@ -1,6 +1,6 @@
 # CCS Codebase Summary
 
-Last Updated: 2026-02-24
+Last Updated: 2026-03-17
 
 Comprehensive overview of the modularized CCS codebase structure following the Phase 9 modularization effort (Settings, Analytics, Auth Monitor splits + Test Infrastructure), v7.1 Remote CLIProxy feature, v7.2 Kiro + GitHub Copilot (ghcp) OAuth providers, v7.14 Hybrid Quota Management, v7.34 Image Analysis Hook, and account-context validation hardening.
 
@@ -34,23 +34,29 @@ The main CLI is organized into domain-specific modules with barrel exports.
 
 ```
 src/
-├── ccs.ts                    # Main entry point & CLI router
+├── ccs.ts                    # Main entry point & profile execution flow
 ├── types/                    # TypeScript type definitions
 │   ├── index.ts              # Barrel export (aggregates all types)
 │   ├── cli.ts                # CLI types (ParsedArgs, ExitCode)
 │   ├── config.ts             # Config types (Settings, EnvVars)
 │   ├── delegation.ts         # Delegation types (sessions, events)
-│   ├── glmt.ts               # GLMT types (messages, transforms)
+│   ├── glmt.ts               # Legacy transformer types (messages, transforms)
 │   └── utils.ts              # Utility types (ErrorCode, LogLevel)
 │
 ├── commands/                 # CLI command handlers
+│   ├── api-command/          # API profile subcommands (split facade + handlers)
+│   │   ├── index.ts          # API command facade/router
+│   │   ├── shared.ts         # Shared API arg parsing helpers
+│   │   └── [subcommand files...]
 │   ├── cliproxy-command.ts   # CLIProxy subcommand handling
 │   ├── config-command.ts     # Config management commands
 │   ├── config-image-analysis-command.ts  # Image analysis hook config (NEW v7.34)
+│   ├── named-command-router.ts  # Reusable named-command dispatcher
 │   ├── doctor-command.ts     # Health diagnostics
 │   ├── env-command.ts        # Export shell env vars for third-party tools (v7.39)
 │   ├── help-command.ts       # Help text generation
 │   ├── install-command.ts    # Install/uninstall logic
+│   ├── root-command-router.ts  # Extracted top-level command dispatch from ccs.ts
 │   ├── shell-completion-command.ts
 │   ├── sync-command.ts       # Symlink synchronization
 │   ├── update-command.ts     # Self-update logic
@@ -96,6 +102,7 @@ src/
 │   ├── auth-handler.ts       # Authentication handling
 │   ├── model-catalog.ts      # Provider model definitions
 │   ├── model-config.ts       # Model configuration
+│   ├── codex-plan-compatibility.ts  # Codex free/paid model fallback guardrails
 │   ├── service-manager.ts    # Background service
 │   ├── proxy-detector.ts     # Running proxy detection
 │   ├── startup-lock.ts       # Race condition prevention
@@ -108,11 +115,11 @@ src/
 │   ├── index.ts              # Barrel export
 │   └── copilot-package-manager.ts  # Package management (515 lines)
 │
-├── glmt/                     # GLM/GLMT integration
+├── glmt/                     # Legacy transformer internals kept for compatibility
 │   ├── index.ts              # Barrel export
 │   ├── pipeline/             # Processing pipeline
 │   │   └── index.ts
-│   ├── glmt-proxy.ts         # Main proxy (675 lines)
+│   ├── glmt-proxy.ts         # Legacy proxy runtime kept for internal compatibility
 │   └── delta-accumulator.ts  # Delta processing (484 lines)
 │
 ├── delegation/               # Task delegation & headless execution
@@ -194,7 +201,7 @@ src/
 | Targets | `targets/` | Multi-CLI adapter pattern (Claude Code, Factory Droid, extensible) |
 | Auth | `auth/`, `cliproxy/auth/` | Authentication across providers |
 | Config | `config/`, `types/` | Configuration & type definitions |
-| Providers | `cliproxy/`, `copilot/`, `glmt/` | Provider integrations (7 CLIProxy providers: gemini, codex, agy, qwen, iflow, kiro, ghcp) |
+| Providers | `cliproxy/`, `copilot/`, `glmt/` | Provider integrations plus retained legacy transformer internals |
 | Quota | `cliproxy/quota-*.ts`, `account-manager.ts` | Hybrid quota management (v7.14) |
 | Remote Proxy | `cliproxy/remote-*.ts`, `proxy-config-resolver.ts` | Remote CLIProxy support (v7.1) |
 | Image Analysis | `utils/image-analysis/`, `utils/hooks/` | Vision model proxying (v7.34) |
@@ -364,6 +371,7 @@ ui/src/
 │       ├── button.tsx
 │       ├── card.tsx
 │       ├── dialog.tsx
+│       ├── searchable-select.tsx  # Shared searchable combobox for model pickers
 │       ├── sidebar.tsx       # Custom sidebar (674 lines)
 │       └── [UI primitives...]
 │
@@ -469,7 +477,7 @@ ui/src/
 | File | Lines | Status |
 |------|-------|--------|
 | model-pricing.ts | 676 | Data file - acceptable |
-| glmt-proxy.ts | 675 | Complex streaming - acceptable |
+| glmt-proxy.ts | 675 | Legacy internal compatibility path - acceptable for now |
 | cliproxy-executor.ts | 666 | Core logic - acceptable |
 | cliproxy-command.ts | 634 | Could split if needed |
 | usage/handlers.ts | 633 | Could split if needed |

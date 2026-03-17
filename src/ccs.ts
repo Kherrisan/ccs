@@ -1,13 +1,10 @@
 import './utils/fetch-proxy-setup';
 
-import { spawn, ChildProcess } from 'child_process';
-import * as path from 'path';
 import * as fs from 'fs';
 import { detectClaudeCli } from './utils/claude-detector';
 import {
   getSettingsPath,
   loadSettings,
-  getCcsDir,
   setGlobalConfigDir,
   detectCloudSyncPath,
 } from './utils/config-manager';
@@ -40,24 +37,11 @@ import { isCopilotSubcommandToken } from './copilot/constants';
 
 // Import centralized error handling
 import { handleError, runCleanup } from './errors';
-
-// Import extracted command handlers
-import { handleVersionCommand } from './commands/version-command';
-import { handleHelpCommand } from './commands/help-command';
-import { handleInstallCommand, handleUninstallCommand } from './commands/install-command';
-import { handleDoctorCommand } from './commands/doctor-command';
-import { handleSyncCommand } from './commands/sync-command';
-import { handleShellCompletionCommand } from './commands/shell-completion-command';
-import { handleUpdateCommand } from './commands/update-command';
+import { tryHandleRootCommand } from './commands/root-command-router';
 
 // Import extracted utility functions
-import {
-  execClaude,
-  escapeShellArg,
-  stripClaudeCodeEnv,
-  getClaudeLaunchEnvOverrides,
-} from './utils/shell-executor';
-import { wireChildProcessSignals } from './utils/signal-forwarder';
+import { execClaude } from './utils/shell-executor';
+import { isDeprecatedGlmtProfileName, normalizeDeprecatedGlmtEnv } from './utils/glmt-deprecation';
 
 // Import target adapter system
 import {
@@ -104,198 +88,6 @@ function detectProfile(args: string[]): DetectedProfile {
     // First arg doesn't start with '-' → treat as profile name
     return { profile: args[0], remainingArgs: args.slice(1) };
   }
-}
-
-// ========== GLMT Proxy Execution ==========
-
-/**
- * Execute Claude CLI with embedded proxy (for GLMT profile)
- */
-async function execClaudeWithProxy(
-  claudeCli: string,
-  profileName: string,
-  args: string[],
-  claudeConfigDir?: string
-): Promise<void> {
-  // 1. Read settings to get API key
-  const settingsPath = getSettingsPath(profileName);
-  const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
-  const envData = settings.env;
-  const apiKey = envData['ANTHROPIC_AUTH_TOKEN'];
-
-  if (!apiKey || apiKey === 'YOUR_GLM_API_KEY_HERE') {
-    console.error(fail('GLMT profile requires Z.AI API key'));
-    console.error(`    Edit ${getCcsDir()}/glmt.settings.json and set ANTHROPIC_AUTH_TOKEN`);
-    process.exit(1);
-  }
-
-  // Detect verbose flag
-  const verbose = args.includes('--verbose') || args.includes('-v');
-
-  // 2. Spawn embedded proxy with verbose flag
-  const proxyPath = path.join(__dirname, 'glmt', 'glmt-proxy.js');
-  const proxyArgs = verbose ? ['--verbose'] : [];
-  // Use process.execPath for Windows compatibility (CVE-2024-27980)
-  // Pass environment variables to proxy subprocess (required for auth)
-  const proxy = spawn(process.execPath, [proxyPath, ...proxyArgs], {
-    stdio: ['ignore', 'pipe', verbose ? 'pipe' : 'inherit'],
-    env: {
-      ...process.env,
-      ANTHROPIC_AUTH_TOKEN: apiKey,
-      ANTHROPIC_BASE_URL: envData['ANTHROPIC_BASE_URL'],
-    },
-  });
-  const stopProxy = (): void => {
-    try {
-      if (!proxy.killed) {
-        proxy.kill('SIGTERM');
-      }
-    } catch {
-      // Best-effort cleanup on process teardown.
-    }
-  };
-
-  // 3. Wait for proxy ready signal (with timeout)
-  const { ProgressIndicator } = await import('./utils/progress-indicator');
-  const spinner = new ProgressIndicator('Starting GLMT proxy');
-  spinner.start();
-
-  let port: number;
-  try {
-    port = await new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        reject(new Error('Proxy startup timeout (5s)'));
-      }, 5000);
-
-      proxy.stdout?.on('data', (data: Buffer) => {
-        const match = data.toString().match(/PROXY_READY:(\d+)/);
-        if (match) {
-          clearTimeout(timeout);
-          resolve(parseInt(match[1]));
-        }
-      });
-
-      proxy.on('error', (error) => {
-        clearTimeout(timeout);
-        reject(error);
-      });
-
-      proxy.on('exit', (code) => {
-        if (code !== 0 && code !== null) {
-          clearTimeout(timeout);
-          reject(new Error(`Proxy exited with code ${code}`));
-        }
-      });
-    });
-
-    spinner.succeed(`GLMT proxy ready on port ${port}`);
-  } catch (error) {
-    const err = error as Error;
-    spinner.fail('Failed to start GLMT proxy');
-    console.error(fail(`Error: ${err.message}`));
-    console.error('');
-    console.error('Possible causes:');
-    console.error('  1. Port conflict (unlikely with random port)');
-    console.error('  2. Node.js permission issue');
-    console.error('  3. Firewall blocking localhost');
-    console.error('');
-    console.error('Workarounds:');
-    console.error('  - Use non-thinking mode: ccs glm "prompt"');
-    console.error('  - Enable verbose logging: ccs glmt --verbose "prompt"');
-    console.error(`  - Check proxy logs in ${getCcsDir()}/logs/ (if debug enabled)`);
-    console.error('');
-    stopProxy();
-    runCleanup();
-    process.exit(1);
-  }
-
-  // 4. Spawn Claude CLI with proxy URL
-  // Use model from user's settings (not hardcoded) - fixes issue #358
-  const configuredModel = envData['ANTHROPIC_MODEL'] || 'glm-5';
-  const envVars: NodeJS.ProcessEnv = {
-    ANTHROPIC_BASE_URL: `http://127.0.0.1:${port}`,
-    ANTHROPIC_AUTH_TOKEN: apiKey,
-    ANTHROPIC_MODEL: configuredModel,
-    ...(claudeConfigDir ? { CLAUDE_CONFIG_DIR: claudeConfigDir } : {}),
-  };
-
-  const isWindows = process.platform === 'win32';
-  const isPowerShellScript = isWindows && /\.ps1$/i.test(claudeCli);
-  const needsShell = isWindows && /\.(cmd|bat)$/i.test(claudeCli);
-  const webSearchEnv = getWebSearchHookEnv();
-  const imageAnalysisEnv = getImageAnalysisHookEnv(profileName);
-  const claudeLaunchEnv = getClaudeLaunchEnvOverrides();
-  const env = stripClaudeCodeEnv({
-    ...process.env,
-    ...claudeLaunchEnv,
-    ...envVars,
-    ...webSearchEnv,
-    ...imageAnalysisEnv,
-    CCS_PROFILE_TYPE: 'settings', // Signal to WebSearch hook this is a third-party provider
-  });
-
-  let claude: ChildProcess;
-  if (isPowerShellScript) {
-    claude = spawn(
-      'powershell.exe',
-      ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', claudeCli, ...args],
-      {
-        stdio: 'inherit',
-        windowsHide: true,
-        env,
-      }
-    );
-  } else if (needsShell) {
-    const cmdString = [claudeCli, ...args].map(escapeShellArg).join(' ');
-    claude = spawn(cmdString, {
-      stdio: 'inherit',
-      windowsHide: true,
-      shell: true,
-      env,
-    });
-  } else {
-    claude = spawn(claudeCli, args, {
-      stdio: 'inherit',
-      windowsHide: true,
-      env,
-    });
-  }
-
-  // 5. Shared signal forwarding + proxy cleanup lifecycle
-  wireChildProcessSignals(
-    claude,
-    (err: NodeJS.ErrnoException) => {
-      if (err.code === 'EACCES') {
-        console.error(fail(`Claude CLI is not executable: ${claudeCli}`));
-        console.error('    Check file permissions and executable bit.');
-      } else if (err.code === 'ENOENT') {
-        if (isPowerShellScript) {
-          console.error(
-            fail('PowerShell executable not found (required for .ps1 wrapper launch).')
-          );
-          console.error('    Ensure powershell.exe is available in PATH.');
-        } else if (needsShell) {
-          console.error(fail('Windows command shell not found for Claude wrapper launch.'));
-          console.error('    Ensure cmd.exe is available and accessible.');
-        } else {
-          console.error(fail(`Claude CLI not found: ${claudeCli}`));
-        }
-      } else {
-        console.error(fail(`Claude CLI error: ${err.message}`));
-      }
-      stopProxy();
-      runCleanup();
-      process.exit(1);
-    },
-    (code: number | null, signal: NodeJS.Signals | null) => {
-      stopProxy();
-      if (signal) {
-        process.kill(process.pid, signal);
-      } else {
-        process.exit(code || 0);
-      }
-    }
-  );
 }
 
 // ========== Main Execution ==========
@@ -462,119 +254,7 @@ async function main(): Promise<void> {
     console.warn('[!] Recovery failed:', (err as Error).message);
   }
 
-  // Special case: migrate command
-  if (firstArg === 'migrate' || firstArg === '--migrate') {
-    const { handleMigrateCommand, printMigrateHelp } = await import('./commands/migrate-command');
-    const migrateArgs = args.slice(1);
-
-    if (migrateArgs.includes('--help') || migrateArgs.includes('-h')) {
-      printMigrateHelp();
-      return;
-    }
-
-    await handleMigrateCommand(migrateArgs);
-    return;
-  }
-
-  // Special case: update command
-  if (firstArg === 'update' || firstArg === '--update') {
-    const updateArgs = args.slice(1);
-
-    // Handle --help for update command
-    if (updateArgs.includes('--help') || updateArgs.includes('-h')) {
-      console.log('');
-      console.log('Usage: ccs update [options]');
-      console.log('');
-      console.log('Options:');
-      console.log('  --force       Force reinstall current version');
-      console.log('  --beta, --dev Install from dev channel (unstable)');
-      console.log('  --help, -h    Show this help message');
-      console.log('');
-      console.log('Examples:');
-      console.log('  ccs update           Update to latest stable');
-      console.log('  ccs update --force   Force reinstall');
-      console.log('  ccs update --beta    Install dev channel');
-      console.log('');
-      return;
-    }
-
-    const forceFlag = updateArgs.includes('--force');
-    const betaFlag = updateArgs.includes('--beta') || updateArgs.includes('--dev');
-    await handleUpdateCommand({ force: forceFlag, beta: betaFlag });
-    return;
-  }
-
-  const commandAliases: Record<string, string> = {
-    '--version': 'version',
-    '-v': 'version',
-    '--help': 'help',
-    '-h': 'help',
-    '--doctor': 'doctor',
-    '--sync': 'sync',
-    '--cleanup': 'cleanup',
-    '--setup': 'setup',
-  };
-
-  const normalizedFirstArg = commandAliases[firstArg] || firstArg;
-
-  const earlyCommandHandlers: Record<string, () => Promise<void>> = {
-    version: async () => handleVersionCommand(),
-    help: async () => handleHelpCommand(),
-    '--install': async () => handleInstallCommand(),
-    '--uninstall': async () => handleUninstallCommand(),
-    '--shell-completion': async () => handleShellCompletionCommand(args.slice(1)),
-    '-sc': async () => handleShellCompletionCommand(args.slice(1)),
-    doctor: async () => handleDoctorCommand(args.slice(1)),
-    sync: async () => handleSyncCommand(),
-    cleanup: async () => {
-      const { handleCleanupCommand } = await import('./commands/cleanup-command');
-      await handleCleanupCommand(args.slice(1));
-    },
-    auth: async () => {
-      const AuthCommandsModule = await import('./auth/auth-commands');
-      const AuthCommands = AuthCommandsModule.default;
-      const authCommands = new AuthCommands();
-      await authCommands.route(args.slice(1));
-    },
-    api: async () => {
-      const { handleApiCommand } = await import('./commands/api-command');
-      await handleApiCommand(args.slice(1));
-    },
-    cliproxy: async () => {
-      const { handleCliproxyCommand } = await import('./commands/cliproxy-command');
-      await handleCliproxyCommand(args.slice(1));
-    },
-    config: async () => {
-      const { handleConfigCommand } = await import('./commands/config-command');
-      await handleConfigCommand(args.slice(1));
-    },
-    tokens: async () => {
-      const { handleTokensCommand } = await import('./commands/tokens-command');
-      const exitCode = await handleTokensCommand(args.slice(1));
-      process.exit(exitCode);
-    },
-    persist: async () => {
-      const { handlePersistCommand } = await import('./commands/persist-command');
-      await handlePersistCommand(args.slice(1));
-    },
-    env: async () => {
-      const { handleEnvCommand } = await import('./commands/env-command');
-      await handleEnvCommand(args.slice(1));
-    },
-    setup: async () => {
-      const { handleSetupCommand } = await import('./commands/setup-command');
-      await handleSetupCommand(args.slice(1));
-    },
-    cursor: async () => {
-      const { handleCursorCommand } = await import('./commands/cursor-command');
-      const exitCode = await handleCursorCommand(args.slice(1));
-      process.exit(exitCode);
-    },
-  };
-
-  const earlyCommandHandler = earlyCommandHandlers[normalizedFirstArg];
-  if (earlyCommandHandler) {
-    await earlyCommandHandler();
+  if (await tryHandleRootCommand(args)) {
     return;
   }
 
@@ -666,15 +346,6 @@ async function main(): Promise<void> {
       if (profileInfo.type === 'account' && !targetAdapter.supportsProfileType('account')) {
         console.error(fail(`${targetAdapter.displayName} does not support account-based profiles`));
         console.error(info('Use a settings-based profile with --target instead'));
-        process.exit(1);
-      }
-
-      // GLMT always requires Claude target because it depends on embedded proxy flow.
-      if (profileInfo.type === 'settings' && profileInfo.name === 'glmt') {
-        console.error(fail(`${targetAdapter.displayName} does not support GLMT proxy profiles`));
-        console.error(
-          info('Use --target claude for glmt, or switch to a direct API profile (glm/km)')
-        );
         process.exit(1);
       }
 
@@ -998,18 +669,29 @@ async function main(): Promise<void> {
         );
       }
       const inheritedClaudeConfigDir = continuityInheritance.claudeConfigDir;
+      const expandedSettingsPath = profileInfo.settingsPath
+        ? expandPath(profileInfo.settingsPath)
+        : getSettingsPath(profileInfo.name);
+      const settings = loadSettings(expandedSettingsPath);
+      const rawSettingsEnv = profileInfo.env ?? settings.env ?? {};
+      const isDeprecatedGlmtProfile = isDeprecatedGlmtProfileName(profileInfo.name);
+      const glmtNormalization = isDeprecatedGlmtProfile
+        ? normalizeDeprecatedGlmtEnv(rawSettingsEnv)
+        : null;
+      const settingsEnv = glmtNormalization?.env ?? rawSettingsEnv;
 
-      // Pre-flight validation for GLM/GLMT/MiniMax profiles
-      if (profileInfo.name === 'glm' || profileInfo.name === 'glmt') {
-        const preflightSettingsPath = getSettingsPath(profileInfo.name);
-        const preflightSettings = loadSettings(preflightSettingsPath);
-        const apiKey = preflightSettings.env?.['ANTHROPIC_AUTH_TOKEN'];
+      if (glmtNormalization) {
+        for (const message of glmtNormalization.warnings) {
+          console.error(warn(message));
+        }
+      }
+
+      // Pre-flight validation for Z.AI-compatible profiles.
+      if (profileInfo.name === 'glm' || isDeprecatedGlmtProfile) {
+        const apiKey = settingsEnv['ANTHROPIC_AUTH_TOKEN'];
 
         if (apiKey) {
-          const validation = await validateGlmKey(
-            apiKey,
-            preflightSettings.env?.['ANTHROPIC_BASE_URL']
-          );
+          const validation = await validateGlmKey(apiKey, settingsEnv['ANTHROPIC_BASE_URL']);
 
           if (!validation.valid) {
             console.error('');
@@ -1026,15 +708,10 @@ async function main(): Promise<void> {
       }
 
       if (profileInfo.name === 'mm') {
-        const preflightSettingsPath = getSettingsPath(profileInfo.name);
-        const preflightSettings = loadSettings(preflightSettingsPath);
-        const apiKey = preflightSettings.env?.['ANTHROPIC_AUTH_TOKEN'];
+        const apiKey = settingsEnv['ANTHROPIC_AUTH_TOKEN'];
 
         if (apiKey) {
-          const validation = await validateMiniMaxKey(
-            apiKey,
-            preflightSettings.env?.['ANTHROPIC_BASE_URL']
-          );
+          const validation = await validateMiniMaxKey(apiKey, settingsEnv['ANTHROPIC_BASE_URL']);
 
           if (!validation.valid) {
             console.error('');
@@ -1052,10 +729,8 @@ async function main(): Promise<void> {
 
       // Pre-flight validation for Anthropic direct profiles (ANTHROPIC_API_KEY + no BASE_URL)
       {
-        const preflightSettingsPath = getSettingsPath(profileInfo.name);
-        const preflightSettings = loadSettings(preflightSettingsPath);
-        const anthropicApiKey = preflightSettings.env?.['ANTHROPIC_API_KEY'];
-        const hasBaseUrl = !!preflightSettings.env?.['ANTHROPIC_BASE_URL'];
+        const anthropicApiKey = settingsEnv['ANTHROPIC_API_KEY'];
+        const hasBaseUrl = !!settingsEnv['ANTHROPIC_BASE_URL'];
         if (anthropicApiKey && !hasBaseUrl) {
           const validation = await validateAnthropicKey(anthropicApiKey);
           if (!validation.valid) {
@@ -1074,89 +749,60 @@ async function main(): Promise<void> {
         }
       }
 
-      // Check if this is GLMT profile (requires proxy)
-      if (profileInfo.name === 'glmt') {
-        if (resolvedTarget !== 'claude') {
-          console.error(
-            fail(`${targetAdapter?.displayName || 'Target'} does not support GLMT proxy profiles`)
-          );
-          console.error(
-            info('Use --target claude for glmt, or switch to a direct API profile (glm/km)')
-          );
+      const webSearchEnv = getWebSearchHookEnv();
+      const imageAnalysisEnv = getImageAnalysisHookEnv(profileInfo.name);
+      // Get global env vars (DISABLE_TELEMETRY, etc.) for third-party profiles
+      const globalEnvConfig = getGlobalEnvConfig();
+      const globalEnv = globalEnvConfig.enabled ? globalEnvConfig.env : {};
+
+      // Log global env injection for visibility (debug mode only)
+      if (globalEnvConfig.enabled && Object.keys(globalEnv).length > 0 && process.env.CCS_DEBUG) {
+        const envNames = Object.keys(globalEnv).join(', ');
+        console.error(info(`Global env: ${envNames}`));
+      }
+
+      // Explicitly inject effective settings env vars so stale ANTHROPIC_*
+      // values from prior sessions cannot leak into the active profile.
+      const envVars: NodeJS.ProcessEnv = {
+        ...globalEnv,
+        ...settingsEnv,
+        ...(inheritedClaudeConfigDir ? { CLAUDE_CONFIG_DIR: inheritedClaudeConfigDir } : {}),
+        ...webSearchEnv,
+        ...imageAnalysisEnv,
+        CCS_PROFILE_TYPE: 'settings',
+      };
+
+      // Dispatch through target adapter for non-claude targets
+      if (resolvedTarget !== 'claude') {
+        const adapter = targetAdapter;
+        if (!adapter) {
+          console.error(fail(`Target adapter not found for "${resolvedTarget}"`));
           process.exit(1);
         }
-        // GLMT FLOW: Settings-based with embedded proxy for thinking support
-        await execClaudeWithProxy(
-          claudeCli,
-          profileInfo.name,
-          remainingArgs,
-          inheritedClaudeConfigDir
-        );
-      } else {
-        // EXISTING FLOW: Settings-based profile (glm)
-        // Use --settings flag (backward compatible)
-        const expandedSettingsPath = profileInfo.settingsPath
-          ? expandPath(profileInfo.settingsPath)
-          : getSettingsPath(profileInfo.name);
-        const webSearchEnv = getWebSearchHookEnv();
-        const imageAnalysisEnv = getImageAnalysisHookEnv(profileInfo.name);
-        // Get global env vars (DISABLE_TELEMETRY, etc.) for third-party profiles
-        const globalEnvConfig = getGlobalEnvConfig();
-        const globalEnv = globalEnvConfig.enabled ? globalEnvConfig.env : {};
-
-        // Log global env injection for visibility (debug mode only)
-        if (globalEnvConfig.enabled && Object.keys(globalEnv).length > 0 && process.env.CCS_DEBUG) {
-          const envNames = Object.keys(globalEnv).join(', ');
-          console.error(info(`Global env: ${envNames}`));
-        }
-
-        // CRITICAL: Load settings and explicitly set ANTHROPIC_* env vars
-        // to prevent inheriting stale values from previous CLIProxy sessions.
-        // Environment variables take precedence over --settings file values,
-        // so we must explicitly set them here to ensure correct routing.
-        const settings = loadSettings(expandedSettingsPath);
-        const settingsEnv = settings.env || {};
-
-        const envVars: NodeJS.ProcessEnv = {
-          ...globalEnv,
-          ...settingsEnv, // Explicitly inject all settings env vars
-          ...(inheritedClaudeConfigDir ? { CLAUDE_CONFIG_DIR: inheritedClaudeConfigDir } : {}),
-          ...webSearchEnv,
-          ...imageAnalysisEnv,
-          CCS_PROFILE_TYPE: 'settings', // Signal to WebSearch hook this is a third-party provider
-        };
-
-        // Dispatch through target adapter for non-claude targets
-        if (resolvedTarget !== 'claude') {
-          const adapter = targetAdapter;
-          if (!adapter) {
-            console.error(fail(`Target adapter not found for "${resolvedTarget}"`));
-            process.exit(1);
-          }
-          const directAnthropicBaseUrl =
-            settingsEnv['ANTHROPIC_BASE_URL'] ||
-            (settingsEnv['ANTHROPIC_API_KEY'] ? 'https://api.anthropic.com' : '');
-          const creds: TargetCredentials = {
-            profile: profileInfo.name,
+        const directAnthropicBaseUrl =
+          settingsEnv['ANTHROPIC_BASE_URL'] ||
+          (settingsEnv['ANTHROPIC_API_KEY'] ? 'https://api.anthropic.com' : '');
+        const creds: TargetCredentials = {
+          profile: profileInfo.name,
+          baseUrl: directAnthropicBaseUrl,
+          apiKey: settingsEnv['ANTHROPIC_AUTH_TOKEN'] || settingsEnv['ANTHROPIC_API_KEY'] || '',
+          model: settingsEnv['ANTHROPIC_MODEL'],
+          provider: resolveDroidProvider({
+            provider: settingsEnv['CCS_DROID_PROVIDER'] || settingsEnv['DROID_PROVIDER'],
             baseUrl: directAnthropicBaseUrl,
-            apiKey: settingsEnv['ANTHROPIC_AUTH_TOKEN'] || settingsEnv['ANTHROPIC_API_KEY'] || '',
             model: settingsEnv['ANTHROPIC_MODEL'],
-            provider: resolveDroidProvider({
-              provider: settingsEnv['CCS_DROID_PROVIDER'] || settingsEnv['DROID_PROVIDER'],
-              baseUrl: directAnthropicBaseUrl,
-              model: settingsEnv['ANTHROPIC_MODEL'],
-            }),
-            reasoningOverride: droidReasoningOverride,
-          };
-          await adapter.prepareCredentials(creds);
-          const targetArgs = adapter.buildArgs(profileInfo.name, targetRemainingArgs);
-          const targetEnv = adapter.buildEnv(creds, profileInfo.type);
-          adapter.exec(targetArgs, targetEnv, { binaryInfo: targetBinaryInfo || undefined });
-          return;
-        }
-
-        execClaude(claudeCli, ['--settings', expandedSettingsPath, ...remainingArgs], envVars);
+          }),
+          reasoningOverride: droidReasoningOverride,
+          envVars,
+        };
+        await adapter.prepareCredentials(creds);
+        const targetArgs = adapter.buildArgs(profileInfo.name, targetRemainingArgs);
+        const targetEnv = adapter.buildEnv(creds, profileInfo.type);
+        adapter.exec(targetArgs, targetEnv, { binaryInfo: targetBinaryInfo || undefined });
+        return;
       }
+
+      execClaude(claudeCli, ['--settings', expandedSettingsPath, ...remainingArgs], envVars);
     } else if (profileInfo.type === 'account') {
       // NEW FLOW: Account-based profile (work, personal)
       // All platforms: Use instance isolation with CLAUDE_CONFIG_DIR

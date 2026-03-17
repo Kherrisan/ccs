@@ -337,7 +337,7 @@ export function getSettingsPath(profile: string): string {
 
 /**
  * Get display name for a profile by reading ANTHROPIC_MODEL from settings
- * @param profile - Profile name (glm, glmt, kimi, custom, etc.)
+ * @param profile - Profile name (glm, km, glmt compatibility, custom, etc.)
  * @returns Formatted display name (e.g., 'GLM-4.7', 'Kimi', 'Custom-Model')
  */
 export function getModelDisplayName(profile: string): string {

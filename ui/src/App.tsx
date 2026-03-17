@@ -28,6 +28,9 @@ const CliproxyControlPanelPage = lazy(() =>
 );
 const CopilotPage = lazy(() => import('@/pages/copilot').then((m) => ({ default: m.CopilotPage })));
 const CursorPage = lazy(() => import('@/pages/cursor').then((m) => ({ default: m.CursorPage })));
+const ClaudeExtensionPage = lazy(() =>
+  import('@/pages/claude-extension').then((m) => ({ default: m.ClaudeExtensionPage }))
+);
 const DroidPage = lazy(() => import('@/pages/droid').then((m) => ({ default: m.DroidPage })));
 const AccountsPage = lazy(() =>
   import('@/pages/accounts').then((m) => ({ default: m.AccountsPage }))
@@ -116,6 +119,14 @@ export default function App() {
                       element={
                         <Suspense fallback={<PageLoader />}>
                           <CursorPage />
+                        </Suspense>
+                      }
+                    />
+                    <Route
+                      path="/claude-extension"
+                      element={
+                        <Suspense fallback={<PageLoader />}>
+                          <ClaudeExtensionPage />
                         </Suspense>
                       }
                     />

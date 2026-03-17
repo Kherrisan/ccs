@@ -2,7 +2,7 @@
 
 Last Updated: 2026-02-16
 
-Detailed provider integration flows including CLIProxyAPI, GLMT proxy, remote CLIProxy, quota management, and authentication.
+Detailed provider integration flows including CLIProxyAPI, legacy GLMT compatibility transforms, remote CLIProxy, quota management, and authentication.
 
 ---
 
@@ -91,63 +91,55 @@ if (hardcodedProviders.includes(profileName)) {
 
 ---
 
-## GLMT Proxy Flow
+## Legacy GLMT Compatibility Flow
 
 ### Overview
 
-GLMT proxy enables seamless integration with GLM-compatible APIs (Z.AI, Kimi, OpenRouter, etc.) using a Node.js-based embedded proxy.
+GLMT is no longer a marketed runtime surface in CCS. Existing `glmt` profiles are kept as a compatibility path and normalized at launch to the direct GLM endpoint. The `src/glmt/` module remains because Cursor response translation still imports its transformer pipeline.
 
 ```
 +===========================================================================+
-|                        GLMT Proxy Integration                              |
+|                Legacy GLMT Compatibility + Internal Transforms             |
 +===========================================================================+
 
   Claude CLI
         |
-        | ANTHROPIC_BASE_URL = localhost:XXXX
+        | legacy glmt settings detected
         v
   +------------------+
-  |   GLMT Proxy     |  Embedded Node.js proxy (src/glmt/)
-  |   (glmt-proxy.ts)|
+  | Compatibility    |  normalizeDeprecatedGlmtEnv()
+  | Layer            |  (src/utils/glmt-deprecation.ts)
   +------------------+
         |
         v
   +------------------+
-  | Delta Accumulator|  Stream transformation
+  | Direct GLM API   |  https://api.z.ai/api/anthropic
   +------------------+
         |
         v
   +------------------+
-  |   Pipeline       |  Request/Response transformation
-  +------------------+
-        |
-        v
-  +------------------+
-  |   GLM API        |  Z.AI / Kimi API
+  | src/glmt/*       |  retained for Cursor translation
   +------------------+
 ```
 
-### Supported GLM Providers
+### Supported Migration Targets
 
 | Provider | Config Key | Endpoint | Auth |
 |----------|------------|----------|------|
-| Z.AI (GLM) | `glmt` | https://open.bigmodel.cn/api/paas/v4/ | API key |
-| Kimi | `kimi` | https://api.moonshot.cn/v1/ | API key |
-| OpenRouter | `openrouter` | https://openrouter.ai/api/v1/ | API key |
+| Z.AI (GLM) | `glm` | https://api.z.ai/api/anthropic | API key |
+| Kimi API | `km` | https://api.kimi.com/coding/ | API key |
+| Legacy compatibility | `glmt` | normalized to direct GLM at runtime | existing profile only |
 
-Note for `config/base-kimi.settings.json`: the default base URL is `http://127.0.0.1:8317/api/provider/kimi` (local CLIProxy route). For direct Moonshot API access, override `ANTHROPIC_BASE_URL` to `https://api.moonshot.cn/v1/`.
+Use `ccs glm` for Z.AI profiles and `ccs km` for reasoning-first Kimi API profiles. Keep `glmt` only when migrating an existing settings file.
 
-### GLMT Profile Detection
+### Runtime Handling
 
-CCS detects GLMT profiles and routes through `execClaudeWithProxy()`:
+CCS detects the deprecated `glmt` profile name and normalizes legacy proxy-only settings before dispatching through the normal settings-profile flow:
 
 ```typescript
-// Settings-based profile detection
-const settings = loadSettings(profileName);
-if (settings.env?.ANTHROPIC_BASE_URL?.includes('glm') ||
-    settings.env?.ANTHROPIC_BASE_URL?.includes('moonshot') ||
-    settings.env?.ANTHROPIC_BASE_URL?.includes('openrouter')) {
-  return execClaudeWithProxy(claudeCli, profileName, args);
+if (isDeprecatedGlmtProfileName(profileName)) {
+  const normalized = normalizeDeprecatedGlmtEnv(settingsEnv);
+  // warn user, validate against direct GLM endpoint, continue through settings flow
 }
 ```
 

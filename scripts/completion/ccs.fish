@@ -26,7 +26,7 @@ end
 # Helper function to get custom/unknown settings profiles
 function __fish_ccs_get_custom_settings_profiles
     set -l config_path ~/.ccs/config.json
-    set -l known_profiles default glm glmt kimi
+    set -l known_profiles default glm kimi
 
     if test -f $config_path
         set -l all_profiles (jq -r '.profiles | keys[]' $config_path 2>/dev/null)
@@ -138,7 +138,6 @@ complete -c ccs -n 'not __fish_seen_subcommand_from auth api cliproxy doctor env
 # Model profiles - grouped with [model] prefix for visual distinction
 complete -c ccs -n 'not __fish_seen_subcommand_from auth api cliproxy doctor env sync update gemini codex agy qwen' -a 'default' -d '[model] Default Claude Sonnet 4.5'
 complete -c ccs -n 'not __fish_seen_subcommand_from auth api cliproxy doctor env sync update gemini codex agy qwen' -a 'glm' -d '[model] GLM-4.6 (cost-optimized)'
-complete -c ccs -n 'not __fish_seen_subcommand_from auth api cliproxy doctor env sync update gemini codex agy qwen' -a 'glmt' -d '[model] GLM-4.6 with thinking mode'
 complete -c ccs -n 'not __fish_seen_subcommand_from auth api cliproxy doctor env sync update gemini codex agy qwen' -a 'kimi' -d '[model] Kimi for Coding (long-context)'
 
 # Custom model profiles - dynamic with [model] prefix

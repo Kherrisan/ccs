@@ -303,6 +303,16 @@ export function applyThinkingConfig(
         continue;
       }
 
+      // Validate/clamp tier thinking against this specific tier model capabilities.
+      const tierValidation = validateThinking(tierProvider, normalizedTierModel, tierThinkingValue);
+      if (tierValidation.warning && shouldShowWarnings(thinkingConfig)) {
+        console.warn(warn(tierValidation.warning));
+      }
+      tierThinkingValue = tierValidation.value;
+      if (isThinkingOffValue(tierThinkingValue)) {
+        continue;
+      }
+
       result[tierVar] = applyThinkingSuffixForProvider(model, tierThinkingValue, tierProvider);
     }
   }

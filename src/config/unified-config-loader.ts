@@ -553,7 +553,7 @@ function generateYamlWithComments(config: UnifiedConfig): string {
 
   // Profiles section
   lines.push('# ----------------------------------------------------------------------------');
-  lines.push('# Profiles: API-based providers (GLM, GLMT, Kimi, custom endpoints)');
+  lines.push('# Profiles: API-based providers (GLM, Kimi, custom endpoints)');
   lines.push('# Each profile points to a *.settings.json file containing env vars.');
   lines.push('# Edit the settings file directly to customize (ANTHROPIC_MAX_TOKENS, etc.)');
   lines.push('# ----------------------------------------------------------------------------');

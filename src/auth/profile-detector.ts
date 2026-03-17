@@ -25,6 +25,7 @@ import { getCcsDir } from '../utils/config-manager';
 import { getProfileLookupCandidates, isLegacyProfileAlias } from '../utils/profile-compat';
 import type { CLIProxyProvider } from '../cliproxy/types';
 import { CLIPROXY_PROVIDER_IDS, isCLIProxyProvider } from '../cliproxy/provider-capabilities';
+import { normalizeCopilotModelId } from '../copilot/copilot-model-normalizer';
 import type { TargetType } from '../targets/target-adapter';
 import type { ProfileType } from '../types/profile';
 export type { ProfileType } from '../types/profile';
@@ -446,8 +447,9 @@ class ProfileDetector {
     if (unifiedConfig) {
       // Copilot profile (if enabled)
       if (unifiedConfig.copilot?.enabled) {
+        const currentCopilotModel = normalizeCopilotModelId(unifiedConfig.copilot.model);
         lines.push('GitHub Copilot (via copilot-api):');
-        lines.push(`  - copilot (model: ${unifiedConfig.copilot.model})`);
+        lines.push(`  - copilot (model: ${currentCopilotModel})`);
       }
 
       // CLIProxy variants from unified config

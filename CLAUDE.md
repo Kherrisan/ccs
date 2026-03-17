@@ -17,7 +17,7 @@ Tests set `process.env.CCS_HOME` to a temp directory. Code using `os.homedir()` 
 
 ## Core Function
 
-CLI wrapper for instant switching between multiple provider accounts and alternative models (GLM, GLMT, Kimi). See README.md for user documentation.
+CLI wrapper for instant switching between multiple provider accounts and alternative models (GLM, Kimi, and other API profiles). See README.md for user documentation.
 
 ## Design Principles (ENFORCE STRICTLY)
 
@@ -232,7 +232,7 @@ dist/ui/       → Built UI bundle (served by Express)
 
 1. **CLIProxy hardcoded**: gemini, codex, agy → OAuth-based, zero config
 2. **CLIProxy variants**: `config.cliproxy` section → user-defined providers
-3. **Settings-based**: `config.profiles` section → GLM, GLMT, Kimi
+3. **Settings-based**: `config.profiles` section → GLM, legacy GLMT compatibility, Kimi
 4. **Account-based**: `profiles.json` → isolated instances via `CLAUDE_CONFIG_DIR`
 
 ### Settings Format (CRITICAL)

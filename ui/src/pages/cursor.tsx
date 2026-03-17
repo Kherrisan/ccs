@@ -35,15 +35,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { RawEditorSection } from '@/components/copilot/config-form/raw-editor-section';
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectLabel,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import {
   Dialog,
   DialogContent,
@@ -159,7 +151,47 @@ function CursorModelSelector({
 }) {
   const { t } = useTranslation();
   const selectorValue = value || (allowDefaultFallback ? '__default' : '');
-  const selected = models.find((model) => model.id === value);
+  const options = useMemo(() => {
+    const mappedModels = models.map((model) => ({
+      value: model.id,
+      groupKey: 'models',
+      searchText: `${model.name || model.id} ${model.id}`,
+      keywords: [model.provider],
+      triggerContent: (
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="truncate font-mono text-xs">{model.name || model.id}</span>
+          {model.provider && (
+            <Badge variant="outline" className="text-[9px] h-4 px-1 capitalize">
+              {model.provider}
+            </Badge>
+          )}
+        </div>
+      ),
+      itemContent: (
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="truncate text-xs font-mono">{model.name || model.id}</span>
+          <Badge variant="outline" className="text-[9px] h-4 px-1 capitalize">
+            {model.provider}
+          </Badge>
+        </div>
+      ),
+    }));
+
+    if (!allowDefaultFallback) return mappedModels;
+
+    return [
+      {
+        value: '__default',
+        groupKey: 'models',
+        searchText: t('cursorPage.useDefaultModel'),
+        triggerContent: (
+          <span className="truncate font-mono text-xs">{t('cursorPage.useDefaultModel')}</span>
+        ),
+        itemContent: <span>{t('cursorPage.useDefaultModel')}</span>,
+      },
+      ...mappedModels,
+    ];
+  }, [allowDefaultFallback, models, t]);
 
   return (
     <div className="space-y-1.5">
@@ -167,9 +199,9 @@ function CursorModelSelector({
         <Label className="text-xs font-medium">{label}</Label>
         <p className="text-[10px] text-muted-foreground">{description}</p>
       </div>
-      <Select
-        value={selectorValue}
-        onValueChange={(nextValue) => {
+      <SearchableSelect
+        value={selectorValue || undefined}
+        onChange={(nextValue) => {
           if (allowDefaultFallback && nextValue === '__default') {
             onChange('');
             return;
@@ -177,46 +209,18 @@ function CursorModelSelector({
           onChange(nextValue);
         }}
         disabled={disabled}
-      >
-        <SelectTrigger className="h-9">
-          <SelectValue placeholder={t('cursorPage.selectModel')}>
-            {selectorValue && (
-              <div className="flex items-center gap-2 min-w-0">
-                <span className="truncate font-mono text-xs">
-                  {allowDefaultFallback && selectorValue === '__default'
-                    ? t('cursorPage.useDefaultModel')
-                    : selected?.name || selectorValue}
-                </span>
-                {selected?.provider && (
-                  <Badge variant="outline" className="text-[9px] h-4 px-1 capitalize">
-                    {selected.provider}
-                  </Badge>
-                )}
-              </div>
-            )}
-          </SelectValue>
-        </SelectTrigger>
-        <SelectContent className="max-h-[300px]">
-          <SelectGroup>
-            <SelectLabel className="text-xs text-muted-foreground">
-              {t('cursorPage.availableModelCount', { count: models.length })}
-            </SelectLabel>
-            {allowDefaultFallback && (
-              <SelectItem value="__default">{t('cursorPage.useDefaultModel')}</SelectItem>
-            )}
-            {models.map((model) => (
-              <SelectItem key={model.id} value={model.id}>
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="truncate text-xs font-mono">{model.name || model.id}</span>
-                  <Badge variant="outline" className="text-[9px] h-4 px-1 capitalize">
-                    {model.provider}
-                  </Badge>
-                </div>
-              </SelectItem>
-            ))}
-          </SelectGroup>
-        </SelectContent>
-      </Select>
+        placeholder={t('cursorPage.selectModel')}
+        searchPlaceholder={t('searchableSelect.searchModels')}
+        emptyText={t('searchableSelect.noResults')}
+        triggerClassName="h-9"
+        groups={[
+          {
+            key: 'models',
+            label: t('cursorPage.availableModelCount', { count: models.length }),
+          },
+        ]}
+        options={options}
+      />
     </div>
   );
 }

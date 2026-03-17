@@ -55,7 +55,7 @@ CCS v7.45 introduces the Target Adapter pattern, enabling seamless integration w
 **Key architecture:**
 
 ```
-Profile Resolution (CLIProxy, GLMT, Account-based)
+Profile Resolution (CLIProxy, Settings/API, Account-based)
         |
         v
 Target Resolution (--target flag > config > argv[0] > default)
@@ -126,7 +126,7 @@ For details on the adapter architecture, see [Target Adapters](./target-adapters
         |                                       |
         +---> [CLIProxy Provider] ---> execClaudeWithCLIProxy()
         |                                       |
-        +---> [GLMT Profile] ---> execClaudeWithProxy()
+        +---> [Settings/API Profile] ---> normalize legacy glmt if needed
         |
         v
   +------------------+
@@ -185,20 +185,23 @@ For details on the adapter architecture, see [Target Adapters](./target-adapters
         |                              v
         |                        7b. Spawn via Adapter
         |
-        +---> GLMT -----------> 3c. Start Embedded Proxy
+        +---> Settings/API ---> 3c. Load settings env
                                       |
                                       v
-                                4c. Resolve Target Adapter
+                                4c. Normalize legacy glmt if needed
                                       |
                                       v
-                                5c. Spawn via Adapter
+                                5c. Resolve Target Adapter
+                                      |
+                                      v
+                                6c. Spawn via Adapter
 ```
 
 ---
 
 ## Provider Integration Architecture
 
-For detailed provider flows (CLIProxyAPI, GLMT, quota management), see [Provider Flows](./provider-flows.md).
+For detailed provider flows (CLIProxyAPI, legacy GLMT compatibility, quota management), see [Provider Flows](./provider-flows.md).
 
 ---
 
@@ -303,7 +306,7 @@ See [Provider Flows](./provider-flows.md) → Authentication Flow section.
         | Localhost only (127.0.0.1)
         v
   +------------------+
-  | CLIProxy/GLMT    |  Binds to localhost only
+  | CLIProxy/Legacy  |  Binds to localhost only
   +------------------+
         |
         | TLS encrypted
@@ -400,5 +403,5 @@ See [Provider Flows](./provider-flows.md) → Authentication Flow section.
 - [Codebase Summary](../codebase-summary.md) - Detailed directory structure
 - [Code Standards](../code-standards.md) - Coding conventions & patterns
 - [Target Adapters](./target-adapters.md) - Multi-CLI adapter architecture
-- [Provider Flows](./provider-flows.md) - CLIProxy, GLMT, authentication flows
+- [Provider Flows](./provider-flows.md) - CLIProxy, legacy GLMT compatibility, authentication flows
 - [Project Roadmap](../project-roadmap.md) - Development phases

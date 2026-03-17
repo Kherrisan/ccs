@@ -46,8 +46,9 @@ describe('npm postinstall', () => {
       env: { ...process.env, CCS_HOME: testEnv.testHome }
     });
 
-    // GLM/GLMT/Kimi profiles are NO LONGER auto-created during install
-    // Users create these via UI presets or CLI: ccs api create --preset glm
+    // GLM/Kimi profiles are NO LONGER auto-created during install.
+    // Legacy glmt.settings.json files may still exist from older setups.
+    // Users create supported API profiles via UI presets or CLI: ccs api create --preset glm
     assert(!testEnv.fileExists('glm.settings.json'), 'glm.settings.json should NOT be auto-created');
     assert(!testEnv.fileExists('glmt.settings.json'), 'glmt.settings.json should NOT be auto-created');
     assert(!testEnv.fileExists('kimi.settings.json'), 'kimi.settings.json should NOT be auto-created');
@@ -110,7 +111,7 @@ describe('npm postinstall', () => {
     // Verify existing file still exists and new files are created
     assert(testEnv.fileExists('existing.txt'), 'Existing files should be preserved');
     assert(testEnv.fileExists('config.yaml'), 'config.yaml should be created');
-    // GLM/GLMT/Kimi are no longer auto-created
+    // GLM/Kimi are no longer auto-created. Legacy GLMT files remain untouched if present.
     assert(!testEnv.fileExists('glm.settings.json'), 'glm.settings.json should NOT be auto-created');
   });
 

@@ -102,6 +102,13 @@ describe('Thinking Validator', () => {
       expect(typeof result.value).toBe('string'); // Should be a level name
       expect(result.warning).toContain('Mapped');
     });
+
+    it('caps unsupported higher standard levels to the highest supported model level', () => {
+      const result = validateThinking('codex', 'gpt-5-mini', 'xhigh');
+      expect(result.valid).toBe(true);
+      expect(result.value).toBe('high');
+      expect(result.warning).toContain('mapped to "high"');
+    });
   });
 
   describe('Budget-type models (like Claude via agy)', () => {

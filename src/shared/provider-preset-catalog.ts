@@ -8,19 +8,19 @@
 export type PresetCategory = 'recommended' | 'alternative';
 
 export const PROVIDER_PRESET_IDS = [
-  'anthropic',
   'openrouter',
   'alibaba-coding-plan',
   'ollama',
   'llamacpp',
+  'anthropic',
   'glm',
-  'glmt',
   'km',
   'foundry',
   'mm',
   'deepseek',
   'qwen',
   'ollama-cloud',
+  'novita',
 ] as const;
 
 export type ProviderPresetId = (typeof PROVIDER_PRESET_IDS)[number];
@@ -53,26 +53,13 @@ export const OPENROUTER_BASE_URL = 'https://openrouter.ai/api';
  * Keep this minimal and explicit to avoid hidden implicit behavior.
  */
 export const PROVIDER_PRESET_ALIASES: Readonly<Record<string, ProviderPresetId>> = Object.freeze({
+  glmt: 'glm',
   kimi: 'km',
   alibaba: 'alibaba-coding-plan',
   acp: 'alibaba-coding-plan',
 });
 
 const RAW_PROVIDER_PRESET_DEFINITIONS: readonly ProviderPresetDefinition[] = [
-  {
-    id: 'anthropic',
-    name: 'Anthropic (Direct API)',
-    description: 'Use your own Anthropic API key (sk-ant-...)',
-    baseUrl: '',
-    defaultProfileName: 'anthropic',
-    defaultModel: 'claude-sonnet-4-5-20250929',
-    apiKeyPlaceholder: 'sk-ant-api03-...',
-    apiKeyHint: 'Get key at console.anthropic.com/settings/keys',
-    category: 'recommended',
-    requiresApiKey: true,
-    badge: 'Direct',
-    featured: true,
-  },
   {
     id: 'openrouter',
     name: 'OpenRouter',
@@ -131,11 +118,27 @@ const RAW_PROVIDER_PRESET_DEFINITIONS: readonly ProviderPresetDefinition[] = [
     requiresApiKey: false,
     badge: 'Local',
     featured: true,
+    icon: '/assets/providers/llama-cpp.svg',
+  },
+  {
+    id: 'anthropic',
+    name: 'Anthropic (Direct API)',
+    description: 'Use your own Anthropic API key (sk-ant-...)',
+    baseUrl: '',
+    defaultProfileName: 'anthropic',
+    defaultModel: 'claude-sonnet-4-5-20250929',
+    apiKeyPlaceholder: 'sk-ant-api03-...',
+    apiKeyHint: 'Get key at console.anthropic.com/settings/keys',
+    category: 'recommended',
+    requiresApiKey: true,
+    badge: 'Direct',
+    featured: true,
+    icon: '/assets/providers/claude.svg',
   },
   {
     id: 'glm',
     name: 'GLM',
-    description: 'Claude via Z.AI',
+    description: 'Direct Z.AI Anthropic-compatible API profile',
     baseUrl: 'https://api.z.ai/api/anthropic',
     defaultProfileName: 'glm',
     defaultModel: 'glm-5',
@@ -144,29 +147,6 @@ const RAW_PROVIDER_PRESET_DEFINITIONS: readonly ProviderPresetDefinition[] = [
     category: 'alternative',
     requiresApiKey: true,
     badge: 'Z.AI',
-    icon: '/icons/zai.svg',
-  },
-  {
-    id: 'glmt',
-    name: 'GLMT',
-    description: 'GLM with Thinking mode support',
-    baseUrl: 'https://api.z.ai/api/coding/paas/v4/chat/completions',
-    defaultProfileName: 'glmt',
-    defaultModel: 'glm-5',
-    apiKeyPlaceholder: 'ghp_...',
-    apiKeyHint: 'Same API key as GLM',
-    category: 'alternative',
-    requiresApiKey: true,
-    extraEnv: {
-      ANTHROPIC_TEMPERATURE: '0.2',
-      ANTHROPIC_MAX_TOKENS: '65536',
-      MAX_THINKING_TOKENS: '32768',
-      ENABLE_STREAMING: 'true',
-      ANTHROPIC_SAFE_MODE: 'false',
-      API_TIMEOUT_MS: '3000000',
-    },
-    alwaysThinkingEnabled: true,
-    badge: 'Thinking',
     icon: '/icons/zai.svg',
   },
   {
@@ -253,6 +233,20 @@ const RAW_PROVIDER_PRESET_DEFINITIONS: readonly ProviderPresetDefinition[] = [
     requiresApiKey: true,
     badge: 'Cloud',
     icon: '/icons/ollama.svg',
+  },
+  {
+    id: 'novita',
+    name: 'Novita AI',
+    description: 'Anthropic-compatible API for Claude Code and CCS profiles',
+    baseUrl: 'https://api.novita.ai/anthropic',
+    defaultProfileName: 'novita',
+    defaultModel: 'deepseek/deepseek-v3.2',
+    apiKeyPlaceholder: 'YOUR_NOVITA_API_KEY',
+    apiKeyHint: 'Get your API key at novita.ai',
+    category: 'alternative',
+    requiresApiKey: true,
+    badge: 'Anthropic-compatible',
+    icon: '/icons/novita.svg',
   },
 ];
 

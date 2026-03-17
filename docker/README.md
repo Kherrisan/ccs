@@ -13,7 +13,24 @@ Persistent config, restart on reboot.
 
 <br>
 
-## Quick Start (Docker Run)
+## Quick Start (Prebuilt Image)
+
+Pull the latest stable release image from GitHub Container Registry:
+
+```bash
+docker run -d \
+  --name ccs-dashboard \
+  --restart unless-stopped \
+  -p 3000:3000 \
+  -p 8317:8317 \
+  -e CCS_PORT=3000 \
+  -v ccs_home:/home/node/.ccs \
+  ghcr.io/kaitranntt/ccs-dashboard:latest
+```
+
+Release-tag images are also published as `ghcr.io/kaitranntt/ccs-dashboard:<version>`.
+
+## Build Locally
 
 ```bash
 docker build -f docker/Dockerfile -t ccs-dashboard:latest .
@@ -62,7 +79,7 @@ docker run -d \
   -e CCS_PROXY_PORT=443 \
   -e CCS_PROXY_PROTOCOL="https" \
   -v ccs_home:/home/node/.ccs \
-  ccs-dashboard:latest
+  ghcr.io/kaitranntt/ccs-dashboard:latest
 ```
 
 ## Useful Commands
@@ -108,7 +125,7 @@ docker run -d \
   -p 3000:3000 \
   -p 8317:8317 \
   -v ccs_home:/home/node/.ccs \
-  ccs-dashboard:latest
+  ghcr.io/kaitranntt/ccs-dashboard:latest
 ```
 
 Docker Compose includes default limits (1GB RAM, 2 CPUs). Adjust in `docker-compose.yml` under `deploy.resources`.

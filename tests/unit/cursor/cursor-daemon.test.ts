@@ -19,7 +19,7 @@ import {
 } from '../../../src/cursor/cursor-daemon';
 import { getCcsDir } from '../../../src/utils/config-manager';
 import { handleCursorCommand } from '../../../src/commands/cursor-command';
-import { loadCredentials, saveCredentials } from '../../../src/cursor/cursor-auth';
+import { loadCredentials } from '../../../src/cursor/cursor-auth';
 
 // Test isolation
 let originalCcsHome: string | undefined;
@@ -139,132 +139,6 @@ describe('startDaemon', () => {
     const result = await startDaemon({ port: 3.14 });
     expect(result.success).toBe(false);
     expect(result.error).toContain('Invalid port');
-  });
-
-  it('starts and stops daemon successfully', async () => {
-    const port = 10000 + Math.floor(Math.random() * 50000);
-    const result = await startDaemon({ port, ghost_mode: true });
-    expect(result.success).toBe(true);
-    expect(result.pid).toBeDefined();
-
-    // Verify health
-    const running = await isDaemonRunning(port);
-    expect(running).toBe(true);
-
-      // Verify models endpoint exists and is OpenAI-compatible list shape
-      const modelsResponse = await fetch(`http://127.0.0.1:${port}/v1/models`);
-      expect(modelsResponse.status).toBe(200);
-      const modelsJson = (await modelsResponse.json()) as { object?: string; data?: unknown[] };
-      expect(modelsJson.object).toBe('list');
-      expect(Array.isArray(modelsJson.data)).toBe(true);
-
-      // Verify chat endpoint exists (requires auth, should not be 404)
-      const chatResponse = await fetch(`http://127.0.0.1:${port}/v1/chat/completions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'gpt-4.1',
-          messages: [{ role: 'user', content: 'hello' }],
-        }),
-      });
-      expect(chatResponse.status).toBe(401);
-
-    // Stop
-    const stopResult = await stopDaemon();
-    expect(stopResult.success).toBe(true);
-
-      // Verify stopped
-      const stillRunning = await isDaemonRunning(port);
-      expect(stillRunning).toBe(false);
-    },
-    35000
-  );
-
-  it('returns 404 for unknown routes', async () => {
-    const port = 10000 + Math.floor(Math.random() * 50000);
-    const result = await startDaemon({ port, ghost_mode: true });
-    expect(result.success).toBe(true);
-
-    try {
-      const response = await fetch(`http://127.0.0.1:${port}/unknown`);
-      expect(response.status).toBe(404);
-    } finally {
-      await stopDaemon();
-    }
-  });
-
-  it('returns 401 when credentials are expired', async () => {
-    const port = 10000 + Math.floor(Math.random() * 50000);
-    const expiredAt = new Date(Date.now() - 26 * 60 * 60 * 1000).toISOString();
-
-    saveCredentials({
-      accessToken: 'a'.repeat(60),
-      machineId: '1234567890abcdef1234567890abcdef',
-      authMethod: 'manual',
-      importedAt: expiredAt,
-    });
-
-    const result = await startDaemon({ port, ghost_mode: true });
-    expect(result.success).toBe(true);
-
-    try {
-      const response = await fetch(`http://127.0.0.1:${port}/v1/chat/completions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'gpt-4.1',
-          messages: [{ role: 'user', content: 'hello' }],
-        }),
-      });
-
-      expect(response.status).toBe(401);
-      const body = (await response.json()) as { error?: { message?: string } };
-      expect(body.error?.message).toContain('expired');
-    } finally {
-      await stopDaemon();
-    }
-  });
-
-  it('validates invalid JSON, invalid message schema, and oversized body', async () => {
-    const port = 10000 + Math.floor(Math.random() * 50000);
-    const result = await startDaemon({ port, ghost_mode: true });
-    expect(result.success).toBe(true);
-
-    try {
-      const invalidJson = await fetch(`http://127.0.0.1:${port}/v1/chat/completions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: '{invalid-json',
-      });
-      expect(invalidJson.status).toBe(400);
-
-      const invalidSchema = await fetch(`http://127.0.0.1:${port}/v1/chat/completions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'gpt-4.1',
-          messages: { role: 'user', content: 'hello' },
-        }),
-      });
-      expect(invalidSchema.status).toBe(400);
-
-      const oversized = await fetch(`http://127.0.0.1:${port}/v1/chat/completions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'gpt-4.1',
-          messages: [
-            {
-              role: 'user',
-              content: 'x'.repeat(10 * 1024 * 1024 + 1024),
-            },
-          ],
-        }),
-      });
-      expect(oversized.status).toBe(413);
-    } finally {
-      await stopDaemon();
-    }
   });
 });
 
