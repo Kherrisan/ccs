@@ -195,3 +195,4 @@ Releases are automated with semantic-release.
 - Questions and discussion: https://github.com/kaitranntt/ccs/discussions
 - User-facing docs: [README.md](./README.md)
 - Internal architecture notes: [docs/](./docs)
+- Community expectations: [`.github/CODE_OF_CONDUCT.md`](./.github/CODE_OF_CONDUCT.md)
