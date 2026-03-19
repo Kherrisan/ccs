@@ -12,7 +12,6 @@ import { useQuery } from '@tanstack/react-query';
 import { api, withApiBase } from '@/lib/api-client';
 import type { CliproxyServerConfig } from '@/lib/api-client';
 import { CLIPROXY_DEFAULT_PORT } from '@/lib/preset-utils';
-import { ApiProfileBridgeCallout } from './api-profile-bridge-callout';
 
 interface AuthTokensResponse {
   apiKey: { value: string; isCustom: boolean };
@@ -202,7 +201,23 @@ export function ControlPanelEmbed({ port = CLIPROXY_DEFAULT_PORT }: ControlPanel
           </button>
         </div>
         <div className="border-b bg-muted/20 p-4">
-          <ApiProfileBridgeCallout compact className="max-w-3xl mx-auto" />
+          <div className="mx-auto max-w-3xl rounded-xl border bg-card/95 p-4 shadow-sm">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold">Need the CCS-native workflow?</p>
+                <p className="text-xs text-muted-foreground">
+                  Configure provider entries in the dedicated AI Providers page. Use the embedded
+                  control panel only when you need the raw upstream dashboard.
+                </p>
+              </div>
+              <a
+                href="/cliproxy/ai-providers"
+                className="inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
+              >
+                Open AI Providers
+              </a>
+            </div>
+          </div>
         </div>
         <div className="flex-1 flex items-center justify-center bg-muted/20">
           <div className="text-center max-w-md px-8">
@@ -225,7 +240,23 @@ export function ControlPanelEmbed({ port = CLIPROXY_DEFAULT_PORT }: ControlPanel
   return (
     <div className="flex-1 flex flex-col">
       <div className="border-b bg-muted/20 p-4">
-        <ApiProfileBridgeCallout compact className="max-w-3xl mx-auto" />
+        <div className="mx-auto max-w-3xl rounded-xl border bg-card/95 p-4 shadow-sm">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold">Need the CCS-native workflow?</p>
+              <p className="text-xs text-muted-foreground">
+                Configure provider entries in the dedicated AI Providers page. Use the embedded
+                control panel only when you need the raw upstream dashboard.
+              </p>
+            </div>
+            <a
+              href="/cliproxy/ai-providers"
+              className="inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
+            >
+              Open AI Providers
+            </a>
+          </div>
+        </div>
       </div>
       <div className="flex-1 flex flex-col relative">
         {/* Remote indicator and login hint banner */}

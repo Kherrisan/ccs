@@ -97,6 +97,7 @@ function buildNavGroups(t: (key: string) => string): SidebarGroupDef[] {
           isCollapsible: true,
           children: [
             { path: '/cliproxy', label: t('nav.cliproxyOverview') },
+            { path: '/cliproxy/ai-providers', icon: Key, label: 'AI Providers' },
             { path: '/cliproxy/control-panel', icon: Gauge, label: t('nav.controlPanel') },
           ],
         },

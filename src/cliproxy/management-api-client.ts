@@ -11,7 +11,6 @@ import type {
   ManagementHealthStatus,
   ManagementApiErrorCode,
   ClaudeKey,
-  GetClaudeKeysResponse,
   ClaudeKeyPatch,
   RemoteModelInfo,
   GetModelDefinitionsResponse,
@@ -189,11 +188,7 @@ export class ManagementApiClient {
    * Get all claude-api-key entries from remote CLIProxy.
    */
   async getClaudeKeys(): Promise<ClaudeKey[]> {
-    const response = await this.request<GetClaudeKeysResponse>(
-      'GET',
-      '/v0/management/claude-api-key'
-    );
-    return response.data?.['claude-api-key'] ?? [];
+    return this.getSection<ClaudeKey>('claude-api-key');
   }
 
   /**
@@ -201,7 +196,7 @@ export class ManagementApiClient {
    * This is an atomic operation - all entries are replaced at once.
    */
   async putClaudeKeys(keys: ClaudeKey[]): Promise<void> {
-    await this.request('PUT', '/v0/management/claude-api-key', keys);
+    await this.putSection('claude-api-key', keys);
   }
 
   /**
@@ -230,6 +225,22 @@ export class ManagementApiClient {
       `/v0/management/model-definitions/${encodedChannel}`
     );
     return response.data?.models ?? [];
+  }
+
+  /**
+   * Get a management section from CLIProxyAPI.
+   * Example sections: claude-api-key, gemini-api-key, codex-api-key.
+   */
+  async getSection<T>(section: string): Promise<T[]> {
+    const response = await this.request<Record<string, T[]>>('GET', `/v0/management/${section}`);
+    return response.data?.[section] ?? [];
+  }
+
+  /**
+   * Replace an entire management section on CLIProxyAPI.
+   */
+  async putSection<T>(section: string, entries: T[]): Promise<void> {
+    await this.request('PUT', `/v0/management/${section}`, entries);
   }
 
   /**

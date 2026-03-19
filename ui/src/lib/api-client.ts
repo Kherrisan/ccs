@@ -4,6 +4,11 @@
  */
 
 import type { CLIProxyProvider } from './provider-config';
+import type {
+  AiProviderFamilyId,
+  ListAiProvidersResult,
+  UpsertAiProviderEntryInput,
+} from '../../../src/cliproxy/ai-providers';
 
 export const API_BASE_URL = '/api';
 export const API_CONFLICT_ERROR_CODE = 'CONFLICT';
@@ -133,19 +138,6 @@ export interface UpdateProfile {
   sonnetModel?: string;
   haikuModel?: string;
   target?: CliTarget;
-}
-
-export interface CreateCliproxyBridgeProfileRequest {
-  provider: CLIProxyProvider;
-  name?: string;
-  target?: CliTarget;
-}
-
-export interface CreateCliproxyBridgeProfileResponse {
-  name: string;
-  settingsPath: string;
-  target: CliTarget;
-  cliproxyBridge?: CliproxyBridgeMetadata | null;
 }
 
 export interface ProfileValidationIssue {
@@ -786,11 +778,6 @@ export const api = {
         method: 'POST',
         body: JSON.stringify(data),
       }),
-    createCliproxyBridge: (data: CreateCliproxyBridgeProfileRequest) =>
-      request<CreateCliproxyBridgeProfileResponse>('/profiles/cliproxy-bridge', {
-        method: 'POST',
-        body: JSON.stringify(data),
-      }),
     update: (name: string, data: UpdateProfile) =>
       request(`/profiles/${name}`, {
         method: 'PUT',
@@ -860,6 +847,23 @@ export const api = {
         method: 'PUT',
         body: JSON.stringify({ model }),
       }),
+    aiProviders: {
+      list: () => request<ListAiProvidersResult>('/cliproxy/ai-providers'),
+      create: (family: AiProviderFamilyId, data: UpsertAiProviderEntryInput) =>
+        request(`/cliproxy/ai-providers/${encodeURIComponent(family)}`, {
+          method: 'POST',
+          body: JSON.stringify(data),
+        }),
+      update: (family: AiProviderFamilyId, index: number, data: UpsertAiProviderEntryInput) =>
+        request(`/cliproxy/ai-providers/${encodeURIComponent(family)}/${index}`, {
+          method: 'PUT',
+          body: JSON.stringify(data),
+        }),
+      delete: (family: AiProviderFamilyId, index: number) =>
+        request(`/cliproxy/ai-providers/${encodeURIComponent(family)}/${index}`, {
+          method: 'DELETE',
+        }),
+    },
 
     // Config YAML for Config tab
     getConfigYaml: async (): Promise<string> => {

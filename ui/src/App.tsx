@@ -23,6 +23,9 @@ const ApiPage = lazy(() => import('@/pages/api').then((m) => ({ default: m.ApiPa
 const CliproxyPage = lazy(() =>
   import('@/pages/cliproxy').then((m) => ({ default: m.CliproxyPage }))
 );
+const CliproxyAiProvidersPage = lazy(() =>
+  import('@/pages/cliproxy-ai-providers').then((m) => ({ default: m.CliproxyAiProvidersPage }))
+);
 const CliproxyControlPanelPage = lazy(() =>
   import('@/pages/cliproxy-control-panel').then((m) => ({ default: m.CliproxyControlPanelPage }))
 );
@@ -95,6 +98,14 @@ export default function App() {
                       element={
                         <Suspense fallback={<PageLoader />}>
                           <CliproxyPage />
+                        </Suspense>
+                      }
+                    />
+                    <Route
+                      path="/cliproxy/ai-providers"
+                      element={
+                        <Suspense fallback={<PageLoader />}>
+                          <CliproxyAiProvidersPage />
                         </Suspense>
                       }
                     />

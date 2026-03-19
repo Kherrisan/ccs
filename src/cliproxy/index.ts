@@ -143,6 +143,23 @@ export {
   TOGETHER_TEMPLATE,
 } from './openai-compat-manager';
 
+// AI provider management
+export type {
+  AiProviderFamilyId,
+  AiProviderFamilyState,
+  AiProviderEntryView,
+  ListAiProvidersResult,
+  UpsertAiProviderEntryInput,
+} from './ai-providers';
+export {
+  AI_PROVIDER_FAMILY_DEFINITIONS,
+  AI_PROVIDER_FAMILY_IDS,
+  listAiProviders,
+  createAiProviderEntry,
+  updateAiProviderEntry,
+  deleteAiProviderEntry,
+} from './ai-providers';
+
 // Service manager (background CLIProxy for dashboard)
 export type { ServiceStartResult } from './service-manager';
 export { ensureCliproxyService, stopCliproxyService, getServiceStatus } from './service-manager';

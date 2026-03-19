@@ -41,7 +41,7 @@ All major modularization work is complete. The codebase evolved from monolithic 
 
 ### Recent Fixes
 
-- **2026-03-19**: **#649** CLIProxy and API Profiles now share a guided bridge flow. Users can configure a provider in CLIProxy or the embedded control panel, jump into `API Profiles`, and create a routed profile without manually typing `/api/provider/{provider}` URLs, proxy auth tokens, or default model wiring. Bridge profiles are labeled in the API list/editor and resolve against the current local or remote CLIProxy target.
+- **2026-03-19**: **#649** CCS splits CLIProxy provider-key authoring into a dedicated `CLIProxy -> AI Providers` dashboard route. `/cliproxy` now stays focused on OAuth accounts and variants, `/cliproxy/ai-providers` owns Gemini/Codex/Claude/Vertex/OpenAI-compatible key management, and `/providers` stays reserved for CCS-native API Profiles.
 - **2026-03-18**: **#755** Marketplace refresh no longer reuses one shared `known_marketplaces.json` across isolated instances. CCS now keeps marketplace payload directories shared while reconciling per-instance marketplace metadata so Claude Code validation succeeds for alternating or concurrent profiles, including Windows copy fallback.
 - **2026-03-17**: Deprecated user-facing GLMT discovery across CLI help, completions, presets, and docs. Existing `glmt` profiles now run through a compatibility path that normalizes legacy proxy settings to the direct GLM endpoint.
 - **#748**: API profile creation now keeps provider selection compact by collapsing advanced presets behind an explicit toggle, shrinking chooser cards so the form fields stay visually primary, and giving `llama.cpp` a dedicated provider logo.

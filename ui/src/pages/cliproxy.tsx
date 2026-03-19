@@ -15,7 +15,6 @@ import { QuickSetupWizard } from '@/components/quick-setup-wizard';
 import { AddAccountDialog } from '@/components/account/add-account-dialog';
 import { AccountSafetyWarningCard } from '@/components/account/account-safety-warning-card';
 import { ProviderEditor } from '@/components/cliproxy/provider-editor';
-import { ApiProfileBridgeCallout } from '@/components/cliproxy/api-profile-bridge-callout';
 import { ProviderLogo } from '@/components/cliproxy/provider-logo';
 import { ProxyStatusWidget } from '@/components/monitoring/proxy-status-widget';
 import {
@@ -107,15 +106,28 @@ function VariantSidebarItem({
   isDeleting?: boolean;
 }) {
   const { t } = useTranslation();
+
+  const handleActivate = () => {
+    onSelect();
+  };
+
   return (
-    <button
+    <div
+      role="button"
+      tabIndex={0}
       className={cn(
         'group w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors cursor-pointer text-left pl-6',
         isSelected
           ? 'bg-primary/10 border border-primary/20'
           : 'hover:bg-muted border border-transparent'
       )}
-      onClick={onSelect}
+      onClick={handleActivate}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          handleActivate();
+        }
+      }}
     >
       <div className="relative">
         <ProviderLogo provider={variant.provider} size="sm" />
@@ -161,7 +173,7 @@ function VariantSidebarItem({
       >
         <Trash2 className="w-3 h-3" />
       </Button>
-    </button>
+    </div>
   );
 }
 
@@ -438,11 +450,6 @@ export function CliproxyPage() {
 
         {selectedVariantData && parentAuthForVariant ? (
           <>
-            <ApiProfileBridgeCallout
-              provider={selectedVariantData.provider}
-              compact
-              className="mx-4 mt-4"
-            />
             <ProviderEditor
               provider={selectedVariantData.name}
               displayName={t('cliproxyPage.variantDisplay', {
@@ -494,13 +501,6 @@ export function CliproxyPage() {
           </>
         ) : selectedStatus ? (
           <>
-            <ApiProfileBridgeCallout
-              provider={
-                isValidProvider(selectedStatus.provider) ? selectedStatus.provider : undefined
-              }
-              compact
-              className="mx-4 mt-4"
-            />
             <ProviderEditor
               provider={selectedStatus.provider}
               displayName={selectedStatus.displayName}
@@ -540,10 +540,7 @@ export function CliproxyPage() {
             />
           </>
         ) : (
-          <div className="flex flex-1 flex-col min-h-0">
-            <ApiProfileBridgeCallout compact className="mx-4 mt-4" />
-            <EmptyProviderState onSetup={() => setWizardOpen(true)} />
-          </div>
+          <EmptyProviderState onSetup={() => setWizardOpen(true)} />
         )}
       </div>
 

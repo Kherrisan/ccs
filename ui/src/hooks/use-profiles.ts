@@ -7,7 +7,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   api,
   type CreateProfile,
-  type CreateCliproxyBridgeProfileRequest,
   type UpdateProfile,
   type RegisterProfileOrphansRequest,
   type CopyProfileRequest,
@@ -30,22 +29,6 @@ export function useCreateProfile() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['profiles'] });
       toast.success('Profile created successfully');
-    },
-    onError: (error: Error) => {
-      toast.error(error.message);
-    },
-  });
-}
-
-export function useCreateCliproxyBridgeProfile() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (data: CreateCliproxyBridgeProfileRequest) =>
-      api.profiles.createCliproxyBridge(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['profiles'] });
-      toast.success('CLIProxy-routed profile created successfully');
     },
     onError: (error: Error) => {
       toast.error(error.message);

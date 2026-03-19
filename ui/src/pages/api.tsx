@@ -38,13 +38,10 @@ import { cn } from '@/lib/utils';
 import { CopyButton } from '@/components/ui/copy-button';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import { useLocation, useNavigate } from 'react-router-dom';
-import type { CLIProxyProvider } from '@/lib/provider-config';
-import { isValidProvider } from '@/lib/provider-config';
+import { useNavigate } from 'react-router-dom';
 
 export function ApiPage() {
   const { t } = useTranslation();
-  const location = useLocation();
   const navigate = useNavigate();
   const { data, isLoading, isError, refetch } = useProfiles();
   const deleteMutation = useDeleteProfile();
@@ -56,11 +53,9 @@ export function ApiPage() {
   const [selectedProfile, setSelectedProfile] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [isCreateDialogOpen, setCreateDialogOpen] = useState(false);
-  const [createMode, setCreateMode] = useState<
-    'normal' | 'openrouter' | 'alibaba-coding-plan' | 'cliproxy'
-  >('normal');
-  const [createDialogCliproxyProvider, setCreateDialogCliproxyProvider] =
-    useState<CLIProxyProvider | null>(null);
+  const [createMode, setCreateMode] = useState<'normal' | 'openrouter' | 'alibaba-coding-plan'>(
+    'normal'
+  );
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [editorHasChanges, setEditorHasChanges] = useState(false);
   const [pendingSwitch, setPendingSwitch] = useState<string | null>(null);
@@ -75,34 +70,6 @@ export function ApiPage() {
   const selectedProfileData = selectedProfile
     ? profiles.find((p) => p.name === selectedProfile)
     : null;
-  const cliproxyBridgeIntent = useMemo(() => {
-    const params = new URLSearchParams(location.search);
-    const rawProvider = params.get('cliproxyProvider');
-    const wantsBridge = params.get('cliproxyBridge') === '1' || rawProvider !== null;
-    if (!wantsBridge) {
-      return null;
-    }
-
-    const provider = rawProvider && isValidProvider(rawProvider) ? rawProvider : null;
-
-    return {
-      provider,
-    };
-  }, [location.search]);
-
-  const clearCliproxyBridgeIntent = () => {
-    if (!cliproxyBridgeIntent) {
-      return;
-    }
-
-    navigate({ pathname: location.pathname, search: '' }, { replace: true });
-  };
-
-  const resolvedCreateMode = cliproxyBridgeIntent ? 'cliproxy' : createMode;
-  const resolvedCreateDialogProvider = cliproxyBridgeIntent
-    ? cliproxyBridgeIntent.provider
-    : createDialogCliproxyProvider;
-  const isResolvedCreateDialogOpen = isCreateDialogOpen || !!cliproxyBridgeIntent;
 
   const switchToProfile = (name: string) => {
     if (editorHasChanges && selectedProfile !== name) {
@@ -126,19 +93,11 @@ export function ApiPage() {
   };
 
   const handleCreateSuccess = (name: string) => {
-    clearCliproxyBridgeIntent();
     setCreateDialogOpen(false);
     switchToProfile(name);
   };
   const handleProfileSelect = (name: string) => {
     switchToProfile(name);
-  };
-
-  const handleCreateDialogOpenChange = (open: boolean) => {
-    if (!open) {
-      clearCliproxyBridgeIntent();
-    }
-    setCreateDialogOpen(open);
   };
 
   const triggerDownload = (filename: string, bundle: ApiProfileExportBundle) => {
@@ -339,18 +298,6 @@ export function ApiPage() {
                       size="sm"
                       variant="outline"
                       onClick={() => {
-                        setCreateMode('cliproxy');
-                        setCreateDialogCliproxyProvider(null);
-                        setCreateDialogOpen(true);
-                      }}
-                    >
-                      <Server className="w-4 h-4 mr-1" />
-                      Use CLIProxy
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => {
                         setCreateDialogOpen(true);
                       }}
                     >
@@ -441,9 +388,7 @@ export function ApiPage() {
           ) : (
             <OpenRouterQuickStart
               onCliproxyClick={() => {
-                setCreateMode('cliproxy');
-                setCreateDialogCliproxyProvider(null);
-                setCreateDialogOpen(true);
+                navigate('/cliproxy/ai-providers');
               }}
               onOpenRouterClick={() => {
                 setCreateMode('openrouter');
@@ -471,11 +416,10 @@ export function ApiPage() {
       />
 
       <ProfileCreateDialog
-        open={isResolvedCreateDialogOpen}
-        onOpenChange={handleCreateDialogOpenChange}
+        open={isCreateDialogOpen}
+        onOpenChange={setCreateDialogOpen}
         onSuccess={handleCreateSuccess}
-        initialMode={resolvedCreateMode}
-        initialCliproxyProvider={resolvedCreateDialogProvider}
+        initialMode={createMode}
       />
 
       <ConfirmDialog
@@ -541,11 +485,6 @@ function ProfileListItem({
           <Badge variant="outline" className="text-[10px] h-4 px-1.5 uppercase">
             {profile.target || 'claude'}
           </Badge>
-          {profile.cliproxyBridge && (
-            <Badge variant="secondary" className="text-[10px] h-4 px-1.5">
-              CLIProxy {profile.cliproxyBridge.provider}
-            </Badge>
-          )}
         </div>
         <div className="flex items-center gap-1.5 min-w-0">
           <div className="text-xs text-muted-foreground truncate flex-1">

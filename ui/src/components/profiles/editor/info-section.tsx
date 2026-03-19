@@ -7,8 +7,7 @@ import { useTranslation } from 'react-i18next';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Label } from '@/components/ui/label';
 import { CopyButton } from '@/components/ui/copy-button';
-import { Badge } from '@/components/ui/badge';
-import { CheckCircle2, Info, Link2, TriangleAlert } from 'lucide-react';
+import { Info } from 'lucide-react';
 import type { SettingsResponse } from './types';
 import type { CliTarget } from '@/lib/api-client';
 
@@ -63,78 +62,6 @@ export function InfoSection({ profileName, target, data }: InfoSectionProps) {
                   </span>
                   <span className="font-mono">{target}</span>
                 </div>
-                {data.cliproxyBridge && (
-                  <>
-                    <div className="grid grid-cols-[100px_1fr] gap-2 text-sm items-start">
-                      <span className="font-medium text-muted-foreground">Source</span>
-                      <div className="space-y-2">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Badge variant="secondary" className="gap-1">
-                            <Link2 className="h-3 w-3" />
-                            CLIProxy {data.cliproxyBridge.providerDisplayName}
-                          </Badge>
-                          <Badge variant="outline" className="uppercase">
-                            {data.cliproxyBridge.source}
-                          </Badge>
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                          This profile is routed through{' '}
-                          <code className="bg-muted px-1 rounded text-[10px]">
-                            {data.cliproxyBridge.routePath}
-                          </code>
-                          . Keys and account state stay managed in CLIProxy.
-                        </p>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-[100px_1fr] gap-2 text-sm items-start">
-                      <span className="font-medium text-muted-foreground">Bridge Status</span>
-                      <div className="space-y-1.5">
-                        <div className="flex flex-wrap items-center gap-2 text-xs">
-                          <Badge
-                            variant="outline"
-                            className={
-                              data.cliproxyBridge.usesCurrentTarget
-                                ? 'border-green-200 text-green-700 bg-green-50'
-                                : 'border-amber-200 text-amber-700 bg-amber-50'
-                            }
-                          >
-                            {data.cliproxyBridge.usesCurrentTarget ? (
-                              <CheckCircle2 className="mr-1 h-3 w-3" />
-                            ) : (
-                              <TriangleAlert className="mr-1 h-3 w-3" />
-                            )}
-                            {data.cliproxyBridge.usesCurrentTarget
-                              ? 'Proxy target is current'
-                              : 'Proxy target changed'}
-                          </Badge>
-                          <Badge
-                            variant="outline"
-                            className={
-                              data.cliproxyBridge.usesCurrentAuthToken
-                                ? 'border-green-200 text-green-700 bg-green-50'
-                                : 'border-amber-200 text-amber-700 bg-amber-50'
-                            }
-                          >
-                            {data.cliproxyBridge.usesCurrentAuthToken ? (
-                              <CheckCircle2 className="mr-1 h-3 w-3" />
-                            ) : (
-                              <TriangleAlert className="mr-1 h-3 w-3" />
-                            )}
-                            {data.cliproxyBridge.usesCurrentAuthToken
-                              ? 'Auth token matches current proxy'
-                              : 'Auth token may need refresh'}
-                          </Badge>
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                          Expected proxy URL:{' '}
-                          <code className="bg-muted px-1 rounded text-[10px] break-all">
-                            {data.cliproxyBridge.currentBaseUrl}
-                          </code>
-                        </p>
-                      </div>
-                    </div>
-                  </>
-                )}
               </>
             )}
           </div>
