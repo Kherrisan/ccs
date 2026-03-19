@@ -80,7 +80,7 @@ The dashboard provides visual management for all account types:
 
 - **Claude Accounts**: Isolation-first by default (work, personal, client), with explicit shared context opt-in
 - **OAuth Providers**: One-click auth for Gemini, Codex, Antigravity, Kiro, Copilot
-- **API Profiles**: Configure GLM, Kimi with your keys
+- **API Profiles**: Configure GLM, Kimi with your keys, or create routed profiles from configured CLIProxy providers without copying proxy URLs or internal tokens
 - **Factory Droid**: Track Droid install location and BYOK settings health
 - **Updates Center**: Track support rollouts (Droid target, CLIProxy provider changes, WebSearch integrations)
 - **Health Monitor**: Real-time status across all profiles
@@ -147,6 +147,8 @@ The dashboard provides visual management for all account types:
 ![OpenRouter API Profiles](assets/screenshots/api-profiles-openrouter.webp)
 
 > **OAuth providers** authenticate via browser on first run. Tokens are cached in `~/.ccs/cliproxy/auth/`.
+
+> **CLIProxy -> API Profiles bridge:** After you configure a provider in `ccs config` -> `CLIProxy` or the embedded control panel, open `API Profiles` and use the CLIProxy provider entry to create a routed profile. CCS fills the provider route and current proxy auth automatically.
 
 **Powered by:**
 - [CLIProxyAPIPlus](https://github.com/router-for-me/CLIProxyAPIPlus) - Extended OAuth proxy with Kiro ([@fuko2935](https://github.com/fuko2935), [@Ravens2121](https://github.com/Ravens2121)) and Copilot ([@em4go](https://github.com/em4go)) support

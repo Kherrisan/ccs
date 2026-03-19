@@ -1,6 +1,6 @@
 # CCS Product Development Requirements (PDR)
 
-Last Updated: 2026-02-04
+Last Updated: 2026-03-19
 
 ## Product Overview
 
@@ -36,6 +36,8 @@ CCS provides:
 4. **Visual Dashboard**: React SPA for configuration management
 5. **Automatic WebSearch**: MCP fallback for third-party providers
 6. **Usage Analytics**: Token tracking, cost analysis, model breakdown
+
+Configured CLIProxy providers can also be bridged into routed API Profiles from the dashboard, so users do not have to hand-copy `/api/provider/{provider}` URLs or internal proxy auth tokens.
 
 ---
 
@@ -73,6 +75,7 @@ CCS provides:
 - Support Anthropic-compatible APIs
 - Model mapping and configuration
 - OpenRouter integration with 300+ models
+- Create routed API Profiles from configured CLIProxy providers without manually copying proxy URLs or internal auth tokens
 
 ### FR-005: Dashboard UI
 - Visual profile management
@@ -332,5 +335,5 @@ CCS provides:
 
 - [Codebase Summary](./codebase-summary.md) - Technical structure
 - [Code Standards](./code-standards.md) - Development conventions
-- [System Architecture](./system-architecture.md) - Architecture diagrams
+- [System Architecture](./system-architecture/index.md) - Architecture diagrams
 - [Project Roadmap](./project-roadmap.md) - Development phases and GitHub issues
