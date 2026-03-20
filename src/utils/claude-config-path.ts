@@ -1,5 +1,5 @@
-import * as os from 'os';
 import * as path from 'path';
+import { getCcsHome } from './config-manager';
 
 /**
  * Resolve Claude config directory with test/dev overrides.
@@ -13,11 +13,7 @@ export function getClaudeConfigDir(): string {
     return path.resolve(process.env.CLAUDE_CONFIG_DIR);
   }
 
-  if (process.env.CCS_HOME) {
-    return path.join(path.resolve(process.env.CCS_HOME), '.claude');
-  }
-
-  return path.join(os.homedir(), '.claude');
+  return path.join(getCcsHome(), '.claude');
 }
 
 /** Resolve Claude settings.json path. */

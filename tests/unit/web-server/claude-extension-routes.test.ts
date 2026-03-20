@@ -60,7 +60,9 @@ describe('web-server claude-extension-routes', () => {
   });
 
   afterAll(async () => {
-    await new Promise<void>((resolve) => server.close(() => resolve()));
+    if (server) {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
     setGlobalConfigDir(undefined);
 
     if (originalCcsHome !== undefined) process.env.CCS_HOME = originalCcsHome;

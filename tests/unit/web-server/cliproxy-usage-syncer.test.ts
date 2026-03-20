@@ -3,14 +3,11 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import type { CliproxyUsageApiResponse } from '../../../src/cliproxy/stats-fetcher';
+import { runWithScopedConfigDir } from '../../../src/utils/config-manager';
 
 let ccsDir = '';
 let rawResponse: CliproxyUsageApiResponse | null = null;
 let fetchCalls = 0;
-
-mock.module('../../../src/utils/config-manager', () => ({
-  getCcsDir: () => ccsDir,
-}));
 
 mock.module('../../../src/cliproxy/stats-fetcher', () => ({
   fetchCliproxyUsageRaw: async () => {
@@ -69,12 +66,16 @@ afterAll(() => {
 
 describe('cliproxy usage syncer', () => {
   it('writes and loads snapshot data', async () => {
-    await syncer.syncCliproxyUsage();
+    await runWithScopedConfigDir(ccsDir, async () => {
+      await syncer.syncCliproxyUsage();
+    });
 
     const snapshotPath = path.join(ccsDir, 'cache', 'cliproxy-usage', 'latest.json');
     expect(fs.existsSync(snapshotPath)).toBe(true);
 
-    const cached = await syncer.loadCachedCliproxyData();
+    const cached = await runWithScopedConfigDir(ccsDir, async () => {
+      return await syncer.loadCachedCliproxyData();
+    });
     expect(cached.daily).toHaveLength(1);
     expect(cached.daily[0].source).toBe('cliproxy');
     expect(cached.daily[0].inputTokens).toBe(100);
@@ -82,11 +83,13 @@ describe('cliproxy usage syncer', () => {
     expect(cached.monthly).toHaveLength(1);
   });
 
-  it('startCliproxySync is idempotent and starts only one interval', () => {
+  it('startCliproxySync is idempotent and starts only one interval', async () => {
     const intervalSpy = spyOn(globalThis, 'setInterval');
 
-    syncer.startCliproxySync();
-    syncer.startCliproxySync();
+    await runWithScopedConfigDir(ccsDir, async () => {
+      syncer.startCliproxySync();
+      syncer.startCliproxySync();
+    });
 
     expect(intervalSpy).toHaveBeenCalledTimes(1);
     expect(fetchCalls).toBeGreaterThan(0);

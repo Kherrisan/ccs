@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'async_hooks';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -13,6 +14,38 @@ import { isUnifiedMode, loadOrCreateUnifiedConfig } from '../config/unified-conf
 
 // Module-level state for --config-dir CLI flag override
 let _globalConfigDir: string | undefined;
+const configScopeStorage = new AsyncLocalStorage<{ ccsHome?: string; ccsDir?: string }>();
+
+function normalizeScopedPath(dir: string | undefined): string | undefined {
+  return dir ? path.resolve(dir) : undefined;
+}
+
+export async function runWithScopedConfig<T>(
+  scope: { ccsHome?: string; ccsDir?: string },
+  fn: () => Promise<T> | T
+): Promise<T> {
+  return await configScopeStorage.run(
+    {
+      ccsHome: normalizeScopedPath(scope.ccsHome),
+      ccsDir: normalizeScopedPath(scope.ccsDir),
+    },
+    fn
+  );
+}
+
+export async function runWithScopedCcsHome<T>(
+  ccsHome: string,
+  fn: () => Promise<T> | T
+): Promise<T> {
+  return await runWithScopedConfig({ ccsHome }, fn);
+}
+
+export async function runWithScopedConfigDir<T>(
+  ccsDir: string,
+  fn: () => Promise<T> | T
+): Promise<T> {
+  return await runWithScopedConfig({ ccsDir }, fn);
+}
 
 /**
  * Set global config directory from --config-dir CLI flag.
@@ -28,6 +61,10 @@ export function setGlobalConfigDir(dir: string | undefined): void {
  * @returns Home directory path
  */
 export function getCcsHome(): string {
+  const scopedHome = configScopeStorage.getStore()?.ccsHome;
+  if (scopedHome) {
+    return scopedHome;
+  }
   return process.env.CCS_HOME || os.homedir();
 }
 
@@ -36,6 +73,10 @@ export function getCcsHome(): string {
  * Single source of truth for precedence logic.
  */
 function _resolveCcsDir(): { source: string; dir: string } {
+  const scopedConfig = configScopeStorage.getStore();
+  if (scopedConfig?.ccsDir) return { source: 'scoped:CCS_DIR', dir: scopedConfig.ccsDir };
+  if (scopedConfig?.ccsHome)
+    return { source: 'scoped:CCS_HOME', dir: path.join(scopedConfig.ccsHome, '.ccs') };
   if (_globalConfigDir) return { source: '--config-dir', dir: _globalConfigDir };
   if (process.env.CCS_DIR) return { source: 'CCS_DIR', dir: path.resolve(process.env.CCS_DIR) };
   if (process.env.CCS_HOME)

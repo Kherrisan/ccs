@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
 
 const startServerCalls: Array<Record<string, unknown>> = [];
-const resolveDashboardUrlsCalls: Array<[string | undefined, number]> = [];
 const configAuthCalls: string[][] = [];
 let logLines: string[] = [];
 let errorLines: string[] = [];
@@ -14,7 +13,6 @@ let originalProcessExit: typeof process.exit;
 
 beforeEach(() => {
   startServerCalls.length = 0;
-  resolveDashboardUrlsCalls.length = 0;
   configAuthCalls.length = 0;
   logLines = [];
   errorLines = [];
@@ -91,42 +89,6 @@ beforeEach(() => {
   mock.module('../../../src/utils/ui', () => uiModule);
   mock.module('../../../src/utils/ui.ts', () => uiModule);
 
-  mock.module('../../../src/commands/config-dashboard-host', () => ({
-    normalizeDashboardHost: (host: string | undefined) => {
-      if (!host) {
-        return undefined;
-      }
-
-      if (host.startsWith('[') && host.endsWith(']') && host.includes(':')) {
-        return host.slice(1, -1);
-      }
-
-      return host;
-    },
-    isLoopbackHost: (host: string) =>
-      ['localhost', '127.0.0.1', '::1', '[::1]'].includes(host.trim().toLowerCase()),
-    isWildcardHost: (host: string) => ['0.0.0.0', '::', '[::]'].includes(host.trim().toLowerCase()),
-    resolveDashboardUrls: (host: string | undefined, port: number) => {
-      resolveDashboardUrlsCalls.push([host, port]);
-      if (!host) {
-        return { browserUrl: `http://localhost:${port}` };
-      }
-
-      if (host === '0.0.0.0' || host === '::') {
-        return {
-          bindHost: host,
-          browserUrl: `http://localhost:${port}`,
-          networkUrls: [`http://192.168.1.25:${port}`, `http://100.64.0.12:${port}`],
-        };
-      }
-
-      return {
-        bindHost: host,
-        browserUrl: `http://${host}:${port}`,
-      };
-    },
-  }));
-
   mock.module('../../../src/commands/config-auth', () => ({
     handleConfigAuthCommand: async (args: string[]) => {
       configAuthCalls.push([...args]);
@@ -158,7 +120,6 @@ describe('config command dashboard startup', () => {
     await expect(handleConfigCommand(['help'])).rejects.toThrow('process.exit(0)');
 
     expect(startServerCalls).toHaveLength(0);
-    expect(resolveDashboardUrlsCalls).toHaveLength(0);
     expect(logLines.join('\n')).toContain('Usage: ccs config [command] [options]');
   });
 
@@ -169,7 +130,6 @@ describe('config command dashboard startup', () => {
 
     expect(configAuthCalls).toEqual([['setup']]);
     expect(startServerCalls).toHaveLength(0);
-    expect(resolveDashboardUrlsCalls).toHaveLength(0);
   });
 
   it('rejects unknown config subcommands before dashboard startup', async () => {
@@ -181,7 +141,6 @@ describe('config command dashboard startup', () => {
     await expect(handleConfigCommand(['bogus'])).rejects.toThrow('process.exit(1)');
 
     expect(startServerCalls).toHaveLength(0);
-    expect(resolveDashboardUrlsCalls).toHaveLength(0);
     expect(errorLines.join('\n')).toContain('Unexpected arguments: bogus');
   });
 
@@ -192,12 +151,11 @@ describe('config command dashboard startup', () => {
 
     expect(startServerCalls).toHaveLength(1);
     expect(startServerCalls[0]).toEqual({ port: 3000, dev: false });
-    expect(resolveDashboardUrlsCalls).toEqual([['::', 3000]]);
 
     const rendered = logLines.join('\n');
     expect(rendered).toContain('Dashboard: http://localhost:3000');
     expect(rendered).toContain('Bind host: ::');
-    expect(rendered).toContain('Network URLs:');
+    expect(rendered).toContain('Dashboard may be reachable from other devices that can connect to this machine.');
     expect(rendered).toContain('Protect it before sharing: ccs config auth setup');
     expect(errorLines).toHaveLength(0);
   });
@@ -210,13 +168,10 @@ describe('config command dashboard startup', () => {
 
     expect(startServerCalls).toHaveLength(1);
     expect(startServerCalls[0]).toEqual({ port: 4100, dev: false, host: '0.0.0.0' });
-    expect(resolveDashboardUrlsCalls).toEqual([['0.0.0.0', 4100]]);
 
     const rendered = logLines.join('\n');
+    expect(rendered).toContain('Dashboard: http://localhost:4100');
     expect(rendered).toContain('Bind host: 0.0.0.0');
-    expect(rendered).toContain('Network URLs:');
-    expect(rendered).toContain('http://192.168.1.25:4100');
-    expect(rendered).toContain('http://100.64.0.12:4100');
     expect(rendered).toContain(
       'Dashboard may be reachable from other devices that can connect to this machine.'
     );
