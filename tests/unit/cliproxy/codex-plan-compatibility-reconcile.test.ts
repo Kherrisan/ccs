@@ -2,8 +2,10 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test';
+import { clearQuotaCache } from '../../../src/cliproxy/quota-response-cache';
 
 afterEach(() => {
+  clearQuotaCache();
   mock.restore();
 });
 
@@ -57,10 +59,6 @@ describe('codex plan compatibility reconcile', () => {
         accountId: 'free@example.com',
       }),
     }));
-    mock.module('../../../src/cliproxy/quota-response-cache', () => ({
-      getCachedQuota: () => null,
-      setCachedQuota: () => {},
-    }));
     mock.module('../../../src/utils/ui', () => ({
       info: (message: string) => message,
       warn: (message: string) => message,
@@ -102,10 +100,6 @@ describe('codex plan compatibility reconcile', () => {
       fetchCodexQuota: async () => {
         throw new Error('should not fetch quota without a default account');
       },
-    }));
-    mock.module('../../../src/cliproxy/quota-response-cache', () => ({
-      getCachedQuota: () => null,
-      setCachedQuota: () => {},
     }));
     mock.module('../../../src/utils/ui', () => ({
       info: (message: string) => message,
@@ -153,10 +147,6 @@ describe('codex plan compatibility reconcile', () => {
           accountId: `${planType}@example.com`,
         }),
       }));
-      mock.module('../../../src/cliproxy/quota-response-cache', () => ({
-        getCachedQuota: () => null,
-        setCachedQuota: () => {},
-      }));
       mock.module('../../../src/utils/ui', () => ({
         info: (message: string) => message,
         warn: (message: string) => message,
@@ -202,10 +192,6 @@ describe('codex plan compatibility reconcile', () => {
         error: 'network timeout',
       }),
     }));
-    mock.module('../../../src/cliproxy/quota-response-cache', () => ({
-      getCachedQuota: () => null,
-      setCachedQuota: () => {},
-    }));
     mock.module('../../../src/utils/ui', () => ({
       info: (message: string) => message,
       warn: (message: string) => message,
@@ -249,10 +235,6 @@ describe('codex plan compatibility reconcile', () => {
         lastUpdated: Date.now(),
         accountId: 'missing-plan@example.com',
       }),
-    }));
-    mock.module('../../../src/cliproxy/quota-response-cache', () => ({
-      getCachedQuota: () => null,
-      setCachedQuota: () => {},
     }));
     mock.module('../../../src/utils/ui', () => ({
       info: (message: string) => message,

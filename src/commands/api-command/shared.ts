@@ -9,6 +9,7 @@ export interface ApiCommandArgs {
   apiKey?: string;
   model?: string;
   preset?: string;
+  cliproxyProvider?: string;
   target?: TargetType;
   force?: boolean;
   yes?: boolean;
@@ -21,6 +22,7 @@ export const API_VALUE_FLAGS = [
   '--api-key',
   '--model',
   '--preset',
+  '--cliproxy-provider',
   '--target',
 ] as const;
 export const API_KNOWN_FLAGS: readonly string[] = [...API_BOOLEAN_FLAGS, ...API_VALUE_FLAGS];
@@ -206,6 +208,18 @@ export function parseApiCommandArgs(
     },
     () => {
       result.errors.push('Missing value for --preset');
+    },
+    false
+  );
+
+  remaining = applyRepeatedOption(
+    remaining,
+    ['--cliproxy-provider'],
+    (value) => {
+      result.cliproxyProvider = value.trim().toLowerCase();
+    },
+    () => {
+      result.errors.push('Missing value for --cliproxy-provider');
     },
     false
   );

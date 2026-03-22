@@ -19,6 +19,7 @@ import {
 } from '../../cliproxy';
 import { regenerateConfig } from '../../cliproxy/config-generator';
 import { deduplicateCcsHooks } from '../../utils/websearch/hook-utils';
+import { resolveCliproxyBridgeMetadata } from '../../api/services';
 import {
   getDashboardAuthConfig,
   loadOrCreateUnifiedConfig,
@@ -327,6 +328,7 @@ router.get('/:profile', (req: Request, res: Response): void => {
       settings: masked,
       mtime: stat.mtime.getTime(),
       path: settingsPath,
+      cliproxyBridge: resolveCliproxyBridgeMetadata(settings),
     });
   } catch (error) {
     respondInternalError(res, error, 'Internal server error.');
@@ -354,6 +356,7 @@ router.get('/:profile/raw', (req: Request, res: Response): void => {
       settings,
       mtime: stat.mtime.getTime(),
       path: settingsPath,
+      cliproxyBridge: resolveCliproxyBridgeMetadata(settings),
     });
   } catch (error) {
     respondInternalError(res, error, 'Internal server error.');

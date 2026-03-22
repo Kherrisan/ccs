@@ -213,7 +213,7 @@ export function ProfileCreateDialog({
         applyPresetToForm(null);
       }
     }
-  }, [open, initialMode, applyPresetToForm]);
+  }, [open, initialMode, applyPresetToForm, reset]);
 
   // Handle preset selection
   const handlePresetSelect = (presetId: string) => {
@@ -288,6 +288,7 @@ export function ProfileCreateDialog({
   const hasBasicErrors = !!errors.name || !!errors.baseUrl || !!errors.apiKey;
   const hasModelErrors =
     !!errors.model || !!errors.opusModel || !!errors.sonnetModel || !!errors.haikuModel;
+  const isCreating = createMutation.isPending;
 
   const isQuickTemplateSelected =
     selectedPreset !== CUSTOM_PRESET_ID && QUICK_TEMPLATE_PRESET_IDS.has(selectedPreset);
@@ -303,7 +304,7 @@ export function ProfileCreateDialog({
             Create API Profile
           </DialogTitle>
           <DialogDescription>
-            Choose a provider or configure a custom API endpoint.
+            Choose a provider preset or configure a custom API endpoint.
           </DialogDescription>
         </DialogHeader>
 
@@ -311,7 +312,7 @@ export function ProfileCreateDialog({
           onSubmit={handleSubmit(onSubmit)}
           className="flex flex-col flex-1 min-h-0 overflow-hidden"
         >
-          <div className="border-b bg-muted/10 px-6 py-3">
+          <div className="border-b bg-muted/10 px-6 py-3 space-y-3">
             <div className="space-y-3">
               <div className="flex items-start justify-between gap-4">
                 <div className="space-y-1">
@@ -662,10 +663,10 @@ export function ProfileCreateDialog({
               </Button>
               <Button
                 type="submit"
-                disabled={createMutation.isPending}
-                className={cn(createMutation.isPending && 'opacity-80')}
+                disabled={isCreating}
+                className={cn(isCreating && 'opacity-80')}
               >
-                {createMutation.isPending ? (
+                {isCreating ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                     Creating...

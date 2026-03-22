@@ -19,6 +19,7 @@ import websearchRoutes from './websearch-routes';
 import cliproxyAuthRoutes from './cliproxy-auth-routes';
 import cliproxyStatsRoutes from './cliproxy-stats-routes';
 import cliproxySyncRoutes from './cliproxy-sync-routes';
+import aiProviderRoutes from './ai-provider-routes';
 import copilotRoutes from './copilot-routes';
 import cursorRoutes from './cursor-routes';
 import droidRoutes from './droid-routes';
@@ -59,6 +60,7 @@ apiRoutes.use('/cliproxy/auth', cliproxyAuthRoutes);
 apiRoutes.use('/cliproxy', cliproxyStatsRoutes);
 apiRoutes.use('/cliproxy/sync', cliproxySyncRoutes);
 apiRoutes.use('/cliproxy/catalog', catalogRoutes);
+apiRoutes.use('/cliproxy/ai-providers', aiProviderRoutes);
 apiRoutes.use('/cliproxy/openai-compat', providerRoutes);
 
 // ==================== WebSearch ====================

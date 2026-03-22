@@ -10,11 +10,21 @@ vi.mock('@/hooks/use-profiles', () => ({
     mutateAsync,
     isPending: false,
   }),
+  useCreateCliproxyBridgeProfile: () => ({
+    mutateAsync,
+    isPending: false,
+  }),
 }));
 
 vi.mock('@/hooks/use-openrouter-models', () => ({
   useOpenRouterCatalog: () => ({
     models: [],
+  }),
+}));
+
+vi.mock('@/hooks/use-cliproxy', () => ({
+  useCliproxyAuth: () => ({
+    data: { authStatus: [] },
   }),
 }));
 

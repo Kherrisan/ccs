@@ -4,6 +4,11 @@
  */
 
 import type { CLIProxyProvider } from './provider-config';
+import type {
+  AiProviderFamilyId,
+  ListAiProvidersResult,
+  UpsertAiProviderEntryInput,
+} from '../../../src/cliproxy/ai-providers';
 
 export const API_BASE_URL = '/api';
 export const API_CONFLICT_ERROR_CODE = 'CONFLICT';
@@ -96,11 +101,22 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
 // Types
 export type CliTarget = 'claude' | 'droid';
 
+export interface CliproxyBridgeMetadata {
+  provider: CLIProxyProvider;
+  providerDisplayName: string;
+  routePath: string;
+  currentBaseUrl: string;
+  source: 'local' | 'remote';
+  usesCurrentTarget: boolean;
+  usesCurrentAuthToken: boolean;
+}
+
 export interface Profile {
   name: string;
   settingsPath: string;
   configured: boolean;
   target?: CliTarget;
+  cliproxyBridge?: CliproxyBridgeMetadata | null;
 }
 
 export interface CreateProfile {
@@ -831,6 +847,23 @@ export const api = {
         method: 'PUT',
         body: JSON.stringify({ model }),
       }),
+    aiProviders: {
+      list: () => request<ListAiProvidersResult>('/cliproxy/ai-providers'),
+      create: (family: AiProviderFamilyId, data: UpsertAiProviderEntryInput) =>
+        request(`/cliproxy/ai-providers/${encodeURIComponent(family)}`, {
+          method: 'POST',
+          body: JSON.stringify(data),
+        }),
+      update: (family: AiProviderFamilyId, index: number, data: UpsertAiProviderEntryInput) =>
+        request(`/cliproxy/ai-providers/${encodeURIComponent(family)}/${index}`, {
+          method: 'PUT',
+          body: JSON.stringify(data),
+        }),
+      delete: (family: AiProviderFamilyId, index: number) =>
+        request(`/cliproxy/ai-providers/${encodeURIComponent(family)}/${index}`, {
+          method: 'DELETE',
+        }),
+    },
 
     // Config YAML for Config tab
     getConfigYaml: async (): Promise<string> => {

@@ -1,6 +1,6 @@
 {
   "name": "@kaitranntt/ccs",
-  "version": "7.55.0",
+  "version": "7.55.0-dev.3",
   "description": "Claude Code Switch - Instant profile switching between Claude, GLM, Kimi, and more",
   "keywords": [
     "cli",
@@ -72,7 +72,7 @@
     "test": "bun run build && bun run test:all",
     "test:ci": "bun run test:all",
     "test:all": "bun test tests/unit tests/integration tests/npm",
-    "test:unit": "bun test tests/unit/",
+    "test:unit": "bun test tests/unit",
     "test:npm": "bun test tests/npm/",
     "test:native": "bash tests/native/unix/edge-cases.sh",
     "test:e2e": "bun test tests/e2e/ --bail --timeout 60000",

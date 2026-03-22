@@ -1,5 +1,6 @@
 import {
   PROVIDER_PRESETS,
+  listCliproxyBridgeProviders,
   getPresetAliases,
   getPresetIds,
   type ProviderPreset,
@@ -20,6 +21,7 @@ export async function showApiCommandHelp(): Promise<void> {
   const presetIds = getPresetIds()
     .map((id) => sanitizeHelpText(id))
     .filter(Boolean);
+  const cliproxyProviderIds = listCliproxyBridgeProviders().map((provider) => provider.provider);
   const presetAliases = getPresetAliases();
   const presetIdWidth = Math.max(0, ...presetIds.map((id) => id.length)) + 2;
 
@@ -46,6 +48,9 @@ export async function showApiCommandHelp(): Promise<void> {
   console.log(subheader('Options'));
   console.log(
     `  ${color('--preset <id>', 'command')}        Use provider preset (${presetIds.join(', ')})`
+  );
+  console.log(
+    `  ${color('--cliproxy-provider <id>', 'command')} Use routed CLIProxy provider (${cliproxyProviderIds.join(', ')})`
   );
   console.log(`  ${color('--base-url <url>', 'command')}     API base URL (create)`);
   console.log(`  ${color('--api-key <key>', 'command')}      API key (create)`);
@@ -83,6 +88,12 @@ export async function showApiCommandHelp(): Promise<void> {
   console.log(`  ${color('ccs api create --preset alibaba-coding-plan', 'command')}`);
   console.log(`  ${color('ccs api create --preset alibaba', 'command')} ${dim('# alias')}`);
   console.log(`  ${color('ccs api create --preset glm', 'command')}`);
+  console.log('');
+  console.log(`  ${dim('# Create routed profile from existing CLIProxy provider config')}`);
+  console.log(`  ${color('ccs api create --cliproxy-provider gemini', 'command')}`);
+  console.log(
+    `  ${color('ccs api create gemini-droid --cliproxy-provider gemini --target droid', 'command')}`
+  );
   console.log('');
   console.log(`  ${dim('# Create with name')}`);
   console.log(`  ${color('ccs api create myapi', 'command')}`);

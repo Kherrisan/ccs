@@ -1,6 +1,8 @@
 import {
   apiProfileExists,
+  createCliproxyBridgeProfile,
   createApiProfile,
+  getDefaultCliproxyBridgeName,
   getPresetById,
   getPresetIds,
   getUrlWarning,
@@ -8,11 +10,17 @@ import {
   isUsingUnifiedConfig,
   pickOpenRouterModel,
   sanitizeBaseUrl,
+  suggestCliproxyBridgeName,
   validateApiName,
   validateUrl,
   type ModelMapping,
   type ProviderPreset,
 } from '../../api/services';
+import {
+  CLIPROXY_PROVIDER_IDS,
+  getProviderDisplayName,
+  isCLIProxyProvider,
+} from '../../cliproxy/provider-capabilities';
 import { syncToLocalConfig } from '../../cliproxy/sync/local-config-sync';
 import type { TargetType } from '../../targets/target-adapter';
 import { color, dim, fail, header, info, infoBox, initUI, warn } from '../../utils/ui';
@@ -64,6 +72,34 @@ async function resolveProfileName(
     process.exit(1);
   }
   return name;
+}
+
+async function resolveCliproxyProfileName(
+  provider: string,
+  providedName: string | undefined,
+  yes: boolean | undefined
+): Promise<string | undefined> {
+  if (providedName) {
+    const error = validateApiName(providedName);
+    if (error) {
+      console.log(fail(error));
+      process.exit(1);
+    }
+    return providedName;
+  }
+
+  const suggestedName = isCLIProxyProvider(provider)
+    ? suggestCliproxyBridgeName(provider)
+    : getDefaultCliproxyBridgeName('gemini');
+
+  if (yes) {
+    return suggestedName;
+  }
+
+  return InteractivePrompt.input('API name', {
+    default: suggestedName,
+    validate: validateApiName,
+  });
 }
 
 async function resolveBaseUrl(
@@ -247,6 +283,101 @@ export async function handleApiCreateCommand(args: string[]): Promise<void> {
 
   console.log(header('Create API Profile'));
   console.log('');
+
+  if (parsedArgs.cliproxyProvider) {
+    const cliproxyProvider = parsedArgs.cliproxyProvider.trim().toLowerCase();
+    if (!isCLIProxyProvider(cliproxyProvider)) {
+      console.log(fail(`Unknown CLIProxy provider: ${cliproxyProvider}`));
+      console.log('');
+      console.log(`Available providers: ${CLIPROXY_PROVIDER_IDS.join(', ')}`);
+      process.exit(1);
+    }
+
+    const incompatibleFlags = [
+      parsedArgs.baseUrl && '--base-url',
+      parsedArgs.apiKey && '--api-key',
+      parsedArgs.model && '--model',
+      parsedArgs.preset && '--preset',
+    ].filter(Boolean);
+
+    if (incompatibleFlags.length > 0) {
+      console.log(
+        fail(`--cliproxy-provider cannot be combined with ${incompatibleFlags.join(', ')}`)
+      );
+      process.exit(1);
+    }
+
+    const name = await resolveCliproxyProfileName(
+      cliproxyProvider,
+      parsedArgs.name,
+      parsedArgs.yes
+    );
+    const target = await resolveDefaultTarget(parsedArgs.target, parsedArgs.yes);
+
+    if (name && apiProfileExists(name) && !parsedArgs.force) {
+      console.log(fail(`API '${name}' already exists`));
+      console.log(`    Use ${color('--force', 'command')} to overwrite`);
+      process.exit(1);
+    }
+
+    console.log(
+      info(
+        `Using CLIProxy provider: ${getProviderDisplayName(cliproxyProvider)} (${cliproxyProvider})`
+      )
+    );
+    console.log(
+      dim('  CCS will create a routed API profile. Provider credentials stay managed by CLIProxy.')
+    );
+    console.log('');
+    console.log(info('Creating API profile...'));
+
+    const result = createCliproxyBridgeProfile(cliproxyProvider, {
+      force: parsedArgs.force === true,
+      name,
+      target,
+    });
+    if (!result.success || !result.name || !result.cliproxyBridge) {
+      console.log(fail(`Failed to create CLIProxy bridge profile: ${result.error}`));
+      process.exit(1);
+    }
+
+    try {
+      syncToLocalConfig();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      console.log(`[i] Auto-sync to CLIProxy config skipped: ${message}`);
+    }
+
+    const details =
+      `API:      ${result.name}\n` +
+      `Config:   ${isUsingUnifiedConfig() ? '~/.ccs/config.yaml' : '~/.ccs/config.json'}\n` +
+      `Settings: ${result.settingsFile}\n` +
+      `Provider: ${result.cliproxyBridge.providerDisplayName}\n` +
+      `Route:    ${result.cliproxyBridge.routePath}\n` +
+      `Proxy:    ${result.cliproxyBridge.currentBaseUrl}\n` +
+      `Target:   ${target}`;
+
+    console.log('');
+    console.log(infoBox(details, 'CLIProxy Bridge Created'));
+    console.log('');
+    console.log(header('Usage'));
+    if (target === 'droid') {
+      console.log(
+        `  ${color(`ccs ${result.name} "your prompt"`, 'command')} ${dim('# uses droid by default')}`
+      );
+      console.log(
+        `  ${color(`ccsd ${result.name} "your prompt"`, 'command')} ${dim('# explicit droid alias')}`
+      );
+    } else {
+      console.log(`  ${color(`ccs ${result.name} "your prompt"`, 'command')}`);
+      console.log(
+        `  ${color(`ccs ${result.name} --target droid "your prompt"`, 'command')} ${dim('# optional target override')}`
+      );
+    }
+    console.log('');
+    console.log(dim('Manage provider accounts, keys, and models in: ccs cliproxy'));
+    return;
+  }
 
   showPresetDeprecationNotice(parsedArgs.preset);
   const preset = resolvePresetOrExit(parsedArgs.preset);

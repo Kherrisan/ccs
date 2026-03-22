@@ -6,6 +6,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { getCcsDir, getConfigPath, loadConfigSafe } from '../../utils/config-manager';
 import { expandPath } from '../../utils/helpers';
+import { validateApiName } from './validation-service';
 import {
   loadOrCreateUnifiedConfig,
   saveUnifiedConfig,
@@ -14,6 +15,7 @@ import {
 import { ensureProfileHooks } from '../../utils/websearch/profile-hook-injector';
 import type { TargetType } from '../../targets/target-adapter';
 import { resolveDroidProvider } from '../../targets/droid-provider';
+import { isReservedName } from '../../config/reserved-names';
 import { mapExternalProviderName } from '../../cliproxy/provider-capabilities';
 import {
   extractProviderFromPathname,
@@ -23,9 +25,15 @@ import type { CLIProxyProvider } from '../../cliproxy/types';
 import type {
   ModelMapping,
   CreateApiProfileResult,
+  CreateCliproxyBridgeProfileResult,
   RemoveApiProfileResult,
   UpdateApiProfileTargetResult,
 } from './profile-types';
+import { apiProfileExists } from './profile-reader';
+import {
+  resolveCliproxyBridgeMetadata,
+  resolveCliproxyBridgeProfile,
+} from './cliproxy-profile-bridge';
 
 /** Check if URL is an OpenRouter endpoint */
 function isOpenRouterUrl(baseUrl: string): boolean {
@@ -231,6 +239,63 @@ export function createApiProfile(
       error: (error as Error).message,
     };
   }
+}
+
+export function createCliproxyBridgeProfile(
+  provider: CLIProxyProvider,
+  options: {
+    name?: string;
+    force?: boolean;
+    target?: TargetType;
+  } = {}
+): CreateCliproxyBridgeProfileResult {
+  const providedName = options.name?.trim();
+  if (providedName) {
+    const nameError = validateApiName(providedName);
+    if (nameError) {
+      return { success: false, settingsFile: '', error: nameError };
+    }
+    if (isReservedName(providedName)) {
+      return {
+        success: false,
+        settingsFile: '',
+        error: `Profile name '${providedName}' is reserved`,
+      };
+    }
+  }
+
+  const resolved = resolveCliproxyBridgeProfile(provider, options);
+  const settingsPath = path.join(getCcsDir(), `${resolved.name}.settings.json`);
+  if (!options.force && (apiProfileExists(resolved.name) || fs.existsSync(settingsPath))) {
+    return {
+      success: false,
+      settingsFile: '',
+      error: `Profile already exists: ${resolved.name}`,
+    };
+  }
+
+  const result = createApiProfile(
+    resolved.name,
+    resolved.baseUrl,
+    resolved.apiKey,
+    resolved.models,
+    resolved.target,
+    provider
+  );
+
+  return {
+    ...result,
+    name: resolved.name,
+    provider,
+    target: resolved.target,
+    cliproxyBridge:
+      resolveCliproxyBridgeMetadata({
+        env: {
+          ANTHROPIC_BASE_URL: resolved.baseUrl,
+          ANTHROPIC_AUTH_TOKEN: resolved.apiKey,
+        },
+      }) ?? null,
+  };
 }
 
 /**

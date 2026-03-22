@@ -55,6 +55,14 @@ describe('api-command arg parser', () => {
     expect(parsed.errors).toEqual([]);
   });
 
+  test('parses --cliproxy-provider for routed API profile creation', () => {
+    const parsed = parseApiCommandArgs(['my-api', '--cliproxy-provider', 'Gemini']);
+
+    expect(parsed.name).toBe('my-api');
+    expect(parsed.cliproxyProvider).toBe('gemini');
+    expect(parsed.errors).toEqual([]);
+  });
+
   test('validates invalid --target values', () => {
     const parsed = parseApiCommandArgs(['my-api', '--target', 'invalid-target']);
 

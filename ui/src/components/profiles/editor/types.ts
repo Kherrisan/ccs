@@ -2,7 +2,7 @@
  * Types for Profile Editor
  */
 
-import type { CliTarget } from '@/lib/api-client';
+import type { CliTarget, CliproxyBridgeMetadata } from '@/lib/api-client';
 
 export interface Settings {
   env?: Record<string, string>;
@@ -13,6 +13,7 @@ export interface SettingsResponse {
   settings: Settings;
   mtime: number;
   path: string;
+  cliproxyBridge?: CliproxyBridgeMetadata | null;
 }
 
 export interface ProfileEditorProps {

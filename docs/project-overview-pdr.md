@@ -1,6 +1,6 @@
 # CCS Product Development Requirements (PDR)
 
-Last Updated: 2026-02-04
+Last Updated: 2026-03-19
 
 ## Product Overview
 
@@ -32,10 +32,11 @@ CCS provides:
 
 1. **Multi-Account Claude**: Isolated instances via `CLAUDE_CONFIG_DIR`
 2. **OAuth Providers**: Zero-config Gemini, Codex, Antigravity, Copilot, Kiro (ghcp) integration
-3. **API Profiles**: GLM, Kimi, OpenRouter, any Anthropic-compatible API
-4. **Visual Dashboard**: React SPA for configuration management
-5. **Automatic WebSearch**: MCP fallback for third-party providers
-6. **Usage Analytics**: Token tracking, cost analysis, model breakdown
+3. **AI Providers**: Dedicated CLIProxy dashboard for Gemini, Codex, Claude, Vertex, and OpenAI-compatible API-key families
+4. **API Profiles**: GLM, Kimi, OpenRouter, any Anthropic-compatible API
+5. **Visual Dashboard**: React SPA for configuration management
+6. **Automatic WebSearch**: MCP fallback for third-party providers
+7. **Usage Analytics**: Token tracking, cost analysis, model breakdown
 
 ---
 
@@ -73,6 +74,11 @@ CCS provides:
 - Support Anthropic-compatible APIs
 - Model mapping and configuration
 - OpenRouter integration with 300+ models
+
+### FR-004A: CLIProxy AI Provider Management
+- Configure CLIProxy-managed Gemini, Codex, Claude, Vertex, and OpenAI-compatible API-key entries
+- Keep provider authoring separate from CCS API Profile creation
+- Support local config editing and remote CLIProxy management parity where available
 
 ### FR-005: Dashboard UI
 - Visual profile management
@@ -332,5 +338,5 @@ CCS provides:
 
 - [Codebase Summary](./codebase-summary.md) - Technical structure
 - [Code Standards](./code-standards.md) - Development conventions
-- [System Architecture](./system-architecture.md) - Architecture diagrams
+- [System Architecture](./system-architecture/index.md) - Architecture diagrams
 - [Project Roadmap](./project-roadmap.md) - Development phases and GitHub issues

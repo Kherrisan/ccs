@@ -9,6 +9,7 @@ import {
   PROVIDER_CAPABILITIES,
   getProvidersByOAuthFlow,
 } from '../../../src/cliproxy/provider-capabilities';
+import type { AiProviderFamilyId } from '../../../src/cliproxy/ai-providers';
 
 // Monorepo contract: UI consumes provider capability constants directly from backend
 // to enforce one source of truth and prevent provider drift across surfaces.
@@ -18,6 +19,7 @@ export const CLIPROXY_PROVIDERS = CLIPROXY_PROVIDER_IDS;
 
 /** Union type for CLIProxy provider IDs */
 export type CLIProxyProvider = (typeof CLIPROXY_PROVIDERS)[number];
+export type ProviderVisualId = CLIProxyProvider | 'openai' | 'vertex';
 
 /** Check if a string is a valid CLIProxy provider */
 export function isValidProvider(provider: string): provider is CLIProxyProvider {
@@ -33,6 +35,15 @@ interface ProviderMetadata {
   description: string;
 }
 
+const SPECIAL_PROVIDER_VISUAL_IDS = ['openai', 'vertex'] as const;
+
+function isProviderVisualId(provider: string): provider is ProviderVisualId {
+  return (
+    isValidProvider(provider) ||
+    SPECIAL_PROVIDER_VISUAL_IDS.includes(provider as (typeof SPECIAL_PROVIDER_VISUAL_IDS)[number])
+  );
+}
+
 export const PROVIDER_METADATA: Record<CLIProxyProvider, ProviderMetadata> = Object.freeze(
   Object.fromEntries(
     CLIPROXY_PROVIDERS.map((provider) => [
@@ -46,16 +57,18 @@ export const PROVIDER_METADATA: Record<CLIProxyProvider, ProviderMetadata> = Obj
 );
 
 // Map provider names to asset filenames (only providers with actual logos)
-export const PROVIDER_ASSETS: Record<CLIProxyProvider, string> = {
+export const PROVIDER_ASSETS: Partial<Record<ProviderVisualId, string>> = {
   gemini: '/assets/providers/gemini-color.svg',
   agy: '/assets/providers/agy.png',
-  codex: '/assets/providers/openai.svg',
+  codex: '/assets/providers/codex-color.svg',
   qwen: '/assets/providers/qwen-color.svg',
   iflow: '/assets/providers/iflow.png',
   kiro: '/assets/providers/kiro.png',
   ghcp: '/assets/providers/copilot.svg',
   claude: '/assets/providers/claude.svg',
   kimi: '/assets/providers/kimi.svg',
+  openai: '/assets/providers/openai.svg',
+  vertex: '/assets/providers/vertex.svg',
 };
 
 interface ProviderFallbackVisual {
@@ -69,7 +82,7 @@ const DEFAULT_PROVIDER_FALLBACK_VISUAL: ProviderFallbackVisual = {
 };
 
 /** Fallback visual style when a provider logo asset is unavailable. */
-export const PROVIDER_FALLBACK_VISUALS: Record<CLIProxyProvider, ProviderFallbackVisual> = {
+export const PROVIDER_FALLBACK_VISUALS: Record<ProviderVisualId, ProviderFallbackVisual> = {
   gemini: { textClass: 'text-blue-600', letter: 'G' },
   claude: { textClass: 'text-orange-600', letter: 'C' },
   codex: { textClass: 'text-emerald-600', letter: 'X' },
@@ -79,14 +92,32 @@ export const PROVIDER_FALLBACK_VISUALS: Record<CLIProxyProvider, ProviderFallbac
   kiro: { textClass: 'text-teal-600', letter: 'K' },
   ghcp: { textClass: 'text-green-600', letter: 'C' },
   kimi: { textClass: 'text-orange-500', letter: 'K' },
+  openai: { textClass: 'text-slate-900', letter: 'O' },
+  vertex: { textClass: 'text-blue-600', letter: 'V' },
 };
 
 /** Providers whose logo looks better on dark background. */
-export const PROVIDERS_WITH_DARK_LOGO_BG: ReadonlySet<CLIProxyProvider> = new Set(['kimi']);
+export const PROVIDERS_WITH_DARK_LOGO_BG: ReadonlySet<ProviderVisualId> = new Set(['kimi']);
+const PROVIDERS_WITH_SELF_CONTAINED_LOGO: ReadonlySet<ProviderVisualId> = new Set(['codex']);
+
+export function getAiProviderFamilyVisual(familyId: AiProviderFamilyId): ProviderVisualId {
+  switch (familyId) {
+    case 'gemini-api-key':
+      return 'gemini';
+    case 'codex-api-key':
+      return 'codex';
+    case 'claude-api-key':
+      return 'claude';
+    case 'vertex-api-key':
+      return 'vertex';
+    case 'openai-compatibility':
+      return 'openai';
+  }
+}
 
 export function getProviderLogoAsset(provider: unknown): string | undefined {
   const normalized = normalizeProviderInput(provider);
-  if (!isValidProvider(normalized)) {
+  if (!isProviderVisualId(normalized)) {
     return undefined;
   }
   return PROVIDER_ASSETS[normalized];
@@ -94,7 +125,7 @@ export function getProviderLogoAsset(provider: unknown): string | undefined {
 
 export function getProviderFallbackVisual(provider: unknown): ProviderFallbackVisual {
   const normalized = normalizeProviderInput(provider);
-  if (isValidProvider(normalized)) {
+  if (isProviderVisualId(normalized)) {
     return PROVIDER_FALLBACK_VISUALS[normalized];
   }
   return {
@@ -105,7 +136,12 @@ export function getProviderFallbackVisual(provider: unknown): ProviderFallbackVi
 
 export function providerNeedsDarkLogoBackground(provider: unknown): boolean {
   const normalized = normalizeProviderInput(provider);
-  return isValidProvider(normalized) && PROVIDERS_WITH_DARK_LOGO_BG.has(normalized);
+  return isProviderVisualId(normalized) && PROVIDERS_WITH_DARK_LOGO_BG.has(normalized);
+}
+
+export function providerUsesSelfContainedLogo(provider: unknown): boolean {
+  const normalized = normalizeProviderInput(provider);
+  return isProviderVisualId(normalized) && PROVIDERS_WITH_SELF_CONTAINED_LOGO.has(normalized);
 }
 
 // Provider brand colors
@@ -113,6 +149,7 @@ export const PROVIDER_COLORS: Record<string, string> = {
   gemini: '#4285F4',
   agy: '#f3722c',
   codex: '#10a37f',
+  openai: '#111827',
   vertex: '#4285F4',
   iflow: '#f94144',
   qwen: '#6236FF',
@@ -126,6 +163,7 @@ const PROVIDER_NAMES: Record<string, string> = {
   ...Object.fromEntries(
     CLIPROXY_PROVIDERS.map((provider) => [provider, PROVIDER_METADATA[provider].displayName])
   ),
+  openai: 'OpenAI',
   vertex: 'Vertex AI',
 };
 
