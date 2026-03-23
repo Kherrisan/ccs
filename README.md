@@ -194,24 +194,24 @@ ccs api export glm --out ./glm.ccs-profile.json  # Export for cross-device trans
 ccs api import ./glm.ccs-profile.json        # Import exported profile bundle
 ```
 
-### Runtime Aliases (`argv[0]` pattern)
+### Runtime Aliases (built-in bins / `argv[0]` pattern)
 
-Built-in Droid runtime aliases:
+Built-in Droid runtime aliases are installed with the package:
 
 ```bash
-ln -s "$(command -v ccs)" /usr/local/bin/ccs-droid
-ln -s "$(command -v ccs)" /usr/local/bin/ccsd
 ccs-droid glm   # explicit alias
 ccsd glm        # legacy shortcut
 ```
 
-Need additional alias names? Use `CCS_TARGET_ALIASES` (preferred) or keep using
-legacy `CCS_DROID_ALIASES`:
+Need additional alias names? First create the matching symlink or another launcher that
+preserves the invoked basename, then map that name with `CCS_TARGET_ALIASES` (preferred) or legacy
+`CCS_DROID_ALIASES`:
 
 ```bash
-CCS_TARGET_ALIASES='droid=mydroid,team-droid'
+ln -s "$(command -v ccs)" /usr/local/bin/mydroid
+CCS_TARGET_ALIASES='droid=mydroid'
 # Legacy fallback still supported:
-CCS_DROID_ALIASES='mydroid,team-droid'
+CCS_DROID_ALIASES='mydroid'
 ```
 
 For Factory BYOK compatibility, CCS also stores a per-profile Droid provider hint

@@ -8,6 +8,7 @@ describe('resolveTargetType', () => {
   const originalArgv = process.argv;
   const originalDroidAliases = process.env.CCS_DROID_ALIASES;
   const originalTargetAliases = process.env.CCS_TARGET_ALIASES;
+  const originalInternalEntryTarget = process.env.CCS_INTERNAL_ENTRY_TARGET;
 
   afterEach(() => {
     process.argv = originalArgv;
@@ -21,6 +22,12 @@ describe('resolveTargetType', () => {
       delete process.env.CCS_TARGET_ALIASES;
     } else {
       process.env.CCS_TARGET_ALIASES = originalTargetAliases;
+    }
+
+    if (originalInternalEntryTarget === undefined) {
+      delete process.env.CCS_INTERNAL_ENTRY_TARGET;
+    } else {
+      process.env.CCS_INTERNAL_ENTRY_TARGET = originalInternalEntryTarget;
     }
   });
 
@@ -82,10 +89,27 @@ describe('resolveTargetType', () => {
     expect(resolveTargetType([])).toBe('droid');
   });
 
+  it('should merge CCS_TARGET_ALIASES and CCS_DROID_ALIASES', () => {
+    process.env.CCS_TARGET_ALIASES = 'droid=team-droid';
+    process.env.CCS_DROID_ALIASES = 'legacy-droid';
+
+    process.argv = ['node', 'team-droid'];
+    expect(resolveTargetType([])).toBe('droid');
+
+    process.argv = ['node', 'legacy-droid'];
+    expect(resolveTargetType([])).toBe('droid');
+  });
+
   it('should ignore invalid custom alias entries', () => {
     process.env.CCS_DROID_ALIASES = 'valid_alias,../bad,';
     process.argv = ['node', '../bad'];
     expect(resolveTargetType([])).toBe('claude');
+  });
+
+  it('should detect internal entry target for dedicated package bin entrypoints', () => {
+    process.env.CCS_INTERNAL_ENTRY_TARGET = 'droid';
+    process.argv = ['node', 'ccs'];
+    expect(resolveTargetType([])).toBe('droid');
   });
 
   it('should normalize argv[0] and custom aliases case-insensitively', () => {
@@ -134,9 +158,41 @@ describe('resolveTargetType', () => {
     expect(resolveTargetType(['--target', 'claude'])).toBe('claude');
   });
 
-  it('should prioritize profile config over argv[0]', () => {
+  it('should prioritize --target over internal entry target', () => {
+    process.env.CCS_INTERNAL_ENTRY_TARGET = 'droid';
+    process.argv = ['node', 'ccs'];
+    expect(resolveTargetType(['--target', 'claude'])).toBe('claude');
+  });
+
+  it('should prioritize runtime alias over profile config', () => {
     process.argv = ['node', 'ccsd'];
-    expect(resolveTargetType([], { target: 'claude' })).toBe('claude');
+    expect(resolveTargetType([], { target: 'claude' })).toBe('droid');
+  });
+
+  it('should prioritize internal entry target over profile config', () => {
+    process.env.CCS_INTERNAL_ENTRY_TARGET = 'droid';
+    process.argv = ['node', 'ccs'];
+    expect(resolveTargetType([], { target: 'claude' })).toBe('droid');
+  });
+
+  it('should keep reserved command names authoritative', () => {
+    process.env.CCS_TARGET_ALIASES = 'claude=ccs,ccs-droid,ccsd;droid=mydroid';
+    process.env.CCS_DROID_ALIASES = 'ccs,ccs-droid,ccsd,legacy-droid';
+
+    process.argv = ['node', 'ccs'];
+    expect(resolveTargetType([])).toBe('claude');
+
+    process.argv = ['node', 'ccs-droid'];
+    expect(resolveTargetType([])).toBe('droid');
+
+    process.argv = ['node', 'ccsd'];
+    expect(resolveTargetType([])).toBe('droid');
+
+    process.argv = ['node', 'mydroid'];
+    expect(resolveTargetType([])).toBe('droid');
+
+    process.argv = ['node', 'legacy-droid'];
+    expect(resolveTargetType([])).toBe('droid');
   });
 
   it('should throw for invalid --target value', () => {

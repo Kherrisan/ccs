@@ -526,23 +526,23 @@ export function ProfileCreateDialog({
                   <p className="text-xs text-muted-foreground">
                     {targetValue === 'droid' ? (
                       <>
-                        Preferred explicit alias:{' '}
+                        {t('profileEditor.targetHintPreferredAlias')}{' '}
                         <code className="bg-muted px-1 rounded text-[10px]">ccs-droid</code>.
                       </>
                     ) : (
                       <>
-                        Run with <code className="bg-muted px-1 rounded text-[10px]">ccs</code> by
-                        default.
+                        {t('profileEditor.targetHintClaudeDefault')}{' '}
+                        <code className="bg-muted px-1 rounded text-[10px]">ccs</code>.
                       </>
                     )}
                     {targetValue === 'droid' ? (
                       <>
                         {' '}
-                        Legacy <code className="bg-muted px-1 rounded text-[10px]">ccsd</code> still
-                        works for Droid.
+                        {t('profileEditor.targetHintLegacyAlias')}{' '}
+                        <code className="bg-muted px-1 rounded text-[10px]">ccsd</code>.
                       </>
                     ) : null}{' '}
-                    You can still override each run with{' '}
+                    {t('profileEditor.targetHintOverride')}{' '}
                     <code className="bg-muted px-1 rounded text-[10px]">--target</code>.
                   </p>
                 </div>

@@ -86,7 +86,7 @@ Spawn Target Process
   - Spawns: `droid -m custom:ccs-<profile> <args>`
   - Model config includes baseUrl, apiKey, provider
 
-**Runtime alias pattern (argv[0]-style):**
+**Runtime alias pattern (built-in bins / argv[0]-style):**
 
 ```
 ccs        → Target: claude (default)

@@ -355,27 +355,28 @@ ccs --target droid glm
 ### Runtime Alias Pattern
 
 ```bash
-# Create aliases/symlinks to auto-select droid target
-ln -s /path/to/ccs /path/to/ccs-droid
-ln -s /path/to/ccs /path/to/ccsd
-
-# Usage
+# Built-in package bin aliases
 ccs-droid glm
-→ Target: droid (detected from argv[0])
+→ Target: droid (forced by runtime alias)
 → droid -m custom:ccs-glm "args..."
 
 # Legacy shortcut still works
 ccsd glm
-→ Target: droid (detected from argv[0])
+→ Target: droid (forced by runtime alias)
 → droid -m custom:ccs-glm "args..."
 ```
 
 On Windows, `ccs-droid.cmd`, `ccsd.cmd`, `ccsd.bat`, `ccsd.ps1`, and `ccsd.exe` wrappers are also recognized.
 
-Additional alias names can be configured at runtime via `CCS_TARGET_ALIASES`
-(preferred, `target=alias1,alias2;...`) or legacy `CCS_DROID_ALIASES`
-(comma-separated). Example:
-`CCS_TARGET_ALIASES=droid=mydroid,team-droid`
+Additional alias names can be configured at runtime after you create a matching
+symlink or another launcher that preserves the invoked basename. Use `CCS_TARGET_ALIASES` (preferred,
+`target=alias1,alias2;...`) or legacy `CCS_DROID_ALIASES` (comma-separated).
+Example:
+
+```bash
+ln -s /path/to/ccs /path/to/mydroid
+CCS_TARGET_ALIASES=droid=mydroid
+```
 
 ---
 

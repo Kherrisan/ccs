@@ -3,8 +3,8 @@
  *
  * Resolves which CLI target to use based on:
  * 1. --target flag (highest priority)
- * 2. Per-profile config
- * 3. argv[0] detection (busybox/symlink pattern)
+ * 2. Runtime alias entrypoint / argv[0] detection
+ * 3. Per-profile config
  * 4. Default: 'claude'
  */
 
@@ -20,14 +20,20 @@ const BUILTIN_ARGV0_TARGET_MAP: Record<string, TargetType> = {
   ccsd: 'droid',
 };
 const ALIAS_NAME_REGEX = /^[a-z0-9._-]+$/;
+const INTERNAL_ENTRY_TARGET_ENV_VAR = 'CCS_INTERNAL_ENTRY_TARGET';
 const GENERIC_TARGET_ALIAS_ENV_VAR = 'CCS_TARGET_ALIASES';
 const LEGACY_TARGET_ALIAS_ENV_VARS: Partial<Record<TargetType, string>> = {
   droid: 'CCS_DROID_ALIASES',
 };
+const RESERVED_BIN_NAMES = new Set<string>(['ccs', ...Object.keys(BUILTIN_ARGV0_TARGET_MAP)]);
 
 function addAliasToMap(map: Record<string, TargetType>, alias: string, target: TargetType): void {
   const normalizedAlias = alias.trim().toLowerCase();
-  if (!normalizedAlias || !ALIAS_NAME_REGEX.test(normalizedAlias)) {
+  if (
+    !normalizedAlias ||
+    !ALIAS_NAME_REGEX.test(normalizedAlias) ||
+    RESERVED_BIN_NAMES.has(normalizedAlias)
+  ) {
     return;
   }
 
@@ -85,6 +91,16 @@ function buildArgv0TargetMap(): Record<string, TargetType> {
   }
 
   return map;
+}
+
+function resolveEntrypointTarget(): TargetType | null {
+  const rawTarget = process.env[INTERNAL_ENTRY_TARGET_ENV_VAR];
+  if (!rawTarget) {
+    return null;
+  }
+
+  const normalizedTarget = rawTarget.trim().toLowerCase();
+  return isValidTarget(normalizedTarget) ? normalizedTarget : null;
 }
 
 /**
@@ -172,19 +188,23 @@ export function resolveTargetType(
     return parsed.targetOverride;
   }
 
-  // 2. Check per-profile config
-  if (profileConfig?.target !== undefined) {
-    return isValidTarget(profileConfig.target) ? profileConfig.target : 'claude';
+  // 2. Check runtime alias entrypoint / argv[0]
+  const entrypointTarget = resolveEntrypointTarget();
+  if (entrypointTarget) {
+    return entrypointTarget;
   }
 
-  // 3. Check argv[0] (busybox pattern)
-  // Strip common wrapper extensions for Windows shims/wrappers
   const rawBin = path.basename(process.argv[1] || process.argv0 || '');
   const binName = rawBin.replace(/\.(cmd|bat|ps1|exe)$/i, '').toLowerCase();
   const argv0TargetMap = buildArgv0TargetMap();
   const argv0Target = argv0TargetMap[binName];
   if (argv0Target) {
     return argv0Target;
+  }
+
+  // 3. Check per-profile config
+  if (profileConfig?.target !== undefined) {
+    return isValidTarget(profileConfig.target) ? profileConfig.target : 'claude';
   }
 
   // 4. Default
