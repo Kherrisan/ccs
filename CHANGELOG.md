@@ -1,3 +1,38 @@
+## [7.57.0](https://github.com/kaitranntt/ccs/compare/v7.56.0...v7.57.0) (2026-03-24)
+
+### Features
+
+* add explicit droid runtime alias surface ([160be31](https://github.com/kaitranntt/ccs/commit/160be319d0b1982c05dc2984673a81aa6ec245b5))
+* **cliproxy:** allow optional provider nicknames ([bdb7ac2](https://github.com/kaitranntt/ccs/commit/bdb7ac2937d144dc2564d09b01e717e8a4bc44eb))
+* make cliproxy provider nicknames optional by default ([4df08f6](https://github.com/kaitranntt/ccs/commit/4df08f6d99e3006107a0431609b7651f13ebc083))
+* **websearch:** add real provider chain ([6c7d215](https://github.com/kaitranntt/ccs/commit/6c7d215ecc7d2a986e922400eb6787f1b402931d))
+
+### Bug Fixes
+
+* **auth:** verify polled oauth account persistence ([09eb01f](https://github.com/kaitranntt/ccs/commit/09eb01f16e0a374198031079d22eeae2a3135810))
+* **ci:** close release automation edge cases ([e06e13a](https://github.com/kaitranntt/ccs/commit/e06e13ad0db514ef6b3ef3af2062cc2ee28a2170))
+* **ci:** harden release automation workflows ([5616c68](https://github.com/kaitranntt/ccs/commit/5616c68471c052e68e65578ac3a48c8998036c86))
+* **ci:** publish docker image from releases ([5c1553e](https://github.com/kaitranntt/ccs/commit/5c1553e6f5722e5f61780a389d4729428529fdc3))
+* **dashboard:** refine api profile quick start state ([aef58d6](https://github.com/kaitranntt/ccs/commit/aef58d66ce69777cf8aba6f43f615560ef820b62))
+* **dashboard:** remove the unnecessary blank on api config page ([3a7e778](https://github.com/kaitranntt/ccs/commit/3a7e778bec13869bf03d3c4c39d2934473eb9fce))
+* harden droid runtime alias resolution ([1f667b5](https://github.com/kaitranntt/ccs/commit/1f667b5953297189dfe8e88112088b11641ba676))
+* **ui:** guard auth success on registered account ([a3478ac](https://github.com/kaitranntt/ccs/commit/a3478ace447d0a9c99c8266e3c0723c0ae29d5f5))
+* **ui:** remove stale dashboard footer gap ([0d59c7a](https://github.com/kaitranntt/ccs/commit/0d59c7a3af35ff5af6768d5d4083abf1ab29d8af))
+
+### Documentation
+
+* **repo:** add security reporting and issue routing ([#769](https://github.com/kaitranntt/ccs/issues/769)) ([185f7f4](https://github.com/kaitranntt/ccs/commit/185f7f469e62a0a86aebf1d9fe98aaa101a3a19b))
+
+### Styles
+
+* **auth:** format cliproxy auth route ([06d098a](https://github.com/kaitranntt/ccs/commit/06d098ae0e981abd9b0dd15397cdac297e7bfc22))
+* **websearch:** format routes after rebase ([83dab7f](https://github.com/kaitranntt/ccs/commit/83dab7fea7ed906da93ea4946fb41c1cec829547))
+
+### Tests
+
+* **cliproxy:** cover optional nickname auth flows ([8347049](https://github.com/kaitranntt/ccs/commit/834704938db14635b87e3a2e337a9d75e3f43d6b))
+* **dashboard:** cover api profile quick start states ([10f2845](https://github.com/kaitranntt/ccs/commit/10f284585f1473f3198288bc0419c58b058442b3))
+
 ## [7.56.0](https://github.com/kaitranntt/ccs/compare/v7.55.0...v7.56.0) (2026-03-22)
 
 ### Features
