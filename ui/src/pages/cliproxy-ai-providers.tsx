@@ -1248,6 +1248,7 @@ function EntryInspector({
                     onChange={handleRawJsonChange}
                     language="json"
                     minHeight="100%"
+                    heightMode="fill-parent"
                   />
                 </div>
               </div>
@@ -1271,6 +1272,7 @@ function EntryInspector({
                     language="json"
                     readonly
                     minHeight="100%"
+                    heightMode="fill-parent"
                   />
                 </div>
               </div>

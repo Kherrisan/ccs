@@ -40,7 +40,7 @@ export function RawEditorSection({
         </div>
       }
     >
-      <div className="h-full flex flex-col">
+      <div className="flex h-full min-h-0 flex-col">
         {!isRawJsonValid && rawJsonEdits !== null && (
           <div className="mb-2 px-3 py-2 bg-destructive/10 text-destructive text-sm rounded-md flex items-center gap-2 mx-6 mt-4 shrink-0">
             <X className="w-4 h-4" />
@@ -63,13 +63,14 @@ export function RawEditorSection({
             </div>
           </div>
         )}
-        <div className="flex-1 overflow-hidden px-6 pb-4 pt-4">
+        <div className="min-h-0 flex-1 overflow-hidden px-6 pb-4 pt-4">
           <div className="h-full border rounded-md overflow-hidden bg-background">
             <CodeEditor
               value={rawJsonContent}
               onChange={onChange}
               language="json"
               minHeight="100%"
+              heightMode="fill-parent"
             />
           </div>
         </div>
