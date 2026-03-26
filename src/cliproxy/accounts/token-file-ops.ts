@@ -15,6 +15,16 @@ export function getAccountsRegistryPath(): string {
   return path.join(getCliproxyDir(), 'accounts.json');
 }
 
+export interface RecoverableTokenFile {
+  tokenFile: string;
+  filePath: string;
+  paused: boolean;
+}
+
+interface ListRecoverableTokenFilesOptions {
+  includePaused?: boolean;
+}
+
 /**
  * Get path to paused tokens directory
  * Paused tokens are moved here so CLIProxyAPI won't discover them
@@ -26,6 +36,43 @@ export function getAccountsRegistryPath(): string {
  */
 export function getPausedDir(): string {
   return path.join(getCliproxyDir(), 'auth-paused');
+}
+
+/**
+ * List token files that can be used to rebuild the accounts registry.
+ * Active auth tokens win over paused duplicates with the same filename.
+ */
+export function listRecoverableTokenFiles(
+  options: ListRecoverableTokenFilesOptions = {}
+): RecoverableTokenFile[] {
+  const tokenFiles: RecoverableTokenFile[] = [];
+  const seen = new Set<string>();
+  const sources = [{ dir: getAuthDir(), paused: false }];
+
+  if (options.includePaused) {
+    sources.push({ dir: getPausedDir(), paused: true });
+  }
+
+  for (const source of sources) {
+    if (!fs.existsSync(source.dir)) {
+      continue;
+    }
+
+    for (const tokenFile of fs.readdirSync(source.dir)) {
+      if (!tokenFile.endsWith('.json') || seen.has(tokenFile)) {
+        continue;
+      }
+
+      tokenFiles.push({
+        tokenFile,
+        filePath: path.join(source.dir, tokenFile),
+        paused: source.paused,
+      });
+      seen.add(tokenFile);
+    }
+  }
+
+  return tokenFiles;
 }
 
 /**
