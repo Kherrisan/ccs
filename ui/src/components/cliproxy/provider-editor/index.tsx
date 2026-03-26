@@ -234,8 +234,8 @@ export function ProviderEditor({
           <span className="ml-3 text-muted-foreground">Loading settings...</span>
         </div>
       ) : (
-        <div className="flex-1 grid grid-cols-[40%_60%] divide-x overflow-hidden">
-          <div className="flex flex-col overflow-hidden bg-muted/5">
+        <div className="min-h-0 flex-1 grid grid-cols-[40%_60%] divide-x overflow-hidden">
+          <div className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-muted/5">
             <Tabs defaultValue="config" className="h-full flex flex-col">
               <div className="px-4 pt-4 shrink-0">
                 <TabsList className="w-full">
@@ -303,7 +303,7 @@ export function ProviderEditor({
             </Tabs>
           </div>
 
-          <div className="flex flex-col overflow-hidden">
+          <div className="flex min-h-0 min-w-0 flex-col overflow-hidden">
             <div className="px-6 py-2 bg-muted/30 border-b flex items-center gap-2 shrink-0 h-[45px]">
               <Code2 className="w-4 h-4 text-muted-foreground" />
               <span className="text-sm font-medium text-muted-foreground">

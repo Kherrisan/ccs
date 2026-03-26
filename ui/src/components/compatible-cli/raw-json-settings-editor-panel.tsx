@@ -85,15 +85,21 @@ export function RawJsonSettingsEditorPanel({
             Loading settings.json...
           </div>
         ) : (
-          <div className="h-full flex flex-col">
+          <div className="flex h-full min-h-0 flex-col">
             {parseWarning && (
               <div className="mx-4 mt-4 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-950/20 dark:text-amber-300">
                 Parse warning: {parseWarning}
               </div>
             )}
-            <div className="flex-1 p-4 pt-3">
+            <div className="min-h-0 flex-1 p-4 pt-3">
               <div className="h-full rounded-md border overflow-hidden bg-background">
-                <CodeEditor value={value} onChange={onChange} language="json" minHeight="100%" />
+                <CodeEditor
+                  value={value}
+                  onChange={onChange}
+                  language="json"
+                  minHeight="100%"
+                  heightMode="fill-parent"
+                />
               </div>
             </div>
           </div>

@@ -226,8 +226,8 @@ export function ProfileEditor({
           </div>
         </div>
       ) : (
-        <div className="flex-1 grid grid-cols-[40%_60%] divide-x overflow-hidden">
-          <div className="flex flex-col overflow-hidden bg-muted/5 min-w-0">
+        <div className="min-h-0 flex-1 grid grid-cols-[40%_60%] divide-x overflow-hidden">
+          <div className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-muted/5">
             <FriendlyUISection
               profileName={profileName}
               target={resolvedTarget}
@@ -242,7 +242,7 @@ export function ProfileEditor({
               onAddEnvVar={addNewEnvVar}
             />
           </div>
-          <div className="flex flex-col overflow-hidden">
+          <div className="flex min-h-0 min-w-0 flex-col overflow-hidden">
             <div className="px-6 py-2 bg-muted/30 border-b flex items-center gap-2 shrink-0 h-[45px]">
               <Code2 className="w-4 h-4 text-muted-foreground" />
               <span className="text-sm font-medium text-muted-foreground">
