@@ -486,8 +486,7 @@ const resources = {
           'Settings > Proxy power user mode is skipping the AGY responsibility checklist and Gemini dashboard risk phrase. You accept full responsibility for OAuth/account risk.',
         powerUserLoadFailed:
           'Failed to load power user mode settings. Check Settings > Proxy and try again.',
-        powerUserLoading:
-          'Loading power user safety settings. Please wait a moment and retry.',
+        powerUserLoading: 'Loading power user safety settings. Please wait a moment and retry.',
         powerUserUnavailableRetry:
           'Power user mode is unavailable. Complete the required provider safety step and retry.',
         authMethod: 'Auth Method',
@@ -763,7 +762,7 @@ const resources = {
         variantsIncompatible:
           'Existing Kiro/Copilot variants will not work with CLIProxyAPI. Switch to CLIProxyAPIPlus or remove those variants.',
         safety: 'Safety',
-        agyModeTitle: 'Antigravity Power User Mode',
+        agyModeTitle: 'Antigravity + Gemini Power User Mode',
         agyModeDesc:
           'Skip the AGY responsibility checklist and the Gemini dashboard typed acknowledgement.',
         agyWarning:
@@ -776,10 +775,10 @@ const resources = {
         step2: 'Step 2',
         typePrefix: 'Type',
         typeSuffix: 'to enable.',
-        typePhraseAria: 'Type I ACCEPT RISK to enable power user mode',
+        typePhraseAria: 'Type I ACCEPT RISK to enable Antigravity + Gemini power user mode',
         exactPhrase: 'Exact phrase required.',
-        enableAgyMode: 'Enable Power User Mode',
-        toggleAgyMode: 'Toggle power user mode',
+        enableAgyMode: 'Enable Antigravity + Gemini Power User Mode',
+        toggleAgyMode: 'Toggle Antigravity + Gemini power user mode',
         fallbackSettings: 'Fallback Settings',
         enableFallback: 'Enable fallback to local',
         enableFallbackDesc: 'Use local proxy if remote is unreachable',
@@ -1939,7 +1938,7 @@ const resources = {
         variantsIncompatible:
           '现有 Kiro/Copilot 变体与 CLIProxyAPI 不兼容。请切换到 CLIProxyAPIPlus 或移除这些变体。',
         safety: '安全',
-        agyModeTitle: 'Antigravity 高级模式',
+        agyModeTitle: 'Antigravity + Gemini 高级模式',
         agyModeDesc: '跳过 AGY 责任确认清单，以及 Gemini Dashboard 中输入风险短语的步骤。',
         agyWarning: '仅在你充分理解 OAuth 封禁风险模式（#509）后使用。CCS 不对账号损失承担责任。',
         finalConfirm: '需要最终确认',
@@ -1950,10 +1949,10 @@ const resources = {
         step2: '步骤 2',
         typePrefix: '输入',
         typeSuffix: '以启用。',
-        typePhraseAria: '输入 I ACCEPT RISK 以启用高级模式',
+        typePhraseAria: '输入 I ACCEPT RISK 以启用 Antigravity + Gemini 高级模式',
         exactPhrase: '必须输入完全一致的短语。',
-        enableAgyMode: '启用高级模式',
-        toggleAgyMode: '切换高级模式',
+        enableAgyMode: '启用 Antigravity + Gemini 高级模式',
+        toggleAgyMode: '切换 Antigravity + Gemini 高级模式',
         fallbackSettings: '回退设置',
         enableFallback: '启用本地回退',
         enableFallbackDesc: '远程不可达时使用本地代理',
@@ -3155,7 +3154,7 @@ const resources = {
         variantsIncompatible:
           'Các biến thể Kiro/Copilot hiện tại sẽ không hoạt động với CLIProxyAPI. Chuyển sang CLIProxyAPIPlus hoặc xóa các biến thể đó.',
         safety: 'An toàn',
-        agyModeTitle: 'Chế độ power user Antigravity',
+        agyModeTitle: 'Chế độ power user Antigravity + Gemini',
         agyModeDesc:
           'Bỏ qua danh sách kiểm tra trách nhiệm AGY và bước nhập cụm từ xác nhận của Gemini trên dashboard.',
         agyWarning:
@@ -3168,10 +3167,10 @@ const resources = {
         step2: 'Bước 2',
         typePrefix: 'Nhập',
         typeSuffix: 'để kích hoạt.',
-        typePhraseAria: 'Nhập I ACCEPT RISK để bật chế độ power user',
+        typePhraseAria: 'Nhập I ACCEPT RISK để bật chế độ power user Antigravity + Gemini',
         exactPhrase: 'Phải nhập chính xác cụm từ.',
-        enableAgyMode: 'Bật chế độ power user',
-        toggleAgyMode: 'Chuyển đổi chế độ power user',
+        enableAgyMode: 'Bật chế độ power user Antigravity + Gemini',
+        toggleAgyMode: 'Chuyển đổi chế độ power user Antigravity + Gemini',
         fallbackSettings: 'Cài đặt dự phòng',
         enableFallback: 'Cho phép dự phòng về cục bộ',
         enableFallbackDesc: 'Sử dụng proxy cục bộ nếu không thể truy cập được từ xa',
@@ -4389,7 +4388,7 @@ const resources = {
         variantsIncompatible:
           '既存の Kiro/Copilot バリアントは CLIProxyAPI では動作しません。CLIProxyAPIPlus に切り替えるか、それらのバリアントを削除してください。',
         safety: '安全設定',
-        agyModeTitle: 'Antigravity パワーユーザーモード',
+        agyModeTitle: 'Antigravity + Gemini パワーユーザーモード',
         agyModeDesc:
           'アカウント追加画面の AGY 責任確認チェックと、Gemini ダッシュボードの入力確認をスキップします。',
         agyWarning:
@@ -4402,10 +4401,11 @@ const resources = {
         step2: 'ステップ 2',
         typePrefix: '有効にするには',
         typeSuffix: 'と入力してください。',
-        typePhraseAria: 'パワーユーザーモードを有効にするには I ACCEPT RISK と入力してください',
+        typePhraseAria:
+          'Antigravity + Gemini パワーユーザーモードを有効にするには I ACCEPT RISK と入力してください',
         exactPhrase: '完全一致で入力してください。',
-        enableAgyMode: 'パワーユーザーモードを有効にする',
-        toggleAgyMode: 'パワーユーザーモードを切り替え',
+        enableAgyMode: 'Antigravity + Gemini パワーユーザーモードを有効にする',
+        toggleAgyMode: 'Antigravity + Gemini パワーユーザーモードを切り替え',
         fallbackSettings: 'フォールバック設定',
         enableFallback: 'ローカルへのフォールバックを有効化',
         enableFallbackDesc: 'リモートに接続できない場合はローカルプロキシを使用します',
