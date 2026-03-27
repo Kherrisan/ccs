@@ -659,6 +659,7 @@ export default function WebSearchSection() {
                   const enabled =
                     config?.providers?.[provider.id]?.enabled ?? provider.defaultEnabled;
                   const tone = getStatusTone(currentStatus, enabled);
+                  const apiKeyProviderId = isApiKeyProvider(provider.id) ? provider.id : null;
 
                   return (
                     <div
@@ -693,7 +694,7 @@ export default function WebSearchSection() {
                         }}
                         fields={buildFields(provider)}
                       >
-                        {isApiKeyProvider(provider.id) && (
+                        {apiKeyProviderId && (
                           <div className="space-y-3">
                             <div className="flex items-start justify-between gap-3">
                               <div>
@@ -718,15 +719,15 @@ export default function WebSearchSection() {
 
                             <MaskedInput
                               id={`${provider.id}.api-key`}
-                              value={apiKeyDrafts[provider.id] ?? ''}
+                              value={apiKeyDrafts[apiKeyProviderId] ?? ''}
                               onChange={(event) =>
                                 setApiKeyDrafts((current) => ({
                                   ...current,
-                                  [provider.id]: event.target.value,
+                                  [apiKeyProviderId]: event.target.value,
                                 }))
                               }
                               placeholder={
-                                config?.apiKeys?.[provider.id]?.configured
+                                config?.apiKeys?.[apiKeyProviderId]?.configured
                                   ? 'Enter a new key to rotate the stored secret'
                                   : `Paste ${provider.badge}`
                               }
@@ -738,24 +739,24 @@ export default function WebSearchSection() {
                               <Button
                                 size="sm"
                                 onClick={() => {
-                                  void saveApiKey(provider.id);
+                                  void saveApiKey(apiKeyProviderId);
                                 }}
                                 disabled={
-                                  saving || !(apiKeyDrafts[provider.id]?.trim() ?? '').length
+                                  saving || !(apiKeyDrafts[apiKeyProviderId]?.trim() ?? '').length
                                 }
                               >
-                                {config?.apiKeys?.[provider.id]?.configured
+                                {config?.apiKeys?.[apiKeyProviderId]?.configured
                                   ? 'Update key'
                                   : 'Save key'}
                               </Button>
 
-                              {(config?.apiKeys?.[provider.id]?.source === 'global_env' ||
-                                config?.apiKeys?.[provider.id]?.source === 'both') && (
+                              {(config?.apiKeys?.[apiKeyProviderId]?.source === 'global_env' ||
+                                config?.apiKeys?.[apiKeyProviderId]?.source === 'both') && (
                                 <Button
                                   variant="outline"
                                   size="sm"
                                   onClick={() => {
-                                    void removeApiKey(provider.id);
+                                    void removeApiKey(apiKeyProviderId);
                                   }}
                                   disabled={saving}
                                 >
