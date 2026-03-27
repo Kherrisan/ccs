@@ -10,15 +10,31 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { info, warn } from '../ui';
 import { getWebSearchConfig } from '../../config/unified-config-loader';
-import { getCcsHooksDir } from '../config-manager';
+import { getCcsDir, getCcsHooksDir } from '../config-manager';
 import { getHookPath } from './hook-config';
-import { removeMigrationMarker } from './profile-hook-injector';
 
 // Re-export from hook-config for backward compatibility
 export { getHookPath, getWebSearchHookConfig } from './hook-config';
 
 // Hook file name
 const WEBSEARCH_HOOK = 'websearch-transformer.cjs';
+
+function getMigrationMarkerPath(): string {
+  return path.join(getCcsDir(), '.hook-migrated');
+}
+
+export function removeMigrationMarker(): void {
+  try {
+    const markerPath = getMigrationMarkerPath();
+    if (fs.existsSync(markerPath)) {
+      fs.unlinkSync(markerPath);
+    }
+  } catch (error) {
+    if (process.env.CCS_DEBUG) {
+      console.error(warn(`removeMigrationMarker failed: ${(error as Error).message}`));
+    }
+  }
+}
 
 /**
  * Check if WebSearch hook is installed

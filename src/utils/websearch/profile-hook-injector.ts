@@ -15,6 +15,7 @@ import { getWebSearchConfig } from '../../config/unified-config-loader';
 import { removeHookConfig } from './hook-config';
 import { getCcsDir } from '../config-manager';
 import { isCcsWebSearchHook, deduplicateCcsHooks } from './hook-utils';
+import { installWebSearchHook } from './hook-installer';
 
 // Valid profile name pattern (alphanumeric, dash, underscore only)
 const VALID_PROFILE_NAME = /^[a-zA-Z0-9_-]+$/;
@@ -98,6 +99,14 @@ export function ensureProfileHooks(profileName: string): boolean {
     // Ensure CCS dir exists
     if (!fs.existsSync(ccsDir)) {
       fs.mkdirSync(ccsDir, { recursive: true, mode: 0o700 });
+    }
+
+    // Keep the injected command target valid for all profile types, not just CLIProxy.
+    if (!installWebSearchHook() && !fs.existsSync(getHookPath())) {
+      if (process.env.CCS_DEBUG) {
+        console.error(warn('WebSearch hook binary is missing and could not be installed'));
+      }
+      return false;
     }
 
     const settingsPath = path.join(ccsDir, `${profileName}.settings.json`);
