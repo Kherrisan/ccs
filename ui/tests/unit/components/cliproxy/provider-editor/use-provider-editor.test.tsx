@@ -11,9 +11,7 @@ function createJsonResponse(body: Record<string, unknown>, status = 200): Respon
   });
 }
 
-const wrapper = ({ children }: { children: ReactNode }) => (
-  <AllProviders>{children}</AllProviders>
-);
+const wrapper = ({ children }: { children: ReactNode }) => <AllProviders>{children}</AllProviders>;
 
 describe('useProviderEditor', () => {
   beforeEach(() => {

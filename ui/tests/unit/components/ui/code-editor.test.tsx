@@ -50,11 +50,7 @@ describe('CodeEditor', () => {
 
   it('preserves content mode as the default layout contract', () => {
     const { container } = render(
-      <CodeEditor
-        value={'{\n  "provider": "openrouter"\n}'}
-        onChange={vi.fn()}
-        language="json"
-      />
+      <CodeEditor value={'{\n  "provider": "openrouter"\n}'} onChange={vi.fn()} language="json" />
     );
 
     expect(container.querySelector('[data-slot="code-editor-viewport"]')).not.toBeInTheDocument();

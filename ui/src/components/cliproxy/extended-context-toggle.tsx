@@ -73,7 +73,9 @@ export function ExtendedContextToggle({
       <div className="flex items-start gap-2 text-xs text-muted-foreground">
         <Info className="w-3.5 h-3.5 mt-0.5 shrink-0" />
         <div className="space-y-1">
-          <p>Applies the explicit <code>[1m]</code> long-context suffix to compatible saved mappings.</p>
+          <p>
+            Applies the explicit <code>[1m]</code> long-context suffix to compatible saved mappings.
+          </p>
           <p className="text-[10px]">{behaviorHint}</p>
           <p className="text-amber-600 dark:text-amber-500">
             CCS only saves <code>[1m]</code>. Provider pricing and entitlement are separate, and

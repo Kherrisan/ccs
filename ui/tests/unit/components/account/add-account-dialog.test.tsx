@@ -68,9 +68,7 @@ describe('AddAccountDialog power user mode', () => {
   it('skips the Gemini typed acknowledgement when power user mode is enabled', async () => {
     fetchMock.mockResolvedValue(createJsonResponse({ antigravityAckBypass: true }));
 
-    render(
-      <AddAccountDialog open onClose={vi.fn()} provider="gemini" displayName="Gemini" />
-    );
+    render(<AddAccountDialog open onClose={vi.fn()} provider="gemini" displayName="Gemini" />);
 
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith('/api/settings/auth/antigravity-risk')
@@ -95,9 +93,7 @@ describe('AddAccountDialog power user mode', () => {
   it('keeps the Gemini typed acknowledgement when power user mode is disabled', async () => {
     fetchMock.mockResolvedValue(createJsonResponse({ antigravityAckBypass: false }));
 
-    render(
-      <AddAccountDialog open onClose={vi.fn()} provider="gemini" displayName="Gemini" />
-    );
+    render(<AddAccountDialog open onClose={vi.fn()} provider="gemini" displayName="Gemini" />);
 
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith('/api/settings/auth/antigravity-risk')
@@ -114,9 +110,7 @@ describe('AddAccountDialog power user mode', () => {
   it('surfaces a power user mode fetch failure and fails closed for Gemini', async () => {
     fetchMock.mockRejectedValue(new Error('network down'));
 
-    render(
-      <AddAccountDialog open onClose={vi.fn()} provider="gemini" displayName="Gemini" />
-    );
+    render(<AddAccountDialog open onClose={vi.fn()} provider="gemini" displayName="Gemini" />);
 
     await waitFor(() =>
       expect(toast.error).toHaveBeenCalledWith(
@@ -125,7 +119,9 @@ describe('AddAccountDialog power user mode', () => {
     );
 
     expect(
-      screen.getByText('Failed to load power user mode settings. Check Settings > Proxy and try again.')
+      screen.getByText(
+        'Failed to load power user mode settings. Check Settings > Proxy and try again.'
+      )
     ).toBeInTheDocument();
     expect(screen.getByText(/Type exact phrase to continue/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Authenticate' })).toBeDisabled();

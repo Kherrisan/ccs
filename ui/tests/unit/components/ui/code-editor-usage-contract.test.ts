@@ -51,15 +51,15 @@ const boundedLayoutContracts = [
 ] as const;
 
 describe('bounded CodeEditor consumers', () => {
-  it.each(boundedConsumers)('$file opts into fill-parent mode for every bounded editor', ({
-    file,
-    expectedCount,
-  }) => {
-    const source = readFileSync(resolve(process.cwd(), file), 'utf8');
-    const matches = source.match(/heightMode="fill-parent"/g) ?? [];
+  it.each(boundedConsumers)(
+    '$file opts into fill-parent mode for every bounded editor',
+    ({ file, expectedCount }) => {
+      const source = readFileSync(resolve(process.cwd(), file), 'utf8');
+      const matches = source.match(/heightMode="fill-parent"/g) ?? [];
 
-    expect(matches).toHaveLength(expectedCount);
-  });
+      expect(matches).toHaveLength(expectedCount);
+    }
+  );
 
   it.each(boundedLayoutContracts)(
     '$file keeps bounded editor ancestors shrinkable',
