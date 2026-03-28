@@ -155,16 +155,6 @@ export const DEFAULT_COPILOT_MODELS: CopilotModel[] = [
     minPlan: 'pro',
     multiplier: 0.25,
   },
-
-  // Fine-tuned Models
-  {
-    id: 'raptor-mini',
-    name: 'Raptor Mini',
-    provider: 'openai',
-    minPlan: 'free',
-    multiplier: 0,
-    preview: true,
-  },
 ];
 
 /**

@@ -1,7 +1,7 @@
 {
   "name": "@kaitranntt/ccs",
-  "version": "7.53.0",
-  "description": "Claude Code Switch - Instant profile switching between Claude Sonnet 4.5 and GLM 4.6",
+  "version": "7.61.1",
+  "description": "Claude Code Switch - Instant profile switching between Claude, GLM, Kimi, and more",
   "keywords": [
     "cli",
     "claude",
@@ -27,7 +27,8 @@
   "types": "dist/ccs.d.ts",
   "bin": {
     "ccs": "dist/ccs.js",
-    "ccsd": "dist/ccs.js"
+    "ccs-droid": "dist/bin/droid-runtime.js",
+    "ccsd": "dist/bin/droid-runtime.js"
   },
   "files": [
     "dist/",
@@ -58,6 +59,7 @@
     "build:server": "tsc && node scripts/add-shebang.js",
     "build:all": "bun run ui:build && bun run build:server",
     "prebuild": "node scripts/clean-dist.js",
+    "prebuild:server": "node scripts/clean-dist.js",
     "prebuild:all": "rm -rf dist tsconfig.tsbuildinfo",
     "postbuild:all": "node scripts/verify-bundle.js",
     "typecheck": "tsc --noEmit",
@@ -71,7 +73,7 @@
     "test": "bun run build && bun run test:all",
     "test:ci": "bun run test:all",
     "test:all": "bun test tests/unit tests/integration tests/npm",
-    "test:unit": "bun test tests/unit/",
+    "test:unit": "bun test tests/unit",
     "test:npm": "bun test tests/npm/",
     "test:native": "bash tests/native/unix/edge-cases.sh",
     "test:e2e": "bun test tests/e2e/ --bail --timeout 60000",

@@ -1,11 +1,11 @@
 /**
  * Persist Command Handler
  *
- * Writes a profile's environment variables to ~/.claude/settings.json
- * for native Claude Code usage (IDEs, extensions, etc.).
+ * Writes a profile's Claude setup to ~/.claude/settings.json
+ * for native Claude Code usage across the CLI and IDE extension.
  *
- * Supports all profile types: API, CLIProxy, Copilot.
- * Account-based profiles are not supported (use CLAUDE_CONFIG_DIR).
+ * Supports API, CLIProxy, Copilot, account, and default flows
+ * through the shared Claude extension setup resolver.
  */
 
 import * as fs from 'fs';
@@ -14,16 +14,10 @@ import * as os from 'os';
 import * as lockfile from 'proper-lockfile';
 import { initUI, header, subheader, color, dim, ok, fail, warn, info } from '../utils/ui';
 import { InteractivePrompt } from '../utils/prompt';
-import ProfileDetector, {
-  ProfileDetectionResult,
-  loadSettingsFromFile,
-  CLIPROXY_PROFILES,
-} from '../auth/profile-detector';
-import { getEffectiveEnvVars, CLIPROXY_DEFAULT_PORT } from '../cliproxy/config-generator';
-import { generateCopilotEnv } from '../copilot/copilot-executor';
-import { expandPath } from '../utils/helpers';
+import ProfileDetector from '../auth/profile-detector';
 import { getClaudeConfigDir, getClaudeSettingsPath } from '../utils/claude-config-path';
 import { extractOption, hasAnyFlag } from './arg-extractor';
+import { resolveClaudeExtensionSetup } from '../shared/claude-extension-setup';
 
 interface PersistCommandArgs {
   profile?: string;
@@ -37,8 +31,10 @@ interface PersistCommandArgs {
 
 interface ResolvedEnv {
   env: Record<string, string>;
+  clearEnvKeys: string[];
   profileType: string;
-  warning?: string;
+  warnings?: string[];
+  notes?: string[];
 }
 
 const PERSIST_KNOWN_FLAGS = [
@@ -513,68 +509,24 @@ function isSensitiveEnvKey(key: string): boolean {
   );
 }
 
-/** Resolve env vars for a profile */
-async function resolveProfileEnvVars(
-  profileName: string,
-  profileResult: ProfileDetectionResult
-): Promise<ResolvedEnv> {
-  switch (profileResult.type) {
-    case 'settings': {
-      // API profile - load from settings file
-      let env: Record<string, string> = {};
-      if (profileResult.env) {
-        env = profileResult.env;
-      } else if (profileResult.settingsPath) {
-        env = loadSettingsFromFile(expandPath(profileResult.settingsPath));
-      }
-      if (Object.keys(env).length === 0) {
-        throw new Error(`Profile '${profileName}' has no env vars configured`);
-      }
-      return { env, profileType: 'API' };
-    }
-    case 'cliproxy': {
-      // CLIProxy profile - generate env vars
-      const provider =
-        profileResult.provider || (profileName as (typeof CLIPROXY_PROFILES)[number]);
-      const port = profileResult.port || CLIPROXY_DEFAULT_PORT;
-      const env = getEffectiveEnvVars(provider, port, profileResult.settingsPath) as Record<
-        string,
-        string
-      >;
-      return {
-        env,
-        profileType: 'CLIProxy',
-        warning: 'CLIProxy must be running for this profile to work',
-      };
-    }
-    case 'copilot': {
-      // Copilot profile - generate env vars
-      if (!profileResult.copilotConfig) {
-        throw new Error('Copilot configuration not found');
-      }
-      const env = generateCopilotEnv(profileResult.copilotConfig);
-      return {
-        env,
-        profileType: 'Copilot',
-        warning: 'copilot-api daemon must be running for this profile to work',
-      };
-    }
-    case 'account': {
-      throw new Error(
-        `Account profiles use CLAUDE_CONFIG_DIR isolation, not env vars.\n` +
-          `Use 'ccs ${profileName}' to run with this profile instead.`
-      );
-    }
-    case 'default': {
-      throw new Error(
-        'Default profile has no env vars to persist.\n' +
-          'Specify a profile name: ccs persist <profile>'
-      );
-    }
-    default: {
-      throw new Error(`Unknown profile type: ${profileResult.type}`);
-    }
-  }
+/** Resolve shared Claude settings payload for a profile */
+async function resolveProfileEnvVars(profileName: string): Promise<ResolvedEnv> {
+  const setup = await resolveClaudeExtensionSetup(profileName);
+  const typeLabel: Record<string, string> = {
+    settings: 'API',
+    cliproxy: 'CLIProxy',
+    copilot: 'Copilot',
+    account: 'Account',
+    default: 'Default',
+  };
+
+  return {
+    env: setup.extensionEnv,
+    clearEnvKeys: setup.removeEnvKeys,
+    profileType: typeLabel[setup.profileType] ?? setup.profileType,
+    warnings: setup.warnings,
+    notes: setup.notes,
+  };
 }
 
 /** Handle --list-backups flag */
@@ -702,11 +654,11 @@ async function showHelp(): Promise<void> {
   console.log(`  ${color('ccs persist', 'command')} --restore [timestamp]`);
   console.log('');
   console.log(subheader('Description'));
-  console.log("  Writes a profile's environment variables directly to");
+  console.log("  Writes a profile's Claude setup directly to");
   console.log(`  ${getClaudeSettingsDisplayPath()} for native Claude Code usage.`);
   console.log('');
-  console.log('  This allows Claude Code to use the profile without CCS,');
-  console.log('  enabling compatibility with IDEs and extensions.');
+  console.log('  This is the preferred shared-settings path for Claude Code');
+  console.log('  and the Claude IDE extension when you want one profile everywhere.');
   console.log('');
   console.log(subheader('Options'));
   console.log(`  ${color('--yes, -y', 'command')}         Skip confirmation prompts (auto-backup)`);
@@ -727,10 +679,15 @@ async function showHelp(): Promise<void> {
   );
   console.log('');
   console.log(subheader('Supported Profile Types'));
-  console.log(`  ${color('API profiles', 'command')}      glm, glmt, km, custom API profiles`);
+  console.log(`  ${color('API profiles', 'command')}      glm, km, custom API profiles`);
   console.log(`  ${color('CLIProxy', 'command')}          gemini, codex, agy, qwen, kiro, ghcp`);
   console.log(`  ${color('Copilot', 'command')}           copilot (requires copilot-api daemon)`);
-  console.log(`  ${dim('Account-based')}     Not supported (uses CLAUDE_CONFIG_DIR)`);
+  console.log(
+    `  ${color('Account profiles', 'command')}  work, personal, client (persists CLAUDE_CONFIG_DIR)`
+  );
+  console.log(
+    `  ${color('default', 'command')}           Clears CCS-managed overrides or inherits mapped continuity`
+  );
   console.log('');
   console.log(subheader('Examples'));
   console.log(`  ${dim('# Persist GLM profile')}`);
@@ -745,6 +702,12 @@ async function showHelp(): Promise<void> {
   console.log(`  ${dim('# Persist with auto-approve enabled')}`);
   console.log(`  ${color('ccs persist codex --dangerously-skip-permissions', 'command')}`);
   console.log('');
+  console.log(`  ${dim('# Persist an account profile for IDE/native Claude use')}`);
+  console.log(`  ${color('ccs persist work --yes', 'command')}`);
+  console.log('');
+  console.log(`  ${dim('# Reset to native Claude defaults (clear CCS-managed overrides)')}`);
+  console.log(`  ${color('ccs persist default --yes', 'command')}`);
+  console.log('');
   console.log(`  ${dim('# List all backups')}`);
   console.log(`  ${color('ccs persist --list-backups', 'command')}`);
   console.log('');
@@ -757,6 +720,12 @@ async function showHelp(): Promise<void> {
   console.log(subheader('Notes'));
   console.log('  [i] CLIProxy profiles require the proxy to be running.');
   console.log('  [i] Copilot profiles require copilot-api daemon.');
+  console.log(
+    '  [i] Account/default flows remove stale ANTHROPIC_* overrides before applying new setup.'
+  );
+  console.log(
+    '  [i] For IDE-local settings.json snippets, use: ccs env <profile> --format claude-extension'
+  );
   console.log(
     `  [i] Backups are saved as ${getClaudeSettingsDisplayPath()}.backup.YYYYMMDD_HHMMSS`
   );
@@ -798,9 +767,8 @@ export async function handlePersistCommand(args: string[]): Promise<void> {
   }
   // Detect profile
   const detector = new ProfileDetector();
-  let profileResult: ProfileDetectionResult;
   try {
-    profileResult = detector.detectProfileType(parsedArgs.profile);
+    detector.detectProfileType(parsedArgs.profile);
   } catch (error) {
     const err = error as Error & { availableProfiles?: string };
     console.log(fail(`Profile not found: ${parsedArgs.profile}`));
@@ -813,7 +781,7 @@ export async function handlePersistCommand(args: string[]): Promise<void> {
   // Resolve env vars
   let resolved: ResolvedEnv;
   try {
-    resolved = await resolveProfileEnvVars(parsedArgs.profile, profileResult);
+    resolved = await resolveProfileEnvVars(parsedArgs.profile);
   } catch (error) {
     console.log(fail((error as Error).message));
     process.exit(1);
@@ -823,21 +791,27 @@ export async function handlePersistCommand(args: string[]): Promise<void> {
   console.log('');
   console.log(`Profile type: ${color(resolved.profileType, 'command')}`);
   console.log('');
-  console.log(`The following env vars will be written to ${getClaudeSettingsDisplayPath()}:`);
-  console.log('');
-  // Display env vars (mask sensitive values)
   const envKeys = Object.keys(resolved.env);
-  if (envKeys.length === 0) {
-    console.log(fail('Profile has no environment variables to persist'));
-    process.exit(1);
+  if (envKeys.length > 0) {
+    console.log(`The following env vars will be written to ${getClaudeSettingsDisplayPath()}:`);
+    console.log('');
+    const maxKeyLen = Math.max(...envKeys.map((k) => k.length));
+    for (const [key, value] of Object.entries(resolved.env)) {
+      const paddedKey = key.padEnd(maxKeyLen + 2);
+      const displayValue = isSensitiveEnvKey(key) ? maskApiKey(value) : value;
+      console.log(`  ${color(paddedKey, 'command')} = ${displayValue}`);
+    }
+    console.log('');
+  } else {
+    console.log(info('No new env vars will be added.'));
+    console.log(dim('    CCS-managed transport overrides will be removed if present.'));
+    console.log('');
   }
-  const maxKeyLen = Math.max(...envKeys.map((k) => k.length));
-  for (const [key, value] of Object.entries(resolved.env)) {
-    const paddedKey = key.padEnd(maxKeyLen + 2);
-    const displayValue = isSensitiveEnvKey(key) ? maskApiKey(value) : value;
-    console.log(`  ${color(paddedKey, 'command')} = ${displayValue}`);
+  if (resolved.clearEnvKeys.length > 0) {
+    console.log('Managed env keys replaced/cleared on write:');
+    console.log(`  ${dim(resolved.clearEnvKeys.join(', '))}`);
+    console.log('');
   }
-  console.log('');
   if (resolvedPermissionMode) {
     console.log(`Default permission mode: ${color(resolvedPermissionMode, 'command')}`);
     if (resolvedPermissionMode === 'bypassPermissions') {
@@ -845,14 +819,24 @@ export async function handlePersistCommand(args: string[]): Promise<void> {
     }
     console.log('');
   }
-  // Show warning if applicable
-  if (resolved.warning) {
-    console.log(warn(resolved.warning));
+  if (resolved.warnings?.length) {
+    for (const message of resolved.warnings) {
+      console.log(warn(message));
+    }
+    console.log('');
+  }
+  if (resolved.notes?.length) {
+    for (const note of resolved.notes) {
+      console.log(info(note));
+    }
     console.log('');
   }
   // Warning about modification
   console.log(warn(`This will modify ${getClaudeSettingsDisplayPath()}`));
   console.log(dim('    Existing hooks and other settings will be preserved.'));
+  console.log(
+    dim('    Existing managed profile env keys will be replaced to avoid stale routing.')
+  );
   console.log('');
   // Check if settings.json exists for backup
   const settingsPath = getClaudeSettingsPath();
@@ -904,10 +888,15 @@ export async function handlePersistCommand(args: string[]): Promise<void> {
         }
       }
 
+      const preservedEnv = { ...existingEnv };
+      for (const key of resolved.clearEnvKeys) {
+        delete preservedEnv[key];
+      }
+
       const mergedSettings: Record<string, unknown> = {
         ...existingSettings,
         env: {
-          ...existingEnv,
+          ...preservedEnv,
           ...resolved.env,
         },
       };

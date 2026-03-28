@@ -18,7 +18,7 @@ _ccs_completion() {
 
   # Top-level completion (first argument)
   if [[ ${COMP_CWORD} -eq 1 ]]; then
-    local commands="auth api cliproxy doctor env sync update"
+    local commands="auth api cliproxy config doctor env persist sync update"
     local flags="--help --version --shell-completion -h -v -sc"
     local cliproxy_profiles="gemini codex agy qwen"
     local profiles=""
@@ -156,23 +156,30 @@ _ccs_completion() {
     case "${prev}" in
       env)
         # Complete with profile names and flags (inline profiles since $cliproxy_profiles is out of scope)
-        local env_opts="--format --shell --help -h gemini codex agy qwen iflow kiro ghcp claude"
+        local env_opts="--format --shell --ide --help -h gemini codex agy qwen iflow kiro ghcp claude default"
         if [[ -f ~/.ccs/config.json ]]; then
           env_opts="$env_opts $(jq -r '.profiles | keys[]' ~/.ccs/config.json 2>/dev/null || true)"
+        fi
+        if [[ -f ~/.ccs/profiles.json ]]; then
+          env_opts="$env_opts $(jq -r '.profiles | keys[]' ~/.ccs/profiles.json 2>/dev/null || true)"
         fi
         COMPREPLY=( $(compgen -W "${env_opts}" -- ${cur}) )
         return 0
         ;;
       --format)
-        COMPREPLY=( $(compgen -W "openai anthropic raw" -- ${cur}) )
+        COMPREPLY=( $(compgen -W "openai anthropic raw claude-extension" -- ${cur}) )
         return 0
         ;;
       --shell)
         COMPREPLY=( $(compgen -W "auto bash zsh fish powershell" -- ${cur}) )
         return 0
         ;;
+      --ide)
+        COMPREPLY=( $(compgen -W "vscode cursor windsurf" -- ${cur}) )
+        return 0
+        ;;
       *)
-        COMPREPLY=( $(compgen -W "--format --shell --help -h" -- ${cur}) )
+        COMPREPLY=( $(compgen -W "--format --shell --ide --help -h" -- ${cur}) )
         return 0
         ;;
     esac

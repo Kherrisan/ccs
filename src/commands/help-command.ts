@@ -5,6 +5,8 @@ import { isUnifiedMode } from '../config/unified-config-loader';
 import { getCcsDir, getCcsDirSource } from '../utils/config-manager';
 import { CLIPROXY_DEFAULT_PORT } from '../cliproxy/config/port-manager';
 
+type HelpWriter = (line: string) => void;
+
 // Get version from package.json (same as version-command.ts)
 const VERSION = JSON.parse(
   fs.readFileSync(path.join(__dirname, '../../package.json'), 'utf8')
@@ -19,28 +21,33 @@ const VERSION = JSON.parse(
  *
  *   command    Description
  */
-function printMajorSection(title: string, subtitles: string[], items: [string, string][]): void {
+function printMajorSection(
+  title: string,
+  subtitles: string[],
+  items: [string, string][],
+  writeLine: HelpWriter = console.log
+): void {
   // Section header with ═══ borders
-  console.log(sectionHeader(title));
+  writeLine(sectionHeader(title));
 
   // Subtitles on separate lines (dim)
   for (const subtitle of subtitles) {
-    console.log(`  ${dim(subtitle)}`);
+    writeLine(`  ${dim(subtitle)}`);
   }
 
   // Empty line before items
-  console.log('');
+  writeLine('');
 
   // Calculate max command length for alignment
   const maxCmdLen = Math.max(...items.map(([cmd]) => cmd.length));
 
   for (const [cmd, desc] of items) {
     const paddedCmd = cmd.padEnd(maxCmdLen + 2);
-    console.log(`  ${color(paddedCmd, 'command')} ${desc}`);
+    writeLine(`  ${color(paddedCmd, 'command')} ${desc}`);
   }
 
   // Extra spacing after section
-  console.log('');
+  writeLine('');
 }
 
 /**
@@ -49,20 +56,24 @@ function printMajorSection(title: string, subtitles: string[], items: [string, s
  *   Title (context):
  *     command    Description
  */
-function printSubSection(title: string, items: [string, string][]): void {
+function printSubSection(
+  title: string,
+  items: [string, string][],
+  writeLine: HelpWriter = console.log
+): void {
   // Sub-section header (colored, no borders)
-  console.log(subheader(`${title}:`));
+  writeLine(subheader(`${title}:`));
 
   // Calculate max command length for alignment
   const maxCmdLen = Math.max(...items.map(([cmd]) => cmd.length));
 
   for (const [cmd, desc] of items) {
     const paddedCmd = cmd.padEnd(maxCmdLen + 2);
-    console.log(`  ${color(paddedCmd, 'command')} ${desc}`);
+    writeLine(`  ${color(paddedCmd, 'command')} ${desc}`);
   }
 
   // Spacing after section
-  console.log('');
+  writeLine('');
 }
 
 /**
@@ -71,24 +82,28 @@ function printSubSection(title: string, items: [string, string][]): void {
  *   Title:
  *     Label:    path
  */
-function printConfigSection(title: string, items: [string, string][]): void {
-  console.log(subheader(`${title}:`));
+function printConfigSection(
+  title: string,
+  items: [string, string][],
+  writeLine: HelpWriter = console.log
+): void {
+  writeLine(subheader(`${title}:`));
 
   // Calculate max label length for alignment
   const maxLabelLen = Math.max(...items.map(([label]) => label.length));
 
   for (const [label, path] of items) {
     const paddedLabel = label.padEnd(maxLabelLen);
-    console.log(`  ${paddedLabel} ${color(path, 'path')}`);
+    writeLine(`  ${paddedLabel} ${color(path, 'path')}`);
   }
 
-  console.log('');
+  writeLine('');
 }
 
 /**
  * Display comprehensive help information for CCS (Claude Code Switch)
  */
-export async function handleHelpCommand(): Promise<void> {
+export async function handleHelpCommand(writeLine: HelpWriter = console.log): Promise<void> {
   // Initialize UI (if not already)
   await initUI();
 
@@ -103,24 +118,24 @@ Claude Code Profile & Model Switcher
 
 Run ${color('ccs config', 'command')} for web dashboard`.trim();
 
-  console.log(
+  writeLine(
     box(logo, {
       padding: 1,
       borderStyle: 'round',
       titleAlignment: 'center',
     })
   );
-  console.log('');
+  writeLine('');
 
   // Resolve display path for dynamic sections
   const [dirSource] = getCcsDirSource();
   const dirDisplay = dirSource === 'default' ? '~/.ccs' : getCcsDir();
 
   // Usage section
-  console.log(subheader('Usage:'));
-  console.log(`  ${color('ccs', 'command')} [profile] [claude-args...]`);
-  console.log(`  ${color('ccs', 'command')} [flags]`);
-  console.log('');
+  writeLine(subheader('Usage:'));
+  writeLine(`  ${color('ccs', 'command')} [profile] [claude-args...]`);
+  writeLine(`  ${color('ccs', 'command')} [flags]`);
+  writeLine('');
 
   // ═══════════════════════════════════════════════════════════════════════════
   // MAJOR SECTION 1: API Key Profiles
@@ -131,7 +146,6 @@ Run ${color('ccs config', 'command')} for web dashboard`.trim();
     [
       ['ccs', 'Use default Claude account'],
       ['ccs glm', 'GLM 5 (API key required)'],
-      ['ccs glmt', 'GLM with thinking mode'],
       ['ccs km', 'Kimi for Coding (API key)'],
       [
         'ccs api create --preset alibaba-coding-plan',
@@ -142,6 +156,10 @@ Run ${color('ccs config', 'command')} for web dashboard`.trim();
       ['ccs ollama-cloud', 'Ollama Cloud (API key required)'],
       ['', ''], // Spacer
       ['ccs api create --preset anthropic', 'Anthropic direct API key (sk-ant-...)'],
+      [
+        'ccs api create --cliproxy-provider gemini',
+        'Create routed API profile from CLIProxy Gemini',
+      ],
       ['ccs api create', 'Create custom API profile'],
       ['ccs api discover --register', 'Discover/register orphan settings files'],
       ['ccs api copy <src> <dest>', 'Duplicate API profile'],
@@ -149,7 +167,8 @@ Run ${color('ccs config', 'command')} for web dashboard`.trim();
       ['ccs api import <file>', 'Import profile bundle'],
       ['ccs api remove', 'Remove an API profile'],
       ['ccs api list', 'List all API profiles'],
-    ]
+    ],
+    writeLine
   );
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -173,7 +192,8 @@ Run ${color('ccs config', 'command')} for web dashboard`.trim();
       ['ccs auth default <name>', 'Set default profile'],
       ['ccs auth reset-default', 'Restore original CCS default'],
       ['ccs cliproxy auth claude', 'Alternative: authenticate Claude account pool via CLIProxy'],
-    ]
+    ],
+    writeLine
   );
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -206,7 +226,7 @@ Run ${color('ccs config', 'command')} for web dashboard`.trim();
         'Show auth URL and prompt for callback paste (cross-browser)',
       ],
       ['ccs <provider> --accounts', 'List all accounts'],
-      ['ccs <provider> --use <name>', 'Switch to account'],
+      ['ccs <provider> --use <nickname-or-id>', 'Switch to account'],
       ['ccs <provider> --config', 'Change model (agy, gemini)'],
       [
         'ccs agy --accept-agr-risk',
@@ -217,8 +237,8 @@ Run ${color('ccs config', 'command')} for web dashboard`.trim();
         'Set thinking budget (low/medium/high/xhigh/auto/off or number)',
       ],
       ['ccs codex --effort <level>', 'Set codex reasoning effort (medium/high/xhigh)'],
-      ['ccs <provider> --1m', 'Enable 1M token context window'],
-      ['ccs <provider> --no-1m', 'Disable 1M context (use 200K default)'],
+      ['ccs <provider> --1m', 'Request explicit 1M context when the selected model supports [1m]'],
+      ['ccs <provider> --no-1m', 'Force standard context / clear [1m]'],
       ['ccs <provider> --logout', 'Clear authentication'],
       ['ccs <provider> --headless', 'Headless auth (for SSH)'],
       ['ccs <provider> --port-forward', 'Force port-forwarding mode (skip prompt)'],
@@ -229,7 +249,8 @@ Run ${color('ccs config', 'command')} for web dashboard`.trim();
       ['ccs kiro --import', 'Import token from Kiro IDE'],
       ['ccs kiro --incognito', 'Use incognito browser (default: normal)'],
       ['ccs codex "explain code"', 'Use with prompt'],
-    ]
+    ],
+    writeLine
   );
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -252,7 +273,8 @@ Run ${color('ccs config', 'command')} for web dashboard`.trim();
       ['ccs copilot stop', 'Stop copilot-api daemon'],
       ['ccs copilot enable', 'Enable integration'],
       ['ccs copilot disable', 'Disable integration'],
-    ]
+    ],
+    writeLine
   );
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -274,7 +296,8 @@ Run ${color('ccs config', 'command')} for web dashboard`.trim();
       ['ccs cursor stop', 'Stop proxy daemon'],
       ['ccs cursor enable', 'Enable cursor integration'],
       ['ccs cursor disable', 'Disable cursor integration'],
-    ]
+    ],
+    writeLine
   );
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -282,244 +305,365 @@ Run ${color('ccs config', 'command')} for web dashboard`.trim();
   // ═══════════════════════════════════════════════════════════════════════════
 
   // Delegation
-  printSubSection('Delegation (inside Claude Code CLI)', [
-    ['/ccs "task"', 'Delegate task (auto-selects profile)'],
-    ['/ccs --glm "task"', 'Force GLM-5 for simple tasks'],
-    ['/ccs --kimi "task"', 'Force Kimi OAuth for long context'],
-    ['/ccs --km "task"', 'Force Kimi API key for long context'],
-    ['/ccs:continue "follow-up"', 'Continue last delegation session'],
-  ]);
+  printSubSection(
+    'Delegation (inside Claude Code CLI)',
+    [
+      ['/ccs "task"', 'Delegate task (auto-selects profile)'],
+      ['/ccs --glm "task"', 'Force GLM-5 for simple tasks'],
+      ['/ccs --kimi "task"', 'Force Kimi OAuth for long context'],
+      ['/ccs --km "task"', 'Force Kimi API key for long context'],
+      ['/ccs:continue "follow-up"', 'Continue last delegation session'],
+    ],
+    writeLine
+  );
 
   // Delegation CLI Flags (Claude Code passthrough)
-  printSubSection('Delegation Flags (Claude Code passthrough)', [
-    ['--max-turns <n>', 'Limit agentic turns (prevents loops)'],
-    ['--fallback-model <model>', 'Auto-fallback on overload (sonnet)'],
-    ['--agents <json>', 'Inject dynamic subagents'],
-    ['--betas <features>', 'Enable experimental features'],
-    ['--allowedTools <list>', 'Restrict available tools'],
-    ['--disallowedTools <list>', 'Block specific tools'],
-  ]);
+  printSubSection(
+    'Delegation Flags (Claude Code passthrough)',
+    [
+      ['--max-turns <n>', 'Limit agentic turns (prevents loops)'],
+      ['--fallback-model <model>', 'Auto-fallback on overload (sonnet)'],
+      ['--agents <json>', 'Inject dynamic subagents'],
+      ['--betas <features>', 'Enable experimental features'],
+      ['--allowedTools <list>', 'Restrict available tools'],
+      ['--disallowedTools <list>', 'Block specific tools'],
+    ],
+    writeLine
+  );
 
   // Diagnostics
-  printSubSection('Diagnostics', [
-    ['ccs setup', 'First-time setup wizard'],
-    ['ccs doctor', 'Run health check and diagnostics'],
-    ['ccs cleanup', 'Remove old CLIProxy logs'],
-    ['ccs config', 'Open web configuration dashboard'],
-    ['ccs config auth setup', 'Configure dashboard login'],
-    ['ccs config auth show', 'Show dashboard auth status'],
-    ['ccs config image-analysis', 'Show image analysis settings'],
-    ['ccs config image-analysis --enable', 'Enable image analysis'],
-    ['ccs config thinking', 'Show thinking/reasoning settings'],
-    ['ccs config thinking --mode auto', 'Set thinking mode'],
-    ['ccs config thinking --clear-provider-override codex', 'Clear provider overrides'],
-    ['ccs config --port 3000', 'Use specific port'],
-    ['ccs persist <profile>', 'Write profile env to ~/.claude/settings.json'],
-    ['ccs persist --list-backups', 'List available settings.json backups'],
-    ['ccs persist --restore', 'Restore settings.json from latest backup'],
-    ['ccs sync', 'Sync delegation commands and skills'],
-    ['ccs update', 'Update CCS to latest version'],
-    ['ccs update --force', 'Force reinstall current version'],
-    ['ccs update --beta', 'Install from dev channel (unstable)'],
-  ]);
+  printSubSection(
+    'Diagnostics',
+    [
+      ['ccs setup', 'First-time setup wizard'],
+      ['ccs doctor', 'Run health check and diagnostics'],
+      ['ccs cleanup', 'Remove old CLIProxy logs'],
+      ['ccs config', 'Open web dashboard (includes Claude IDE Extension setup page)'],
+      ['ccs config auth setup', 'Configure dashboard login'],
+      ['ccs config auth show', 'Show dashboard auth status'],
+      ['ccs config channels', 'Show Official Channels status'],
+      [
+        'ccs config channels --set telegram,discord',
+        'Auto-add Telegram + Discord on supported native Claude runs',
+      ],
+      ['ccs config channels --set-token telegram=<token>', 'Save TELEGRAM_BOT_TOKEN'],
+      ['ccs config image-analysis', 'Show image analysis settings'],
+      ['ccs config image-analysis --enable', 'Enable image analysis'],
+      ['ccs config thinking', 'Show thinking/reasoning settings'],
+      ['ccs config thinking --mode auto', 'Set thinking mode'],
+      ['ccs config thinking --clear-provider-override codex', 'Clear provider overrides'],
+      ['ccs config --port 3000', 'Use specific port'],
+      ['ccs config --host 0.0.0.0', 'Force all-interface binding for remote devices'],
+      ['ccs persist <profile>', 'Write profile setup to ~/.claude/settings.json'],
+      ['ccs persist --list-backups', 'List available settings.json backups'],
+      ['ccs persist --restore', 'Restore settings.json from latest backup'],
+      ['ccs sync', 'Sync delegation commands and skills'],
+      ['ccs update', 'Update CCS to latest version'],
+      ['ccs update --force', 'Force reinstall current version'],
+      ['ccs update --beta', 'Install from dev channel (unstable)'],
+    ],
+    writeLine
+  );
 
   // Environment export
-  printSubSection('Environment Export', [
-    ['ccs env <profile>', 'Export env vars for third-party tools'],
-    ['ccs env <profile> --format openai', 'OpenAI-compatible vars (OpenCode/Cursor)'],
-    ['ccs env <profile> --format anthropic', 'Anthropic vars (default)'],
-    ['ccs env <profile> --format raw', 'All effective env vars'],
-    ['ccs env <profile> --shell fish', 'Fish shell syntax'],
-  ]);
+  printSubSection(
+    'Environment Export',
+    [
+      ['ccs env <profile>', 'Export env vars for third-party tools'],
+      ['ccs env <profile> --format openai', 'OpenAI-compatible vars (OpenCode/Cursor)'],
+      ['ccs env <profile> --format anthropic', 'Anthropic vars (default)'],
+      ['ccs env <profile> --format raw', 'All effective env vars'],
+      [
+        'ccs env <profile> --format claude-extension --ide vscode',
+        'VS Code/Cursor Claude extension settings JSON',
+      ],
+      [
+        'ccs env <profile> --format claude-extension --ide windsurf',
+        'Windsurf Claude extension settings JSON',
+      ],
+      ['ccs env <profile> --shell fish', 'Fish shell syntax'],
+    ],
+    writeLine
+  );
 
   // Flags
-  printSubSection('Flags', [
-    ['--config-dir <path>', 'Use custom CCS config directory'],
-    ['--target <cli>', 'Target CLI: claude (default), droid'],
-    ['-h, --help', 'Show this help message'],
-    ['-v, --version', 'Show version and installation info'],
-    ['-sc, --shell-completion', 'Install shell auto-completion'],
-  ]);
+  printSubSection(
+    'Flags',
+    [
+      ['--config-dir <path>', 'Use custom CCS config directory'],
+      ['--target <cli>', 'Target CLI: claude (default), droid'],
+      ['-h, --help', 'Show this help message'],
+      ['-v, --version', 'Show version and installation info'],
+      ['-sc, --shell-completion', 'Install shell auto-completion'],
+    ],
+    writeLine
+  );
 
   // Aliases
-  printSubSection('Aliases', [
-    ['ccsd <profile> [args]', 'Shorthand for: ccs <profile> --target droid'],
-  ]);
+  printSubSection(
+    'Aliases',
+    [
+      ['ccs-droid <profile> [args]', 'Explicit Droid runtime alias'],
+      ['ccsd <profile> [args]', 'Legacy shortcut for: ccs-droid <profile> [args]'],
+    ],
+    writeLine
+  );
 
   // Multi-target examples
-  printSubSection('Multi-Target', [
-    ['ccs glm --target droid', 'Run GLM profile on Droid CLI'],
-    ['ccsd glm', 'Same as above (alias)'],
-    ['ccsd codex', 'Run built-in CLIProxy Codex profile on Droid'],
-    ['ccsd agy', 'Run built-in CLIProxy Antigravity profile on Droid'],
+  printSubSection(
+    'Multi-Target',
     [
-      'ccsd codex exec --skip-permissions-unsafe "fix failing tests"',
-      'Pass through Droid exec mode',
+      ['ccs glm --target droid', 'Run GLM profile on Droid CLI'],
+      ['ccs-droid glm', 'Same as above (explicit alias)'],
+      ['ccsd glm', 'Legacy shortcut for ccs-droid'],
+      ['ccs-droid codex', 'Run built-in CLIProxy Codex profile on Droid'],
+      ['ccs-droid agy', 'Run built-in CLIProxy Antigravity profile on Droid'],
+      [
+        'ccs-droid codex exec --skip-permissions-unsafe "fix failing tests"',
+        'Pass through Droid exec mode',
+      ],
+      [
+        'ccs-droid codex -m custom:gpt-5.3-codex "fix failing tests"',
+        'Auto-routes short exec flags',
+      ],
+      [
+        'ccs-droid codex --skip-permissions-unsafe "fix failing tests"',
+        'Auto-routes to Droid exec when exec-only flags are detected',
+      ],
+      [
+        'ccs cliproxy create my-codex --provider codex --target droid',
+        'Create CLIProxy variant with Droid as default target',
+      ],
+      ['ccs glm', 'Run GLM profile on Claude Code (default)'],
     ],
-    ['ccsd codex -m custom:gpt-5.3-codex "fix failing tests"', 'Auto-routes short exec flags'],
-    [
-      'ccsd codex --skip-permissions-unsafe "fix failing tests"',
-      'Auto-routes to Droid exec when exec-only flags are detected',
-    ],
-    [
-      'ccs cliproxy create my-codex --provider codex --target droid',
-      'Create CLIProxy variant with Droid as default target',
-    ],
-    ['ccs glm', 'Run GLM profile on Claude Code (default)'],
-  ]);
+    writeLine
+  );
 
   // Configuration
-  printConfigSection('Configuration', [
-    ['Config File:', isUnifiedMode() ? `${dirDisplay}/config.yaml` : `${dirDisplay}/config.json`],
-    ['Profiles:', `${dirDisplay}/profiles.json`],
-    ['Instances:', `${dirDisplay}/instances/`],
-    ['Settings:', `${dirDisplay}/*.settings.json`],
-  ]);
+  printConfigSection(
+    'Configuration',
+    [
+      ['Config File:', isUnifiedMode() ? `${dirDisplay}/config.yaml` : `${dirDisplay}/config.json`],
+      ['Profiles:', `${dirDisplay}/profiles.json`],
+      ['Instances:', `${dirDisplay}/instances/`],
+      ['Settings:', `${dirDisplay}/*.settings.json`],
+    ],
+    writeLine
+  );
 
   // CLI Proxy management
-  printSubSection('CLI Proxy Plus Management', [
-    ['ccs cliproxy', 'Show CLIProxy Plus status and version'],
-    ['ccs cliproxy --help', 'Full CLIProxy Plus management help'],
-    ['ccs cliproxy doctor', 'Quota diagnostics (Antigravity)'],
-    ['ccs cliproxy --install <ver>', 'Install specific version (e.g., 6.6.6)'],
-    ['ccs cliproxy --latest', 'Update to latest version'],
-    ['', ''], // Spacer
-    ['ccs cliproxy pause <p> <a>', 'Pause account from rotation'],
-    ['ccs cliproxy resume <p> <a>', 'Resume paused account'],
-    ['ccs cliproxy status', 'Show CLIProxy process status'],
-    ['ccs cliproxy quota', 'Show quota/tier/pause status for all providers'],
-    ['ccs cliproxy quota --provider <name>', 'Show quota/tier/pause status for one provider'],
-  ]);
+  printSubSection(
+    'CLI Proxy Plus Management',
+    [
+      ['ccs cliproxy', 'Show CLIProxy Plus status and version'],
+      ['ccs cliproxy --help', 'Full CLIProxy Plus management help'],
+      ['ccs cliproxy doctor', 'Quota diagnostics (Antigravity)'],
+      ['ccs cliproxy --install <ver>', 'Install specific version (e.g., 6.6.6)'],
+      ['ccs cliproxy --latest', 'Update to latest version'],
+      ['', ''], // Spacer
+      ['ccs cliproxy pause <p> <a>', 'Pause account from rotation'],
+      ['ccs cliproxy resume <p> <a>', 'Resume paused account'],
+      ['ccs cliproxy status', 'Show CLIProxy process status'],
+      ['ccs cliproxy quota', 'Show quota/tier/pause status for all providers'],
+      ['ccs cliproxy quota --provider <name>', 'Show quota/tier/pause status for one provider'],
+    ],
+    writeLine
+  );
+
+  printSubSection(
+    'Docker Deployment',
+    [
+      ['ccs docker --help', 'Manage the integrated CCS + CLIProxy Docker stack'],
+      ['ccs docker up', 'Build and start the stack locally'],
+      ['ccs docker up --host <ssh>', 'Stage assets to ~/.ccs/docker and deploy remotely'],
+      ['ccs docker status', 'Show docker compose and supervisor status'],
+      ['ccs docker logs --follow', 'Tail combined CCS + CLIProxy logs'],
+      ['ccs docker update', 'Update CCS and CLIProxy inside the running container'],
+      ['ccs docker config', 'Show bundled asset paths and deployment defaults'],
+    ],
+    writeLine
+  );
 
   // CLI Proxy configuration flags (new)
-  printSubSection('CLI Proxy Configuration', [
-    ['--proxy-host <host>', 'Remote proxy hostname/IP'],
-    ['--proxy-port <port>', `Proxy port (default: ${CLIPROXY_DEFAULT_PORT})`],
-    ['--proxy-protocol <proto>', 'Protocol: http or https (default: http)'],
-    ['--proxy-auth-token <token>', 'Auth token for remote proxy'],
-    ['--proxy-timeout <ms>', 'Connection timeout in ms (default: 2000)'],
-    ['--local-proxy', 'Force local mode, ignore remote config'],
-    ['--remote-only', 'Fail if remote unreachable (no fallback)'],
-    ['--allow-self-signed', 'Allow self-signed certs (for dev proxies)'],
-  ]);
+  printSubSection(
+    'CLI Proxy Configuration',
+    [
+      ['--proxy-host <host>', 'Remote proxy hostname/IP'],
+      ['--proxy-port <port>', `Proxy port (default: ${CLIPROXY_DEFAULT_PORT})`],
+      ['--proxy-protocol <proto>', 'Protocol: http or https (default: http)'],
+      ['--proxy-auth-token <token>', 'Auth token for remote proxy'],
+      ['--proxy-timeout <ms>', 'Connection timeout in ms (default: 2000)'],
+      ['--local-proxy', 'Force local mode, ignore remote config'],
+      ['--remote-only', 'Fail if remote unreachable (no fallback)'],
+      ['--allow-self-signed', 'Allow self-signed certs (for dev proxies)'],
+    ],
+    writeLine
+  );
 
   // W3: Thinking Budget explanation
-  printSubSection('Extended Thinking / Reasoning', [
-    ['--thinking off', 'Disable extended thinking'],
-    ['--thinking auto', 'Let model decide dynamically'],
-    ['--thinking low', '1K tokens - Quick responses'],
-    ['--thinking medium', '8K tokens - Standard analysis'],
-    ['--thinking high', '24K tokens - Deep reasoning'],
-    ['--thinking xhigh', '32K tokens - Maximum depth'],
-    ['--thinking <number>', 'Custom token budget (512-100000)'],
-    ['', ''],
-    ['--effort <level>', 'Codex alias for reasoning effort (medium/high/xhigh)'],
-    ['--effort xhigh', 'Pin Codex effort to xhigh for this run'],
-    ['', ''],
-    ['Droid exec:', 'Use native Droid flag: --reasoning-effort <level>'],
-    ['', 'CCS auto-maps --thinking/--effort to --reasoning-effort in droid exec mode.'],
-    ['', 'For interactive droid sessions, CCS applies reasoning via Droid BYOK model config.'],
-    ['', 'When multiple reasoning flags are provided, the first flag wins.'],
-    ['', ''],
-    ['Note:', 'Extended thinking allocates compute for step-by-step reasoning'],
-    ['', 'before responding.'],
-    ['', 'Providers: agy/gemini use --thinking, codex uses --effort (or --thinking alias).'],
-    ['', 'Codex model suffixes also pin effort: -medium / -high / -xhigh.'],
-  ]);
+  printSubSection(
+    'Extended Thinking / Reasoning',
+    [
+      ['--thinking off', 'Disable extended thinking'],
+      ['--thinking auto', 'Let model decide dynamically'],
+      ['--thinking low', '1K tokens - Quick responses'],
+      ['--thinking medium', '8K tokens - Standard analysis'],
+      ['--thinking high', '24K tokens - Deep reasoning'],
+      ['--thinking xhigh', '32K tokens - Maximum depth'],
+      ['--thinking <number>', 'Custom token budget (512-100000)'],
+      ['', ''],
+      ['--effort <level>', 'Codex alias for reasoning effort (medium/high/xhigh)'],
+      ['--effort xhigh', 'Pin Codex effort to xhigh for this run'],
+      ['', ''],
+      ['Droid exec:', 'Use native Droid flag: --reasoning-effort <level>'],
+      ['', 'CCS auto-maps --thinking/--effort to --reasoning-effort in droid exec mode.'],
+      ['', 'For interactive droid sessions, CCS applies reasoning via Droid BYOK model config.'],
+      ['', 'When multiple reasoning flags are provided, the first flag wins.'],
+      ['', ''],
+      ['Note:', 'Extended thinking allocates compute for step-by-step reasoning'],
+      ['', 'before responding.'],
+      ['', 'Providers: agy/gemini use --thinking, codex uses --effort (or --thinking alias).'],
+      ['', 'Codex model suffixes also pin effort: -medium / -high / -xhigh.'],
+    ],
+    writeLine
+  );
 
   // Extended Context (1M)
-  printSubSection('Extended Context (--1m)', [
-    ['--1m', 'Enable 1M token context window'],
-    ['--no-1m', 'Disable 1M context (use 200K default)'],
-    ['', ''],
-    ['Auto behavior:', 'Gemini models: auto-enabled by default'],
-    ['', 'Claude models: opt-in with --1m flag'],
-    ['', ''],
-    ['Note:', 'Extended context enables 1M token window via [1m] suffix.'],
-    ['', 'Premium pricing: 2x input for >200K tokens.'],
-  ]);
+  printSubSection(
+    'Extended Context (--1m)',
+    [
+      ['--1m', 'Request 1M token context when the selected model supports [1m]'],
+      ['--no-1m', 'Force standard context (Claude default stays plain)'],
+      ['', ''],
+      ['Auto behavior:', 'Gemini models: CCS auto-adds [1m] when supported'],
+      ['', 'Claude models: plain by default, opt-in with --1m or saved [1m]'],
+      ['', ''],
+      ['Note:', 'CCS only controls the saved [1m] suffix.'],
+      ['', 'Provider pricing and entitlement stay upstream.'],
+      [
+        '',
+        'Some accounts/providers can still return 429 extra-usage errors for long-context requests.',
+      ],
+    ],
+    writeLine
+  );
 
   // Image Analysis
-  printSubSection('Image Analysis (CLIProxy vision)', [
-    ['ccs config image-analysis', 'Show current settings'],
-    ['ccs config image-analysis --enable', 'Enable for CLIProxy providers'],
-    ['ccs config image-analysis --disable', 'Disable (use native Read)'],
-    ['ccs config image-analysis --timeout 120', 'Set analysis timeout'],
-    ['ccs config image-analysis --set-model <p> <m>', 'Set provider model'],
-    ['', ''],
-    ['Note:', 'When enabled, images/PDFs are analyzed via vision models'],
-    ['', 'instead of passing raw data to Claude. Works with CLIProxy'],
-    ['', 'providers (agy, gemini, codex, kiro, ghcp).'],
-  ]);
+  printSubSection(
+    'Image Analysis (CLIProxy vision)',
+    [
+      ['ccs config image-analysis', 'Show current settings'],
+      ['ccs config image-analysis --enable', 'Enable for CLIProxy providers'],
+      ['ccs config image-analysis --disable', 'Disable (use native Read)'],
+      ['ccs config image-analysis --timeout 120', 'Set analysis timeout'],
+      ['ccs config image-analysis --set-model <p> <m>', 'Set provider model'],
+      ['', ''],
+      ['Note:', 'When enabled, images/PDFs are analyzed via vision models'],
+      ['', 'instead of passing raw data to Claude. Works with CLIProxy'],
+      ['', 'providers (agy, gemini, codex, kiro, ghcp).'],
+    ],
+    writeLine
+  );
+
+  printSubSection(
+    'Official Channels (official Claude plugins)',
+    [
+      ['ccs config', 'Dashboard -> Settings -> Channels (fastest path)'],
+      ['ccs config channels', 'Show current status'],
+      [
+        'ccs config channels --set telegram,discord',
+        'Auto-add selected channels on native Claude default/account sessions',
+      ],
+      ['ccs config channels --set all', 'Enable Telegram, Discord, and iMessage'],
+      ['ccs config channels --unattended', 'Also add --dangerously-skip-permissions'],
+      ['ccs config channels --set-token telegram=<token>', 'Save TELEGRAM_BOT_TOKEN'],
+      ['ccs config channels --set-token discord=<token>', 'Save DISCORD_BOT_TOKEN'],
+      ['ccs config channels --clear-token [channel]', 'Remove one or all saved channel tokens'],
+      ['', ''],
+      ['', 'Fastest path: turn on the channel, save the token if needed, then run ccs.'],
+      ['Note:', 'Runtime-only. Applies to native Claude default/account sessions only.'],
+      ['', 'Not supported for ccs glm, other API/OAuth profiles, or Droid targets.'],
+      ['', 'Telegram/Discord tokens live in ~/.claude/channels/<channel>/.env.'],
+      ['', 'Current-process TELEGRAM_BOT_TOKEN / DISCORD_BOT_TOKEN also work for that launch.'],
+      ['', 'iMessage is macOS-only and requires local OS permissions instead of a bot token.'],
+    ],
+    writeLine
+  );
 
   // CCS Environment Variables
-  printSubSection('Environment Variables', [
-    ['CCS_DIR', 'Override CCS config directory (default: ~/.ccs)'],
-    ['CCS_HOME', 'Override home directory (legacy, appends .ccs)'],
-    ['CCS_DEBUG', 'Enable debug logging'],
-    ['CCS_THINKING', 'Override thinking level (flag > env > config)'],
-  ]);
+  printSubSection(
+    'Environment Variables',
+    [
+      ['CCS_DIR', 'Override CCS config directory (default: ~/.ccs)'],
+      ['CCS_HOME', 'Override home directory (legacy, appends .ccs)'],
+      ['CCS_DEBUG', 'Enable debug logging'],
+      ['CCS_THINKING', 'Override thinking level (flag > env > config)'],
+    ],
+    writeLine
+  );
 
   // CLI Proxy env vars
-  printSubSection('CLI Proxy Environment Variables', [
-    ['CCS_PROXY_HOST', 'Remote proxy hostname'],
-    ['CCS_PROXY_PORT', 'Proxy port'],
-    ['CCS_PROXY_PROTOCOL', 'Protocol (http/https)'],
-    ['CCS_PROXY_AUTH_TOKEN', 'Auth token'],
-    ['CCS_PROXY_TIMEOUT', 'Connection timeout in ms'],
-    ['CCS_PROXY_FALLBACK_ENABLED', 'Enable local fallback (1/0)'],
-    ['CCS_ALLOW_SELF_SIGNED', 'Allow self-signed certs (1/0)'],
-  ]);
+  printSubSection(
+    'CLI Proxy Environment Variables',
+    [
+      ['CCS_PROXY_HOST', 'Remote proxy hostname'],
+      ['CCS_PROXY_PORT', 'Proxy port'],
+      ['CCS_PROXY_PROTOCOL', 'Protocol (http/https)'],
+      ['CCS_PROXY_AUTH_TOKEN', 'Auth token'],
+      ['CCS_PROXY_TIMEOUT', 'Connection timeout in ms'],
+      ['CCS_PROXY_FALLBACK_ENABLED', 'Enable local fallback (1/0)'],
+      ['CCS_ALLOW_SELF_SIGNED', 'Allow self-signed certs (1/0)'],
+    ],
+    writeLine
+  );
 
   // CLI Proxy paths
-  console.log(subheader('CLI Proxy:'));
-  console.log(`  Binary:      ${color(`${dirDisplay}/cliproxy/bin/cli-proxy-api-plus`, 'path')}`);
-  console.log(`  Config:      ${color(`${dirDisplay}/cliproxy/config.yaml`, 'path')}`);
-  console.log(`  Auth:        ${color(`${dirDisplay}/cliproxy/auth/`, 'path')}`);
-  console.log(`  ${dim(`Port: ${CLIPROXY_DEFAULT_PORT} (default)`)}`);
-  console.log('');
+  writeLine(subheader('CLI Proxy:'));
+  writeLine(`  Binary:      ${color(`${dirDisplay}/cliproxy/bin/cli-proxy-api-plus`, 'path')}`);
+  writeLine(`  Config:      ${color(`${dirDisplay}/cliproxy/config.yaml`, 'path')}`);
+  writeLine(`  Auth:        ${color(`${dirDisplay}/cliproxy/auth/`, 'path')}`);
+  writeLine(`  ${dim(`Port: ${CLIPROXY_DEFAULT_PORT} (default)`)}`);
+  writeLine('');
 
   // Shared Data
-  console.log(subheader('Shared Data:'));
-  console.log(`  Commands:    ${color(`${dirDisplay}/shared/commands/`, 'path')}`);
-  console.log(`  Skills:      ${color(`${dirDisplay}/shared/skills/`, 'path')}`);
-  console.log(`  Agents:      ${color(`${dirDisplay}/shared/agents/`, 'path')}`);
-  console.log(`  ${dim('Note: Symlinked across all profiles')}`);
-  console.log('');
+  writeLine(subheader('Shared Data:'));
+  writeLine(`  Commands:    ${color(`${dirDisplay}/shared/commands/`, 'path')}`);
+  writeLine(`  Skills:      ${color(`${dirDisplay}/shared/skills/`, 'path')}`);
+  writeLine(`  Agents:      ${color(`${dirDisplay}/shared/agents/`, 'path')}`);
+  writeLine(`  ${dim('Note: Symlinked across all profiles')}`);
+  writeLine('');
 
   // Examples (aligned with consistent spacing)
-  console.log(subheader('Examples:'));
-  console.log(`  $ ${color('ccs', 'command')}                     ${dim('# Use default account')}`);
-  console.log(
+  writeLine(subheader('Examples:'));
+  writeLine(`  $ ${color('ccs', 'command')}                     ${dim('# Use default account')}`);
+  writeLine(
     `  $ ${color('ccs gemini', 'command')}              ${dim('# OAuth (browser opens first time)')}`
   );
-  console.log(`  $ ${color('ccs glm "implement API"', 'command')} ${dim('# API key model')}`);
-  console.log(`  $ ${color('ccs config', 'command')}              ${dim('# Open web dashboard')}`);
-  console.log('');
+  writeLine(`  $ ${color('ccs glm "implement API"', 'command')} ${dim('# API key model')}`);
+  writeLine(`  $ ${color('ccs config', 'command')}              ${dim('# Open web dashboard')}`);
+  writeLine('');
 
   // Update examples
-  console.log(subheader('Update:'));
-  console.log(
+  writeLine(subheader('Update:'));
+  writeLine(
     `  $ ${color('ccs update', 'command')}              ${dim('# Update to latest stable')}`
   );
-  console.log(
+  writeLine(
     `  $ ${color('ccs update --force', 'command')}      ${dim('# Force reinstall current')}`
   );
-  console.log(`  $ ${color('ccs update --beta', 'command')}       ${dim('# Install dev channel')}`);
-  console.log('');
+  writeLine(`  $ ${color('ccs update --beta', 'command')}       ${dim('# Install dev channel')}`);
+  writeLine('');
 
   // Docs link
-  console.log(`  ${dim('Docs: https://github.com/kaitranntt/ccs')}`);
-  console.log('');
+  writeLine(`  ${dim('Docs: https://github.com/kaitranntt/ccs')}`);
+  writeLine('');
 
   // Uninstall
-  console.log(subheader('Uninstall:'));
-  console.log(`  ${color('npm uninstall -g @kaitranntt/ccs', 'command')}`);
-  console.log('');
+  writeLine(subheader('Uninstall:'));
+  writeLine(`  ${color('npm uninstall -g @kaitranntt/ccs', 'command')}`);
+  writeLine('');
 
   // License
-  console.log(dim('License: MIT'));
-  console.log('');
-
-  process.exit(0);
+  writeLine(dim('License: MIT'));
+  writeLine('');
 }

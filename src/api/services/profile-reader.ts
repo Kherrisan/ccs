@@ -6,11 +6,13 @@
  */
 
 import * as fs from 'fs';
-import * as path from 'path';
-import { getCcsDir, loadConfigSafe } from '../../utils/config-manager';
+import { loadConfigSafe } from '../../utils/config-manager';
 import { loadOrCreateUnifiedConfig, isUnifiedMode } from '../../config/unified-config-loader';
+import { expandPath } from '../../utils/helpers';
 import type { TargetType } from '../../targets/target-adapter';
+import type { Settings } from '../../types/config';
 import type { ApiProfileInfo, CliproxyVariantInfo, ApiListResult } from './profile-types';
+import { resolveCliproxyBridgeMetadata } from './cliproxy-profile-bridge';
 
 const VALID_TARGETS: ReadonlySet<TargetType> = new Set<TargetType>(['claude', 'droid']);
 
@@ -38,22 +40,42 @@ export function apiProfileExists(name: string): boolean {
 }
 
 /**
+ * Load settings file from a config reference such as ~/.ccs/name.settings.json.
+ */
+function loadProfileSettings(settingsReference: string | undefined): Settings | null {
+  if (!settingsReference || settingsReference === 'config.yaml') {
+    return null;
+  }
+
+  try {
+    const settingsPath = expandPath(settingsReference);
+    if (!fs.existsSync(settingsPath)) return null;
+    return JSON.parse(fs.readFileSync(settingsPath, 'utf8')) as Settings;
+  } catch {
+    return null;
+  }
+}
+
+function isConfiguredFromSettings(settings: Settings | null): boolean {
+  const token = settings?.env?.ANTHROPIC_AUTH_TOKEN || settings?.env?.ANTHROPIC_API_KEY || '';
+  return token.length > 0 && !token.includes('YOUR_') && !token.includes('your-');
+}
+
+function resolveProfileSettingsReference(name: string): string | undefined {
+  if (isUnifiedMode()) {
+    const config = loadOrCreateUnifiedConfig();
+    return config.profiles[name]?.settings;
+  }
+
+  const config = loadConfigSafe();
+  return config.profiles[name];
+}
+
+/**
  * Check if API profile has real API key (not placeholder)
  */
 export function isApiProfileConfigured(apiName: string): boolean {
-  try {
-    const ccsDir = getCcsDir();
-    const settingsPath = path.join(ccsDir, `${apiName}.settings.json`);
-
-    // Check settings.json file for API key
-    if (!fs.existsSync(settingsPath)) return false;
-
-    const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
-    const token = settings?.env?.ANTHROPIC_AUTH_TOKEN || settings?.env?.ANTHROPIC_API_KEY || '';
-    return token.length > 0 && !token.includes('YOUR_') && !token.includes('your-');
-  } catch {
-    return false;
-  }
+  return isConfiguredFromSettings(loadProfileSettings(resolveProfileSettingsReference(apiName)));
 }
 
 /**
@@ -73,12 +95,15 @@ export function listApiProfiles(): ApiListResult {
       if (name === 'default' && profile.settings?.includes('.claude/settings.json')) {
         continue;
       }
+      const settingsPath = profile.settings || 'config.yaml';
+      const settings = loadProfileSettings(settingsPath);
       profiles.push({
         name,
-        settingsPath: profile.settings || 'config.yaml',
-        isConfigured: isApiProfileConfigured(name),
+        settingsPath,
+        isConfigured: isConfiguredFromSettings(settings),
         configSource: 'unified',
         target: sanitizeTarget(profile.target),
+        cliproxyBridge: resolveCliproxyBridgeMetadata(settings),
       });
     }
     // CLIProxy variants
@@ -103,12 +128,14 @@ export function listApiProfiles(): ApiListResult {
       if (name === 'default' && (settingsPath as string).includes('.claude/settings.json')) {
         continue;
       }
+      const settings = loadProfileSettings(settingsPath as string);
       profiles.push({
         name,
         settingsPath: settingsPath as string,
-        isConfigured: isApiProfileConfigured(name),
+        isConfigured: isConfiguredFromSettings(settings),
         configSource: 'legacy',
         target: sanitizeTarget(legacyTargetMap?.[name]),
+        cliproxyBridge: resolveCliproxyBridgeMetadata(settings),
       });
     }
     // CLIProxy variants

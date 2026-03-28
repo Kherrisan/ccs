@@ -3,8 +3,9 @@
  * Manages thinking budget suffixes for CLIProxyAPIPlus
  */
 
-import { CLIProxyProvider } from '../types';
-import { ThinkingConfig, DEFAULT_THINKING_TIER_DEFAULTS } from '../../config/unified-config-types';
+import type { CLIProxyProvider } from '../types';
+import { DEFAULT_THINKING_TIER_DEFAULTS } from '../../config/unified-config-types';
+import type { ThinkingConfig } from '../../config/unified-config-types';
 import { getThinkingConfig } from '../../config/unified-config-loader';
 import { supportsThinking } from '../model-catalog';
 import { isThinkingOffValue, validateThinking } from '../thinking-validator';
@@ -299,6 +300,16 @@ export function applyThinkingConfig(
       }
 
       // If per-tier thinking is 'off', skip this tier
+      if (isThinkingOffValue(tierThinkingValue)) {
+        continue;
+      }
+
+      // Validate/clamp tier thinking against this specific tier model capabilities.
+      const tierValidation = validateThinking(tierProvider, normalizedTierModel, tierThinkingValue);
+      if (tierValidation.warning && shouldShowWarnings(thinkingConfig)) {
+        console.warn(warn(tierValidation.warning));
+      }
+      tierThinkingValue = tierValidation.value;
       if (isThinkingOffValue(tierThinkingValue)) {
         continue;
       }

@@ -11,8 +11,9 @@ import { getGlobalEnvConfig } from '../config/unified-config-loader';
 import { checkAuthStatus, isCopilotApiInstalled } from './copilot-auth';
 import { isDaemonRunning, startDaemon } from './copilot-daemon';
 import { ensureCopilotApi } from './copilot-package-manager';
+import { normalizeCopilotConfigWithWarnings } from './copilot-model-normalizer';
 import { CopilotStatus } from './types';
-import { fail, info, ok } from '../utils/ui';
+import { fail, info, ok, warn } from '../utils/ui';
 import { getWebSearchHookEnv } from '../utils/websearch-manager';
 import { getImageAnalysisHookEnv } from '../utils/hooks';
 import { stripClaudeCodeEnv } from '../utils/shell-executor';
@@ -21,16 +22,17 @@ import { stripClaudeCodeEnv } from '../utils/shell-executor';
  * Get full copilot status (auth + daemon).
  */
 export async function getCopilotStatus(config: CopilotConfig): Promise<CopilotStatus> {
+  const normalizedConfig = normalizeCopilotConfigWithWarnings(config).config;
   const [auth, daemonRunning] = await Promise.all([
     checkAuthStatus(),
-    isDaemonRunning(config.port),
+    isDaemonRunning(normalizedConfig.port),
   ]);
 
   return {
     auth,
     daemon: {
       running: daemonRunning,
-      port: config.port,
+      port: normalizedConfig.port,
     },
   };
 }
@@ -43,17 +45,19 @@ export function generateCopilotEnv(
   config: CopilotConfig,
   claudeConfigDir?: string
 ): Record<string, string> {
+  const normalizedConfig = normalizeCopilotConfigWithWarnings(config).config;
+
   // Use mapped models if configured, otherwise fall back to default model
-  const opusModel = config.opus_model || config.model;
-  const sonnetModel = config.sonnet_model || config.model;
-  const haikuModel = config.haiku_model || config.model;
+  const opusModel = normalizedConfig.opus_model || normalizedConfig.model;
+  const sonnetModel = normalizedConfig.sonnet_model || normalizedConfig.model;
+  const haikuModel = normalizedConfig.haiku_model || normalizedConfig.model;
 
   // Use 127.0.0.1 instead of localhost for more reliable local connections
   // (bypasses DNS resolution and potential IPv6 issues)
   return {
-    ANTHROPIC_BASE_URL: `http://127.0.0.1:${config.port}`,
+    ANTHROPIC_BASE_URL: `http://127.0.0.1:${normalizedConfig.port}`,
     ANTHROPIC_AUTH_TOKEN: 'dummy', // copilot-api handles auth internally
-    ANTHROPIC_MODEL: config.model,
+    ANTHROPIC_MODEL: normalizedConfig.model,
     // Model tier mapping - allows different models for opus/sonnet/haiku
     ANTHROPIC_DEFAULT_OPUS_MODEL: opusModel,
     ANTHROPIC_DEFAULT_SONNET_MODEL: sonnetModel,
@@ -79,6 +83,16 @@ export async function executeCopilotProfile(
   claudeConfigDir?: string,
   claudeCliPath: string = 'claude'
 ): Promise<number> {
+  const { config: normalizedConfig, warnings } = normalizeCopilotConfigWithWarnings(config);
+
+  if (warnings.length > 0) {
+    warnings.forEach(({ message }) => console.log(warn(message)));
+    console.log(
+      warn('Run `ccs config` and save the Copilot section to persist these replacements.')
+    );
+    console.log('');
+  }
+
   // Ensure copilot-api is installed (auto-install if missing, auto-update if outdated)
   try {
     await ensureCopilotApi();
@@ -111,17 +125,17 @@ export async function executeCopilotProfile(
   }
 
   // Check if daemon is running or needs to be started
-  let daemonRunning = await isDaemonRunning(config.port);
+  let daemonRunning = await isDaemonRunning(normalizedConfig.port);
 
   if (!daemonRunning) {
-    if (config.auto_start) {
+    if (normalizedConfig.auto_start) {
       console.log(info('Starting copilot-api daemon...'));
-      const result = await startDaemon(config);
+      const result = await startDaemon(normalizedConfig);
       if (!result.success) {
         console.error(fail(`Failed to start daemon: ${result.error}`));
         return 1;
       }
-      console.log(ok(`Daemon started on port ${config.port}`));
+      console.log(ok(`Daemon started on port ${normalizedConfig.port}`));
       daemonRunning = true;
     } else {
       console.error(fail('copilot-api daemon is not running.'));
@@ -129,7 +143,7 @@ export async function executeCopilotProfile(
       console.error('Start the daemon:');
       console.error('  ccs copilot start');
       console.error('Fallback manual command:');
-      console.error(`  npx copilot-api start --port ${config.port}`);
+      console.error(`  npx copilot-api start --port ${normalizedConfig.port}`);
       console.error('');
       console.error('Or enable auto_start in config:');
       console.error('  ccs config  (then enable auto_start in Copilot section)');
@@ -138,7 +152,7 @@ export async function executeCopilotProfile(
   }
 
   // Generate environment for Claude
-  const copilotEnv = generateCopilotEnv(config, claudeConfigDir);
+  const copilotEnv = generateCopilotEnv(normalizedConfig, claudeConfigDir);
 
   // Get global env vars (DISABLE_TELEMETRY, etc.) for third-party profiles
   const globalEnvConfig = getGlobalEnvConfig();
@@ -156,7 +170,7 @@ export async function executeCopilotProfile(
     CCS_PROFILE_TYPE: 'copilot',
   });
 
-  console.log(info(`Using GitHub Copilot proxy (model: ${config.model})`));
+  console.log(info(`Using GitHub Copilot proxy (model: ${normalizedConfig.model})`));
   console.log('');
 
   // Spawn Claude CLI

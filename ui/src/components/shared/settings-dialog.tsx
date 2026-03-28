@@ -279,7 +279,7 @@ function SettingsDialogContent({
               </ScrollArea>
             </TabsContent>
 
-            <TabsContent value="raw" className="flex-1 overflow-hidden p-4 pt-4 m-0">
+            <TabsContent value="raw" className="m-0 min-h-0 flex-1 overflow-hidden p-4 pt-4">
               <Suspense
                 fallback={
                   <div className="flex items-center justify-center h-full">
@@ -293,6 +293,7 @@ function SettingsDialogContent({
                   onChange={handleRawJsonChange}
                   language="json"
                   minHeight="calc(60vh - 120px)"
+                  heightMode="fill-parent"
                 />
               </Suspense>
             </TabsContent>

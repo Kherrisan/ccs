@@ -16,6 +16,8 @@ import type { GeminiCliQuotaResult, GeminiCliBucket } from './quota-types';
 /** Google Cloud Code API endpoints */
 const GEMINI_CLI_API_BASE = 'https://cloudcode-pa.googleapis.com';
 const GEMINI_CLI_API_VERSION = 'v1internal';
+const GEMINI_CLI_ERROR_DETAIL_MAX_LENGTH = 320;
+const GEMINI_CLI_ERROR_DETAIL_TRUNCATION_SUFFIX = '...[truncated]';
 
 /**
  * Model groups for quota consolidation.
@@ -66,6 +68,12 @@ interface RawGeminiCliBucket {
 /** Raw API response structure */
 interface GeminiCliQuotaResponse {
   buckets?: RawGeminiCliBucket[];
+}
+
+interface ParsedGeminiCliErrorBody {
+  errorCode?: string;
+  errorDetail?: string;
+  message?: string;
 }
 
 /**
@@ -240,6 +248,228 @@ function shouldIgnoreModel(modelId: string): boolean {
   return IGNORED_MODEL_PREFIXES.some((prefix) => modelId.startsWith(prefix));
 }
 
+function buildGeminiCliFailureResult(
+  accountId: string,
+  projectId: string | null,
+  options: {
+    error: string;
+    httpStatus?: number;
+    errorCode?: string;
+    errorDetail?: string;
+    actionHint?: string;
+    retryable?: boolean;
+    needsReauth?: boolean;
+    isForbidden?: boolean;
+  }
+): GeminiCliQuotaResult {
+  return {
+    success: false,
+    buckets: [],
+    projectId,
+    lastUpdated: Date.now(),
+    accountId,
+    error: options.error,
+    httpStatus: options.httpStatus,
+    errorCode: options.errorCode,
+    errorDetail: options.errorDetail,
+    actionHint: options.actionHint,
+    retryable: options.retryable,
+    needsReauth: options.needsReauth,
+    isForbidden: options.isForbidden,
+  };
+}
+
+function sanitizeGeminiCliErrorDetail(bodyText: string): string | undefined {
+  const trimmed = bodyText.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  if (/^<!doctype html/i.test(trimmed) || /^<html/i.test(trimmed) || /^<[^>]+>/.test(trimmed)) {
+    return '[HTML error response omitted]';
+  }
+
+  let sanitized = trimmed
+    .replace(
+      /"(access[_-]?token|refresh[_-]?token|authorization|cookie|set-cookie|api[_-]?key|session[_-]?token|token)"\s*:\s*"[^"]*"/gi,
+      '"$1":"[redacted]"'
+    )
+    .replace(/Bearer\s+[A-Za-z0-9._-]+/g, 'Bearer [redacted]')
+    .replace(/\s+/g, ' ');
+
+  if (sanitized.length > GEMINI_CLI_ERROR_DETAIL_MAX_LENGTH) {
+    sanitized = `${sanitized.slice(
+      0,
+      GEMINI_CLI_ERROR_DETAIL_MAX_LENGTH - GEMINI_CLI_ERROR_DETAIL_TRUNCATION_SUFFIX.length
+    )}${GEMINI_CLI_ERROR_DETAIL_TRUNCATION_SUFFIX}`;
+  }
+
+  return sanitized;
+}
+
+function extractGeminiCliNestedMessage(value: unknown): string | undefined {
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      const nested = extractGeminiCliNestedMessage(entry);
+      if (nested) return nested;
+    }
+    return undefined;
+  }
+
+  if (!value || typeof value !== 'object') {
+    return undefined;
+  }
+
+  const record = value as Record<string, unknown>;
+  const directMessage = [
+    record.message,
+    record.localizedMessage,
+    record.description,
+    record.reason,
+    record.error,
+  ].find(
+    (candidate): candidate is string => typeof candidate === 'string' && candidate.trim().length > 0
+  );
+  if (directMessage) {
+    return directMessage;
+  }
+
+  return undefined;
+}
+
+function parseGeminiCliErrorBody(bodyText: string): ParsedGeminiCliErrorBody {
+  const trimmed = bodyText.trim();
+  if (!trimmed) {
+    return {};
+  }
+
+  const sanitizedDetail = sanitizeGeminiCliErrorDetail(trimmed);
+
+  try {
+    const parsed = JSON.parse(trimmed) as Record<string, unknown>;
+    const topLevelMessage = [parsed.message, parsed.error].find(
+      (candidate): candidate is string =>
+        typeof candidate === 'string' && candidate.trim().length > 0
+    );
+    const topLevelCode = [parsed.code, parsed.status].find(
+      (candidate): candidate is string =>
+        typeof candidate === 'string' && candidate.trim().length > 0
+    );
+
+    if (parsed.error && typeof parsed.error === 'object') {
+      const error = parsed.error as Record<string, unknown>;
+      return {
+        errorCode:
+          [error.status, error.code, topLevelCode].find(
+            (candidate): candidate is string =>
+              typeof candidate === 'string' && candidate.trim().length > 0
+          ) || undefined,
+        errorDetail: sanitizedDetail,
+        message:
+          [
+            error.message,
+            error.error,
+            extractGeminiCliNestedMessage(error.details),
+            topLevelMessage,
+          ].find(
+            (candidate): candidate is string =>
+              typeof candidate === 'string' && candidate.trim().length > 0
+          ) || undefined,
+      };
+    }
+
+    return {
+      errorCode: topLevelCode,
+      errorDetail: sanitizedDetail,
+      message:
+        [topLevelMessage, extractGeminiCliNestedMessage(parsed.details)].find(
+          (candidate): candidate is string =>
+            typeof candidate === 'string' && candidate.trim().length > 0
+        ) || undefined,
+    };
+  } catch {
+    return {
+      errorDetail: sanitizedDetail,
+      message: sanitizedDetail === '[HTML error response omitted]' ? undefined : trimmed,
+    };
+  }
+}
+
+function buildGeminiCliForbiddenActionHint(parsed: ParsedGeminiCliErrorBody): string {
+  const combined = `${parsed.message || ''} ${parsed.errorDetail || ''}`.toLowerCase();
+  if (combined.includes('verify') || combined.includes('verification')) {
+    return 'Complete the Google account verification mentioned above, then retry quota refresh.';
+  }
+  if (combined.includes('project')) {
+    return 'Confirm this Google project still has Gemini CLI quota access, then retry.';
+  }
+  return 'Check the Google account or workspace access shown above, then retry quota refresh.';
+}
+
+function buildGeminiCliHttpFailureResult(
+  accountId: string,
+  projectId: string | null,
+  status: number,
+  bodyText: string
+): GeminiCliQuotaResult {
+  const parsed = parseGeminiCliErrorBody(bodyText);
+
+  if (status === 401) {
+    return buildGeminiCliFailureResult(accountId, projectId, {
+      error: parsed.message || 'Token expired or invalid',
+      httpStatus: 401,
+      errorCode: parsed.errorCode || 'reauth_required',
+      errorDetail: parsed.errorDetail,
+      actionHint: 'Run ccs gemini --auth to reconnect this account.',
+      needsReauth: true,
+      retryable: false,
+    });
+  }
+
+  if (status === 403) {
+    return buildGeminiCliFailureResult(accountId, projectId, {
+      error: parsed.message || 'Quota access forbidden for this account',
+      httpStatus: 403,
+      errorCode: parsed.errorCode || 'quota_api_forbidden',
+      errorDetail: parsed.errorDetail,
+      actionHint: buildGeminiCliForbiddenActionHint(parsed),
+      isForbidden: true,
+      retryable: false,
+    });
+  }
+
+  if (status === 429) {
+    return buildGeminiCliFailureResult(accountId, projectId, {
+      error: parsed.message || 'Rate limited - try again later',
+      httpStatus: 429,
+      errorCode: parsed.errorCode || 'rate_limited',
+      errorDetail: parsed.errorDetail,
+      actionHint: 'Retry after a short delay.',
+      retryable: true,
+    });
+  }
+
+  if (status >= 500) {
+    return buildGeminiCliFailureResult(accountId, projectId, {
+      error: parsed.message || `Gemini quota service unavailable (HTTP ${status})`,
+      httpStatus: status,
+      errorCode: parsed.errorCode || 'provider_unavailable',
+      errorDetail: parsed.errorDetail,
+      actionHint: 'Retry later. This looks like a temporary Google upstream problem.',
+      retryable: true,
+    });
+  }
+
+  return buildGeminiCliFailureResult(accountId, projectId, {
+    error: parsed.message || `Gemini quota request failed (HTTP ${status})`,
+    httpStatus: status,
+    errorCode: parsed.errorCode || 'quota_request_failed',
+    errorDetail: parsed.errorDetail,
+    actionHint: 'Inspect the upstream response details and retry if appropriate.',
+    retryable: false,
+  });
+}
+
 /**
  * Build GeminiCliBucket array from API response
  * Groups buckets by model series and token type
@@ -334,14 +564,12 @@ async function fetchWithAuthData(
   if (!authData.projectId) {
     const error = 'Cannot resolve project ID from auth file';
     if (verbose) console.error(`[!] Error: ${error}`);
-    return {
-      success: false,
-      buckets: [],
-      projectId: null,
-      lastUpdated: Date.now(),
+    return buildGeminiCliFailureResult(accountId, null, {
       error,
-      accountId,
-    };
+      errorCode: 'missing_project_id',
+      actionHint: 'Run ccs gemini --auth to reconnect this account and recover the project ID.',
+      retryable: false,
+    });
   }
 
   const url = `${GEMINI_CLI_API_BASE}/${GEMINI_CLI_API_VERSION}:retrieveUserQuota`;
@@ -363,49 +591,14 @@ async function fetchWithAuthData(
 
     if (verbose) console.error(`[i] Gemini CLI API status: ${response.status}`);
 
-    if (response.status === 401) {
-      return {
-        success: false,
-        buckets: [],
-        projectId: authData.projectId,
-        lastUpdated: Date.now(),
-        error: 'Token expired or invalid',
-        accountId,
-        needsReauth: true,
-      };
-    }
-
-    if (response.status === 403) {
-      return {
-        success: false,
-        buckets: [],
-        projectId: authData.projectId,
-        lastUpdated: Date.now(),
-        error: 'Quota access forbidden for this account',
-        accountId,
-      };
-    }
-
-    if (response.status === 429) {
-      return {
-        success: false,
-        buckets: [],
-        projectId: authData.projectId,
-        lastUpdated: Date.now(),
-        error: 'Rate limited - try again later',
-        accountId,
-      };
-    }
-
     if (!response.ok) {
-      return {
-        success: false,
-        buckets: [],
-        projectId: authData.projectId,
-        lastUpdated: Date.now(),
-        error: `API error: ${response.status}`,
+      const bodyText = await response.text();
+      return buildGeminiCliHttpFailureResult(
         accountId,
-      };
+        authData.projectId,
+        response.status,
+        bodyText
+      );
     }
 
     const data = (await response.json()) as GeminiCliQuotaResponse;
@@ -432,14 +625,14 @@ async function fetchWithAuthData(
 
     if (verbose) console.error(`[!] Gemini CLI quota error: ${errorMsg}`);
 
-    return {
-      success: false,
-      buckets: [],
-      projectId: authData.projectId,
-      lastUpdated: Date.now(),
+    return buildGeminiCliFailureResult(accountId, authData.projectId, {
       error: errorMsg,
-      accountId,
-    };
+      errorCode:
+        err instanceof Error && err.name === 'AbortError' ? 'network_timeout' : 'network_error',
+      actionHint: 'Retry later. This looks temporary.',
+      retryable: true,
+      httpStatus: err instanceof Error && err.name === 'AbortError' ? 408 : undefined,
+    });
   }
 }
 
@@ -460,14 +653,12 @@ export async function fetchGeminiCliQuota(
   if (!authData) {
     const error = 'Auth file not found for Gemini account';
     if (verbose) console.error(`[!] Error: ${error}`);
-    return {
-      success: false,
-      buckets: [],
-      projectId: null,
-      lastUpdated: Date.now(),
+    return buildGeminiCliFailureResult(accountId, null, {
       error,
-      accountId,
-    };
+      errorCode: 'auth_file_missing',
+      actionHint: 'Run ccs gemini --auth to reconnect this account.',
+      retryable: false,
+    });
   }
 
   // Proactive refresh: refresh if expired OR expiring within 5 minutes
@@ -497,15 +688,14 @@ export async function fetchGeminiCliQuota(
       // Only fail if token is actually expired (not just expiring soon)
       const error = refreshResult.error || 'Token refresh failed';
       if (verbose) console.error(`[!] Refresh failed: ${error}`);
-      return {
-        success: false,
-        buckets: [],
-        projectId: null,
-        lastUpdated: Date.now(),
+      return buildGeminiCliFailureResult(accountId, authData.projectId, {
         error,
-        accountId,
+        errorCode: 'reauth_required',
+        errorDetail: error,
+        actionHint: 'Run ccs gemini --auth to reconnect this account.',
         needsReauth: true,
-      };
+        retryable: false,
+      });
     }
     // If proactive refresh fails but token isn't expired yet, continue with existing token
   }
@@ -552,6 +742,13 @@ export async function fetchAllGeminiCliQuotas(
 
   return results;
 }
+
+export const __testExports = {
+  sanitizeGeminiCliErrorDetail,
+  extractGeminiCliNestedMessage,
+  parseGeminiCliErrorBody,
+  buildGeminiCliForbiddenActionHint,
+};
 
 // Export for testing
 export { resolveGeminiCliProjectId, buildGeminiCliBuckets };

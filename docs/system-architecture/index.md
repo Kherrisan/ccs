@@ -1,6 +1,6 @@
 # CCS System Architecture
 
-Last Updated: 2026-03-02
+Last Updated: 2026-03-18
 
 High-level architecture overview for the CCS (Claude Code Switch) system.
 
@@ -55,7 +55,7 @@ CCS v7.45 introduces the Target Adapter pattern, enabling seamless integration w
 **Key architecture:**
 
 ```
-Profile Resolution (CLIProxy, GLMT, Account-based)
+Profile Resolution (CLIProxy, Settings/API, Account-based)
         |
         v
 Target Resolution (--target flag > config > argv[0] > default)
@@ -86,11 +86,12 @@ Spawn Target Process
   - Spawns: `droid -m custom:ccs-<profile> <args>`
   - Model config includes baseUrl, apiKey, provider
 
-**Binary alias pattern (busybox-style):**
+**Runtime alias pattern (built-in bins / argv[0]-style):**
 
 ```
-ccs  → Target: claude (default)
-ccsd → Target: droid (auto-selected via argv[0])
+ccs        → Target: claude (default)
+ccs-droid  → Target: droid (explicit alias)
+ccsd       → Target: droid (legacy shortcut)
 ```
 
 For details on the adapter architecture, see [Target Adapters](./target-adapters.md).
@@ -126,7 +127,7 @@ For details on the adapter architecture, see [Target Adapters](./target-adapters
         |                                       |
         +---> [CLIProxy Provider] ---> execClaudeWithCLIProxy()
         |                                       |
-        +---> [GLMT Profile] ---> execClaudeWithProxy()
+        +---> [Settings/API Profile] ---> normalize legacy glmt if needed
         |
         v
   +------------------+
@@ -185,20 +186,23 @@ For details on the adapter architecture, see [Target Adapters](./target-adapters
         |                              v
         |                        7b. Spawn via Adapter
         |
-        +---> GLMT -----------> 3c. Start Embedded Proxy
+        +---> Settings/API ---> 3c. Load settings env
                                       |
                                       v
-                                4c. Resolve Target Adapter
+                                4c. Normalize legacy glmt if needed
                                       |
                                       v
-                                5c. Spawn via Adapter
+                                5c. Resolve Target Adapter
+                                      |
+                                      v
+                                6c. Spawn via Adapter
 ```
 
 ---
 
 ## Provider Integration Architecture
 
-For detailed provider flows (CLIProxyAPI, GLMT, quota management), see [Provider Flows](./provider-flows.md).
+For detailed provider flows (CLIProxyAPI, legacy GLMT compatibility, quota management), see [Provider Flows](./provider-flows.md).
 
 ---
 
@@ -230,11 +234,26 @@ For detailed provider flows (CLIProxyAPI, GLMT, quota management), see [Provider
             +---> commands/        # Claude Code commands
             +---> skills/          # Custom skills
             +---> agents/          # Agent configurations
+            +---> plugins/
+                    |
+                    +---> cache/               # Shared plugin payload/cache data
+                    +---> marketplaces/        # Shared marketplace payload directories
+                    +---> installed_plugins.json
+
+  ~/.ccs/instances/<profile>/
+    |
+    +---> plugins/
+            |
+            +---> known_marketplaces.json      # Instance-local registry for active CLAUDE_CONFIG_DIR validation
 
   ~/.factory/ (Droid CLI)
     |
     +---> settings.json            # Droid config (custom models)
 ```
+
+Plugin ownership note:
+- `commands/`, `skills/`, `agents/`, and `settings.json` remain shared through the existing symlink/copy flow.
+- Marketplace payload directories stay shared, but `known_marketplaces.json` is reconciled per instance so Claude Code can validate `installLocation` against that instance's `CLAUDE_CONFIG_DIR/plugins/marketplaces`.
 
 ### Config Loading Order
 
@@ -303,7 +322,7 @@ See [Provider Flows](./provider-flows.md) → Authentication Flow section.
         | Localhost only (127.0.0.1)
         v
   +------------------+
-  | CLIProxy/GLMT    |  Binds to localhost only
+  | CLIProxy/Legacy  |  Binds to localhost only
   +------------------+
         |
         | TLS encrypted
@@ -374,7 +393,7 @@ See [Provider Flows](./provider-flows.md) → Authentication Flow section.
         |
         +---> Creates symlink: ccs --> dist/ccs.js
         |
-        +---> Binary alias: ccsd → ccs (auto-selects droid target)
+        +---> Runtime aliases: ccs-droid / ccsd → ccs (auto-select droid target)
         |
         +---> First run creates: ~/.ccs/
 ```
@@ -400,5 +419,5 @@ See [Provider Flows](./provider-flows.md) → Authentication Flow section.
 - [Codebase Summary](../codebase-summary.md) - Detailed directory structure
 - [Code Standards](../code-standards.md) - Coding conventions & patterns
 - [Target Adapters](./target-adapters.md) - Multi-CLI adapter architecture
-- [Provider Flows](./provider-flows.md) - CLIProxy, GLMT, authentication flows
+- [Provider Flows](./provider-flows.md) - CLIProxy, legacy GLMT compatibility, authentication flows
 - [Project Roadmap](../project-roadmap.md) - Development phases

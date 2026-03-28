@@ -342,3 +342,35 @@
 .scrollbar-thin::-webkit-scrollbar-thumb:hover {
   background: var(--muted-foreground);
 }
+
+.scrollbar-editor {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+  scrollbar-gutter: stable;
+}
+
+.scrollbar-editor::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.scrollbar-editor::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-editor::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border: 2px solid transparent;
+  border-radius: 9999px;
+  background-clip: content-box;
+  min-height: 32px;
+}
+
+.scrollbar-editor::-webkit-scrollbar-thumb:hover {
+  background: var(--muted-foreground);
+  background-clip: content-box;
+}
+
+.scrollbar-editor::-webkit-scrollbar-corner {
+  background: transparent;
+}

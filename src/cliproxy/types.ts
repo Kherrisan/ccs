@@ -162,11 +162,33 @@ export interface CLIProxyConfig {
     'api-key': string;
     'base-url'?: string;
   }>;
+  'claude-api-key'?: Array<{
+    'api-key': string;
+    'base-url'?: string;
+    'proxy-url'?: string;
+    prefix?: string;
+    headers?: Record<string, string>;
+    'excluded-models'?: string[];
+    models?: Array<{
+      name: string;
+      alias: string;
+    }>;
+  }>;
+  'vertex-api-key'?: Array<{
+    'api-key': string;
+    'base-url'?: string;
+  }>;
   'openai-compatibility'?: Array<{
     name: string;
     'base-url': string;
+    headers?: Record<string, string>;
     'api-key-entries': Array<{
       'api-key': string;
+      'proxy-url'?: string;
+    }>;
+    models?: Array<{
+      name: string;
+      alias: string;
     }>;
   }>;
 }

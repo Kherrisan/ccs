@@ -48,6 +48,7 @@ function lazyWithRetry<T extends ComponentType<unknown>>(importFn: () => Promise
 
 // Lazy-loaded sections with retry capability
 const WebSearchSection = lazyWithRetry(() => import('./sections/websearch'));
+const ChannelsSection = lazyWithRetry(() => import('./sections/channels'));
 const GlobalEnvSection = lazyWithRetry(() => import('./sections/globalenv-section'));
 const ThinkingSection = lazyWithRetry(() => import('./sections/thinking'));
 const ProxySection = lazyWithRetry(() => import('./sections/proxy'));
@@ -121,7 +122,7 @@ function SettingsPageInner() {
   };
 
   return (
-    <div className="h-[calc(100vh-100px)]">
+    <div className="h-full min-h-0">
       {/* Mobile View - Stacked vertically */}
       <div className="md:hidden h-full flex flex-col">
         <div className="border-b bg-background p-4">
@@ -130,6 +131,7 @@ function SettingsPageInner() {
         <SectionErrorBoundary>
           <Suspense fallback={<SectionSkeleton />}>
             {activeTab === 'websearch' && <WebSearchSection />}
+            {activeTab === 'channels' && <ChannelsSection />}
             {activeTab === 'globalenv' && <GlobalEnvSection />}
             {activeTab === 'thinking' && <ThinkingSection />}
             {activeTab === 'proxy' && <ProxySection />}
@@ -153,6 +155,7 @@ function SettingsPageInner() {
             <SectionErrorBoundary>
               <Suspense fallback={<SectionSkeleton />}>
                 {activeTab === 'websearch' && <WebSearchSection />}
+                {activeTab === 'channels' && <ChannelsSection />}
                 {activeTab === 'globalenv' && <GlobalEnvSection />}
                 {activeTab === 'thinking' && <ThinkingSection />}
                 {activeTab === 'proxy' && <ProxySection />}
@@ -207,12 +210,7 @@ function SettingsPageInner() {
 
             {/* Config Content - scrollable */}
             <div className="flex-1 overflow-auto">
-              {rawConfigLoading ? (
-                <div className="flex items-center justify-center h-full text-muted-foreground">
-                  <RefreshCw className="w-5 h-5 animate-spin mr-2" />
-                  {t('settings.loading')}
-                </div>
-              ) : rawConfig ? (
+              {rawConfig ? (
                 <CodeEditor
                   value={rawConfig}
                   onChange={() => {}}
@@ -221,6 +219,11 @@ function SettingsPageInner() {
                   minHeight="auto"
                   className="min-h-full"
                 />
+              ) : rawConfigLoading ? (
+                <div className="flex items-center justify-center h-full text-muted-foreground">
+                  <RefreshCw className="w-5 h-5 animate-spin mr-2" />
+                  {t('settings.loading')}
+                </div>
               ) : (
                 <div className="flex items-center justify-center h-full text-muted-foreground">
                   <div className="text-center">

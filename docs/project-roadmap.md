@@ -1,6 +1,6 @@
 # CCS Project Roadmap
 
-Last Updated: 2026-02-12
+Last Updated: 2026-03-27
 
 Forward-looking roadmap documenting current priorities, GitHub issues, and future feature plans.
 
@@ -39,6 +39,22 @@ All major modularization work is complete. The codebase evolved from monolithic 
 
 ## Current Status
 
+### Recent Fixes
+
+- **2026-03-27**: WebSearch dashboard cards now manage Exa, Tavily, and Brave API keys inline instead of relying on a separate manual env step. CCS stores those secrets through `global_env`, reflects masked key state in `/api/websearch`, and counts dashboard-managed keys as ready in the WebSearch status flow.
+- **2026-03-27**: **#812** CCS now includes a first-class `ccs docker` command suite for self-hosting the integrated Dashboard + CLIProxy stack. The CLI can stage bundled Docker assets locally or to a remote `--host` over SSH, report compose/supervisor status, stream CCS or CLIProxy logs, and run in-container update flows without relying on ad-hoc deployment scripts.
+- **2026-03-24**: Official Claude Channels now follow Anthropic's actual runtime contract. CCS blocks auto-enable unless Bun is available, Claude Code is verified at v2.1.80+, and `claude.ai` auth is verified; treats `--allow-dangerously-skip-permissions` as an explicit override; keeps Telegram/Discord bot tokens in Claude's shared `~/.claude/channels/` state (or official `*_STATE_DIR` overrides); and upgrades the dashboard/CLI status flow with Bun/version/auth/state-scope guidance, safer token draft retention on refresh failures, and a non-macOS iMessage toggle that can still be turned off when already selected.
+- **2026-03-23**: CLIProxy providers that do not expose an email no longer require a user-supplied nickname on first auth. CCS now derives a stable internal account identifier for Kiro/Copilot-style flows, preserves later rename support, hardens account discovery/registry sync around that identifier, and updates AI Provider CRUD to use stable entry IDs instead of dashboard list indexes.
+- **2026-03-23**: Sensitive dashboard management routes now fail closed to localhost-only access whenever dashboard auth is disabled. Remote access remains available after `ccs config auth setup`, but AI Provider management, CLIProxy auth/status helpers, and other write-capable settings endpoints no longer trust unauthenticated non-loopback requests.
+- **2026-03-19**: **#649** CCS splits CLIProxy provider-key authoring into a dedicated `CLIProxy -> AI Providers` dashboard route. `/cliproxy` now stays focused on OAuth accounts and variants, `/cliproxy/ai-providers` owns Gemini/Codex/Claude/Vertex/OpenAI-compatible key management, and `/providers` stays reserved for CCS-native API Profiles.
+- **2026-03-18**: **#755** Marketplace refresh no longer reuses one shared `known_marketplaces.json` across isolated instances. CCS now keeps marketplace payload directories shared while reconciling per-instance marketplace metadata so Claude Code validation succeeds for alternating or concurrent profiles, including Windows copy fallback.
+- **2026-03-17**: Deprecated user-facing GLMT discovery across CLI help, completions, presets, and docs. Existing `glmt` profiles now run through a compatibility path that normalizes legacy proxy settings to the direct GLM endpoint.
+- **#748**: API profile creation now keeps provider selection compact by collapsing advanced presets behind an explicit toggle, shrinking chooser cards so the form fields stay visually primary, and giving `llama.cpp` a dedicated provider logo.
+- **#744**: API profile creation now keeps featured providers in a horizontal rail with scroll fallback, moves Anthropic Direct API to the end, reuses the shared Claude logo, and separates the custom-endpoint entry point from advanced template discovery.
+- **#724**: Codex startup is now free-plan safe. CCS defaults new Codex sessions to a cross-plan model and auto-repairs stale paid-only Codex defaults when the active account is on the free plan.
+- **#737**: Dashboard model pickers in Cursor, Copilot, and CLIProxy now use a searchable combobox with autofocus and explicit no-results states for large model catalogs.
+- **#736**: `ccs config` now supports explicit dashboard bind hosts via `--host`, and surfaces remote-access warnings plus reachable URLs when the effective bind is non-loopback.
+
 ### Maintainability Hardening Kickoff
 
 - Issue owner: Stream D for **#542**
@@ -52,7 +68,7 @@ All major modularization work is complete. The codebase evolved from monolithic 
 
 **CLI** (complex core logic):
 - `model-pricing.ts` (676 lines) - Data file
-- `glmt-proxy.ts` (675 lines) - Streaming proxy
+- `glmt-proxy.ts` (675 lines) - Legacy internal compatibility proxy
 - `cliproxy-executor.ts` (666 lines) - Core execution
 - `ccs.ts` (596 lines) - Entry point
 
@@ -230,6 +246,6 @@ The check mode supports a maintainability regression gate that blocks increases 
 
 - [Codebase Summary](./codebase-summary.md) - Current structure
 - [Code Standards](./code-standards.md) - Patterns and conventions
-- [System Architecture](./system-architecture.md) - Architecture diagrams
+- [System Architecture](./system-architecture/index.md) - Architecture diagrams
 - [Hardening Debt Burndown Tracker](./hardening-debt-burndown.md) - Legacy shim + sync-fs debt tracking
 - [CLAUDE.md](../CLAUDE.md) - AI development guidance

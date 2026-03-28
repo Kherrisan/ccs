@@ -38,9 +38,11 @@ import { cn } from '@/lib/utils';
 import { CopyButton } from '@/components/ui/copy-button';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
+import { useNavigate } from 'react-router-dom';
 
 export function ApiPage() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const { data, isLoading, isError, refetch } = useProfiles();
   const deleteMutation = useDeleteProfile();
   const discoverOrphansMutation = useDiscoverProfileOrphans();
@@ -204,9 +206,9 @@ export function ApiPage() {
   };
 
   return (
-    <div className="h-[calc(100vh-100px)] flex flex-col">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden">
       <OpenRouterBanner onCreateClick={() => setCreateDialogOpen(true)} />
-      <div className="flex-1 flex min-h-0">
+      <div className="flex-1 flex min-h-0 overflow-hidden">
         <div className="w-80 border-r flex flex-col bg-muted/30">
           <div className="p-4 border-b bg-background">
             <div className="flex items-center justify-between mb-3">
@@ -260,7 +262,7 @@ export function ApiPage() {
             </div>
           </div>
 
-          <ScrollArea className="flex-1">
+          <ScrollArea className="flex-1 min-h-0">
             {isLoading ? (
               <div className="p-4 text-sm text-muted-foreground">
                 {t('apiProfiles.loadingProfiles')}
@@ -352,7 +354,7 @@ export function ApiPage() {
           />
         </div>
 
-        <div className="flex-1 flex flex-col min-w-0">
+        <div className="flex min-h-0 flex-1 flex-col min-w-0 overflow-hidden">
           {selectedProfileData ? (
             <>
               <div className="px-4 py-2 border-b bg-background flex items-center justify-end gap-2">
@@ -385,6 +387,11 @@ export function ApiPage() {
             </>
           ) : (
             <OpenRouterQuickStart
+              hasProfiles={profiles.length > 0}
+              profileCount={profiles.length}
+              onCliproxyClick={() => {
+                navigate('/cliproxy/ai-providers');
+              }}
               onOpenRouterClick={() => {
                 setCreateMode('openrouter');
                 setCreateDialogOpen(true);

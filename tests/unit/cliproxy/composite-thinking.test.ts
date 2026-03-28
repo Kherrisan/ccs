@@ -192,9 +192,9 @@ describe('applyThinkingConfig - composite variant integration', () => {
       compositeTierThinking
     );
 
-    // Tier models use raw compositeTierThinking value (no validation in tier loop)
-    expect(result.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe('claude-opus-4-6-thinking(xhigh)');
-    expect(result.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe('claude-sonnet-4-5-thinking(medium)');
+    // Budget-based tier models are normalized to provider-specific budget values.
+    expect(result.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe('claude-opus-4-6-thinking(32768)');
+    expect(result.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe('claude-sonnet-4-5-thinking(8192)');
     // Haiku doesn't support thinking per model-catalog — no suffix
     expect(result.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe('claude-haiku-4-5-20251001');
     // ANTHROPIC_MODEL is validated: 'medium' → 8192 for budget-type models
@@ -221,8 +221,8 @@ describe('applyThinkingConfig - composite variant integration', () => {
       compositeTierThinking
     );
 
-    // Tier models use raw value (no validation in tier loop)
-    expect(result.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe('claude-opus-4-6-thinking(xhigh)');
+    // Budget-based tier models are normalized to provider-specific budget values.
+    expect(result.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe('claude-opus-4-6-thinking(32768)');
     // Sonnet gets defaults from global config (mode=auto)
     expect(result.ANTHROPIC_DEFAULT_SONNET_MODEL).toContain('claude-sonnet-4-5-thinking');
     // Haiku doesn't support thinking — stays unchanged
@@ -250,8 +250,8 @@ describe('applyThinkingConfig - composite variant integration', () => {
       compositeTierThinking
     );
 
-    expect(result.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe('claude-opus-4-6-thinking(high)');
-    expect(result.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe('claude-sonnet-4-5-thinking(medium)');
+    expect(result.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe('claude-opus-4-6-thinking(24576)');
+    expect(result.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe('claude-sonnet-4-5-thinking(8192)');
     // Haiku should NOT have suffix because thinking is not supported for haiku
     expect(result.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe('claude-haiku-4-5-20251001');
   });
@@ -277,9 +277,9 @@ describe('applyThinkingConfig - composite variant integration', () => {
       compositeTierThinking
     );
 
-    // All thinking-capable tiers should use CLI override
-    expect(result.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe('claude-opus-4-6-thinking(minimal)');
-    expect(result.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe('claude-sonnet-4-5-thinking(minimal)');
+    // All thinking-capable tiers should use the validated CLI override.
+    expect(result.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe('claude-opus-4-6-thinking(1024)');
+    expect(result.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe('claude-sonnet-4-5-thinking(1024)');
     // Haiku doesn't support thinking — stays unchanged regardless of CLI override
     expect(result.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe('claude-haiku-4-5-20251001');
   });
@@ -349,7 +349,7 @@ describe('applyThinkingConfig - composite variant integration', () => {
       }
     );
 
-    expect(result.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe('claude-sonnet-4-5-thinking(high)');
+    expect(result.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe('claude-sonnet-4-5-thinking(24576)');
   });
 
   it('applies tier thinking even when default model does not support thinking', () => {
@@ -375,7 +375,7 @@ describe('applyThinkingConfig - composite variant integration', () => {
     // Default model provider/model do not support thinking.
     expect(result.ANTHROPIC_MODEL).toBe('gpt-4o-mini');
     // Supported mixed-provider tier must still receive its configured thinking value.
-    expect(result.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe('claude-sonnet-4-5-thinking(high)');
+    expect(result.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe('claude-sonnet-4-5-thinking(24576)');
   });
 
   it('handles dotted agy Claude IDs for thinking capability lookup', () => {
@@ -389,10 +389,10 @@ describe('applyThinkingConfig - composite variant integration', () => {
     const result = applyThinkingConfig(envVars, 'agy' as CLIProxyProvider, 'high');
 
     // Capability lookup should succeed for dotted agy IDs after normalization.
-    // Main model value is validated for budget models; tier values keep raw override.
+    // Tier values are normalized through budget validation too.
     expect(result.ANTHROPIC_MODEL).toBe('claude-opus-4.5-thinking(24576)');
-    expect(result.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe('claude-opus-4.5-thinking(high)');
-    expect(result.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe('claude-sonnet-4.5-thinking(high)');
+    expect(result.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe('claude-opus-4.5-thinking(24576)');
+    expect(result.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe('claude-sonnet-4.5-thinking(24576)');
     // Haiku does not support thinking in agy catalog.
     expect(result.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe('claude-haiku-4.5');
   });
@@ -418,7 +418,7 @@ describe('applyThinkingConfig - composite variant integration', () => {
       compositeTierThinking
     );
 
-    // Tier models use raw string values (no validation in tier loop)
+    // Tier models keep numeric values after validation when the provider supports them.
     expect(result.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe('claude-opus-4-6-thinking(32768)');
     expect(result.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe('claude-sonnet-4-5-thinking(8192)');
     // Haiku doesn't support thinking — stays unchanged
@@ -506,8 +506,8 @@ describe('applyThinkingConfig - composite variant integration', () => {
 
     // ANTHROPIC_MODEL is validated: xhigh → 32768 for budget-type models
     expect(result.ANTHROPIC_MODEL).toBe('claude-opus-4-6-thinking(32768)');
-    // Tier model uses raw value (no validation in tier loop)
-    expect(result.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe('claude-opus-4-6-thinking(xhigh)');
+    // Tier model keeps the validated budget value.
+    expect(result.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe('claude-opus-4-6-thinking(32768)');
   });
 
   it('should preserve models that already have thinking suffix', () => {
@@ -534,8 +534,8 @@ describe('applyThinkingConfig - composite variant integration', () => {
     // Existing suffix on main model should be preserved.
     expect(result.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe('claude-sonnet-4-5-thinking(high)');
     expect(result.ANTHROPIC_MODEL).toBe('claude-sonnet-4-5-thinking(high)');
-    // Other supported tiers still receive configured thinking.
-    expect(result.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe('claude-opus-4-6-thinking(xhigh)');
+    // Other supported tiers still receive configured thinking after validation.
+    expect(result.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe('claude-opus-4-6-thinking(32768)');
   });
 
   it('should use codex effort suffix style when provider is codex', () => {
@@ -556,7 +556,7 @@ describe('applyThinkingConfig - composite variant integration', () => {
     expect(result.ANTHROPIC_MODEL).toBe('gpt-5.3-codex-xhigh');
     expect(result.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe('gpt-5.3-codex-xhigh');
     expect(result.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe('gpt-5.3-codex-xhigh');
-    expect(result.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe('gpt-5-mini-xhigh');
+    expect(result.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe('gpt-5-mini-high');
   });
 
   it('should normalize legacy codex parenthesized tier suffix to effort suffix format', () => {

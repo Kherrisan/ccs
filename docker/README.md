@@ -1,10 +1,10 @@
 <div align="center">
 
-# CCS Dashboard - Docker
+# CCS Docker Deployment
 
 ![CCS Logo](../assets/ccs-logo-medium.png)
 
-### Run the CCS Config Dashboard in Docker.
+### Run CCS in Docker, locally or over SSH.
 Persistent config, restart on reboot.
 
 **[Back to README](../README.md)**
@@ -13,7 +13,60 @@ Persistent config, restart on reboot.
 
 <br>
 
-## Quick Start (Docker Run)
+## Preferred: `ccs docker`
+
+The CLI now ships a first-class Docker command suite for the integrated CCS + CLIProxy stack:
+
+```bash
+ccs docker up
+ccs docker status
+ccs docker logs --follow
+ccs docker config
+ccs docker update
+ccs docker down
+```
+
+Remote deployment stages the bundled Docker assets to `~/.ccs/docker` on the target host:
+
+```bash
+ccs docker up --host my-server
+ccs docker --host my-server status
+ccs docker status --host my-server
+ccs docker logs --host my-server --service ccs --follow
+ccs docker config --host my-server
+```
+
+Use a single SSH target or SSH config alias for `--host`. If you need custom SSH flags such as a port override, configure them in `~/.ssh/config` and reference the alias from `ccs docker`.
+
+The `ccs docker` flow uses the integrated assets in this directory:
+
+- `docker/Dockerfile.integrated`
+- `docker/docker-compose.integrated.yml`
+- `docker/supervisord.conf`
+- `docker/entrypoint-integrated.sh`
+
+## Prebuilt Image Quick Start
+
+This existing image still runs the CCS dashboard and its locally managed CLIProxy inside one
+container. It does not provide the remote staging and in-container self-update flow exposed by
+`ccs docker`.
+
+Pull the latest stable release image from GitHub Container Registry:
+
+```bash
+docker run -d \
+  --name ccs-dashboard \
+  --restart unless-stopped \
+  -p 3000:3000 \
+  -p 8317:8317 \
+  -e CCS_PORT=3000 \
+  -v ccs_home:/home/node/.ccs \
+  ghcr.io/kaitranntt/ccs-dashboard:latest
+```
+
+Release-tag images are also published as `ghcr.io/kaitranntt/ccs-dashboard:<version>`.
+
+## Prebuilt Image Build Locally
 
 ```bash
 docker build -f docker/Dockerfile -t ccs-dashboard:latest .
@@ -62,7 +115,7 @@ docker run -d \
   -e CCS_PROXY_PORT=443 \
   -e CCS_PROXY_PROTOCOL="https" \
   -v ccs_home:/home/node/.ccs \
-  ccs-dashboard:latest
+  ghcr.io/kaitranntt/ccs-dashboard:latest
 ```
 
 ## Useful Commands
@@ -74,7 +127,7 @@ docker start ccs-dashboard
 docker rm -f ccs-dashboard
 ```
 
-## Docker Compose (Optional)
+## Prebuilt Image Docker Compose (Optional)
 
 Using the included `docker/docker-compose.yml`:
 
@@ -88,6 +141,8 @@ Stop:
 ```bash
 docker-compose -f docker/docker-compose.yml down
 ```
+
+For the integrated CCS + CLIProxy stack managed by the CLI, use `ccs docker up` instead.
 
 ## Persistence
 
@@ -108,7 +163,7 @@ docker run -d \
   -p 3000:3000 \
   -p 8317:8317 \
   -v ccs_home:/home/node/.ccs \
-  ccs-dashboard:latest
+  ghcr.io/kaitranntt/ccs-dashboard:latest
 ```
 
 Docker Compose includes default limits (1GB RAM, 2 CPUs). Adjust in `docker-compose.yml` under `deploy.resources`.

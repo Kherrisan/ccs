@@ -200,8 +200,8 @@ class RecoveryManager {
    * Run all recovery operations (lazy initialization)
    * Mirrors postinstall.js behavior
    *
-   * NOTE: GLM/GLMT/Kimi profiles are NOT auto-created.
-   * Users should create them via `ccs api create --preset glm` or the UI.
+   * NOTE: GLM/Kimi profiles are NOT auto-created.
+   * Users should create them via `ccs api create --preset glm|km` or the UI.
    */
   recoverAll(): boolean {
     this.recovered = [];

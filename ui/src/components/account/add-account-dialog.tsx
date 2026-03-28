@@ -41,7 +41,6 @@ import {
   DEFAULT_KIRO_AUTH_METHOD,
   getKiroAuthMethodOption,
   isDeviceCodeProvider,
-  isNicknameRequiredProvider,
   KIRO_AUTH_METHOD_OPTIONS,
 } from '@/lib/provider-config';
 import type { KiroAuthMethod } from '@/lib/provider-config';
@@ -61,6 +60,11 @@ function normalizeRiskPhrase(value: string): string {
   return value.trim().replace(/\s+/g, ' ').toUpperCase();
 }
 
+interface PowerUserModeSyncOptions {
+  pendingMessage?: string | null;
+  disabledMessage?: string | null;
+}
+
 export function AddAccountDialog({
   open,
   onClose,
@@ -74,36 +78,85 @@ export function AddAccountDialog({
   const [localError, setLocalError] = useState<string | null>(null);
   const [riskAcknowledgementText, setRiskAcknowledgementText] = useState('');
   const [agyRiskChecklist, setAgyRiskChecklist] = useState(DEFAULT_ANTIGRAVITY_RISK_CHECKLIST);
-  const [agyAckBypassEnabled, setAgyAckBypassEnabled] = useState(false);
-  const [agyAckBypassLoading, setAgyAckBypassLoading] = useState(false);
+  const [powerUserModeEnabled, setPowerUserModeEnabled] = useState(false);
+  const [powerUserModeLoading, setPowerUserModeLoading] = useState(false);
   const [kiroAuthMethod, setKiroAuthMethod] = useState<KiroAuthMethod>(DEFAULT_KIRO_AUTH_METHOD);
   const { t } = useTranslation();
   const wasAuthenticatingRef = useRef(false);
+  const powerUserModeRequestIdRef = useRef(0);
+  const powerUserModeLoadErrorShownRef = useRef(false);
   const authFlow = useCliproxyAuthFlow();
   const kiroImportMutation = useKiroImport();
 
   const isKiro = provider === 'kiro';
-  const requiresSafetyAcknowledgement = provider === 'gemini';
-  const requiresAgyResponsibilityFlow = provider === 'agy' && !agyAckBypassEnabled;
-  const isAgyBypassStatePending = provider === 'agy' && agyAckBypassLoading;
+  const supportsPowerUserMode = provider === 'agy' || provider === 'gemini';
+  const requiresGeminiSafetyAcknowledgement = provider === 'gemini' && !powerUserModeEnabled;
+  const requiresAgyResponsibilityFlow = provider === 'agy' && !powerUserModeEnabled;
+  const isPowerUserModePending = supportsPowerUserMode && powerUserModeLoading;
   const isAgyRiskChecklistComplete = isAntigravityRiskChecklistComplete(agyRiskChecklist);
   const isGeminiRiskAcknowledged = normalizeRiskPhrase(riskAcknowledgementText) === RISK_ACK_PHRASE;
   const defaultDeviceCode = isDeviceCodeProvider(provider);
-  const requiresNickname = isNicknameRequiredProvider(provider);
   const kiroMethodOption = getKiroAuthMethodOption(kiroAuthMethod);
   const isDeviceCode = isKiro ? kiroMethodOption.flowType === 'device_code' : defaultDeviceCode;
   const isPending = authFlow.isAuthenticating || kiroImportMutation.isPending;
   const nicknameTrimmed = nickname.trim();
   const errorMessage = localError || authFlow.error;
 
-  const fetchAgyBypassState = useCallback(async (): Promise<boolean> => {
+  const fetchPowerUserModeState = useCallback(async (): Promise<boolean> => {
     const response = await fetch('/api/settings/auth/antigravity-risk');
     if (!response.ok) {
-      throw new Error('Failed to load Antigravity power user setting');
+      throw new Error('Failed to load power user mode setting');
     }
     const data = (await response.json()) as { antigravityAckBypass?: boolean };
     return data.antigravityAckBypass === true;
   }, []);
+
+  const syncPowerUserModeState = useCallback(
+    async ({ pendingMessage = null, disabledMessage = null }: PowerUserModeSyncOptions = {}) => {
+      const requestId = ++powerUserModeRequestIdRef.current;
+      setPowerUserModeLoading(true);
+
+      if (pendingMessage !== null) {
+        setLocalError(pendingMessage);
+      }
+
+      try {
+        const enabled = await fetchPowerUserModeState();
+        if (powerUserModeRequestIdRef.current !== requestId) {
+          return enabled;
+        }
+
+        setPowerUserModeEnabled(enabled);
+
+        if (disabledMessage) {
+          setLocalError(enabled ? null : disabledMessage);
+        } else if (pendingMessage !== null) {
+          setLocalError(null);
+        }
+
+        return enabled;
+      } catch {
+        if (powerUserModeRequestIdRef.current !== requestId) {
+          return false;
+        }
+
+        setPowerUserModeEnabled(false);
+        setLocalError(disabledMessage ?? t('addAccountDialog.powerUserLoadFailed'));
+
+        if (!powerUserModeLoadErrorShownRef.current) {
+          powerUserModeLoadErrorShownRef.current = true;
+          toast.error(t('addAccountDialog.powerUserLoadFailed'));
+        }
+
+        return false;
+      } finally {
+        if (powerUserModeRequestIdRef.current === requestId) {
+          setPowerUserModeLoading(false);
+        }
+      }
+    },
+    [fetchPowerUserModeState, t]
+  );
 
   const resetAndClose = () => {
     setNickname('');
@@ -112,9 +165,11 @@ export function AddAccountDialog({
     setLocalError(null);
     setRiskAcknowledgementText('');
     setAgyRiskChecklist(DEFAULT_ANTIGRAVITY_RISK_CHECKLIST);
-    setAgyAckBypassEnabled(false);
-    setAgyAckBypassLoading(false);
+    setPowerUserModeEnabled(false);
+    setPowerUserModeLoading(false);
     setKiroAuthMethod(DEFAULT_KIRO_AUTH_METHOD);
+    powerUserModeRequestIdRef.current += 1;
+    powerUserModeLoadErrorShownRef.current = false;
     wasAuthenticatingRef.current = false;
     onClose();
   };
@@ -128,41 +183,24 @@ export function AddAccountDialog({
   }, [provider, open]);
 
   useEffect(() => {
-    let cancelled = false;
+    return () => {
+      powerUserModeRequestIdRef.current += 1;
+    };
+  }, []);
 
-    if (!open || provider !== 'agy') {
-      setAgyAckBypassEnabled(false);
-      setAgyAckBypassLoading(false);
+  useEffect(() => {
+    if (!open || !supportsPowerUserMode) {
+      powerUserModeRequestIdRef.current += 1;
+      setPowerUserModeEnabled(false);
+      setPowerUserModeLoading(false);
       return;
     }
 
-    const loadAgyBypassState = async () => {
-      try {
-        setAgyAckBypassLoading(true);
-        const enabled = await fetchAgyBypassState();
-        if (!cancelled) {
-          setAgyAckBypassEnabled(enabled);
-        }
-      } catch {
-        if (!cancelled) {
-          setAgyAckBypassEnabled(false);
-        }
-      } finally {
-        if (!cancelled) {
-          setAgyAckBypassLoading(false);
-        }
-      }
-    };
-
-    loadAgyBypassState();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [fetchAgyBypassState, open, provider]);
+    void syncPowerUserModeState();
+  }, [open, provider, supportsPowerUserMode, syncPowerUserModeState]);
 
   useEffect(() => {
-    if (!open || provider !== 'agy' || !authFlow.error || !agyAckBypassEnabled) {
+    if (!open || provider !== 'agy' || !authFlow.error || !powerUserModeEnabled) {
       return;
     }
 
@@ -173,34 +211,11 @@ export function AddAccountDialog({
       normalizedError.includes('responsibility checklist');
     if (!ackRequired) return;
 
-    let cancelled = false;
-
-    const syncBypassState = async () => {
-      try {
-        setAgyAckBypassLoading(true);
-        const enabled = await fetchAgyBypassState();
-        if (cancelled) return;
-        setAgyAckBypassEnabled(enabled);
-        if (!enabled) {
-          setLocalError('Power user mode is off. Complete the AGY checklist and retry.');
-        }
-      } catch {
-        if (cancelled) return;
-        setAgyAckBypassEnabled(false);
-        setLocalError('Power user mode is off. Complete the AGY checklist and retry.');
-      } finally {
-        if (!cancelled) {
-          setAgyAckBypassLoading(false);
-        }
-      }
-    };
-
-    void syncBypassState();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [agyAckBypassEnabled, authFlow.error, fetchAgyBypassState, open, provider]);
+    void syncPowerUserModeState({
+      pendingMessage: t('addAccountDialog.powerUserLoading'),
+      disabledMessage: t('addAccountDialog.powerUserUnavailableRetry'),
+    });
+  }, [authFlow.error, open, powerUserModeEnabled, provider, syncPowerUserModeState, t]);
 
   // When authFlow completes successfully (polling detected success), apply preset and close
   useEffect(() => {
@@ -250,8 +265,8 @@ export function AddAccountDialog({
    * - Authorization code providers use /start-url and polling.
    */
   const handleAuthenticate = () => {
-    if (isAgyBypassStatePending) {
-      setLocalError('Loading Antigravity safety settings. Please wait a moment and retry.');
+    if (isPowerUserModePending) {
+      setLocalError(t('addAccountDialog.powerUserLoading'));
       return;
     }
     if (requiresAgyResponsibilityFlow && !isAgyRiskChecklistComplete) {
@@ -260,14 +275,10 @@ export function AddAccountDialog({
       );
       return;
     }
-    if (requiresSafetyAcknowledgement && !isGeminiRiskAcknowledged) {
+    if (requiresGeminiSafetyAcknowledgement && !isGeminiRiskAcknowledged) {
       setLocalError(
         `Type "${RISK_ACK_PHRASE}" to acknowledge the account safety warning before authenticating this provider.`
       );
-      return;
-    }
-    if (requiresNickname && !nicknameTrimmed) {
-      setLocalError(`Nickname is required for ${displayName} accounts.`);
       return;
     }
     setLocalError(null);
@@ -342,7 +353,7 @@ export function AddAccountDialog({
             />
           )}
 
-          {provider === 'agy' && agyAckBypassEnabled && !showAuthUI && (
+          {supportsPowerUserMode && powerUserModeEnabled && !showAuthUI && (
             <div className="rounded-lg border border-amber-400/35 bg-amber-50/70 p-3 text-xs text-amber-900 dark:border-amber-800/60 dark:bg-amber-950/25 dark:text-amber-100">
               <div className="mb-1.5 flex items-center gap-1.5 font-semibold">
                 <ShieldAlert className="h-3.5 w-3.5" />
@@ -352,7 +363,7 @@ export function AddAccountDialog({
             </div>
           )}
 
-          {requiresSafetyAcknowledgement && !showAuthUI && (
+          {requiresGeminiSafetyAcknowledgement && !showAuthUI && (
             <AccountSafetyWarningCard
               showAcknowledgement
               acknowledgementPhrase={RISK_ACK_PHRASE}
@@ -394,11 +405,7 @@ export function AddAccountDialog({
           {/* Nickname input - only show before auth starts */}
           {!showAuthUI && (
             <div className="space-y-2">
-              <Label htmlFor="nickname">
-                {requiresNickname
-                  ? t('addAccountDialog.nicknameRequired')
-                  : t('addAccountDialog.nicknameOptional')}
-              </Label>
+              <Label htmlFor="nickname">{t('addAccountDialog.nicknameOptional')}</Label>
               <div className="flex items-center gap-2">
                 <User className="w-4 h-4 text-muted-foreground" />
                 <Input
@@ -414,9 +421,7 @@ export function AddAccountDialog({
                 />
               </div>
               <p className="text-xs text-muted-foreground">
-                {requiresNickname
-                  ? t('addAccountDialog.nicknameRequiredHint')
-                  : t('addAccountDialog.nicknameOptionalHint')}
+                {t('addAccountDialog.nicknameOptionalHint')}
               </p>
             </div>
           )}
@@ -553,10 +558,9 @@ export function AddAccountDialog({
                 onClick={handleAuthenticate}
                 disabled={
                   isPending ||
-                  isAgyBypassStatePending ||
-                  (requiresNickname && !nicknameTrimmed) ||
+                  isPowerUserModePending ||
                   (requiresAgyResponsibilityFlow && !isAgyRiskChecklistComplete) ||
-                  (requiresSafetyAcknowledgement && !isGeminiRiskAcknowledged)
+                  (requiresGeminiSafetyAcknowledgement && !isGeminiRiskAcknowledged)
                 }
               >
                 <ExternalLink className="w-4 h-4 mr-2" />

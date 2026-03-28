@@ -32,6 +32,7 @@ import { isAuthenticated } from '../auth-handler';
 import { CLIProxyProvider, CLIProxyBackend, PLUS_ONLY_PROVIDERS, ExecutorConfig } from '../types';
 import { DEFAULT_BACKEND } from '../platform-detector';
 import { configureProviderModel, getCurrentModel } from '../model-config';
+import { reconcileCodexModelForActivePlan } from '../codex-plan-compatibility';
 import { resolveProxyConfig, PROXY_CLI_FLAGS } from '../proxy-config-resolver';
 import { supportsModelConfig, isModelBroken, getModelIssueUrl, findModel } from '../model-catalog';
 import { CodexReasoningProxy } from '../codex-reasoning-proxy';
@@ -417,7 +418,7 @@ export async function execClaudeWithCLIProxy(
         const nickname = acct.nickname ? `[${acct.nickname}]` : '';
         console.log(`  ${nickname.padEnd(12)} ${acct.email || acct.id}${defaultMark}`);
       }
-      console.log(`\n  Use "ccs ${provider} --use <nickname>" to switch accounts`);
+      console.log(`\n  Use "ccs ${provider} --use <nickname-or-id>" to switch accounts`);
     }
     process.exit(0);
   }
@@ -730,6 +731,14 @@ export async function execClaudeWithCLIProxy(
 
   // 6. Ensure user settings file exists
   ensureProviderSettings(provider);
+
+  if (provider === 'codex' && !cfg.isComposite && !skipLocalAuth) {
+    await reconcileCodexModelForActivePlan({
+      settingsPath: cfg.customSettingsPath || getProviderSettingsPath(provider),
+      currentModel: getCurrentModel(provider, cfg.customSettingsPath),
+      verbose,
+    });
+  }
 
   // Local proxy mode: generate config, spawn/join proxy, track session
   let proxy: ChildProcess | null = null;

@@ -17,7 +17,7 @@ Tests set `process.env.CCS_HOME` to a temp directory. Code using `os.homedir()` 
 
 ## Core Function
 
-CLI wrapper for instant switching between multiple provider accounts and alternative models (GLM, GLMT, Kimi). See README.md for user documentation.
+CLI wrapper for instant switching between multiple provider accounts and alternative models (GLM, Kimi, and other API profiles). See README.md for user documentation.
 
 ## Design Principles (ENFORCE STRICTLY)
 
@@ -156,6 +156,7 @@ bun run validate            # Step 3: Final check (must pass)
 | `ccs copilot --help` | `src/commands/copilot-command.ts` → `handleHelp()` |
 | `ccs cursor --help` | `src/commands/cursor-command.ts` → `handleHelp()` |
 | `ccs doctor --help` | `src/commands/doctor-command.ts` → `showHelp()` |
+| `ccs docker --help` | `src/commands/docker/help-subcommand.ts` → `showHelp()` |
 | `ccs migrate --help` | `src/commands/migrate-command.ts` → `printMigrateHelp()` |
 | `ccs env --help` | `src/commands/env-command.ts` → `showHelp()` |
 | `ccs persist --help` | `src/commands/persist-command.ts` → `showHelp()` |
@@ -232,7 +233,7 @@ dist/ui/       → Built UI bundle (served by Express)
 
 1. **CLIProxy hardcoded**: gemini, codex, agy → OAuth-based, zero config
 2. **CLIProxy variants**: `config.cliproxy` section → user-defined providers
-3. **Settings-based**: `config.profiles` section → GLM, GLMT, Kimi
+3. **Settings-based**: `config.profiles` section → GLM, legacy GLMT compatibility, Kimi
 4. **Account-based**: `profiles.json` → isolated instances via `CLAUDE_CONFIG_DIR`
 
 ### Settings Format (CRITICAL)

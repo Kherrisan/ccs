@@ -5,6 +5,7 @@
  */
 
 import type { TargetType } from '../../targets/target-adapter';
+import type { CLIProxyProvider } from '../../cliproxy/types';
 
 /** Model mapping for API profiles */
 export interface ModelMapping {
@@ -21,6 +22,7 @@ export interface ApiProfileInfo {
   isConfigured: boolean;
   configSource: 'unified' | 'legacy';
   target: TargetType;
+  cliproxyBridge?: CliproxyBridgeMetadata | null;
 }
 
 /** CLIProxy variant info */
@@ -42,6 +44,43 @@ export interface CreateApiProfileResult {
   success: boolean;
   settingsFile: string;
   error?: string;
+}
+
+export interface CliproxyBridgeProviderInfo {
+  provider: CLIProxyProvider;
+  displayName: string;
+  description: string;
+  defaultProfileName: string;
+  routePath: string;
+}
+
+export interface CliproxyBridgeMetadata {
+  provider: CLIProxyProvider;
+  providerDisplayName: string;
+  routePath: string;
+  currentBaseUrl: string;
+  source: 'local' | 'remote';
+  usesCurrentTarget: boolean;
+  usesCurrentAuthToken: boolean;
+}
+
+export interface ResolvedCliproxyBridgeProfile {
+  name: string;
+  provider: CLIProxyProvider;
+  providerDisplayName: string;
+  baseUrl: string;
+  apiKey: string;
+  models: ModelMapping;
+  target: TargetType;
+  routePath: string;
+  source: 'local' | 'remote';
+}
+
+export interface CreateCliproxyBridgeProfileResult extends CreateApiProfileResult {
+  name?: string;
+  provider?: CLIProxyProvider;
+  target?: TargetType;
+  cliproxyBridge?: CliproxyBridgeMetadata | null;
 }
 
 /** Result from remove operation */

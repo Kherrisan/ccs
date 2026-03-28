@@ -11,6 +11,7 @@ import {
   BarChart3,
   Gauge,
   Github,
+  Puzzle,
   TerminalSquare,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -96,6 +97,7 @@ function buildNavGroups(t: (key: string) => string): SidebarGroupDef[] {
           isCollapsible: true,
           children: [
             { path: '/cliproxy', label: t('nav.cliproxyOverview') },
+            { path: '/cliproxy/ai-providers', icon: Key, label: 'AI Providers' },
             { path: '/cliproxy/control-panel', icon: Gauge, label: t('nav.controlPanel') },
           ],
         },
@@ -115,7 +117,10 @@ function buildNavGroups(t: (key: string) => string): SidebarGroupDef[] {
     },
     {
       title: t('nav.compatibleClis'),
-      items: [{ path: '/droid', icon: TerminalSquare, label: t('nav.factoryDroid') }],
+      items: [
+        { path: '/claude-extension', icon: Puzzle, label: t('nav.claudeExtension') },
+        { path: '/droid', icon: TerminalSquare, label: t('nav.factoryDroid') },
+      ],
     },
     {
       title: t('nav.system'),

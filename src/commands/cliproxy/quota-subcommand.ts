@@ -27,6 +27,7 @@ import type {
   ClaudeQuotaResult,
   GeminiCliQuotaResult,
   GhcpQuotaResult,
+  QuotaErrorMetadata,
 } from '../../cliproxy/quota-types';
 import { isOnCooldown } from '../../cliproxy/quota-manager';
 import { CLIProxyProvider } from '../../cliproxy/types';
@@ -94,6 +95,75 @@ function formatResetTimeISO(isoTime: string): string {
   if (isNaN(resetDate.getTime())) return 'unknown';
   const seconds = Math.max(0, Math.round((resetDate.getTime() - Date.now()) / 1000));
   return formatResetTime(seconds);
+}
+
+interface QuotaFailureDisplayEntry {
+  tone: 'error' | 'info' | 'dim';
+  text: string;
+}
+
+function getQuotaFailureDisplayEntries(
+  quota: QuotaErrorMetadata & {
+    error?: string;
+  }
+): QuotaFailureDisplayEntry[] {
+  const entries: QuotaFailureDisplayEntry[] = [
+    {
+      tone: 'error',
+      text: quota.error || 'Failed to fetch quota',
+    },
+  ];
+
+  if (quota.actionHint) {
+    entries.push({
+      tone: 'info',
+      text: quota.actionHint,
+    });
+  }
+
+  const diagnostics: string[] = [];
+  if (typeof quota.httpStatus === 'number') {
+    diagnostics.push(`HTTP ${quota.httpStatus}`);
+  }
+  if (quota.errorCode) {
+    diagnostics.push(`Code: ${quota.errorCode}`);
+  }
+  if (quota.retryable) {
+    diagnostics.push('Retryable');
+  }
+  if (diagnostics.length > 0) {
+    entries.push({
+      tone: 'dim',
+      text: diagnostics.join(' | '),
+    });
+  }
+
+  const normalizedError = quota.error?.trim();
+  const normalizedDetail = quota.errorDetail?.trim();
+  if (normalizedDetail && normalizedDetail !== normalizedError) {
+    entries.push({
+      tone: 'dim',
+      text: `Detail: ${normalizedDetail}`,
+    });
+  }
+
+  return entries;
+}
+
+function displayQuotaFailure(
+  quota: QuotaErrorMetadata & {
+    error?: string;
+  }
+): void {
+  for (const entry of getQuotaFailureDisplayEntries(quota)) {
+    const rendered =
+      entry.tone === 'error'
+        ? color(entry.text, 'error')
+        : entry.tone === 'info'
+          ? info(entry.text)
+          : dim(entry.text);
+    console.log(`    ${rendered}`);
+  }
 }
 
 function formatAbsoluteResetTime(isoTime: string): string | null {
@@ -318,7 +388,7 @@ function displayCodexQuotaSection(results: { account: string; quota: CodexQuotaR
 
     if (!quota.success) {
       console.log(`  ${fail(account)}${defaultMark}`);
-      console.log(`    ${color(quota.error || 'Failed to fetch quota', 'error')}`);
+      displayQuotaFailure(quota);
       console.log('');
       continue;
     }
@@ -473,7 +543,7 @@ function displayClaudeQuotaSection(results: { account: string; quota: ClaudeQuot
 
     if (!quota.success) {
       console.log(`  ${fail(account)}${defaultMark}`);
-      console.log(`    ${color(quota.error || 'Failed to fetch quota', 'error')}`);
+      displayQuotaFailure(quota);
       console.log('');
       continue;
     }
@@ -550,7 +620,7 @@ function displayGeminiCliQuotaSection(
 
     if (!quota.success) {
       console.log(`  ${fail(account)}${defaultMark}`);
-      console.log(`    ${color(quota.error || 'Failed to fetch quota', 'error')}`);
+      displayQuotaFailure(quota);
       console.log('');
       continue;
     }
@@ -601,7 +671,7 @@ function displayGhcpQuotaSection(results: { account: string; quota: GhcpQuotaRes
 
     if (!quota.success) {
       console.log(`  ${fail(account)}${defaultMark}`);
-      console.log(`    ${color(quota.error || 'Failed to fetch quota', 'error')}`);
+      displayQuotaFailure(quota);
       console.log('');
       continue;
     }
@@ -697,6 +767,10 @@ const QUOTA_PROVIDER_RUNTIME: Record<QuotaSupportedProvider, QuotaProviderRuntim
   },
 };
 
+export const __testExports = {
+  getQuotaFailureDisplayEntries,
+};
+
 export async function handleQuotaStatus(
   verbose = false,
   providerFilter: QuotaSupportedProvider | 'all' = 'all'
@@ -771,7 +845,7 @@ export async function handleDoctor(verbose = false): Promise<void> {
 
     if (!quota.success) {
       console.log(`  ${fail(accountLabel)}${defaultBadge}`);
-      console.log(`    ${color(quota.error || 'Failed to fetch quota', 'error')}`);
+      displayQuotaFailure(quota);
       if (quota.isUnprovisioned) {
         console.log(
           `    ${warn('Account not provisioned - open Gemini Code Assist in IDE first')}`

@@ -136,6 +136,22 @@ describe('applyExtendedContextConfig', () => {
     expect(env.ANTHROPIC_MODEL).toBe('claude-opus-4-5-20251101[1m]');
   });
 
+  it('applies explicit Claude [1m] per tier and leaves unsupported Haiku plain', () => {
+    const env: NodeJS.ProcessEnv = {
+      ANTHROPIC_MODEL: 'claude-haiku-4-5-20251001',
+      ANTHROPIC_DEFAULT_OPUS_MODEL: 'claude-opus-4-5-20251101',
+      ANTHROPIC_DEFAULT_SONNET_MODEL: 'claude-sonnet-4-5-20250929',
+      ANTHROPIC_DEFAULT_HAIKU_MODEL: 'claude-haiku-4-5-20251001',
+    };
+
+    applyExtendedContextConfig(env, 'claude', true);
+
+    expect(env.ANTHROPIC_MODEL).toBe('claude-haiku-4-5-20251001');
+    expect(env.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe('claude-opus-4-5-20251101[1m]');
+    expect(env.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe('claude-sonnet-4-5-20250929[1m]');
+    expect(env.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe('claude-haiku-4-5-20251001');
+  });
+
   it('strips existing suffixes before catalog lookup', () => {
     const env: NodeJS.ProcessEnv = {
       ANTHROPIC_MODEL: 'gemini-2.5-pro(high)',
@@ -167,6 +183,20 @@ describe('applyExtendedContextConfig', () => {
     applyExtendedContextConfig(env, 'agy', undefined);
     expect(env.ANTHROPIC_MODEL).toBe('claude-opus-4-6-thinking');
     expect(env.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe('claude-opus-4-6-thinking');
+  });
+
+  it('strips stale Claude [1m] from unsupported mappings while preserving compatible ones', () => {
+    const env: NodeJS.ProcessEnv = {
+      ANTHROPIC_MODEL: 'claude-haiku-4-5-20251001[1m]',
+      ANTHROPIC_DEFAULT_OPUS_MODEL: 'claude-opus-4-5-20251101[1m]',
+      ANTHROPIC_DEFAULT_SONNET_MODEL: 'claude-sonnet-4-5-20250929[1m]',
+    };
+
+    applyExtendedContextConfig(env, 'claude', true);
+
+    expect(env.ANTHROPIC_MODEL).toBe('claude-haiku-4-5-20251001');
+    expect(env.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe('claude-opus-4-5-20251101[1m]');
+    expect(env.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe('claude-sonnet-4-5-20250929[1m]');
   });
 
   it('strips [1m] suffix when --no-1m is explicit even if model has it', () => {
