@@ -35,11 +35,26 @@ export async function downloadAndInstall(
 
   fs.mkdirSync(config.binPath, { recursive: true });
 
-  // Delete existing binary before install to prevent mismatched binaries
+  // Delete existing binary before install to prevent mismatched binaries.
+  // Skip if binary is currently running (ETXTBSY) — happens in Docker when
+  // the dashboard tries to update while bootstrap's instance is active.
   const existingBinary = path.join(config.binPath, getExecutableName(backend));
   if (fs.existsSync(existingBinary)) {
-    fs.unlinkSync(existingBinary);
-    if (verbose) console.error(`[cliproxy] Removed existing binary: ${existingBinary}`);
+    try {
+      fs.unlinkSync(existingBinary);
+      if (verbose) console.error(`[cliproxy] Removed existing binary: ${existingBinary}`);
+    } catch (error: unknown) {
+      const code =
+        error instanceof Error && 'code' in error ? (error as { code: string }).code : '';
+      if (code === 'ETXTBSY' || code === 'EBUSY') {
+        if (verbose)
+          console.error(`[cliproxy] Binary is running, skipping update: ${existingBinary}`);
+        throw new Error(
+          `CLIProxy binary is currently running and cannot be replaced. Stop the running instance first, or use 'ccs docker update' to update in place.`
+        );
+      }
+      throw error;
+    }
   }
 
   const archivePath = path.join(config.binPath, `cliproxy-archive.${platform.extension}`);
