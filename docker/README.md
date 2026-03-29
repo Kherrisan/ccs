@@ -65,12 +65,10 @@ environment:
 Generate a bcrypt hash:
 
 ```bash
-docker exec ccs-cliproxy npx -y bcryptjs -e "
-  const b = require('bcryptjs'); console.log(b.hashSync('your-password', 10));
-"
-# Or if bcrypt is available in the container's CCS install:
 docker exec ccs-cliproxy node -e "console.log(require('bcrypt').hashSync('your-password', 10))"
 ```
+
+> **Note:** Do not commit the password hash in `docker-compose.yml`. Use Docker secrets or a `.env` file (not tracked in git) for sensitive values like `CCS_DASHBOARD_PASSWORD_HASH`.
 
 After configuring auth, restart the dashboard:
 
@@ -90,12 +88,10 @@ ssh -L 3000:localhost:3000 my-server
 If you have existing CLIProxy OAuth tokens from a previous deployment, copy them into the Docker volume:
 
 ```bash
-# Find the new volume mountpoint
-docker volume inspect docker_ccs_home --format '{{.Mountpoint}}'
-# Example output: /var/lib/docker/volumes/docker_ccs_home/_data
-
-# Copy auth files from old location to new volume
-cp /path/to/old/auth/*.json /var/lib/docker/volumes/docker_ccs_home/_data/cliproxy/auth/
+# Copy auth files into the running container
+for f in /path/to/old/auth/*.json; do
+  docker cp "$f" ccs-cliproxy:/root/.ccs/cliproxy/auth/
+done
 
 # Restart CLIProxy to load new tokens
 docker exec ccs-cliproxy supervisorctl -c /etc/supervisord.conf restart cliproxy
@@ -104,15 +100,18 @@ docker exec ccs-cliproxy supervisorctl -c /etc/supervisord.conf restart cliproxy
 For remote deployments via `ccs docker up --host`:
 
 ```bash
-# Auth files are stored in the named volume, accessible on the host at:
-ssh my-server "docker volume inspect docker_ccs_home --format '{{.Mountpoint}}'"
+# Copy tokens into the running container (no root/sudo needed)
+scp /path/to/auth/*.json my-server:/tmp/ccs-auth/
+ssh my-server 'for f in /tmp/ccs-auth/*.json; do docker cp "$f" ccs-cliproxy:/root/.ccs/cliproxy/auth/; done'
 
-# Copy tokens from old setup
-ssh my-server "cp /old/path/cliproxy/auth/*.json \$(docker volume inspect docker_ccs_home --format '{{.Mountpoint}}')/cliproxy/auth/"
-
-# Restart CLIProxy
+# Restart CLIProxy to load new tokens
 ssh my-server "docker exec ccs-cliproxy supervisorctl -c /etc/supervisord.conf restart cliproxy"
+
+# Clean up temp files
+ssh my-server "rm -rf /tmp/ccs-auth"
 ```
+
+> **Tip:** `docker cp` is preferred over writing directly to Docker volume mountpoints, which require root access.
 
 ### Post-Deployment: Verification Checklist
 
