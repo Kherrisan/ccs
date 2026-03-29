@@ -1,3 +1,10 @@
+## [7.62.1](https://github.com/kaitranntt/ccs/compare/v7.62.0...v7.62.1) (2026-03-29)
+
+### Bug Fixes
+
+* **ai-review:** bump orchestrator max-turns 20→25 for large PR merges ([106067f](https://github.com/kaitranntt/ccs/commit/106067fefb99844a0ee83b79cccc803fe660e664))
+* **ai-review:** increase turn budget and improve fallback extraction ([1c4fc96](https://github.com/kaitranntt/ccs/commit/1c4fc96d33413efdae0223a3b7db0cab2a14bcec))
+
 ## [7.62.0](https://github.com/kaitranntt/ccs/compare/v7.61.1...v7.62.0) (2026-03-29)
 
 ### Features
