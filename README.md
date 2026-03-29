@@ -89,6 +89,7 @@ The dashboard provides visual management for all account types:
 - **OAuth Providers**: One-click auth for Gemini, Codex, Antigravity, Kiro, Copilot
 - **AI Providers**: Configure Gemini, Codex, Claude, Vertex, and OpenAI-compatible API keys under `CLIProxy -> AI Providers`
 - **API Profiles**: Configure GLM, Kimi, OpenRouter, and other Anthropic-compatible APIs as CCS-native profiles
+- **Codex CLI**: Dedicated dashboard page for native runtime diagnostics and guarded `config.toml` editing
 - **Factory Droid**: Track Droid install location and BYOK settings health
 - **Updates Center**: Track support rollouts (Droid target, CLIProxy provider changes, WebSearch integrations)
 - **Health Monitor**: Real-time status across all profiles
@@ -201,17 +202,21 @@ Built-in Droid runtime aliases are installed with the package:
 ```bash
 ccs-droid glm   # explicit alias
 ccsd glm        # legacy shortcut
+ccs-codex       # explicit Codex alias
+ccsx            # short Codex alias
 ```
 
 Need additional alias names? First create the matching symlink or another launcher that
 preserves the invoked basename, then map that name with `CCS_TARGET_ALIASES` (preferred) or legacy
-`CCS_DROID_ALIASES`:
+target-specific env vars:
 
 ```bash
 ln -s "$(command -v ccs)" /usr/local/bin/mydroid
-CCS_TARGET_ALIASES='droid=mydroid'
+ln -s "$(command -v ccs)" /usr/local/bin/mycodex
+CCS_TARGET_ALIASES='droid=mydroid;codex=mycodex'
 # Legacy fallback still supported:
 CCS_DROID_ALIASES='mydroid'
+CCS_CODEX_ALIASES='mycodex'
 ```
 
 For Factory BYOK compatibility, CCS also stores a per-profile Droid provider hint
@@ -238,6 +243,49 @@ If multiple reasoning flags are provided in Droid exec mode, CCS keeps the first
 flag and warns about duplicates.
 
 Dashboard parity: `ccs config` -> `Factory Droid`
+
+### Native Codex Runtime (runtime-only in v1)
+
+CCS can launch native Codex as a first-class runtime target without rewriting your
+`~/.codex/config.toml` on every run. CCS uses transient `codex -c key=value` overrides for
+Codex-routed sessions and leaves your existing Codex home/config in place.
+
+Supported in v1:
+
+```bash
+ccs --target codex                 # native Codex default session
+ccs-codex                          # explicit Codex alias
+ccsx                               # short alias
+ccs codex --target codex           # built-in CLIProxy Codex on native Codex
+ccs api create codex-api --cliproxy-provider codex
+ccs codex-api --target codex       # Codex bridge profile on native Codex
+```
+
+Not supported in v1:
+- Claude account profiles on Codex target
+- Copilot profiles on Codex target
+- Generic API profiles that are not Codex-routed CLIProxy bridges
+- Non-Codex CLIProxy providers on Codex target
+- Composite CLIProxy variants on Codex target
+
+Dashboard parity: `ccs config` -> `Compatible` -> `Codex CLI`
+
+The dedicated Codex dashboard reads and writes the user layer only: `~/.codex/config.toml`
+(or `$CODEX_HOME/config.toml`). It now ships as a split-view control center:
+
+- left pane: guided controls for top-level runtime defaults, project trust, profiles,
+  model providers, MCP servers, and supported feature toggles
+- right pane: raw `config.toml` editor for unsupported or exact-fidelity edits
+- overview/docs tabs: binary detection, user-layer summary, support matrix guidance, and
+  upstream OpenAI references
+
+Structured saves intentionally normalize TOML formatting and drop comments. Use the raw editor
+when exact layout matters. Structured edits also refresh the raw snapshot immediately. Guided
+controls stay disabled while the raw editor has unsaved or invalid TOML, project trust paths must
+be absolute or start with `~/`, and supported feature flags can be cleared back to Codex defaults
+with `Use default`. CCS also keeps warning that transient runtime overrides such as
+`codex -c key=value` and `CCS_CODEX_API_KEY` can change the effective runtime without persisting
+back into the user config file.
 
 ### Per-Profile Target Defaults
 

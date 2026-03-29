@@ -28,7 +28,9 @@
   "bin": {
     "ccs": "dist/ccs.js",
     "ccs-droid": "dist/bin/droid-runtime.js",
-    "ccsd": "dist/bin/droid-runtime.js"
+    "ccsd": "dist/bin/droid-runtime.js",
+    "ccs-codex": "dist/bin/codex-runtime.js",
+    "ccsx": "dist/bin/codex-runtime.js"
   },
   "files": [
     "dist/",
@@ -105,6 +107,7 @@
     "open": "^8.4.2",
     "ora": "^5.4.1",
     "proper-lockfile": "^4.1.2",
+    "smol-toml": "^1.6.1",
     "undici": "^5.29.0",
     "ws": "^8.16.0"
   },

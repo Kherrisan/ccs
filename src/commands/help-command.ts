@@ -236,7 +236,7 @@ Run ${color('ccs config', 'command')} for web dashboard`.trim();
         'ccs <provider> --thinking <value>',
         'Set thinking budget (low/medium/high/xhigh/auto/off or number)',
       ],
-      ['ccs codex --effort <level>', 'Set codex reasoning effort (medium/high/xhigh)'],
+      ['ccs codex --effort <level>', 'Set codex reasoning effort (minimal/low/medium/high/xhigh)'],
       ['ccs <provider> --1m', 'Request explicit 1M context when the selected model supports [1m]'],
       ['ccs <provider> --no-1m', 'Force standard context / clear [1m]'],
       ['ccs <provider> --logout', 'Clear authentication'],
@@ -391,7 +391,7 @@ Run ${color('ccs config', 'command')} for web dashboard`.trim();
     'Flags',
     [
       ['--config-dir <path>', 'Use custom CCS config directory'],
-      ['--target <cli>', 'Target CLI: claude (default), droid'],
+      ['--target <cli>', 'Target CLI: claude (default), droid, codex (runtime-only)'],
       ['-h, --help', 'Show this help message'],
       ['-v, --version', 'Show version and installation info'],
       ['-sc, --shell-completion', 'Install shell auto-completion'],
@@ -405,6 +405,8 @@ Run ${color('ccs config', 'command')} for web dashboard`.trim();
     [
       ['ccs-droid <profile> [args]', 'Explicit Droid runtime alias'],
       ['ccsd <profile> [args]', 'Legacy shortcut for: ccs-droid <profile> [args]'],
+      ['ccs-codex <profile> [args]', 'Explicit Codex runtime alias'],
+      ['ccsx <profile> [args]', 'Short alias for: ccs-codex <profile> [args]'],
     ],
     writeLine
   );
@@ -416,6 +418,15 @@ Run ${color('ccs config', 'command')} for web dashboard`.trim();
       ['ccs glm --target droid', 'Run GLM profile on Droid CLI'],
       ['ccs-droid glm', 'Same as above (explicit alias)'],
       ['ccsd glm', 'Legacy shortcut for ccs-droid'],
+      ['ccs --target codex', 'Open a native Codex session with your existing ~/.codex setup'],
+      ['ccs-codex', 'Same as above (explicit Codex alias)'],
+      ['ccsx', 'Short alias for ccs-codex'],
+      ['ccs codex --target codex', 'Run built-in CLIProxy Codex on native Codex CLI'],
+      [
+        'ccs api create codex-api --cliproxy-provider codex',
+        'Create a routed API bridge that can also run on Codex',
+      ],
+      ['ccs codex-api --target codex', 'Run a Codex bridge profile on native Codex CLI'],
       ['ccs-droid codex', 'Run built-in CLIProxy Codex profile on Droid'],
       ['ccs-droid agy', 'Run built-in CLIProxy Antigravity profile on Droid'],
       [
@@ -512,7 +523,7 @@ Run ${color('ccs config', 'command')} for web dashboard`.trim();
       ['--thinking xhigh', '32K tokens - Maximum depth'],
       ['--thinking <number>', 'Custom token budget (512-100000)'],
       ['', ''],
-      ['--effort <level>', 'Codex alias for reasoning effort (medium/high/xhigh)'],
+      ['--effort <level>', 'Codex alias for reasoning effort (minimal/low/medium/high/xhigh)'],
       ['--effort xhigh', 'Pin Codex effort to xhigh for this run'],
       ['', ''],
       ['Droid exec:', 'Use native Droid flag: --reasoning-effort <level>'],

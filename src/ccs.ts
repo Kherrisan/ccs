@@ -56,6 +56,8 @@ import {
   getTarget,
   ClaudeAdapter,
   DroidAdapter,
+  CodexAdapter,
+  evaluateTargetRuntimeCompatibility,
   pruneOrphanedModels,
   resolveDroidProvider,
   type TargetCredentials,
@@ -66,6 +68,7 @@ import {
   resolveDroidReasoningRuntime,
 } from './targets/droid-reasoning-runtime';
 import { DroidCommandRouterError, routeDroidCommandArgs } from './targets/droid-command-router';
+import { resolveCliproxyBridgeMetadata } from './api/services/cliproxy-profile-bridge';
 
 // Version and Update check utilities
 import { getVersion } from './utils/version';
@@ -84,6 +87,15 @@ interface DetectedProfile {
   remainingArgs: string[];
 }
 
+interface RuntimeReasoningResolution {
+  argsWithoutReasoningFlags: string[];
+  reasoningOverride: string | number | undefined;
+  reasoningSource: 'flag' | 'env' | undefined;
+  sourceDisplay: string | undefined;
+}
+
+const CODEX_RUNTIME_REASONING_LEVELS = new Set(['minimal', 'low', 'medium', 'high', 'xhigh']);
+
 /**
  * Smart profile detection
  */
@@ -95,6 +107,54 @@ function detectProfile(args: string[]): DetectedProfile {
     // First arg doesn't start with '-' → treat as profile name
     return { profile: args[0], remainingArgs: args.slice(1) };
   }
+}
+
+function resolveRuntimeReasoningFlags(
+  args: string[],
+  envThinkingValue: string | undefined
+): RuntimeReasoningResolution {
+  const runtime = resolveDroidReasoningRuntime(args, envThinkingValue);
+
+  if (runtime.duplicateDisplays.length > 0) {
+    console.error(
+      warn(
+        `[!] Multiple reasoning flags detected. Using first occurrence: ${runtime.sourceDisplay || '<first-flag>'}`
+      )
+    );
+  }
+
+  return {
+    argsWithoutReasoningFlags: runtime.argsWithoutReasoningFlags,
+    reasoningOverride: runtime.reasoningOverride,
+    reasoningSource: runtime.sourceFlag
+      ? 'flag'
+      : runtime.reasoningOverride !== undefined
+        ? 'env'
+        : undefined,
+    sourceDisplay: runtime.sourceDisplay,
+  };
+}
+
+function normalizeCodexRuntimeReasoningOverride(
+  value: string | number | undefined
+): string | undefined {
+  return typeof value === 'string' && CODEX_RUNTIME_REASONING_LEVELS.has(value) ? value : undefined;
+}
+
+function exitWithRuntimeReasoningFlagError(
+  message: string,
+  options: {
+    codexAliasLevels: string;
+    includeDroidExecExample?: boolean;
+  }
+): never {
+  console.error(fail(message));
+  console.error('    Examples: --thinking low, --thinking 8192, --thinking off');
+  console.error(`    Codex alias: --effort ${options.codexAliasLevels}`);
+  if (options.includeDroidExecExample) {
+    console.error('    Droid exec: --reasoning-effort high');
+  }
+  process.exit(1);
 }
 
 // ========== Main Execution ==========
@@ -183,6 +243,7 @@ async function main(): Promise<void> {
   // Register target adapters
   registerTarget(new ClaudeAdapter());
   registerTarget(new DroidAdapter());
+  registerTarget(new CodexAdapter());
 
   const args = process.argv.slice(2);
 
@@ -372,6 +433,9 @@ async function main(): Promise<void> {
 
     // Resolve non-claude target adapter once.
     const targetAdapter = resolvedTarget !== 'claude' ? getTarget(resolvedTarget) : null;
+    let resolvedSettingsPath: string | undefined;
+    let resolvedSettings: ReturnType<typeof loadSettings> | undefined;
+    let resolvedCliproxyBridge: ReturnType<typeof resolveCliproxyBridgeMetadata> | undefined;
 
     // Preflight unsupported profile/target combinations BEFORE binary detection,
     // so users get the most actionable error even when the target CLI is not installed.
@@ -381,21 +445,47 @@ async function main(): Promise<void> {
         process.exit(1);
       }
 
-      if (profileInfo.type === 'cliproxy' && !targetAdapter.supportsProfileType('cliproxy')) {
-        console.error(fail(`${targetAdapter.displayName} does not support CLIProxy profiles`));
-        console.error(info('Use a settings-based profile with --target instead'));
-        process.exit(1);
-      }
-
-      if (profileInfo.type === 'copilot' && !targetAdapter.supportsProfileType('copilot')) {
-        console.error(fail(`${targetAdapter.displayName} does not support Copilot profiles`));
-        process.exit(1);
-      }
-
-      if (profileInfo.type === 'account' && !targetAdapter.supportsProfileType('account')) {
-        console.error(fail(`${targetAdapter.displayName} does not support account-based profiles`));
-        console.error(info('Use a settings-based profile with --target instead'));
-        process.exit(1);
+      if (profileInfo.type === 'settings') {
+        resolvedSettingsPath = profileInfo.settingsPath
+          ? expandPath(profileInfo.settingsPath)
+          : getSettingsPath(profileInfo.name);
+        resolvedSettings = loadSettings(resolvedSettingsPath);
+        resolvedCliproxyBridge = resolveCliproxyBridgeMetadata(resolvedSettings);
+        const compatibility = evaluateTargetRuntimeCompatibility({
+          target: resolvedTarget,
+          profileType: profileInfo.type,
+          cliproxyBridgeProvider: resolvedCliproxyBridge?.provider ?? null,
+        });
+        if (!compatibility.supported) {
+          console.error(
+            fail(
+              compatibility.reason || `${targetAdapter.displayName} does not support this profile.`
+            )
+          );
+          if (compatibility.suggestion) {
+            console.error(info(compatibility.suggestion));
+          }
+          process.exit(1);
+        }
+      } else {
+        const compatibility = evaluateTargetRuntimeCompatibility({
+          target: resolvedTarget,
+          profileType: profileInfo.type,
+          cliproxyProvider: profileInfo.type === 'cliproxy' ? profileInfo.provider : undefined,
+          isComposite:
+            profileInfo.type === 'cliproxy' ? Boolean(profileInfo.isComposite) : undefined,
+        });
+        if (!compatibility.supported) {
+          console.error(
+            fail(
+              compatibility.reason || `${targetAdapter.displayName} does not support this profile.`
+            )
+          );
+          if (compatibility.suggestion) {
+            console.error(info(compatibility.suggestion));
+          }
+          process.exit(1);
+        }
       }
 
       if (profileInfo.type === 'default') {
@@ -428,6 +518,8 @@ async function main(): Promise<void> {
       console.error(fail(`${displayName} CLI not found.`));
       if (resolvedTarget === 'droid') {
         console.error(info('Install: npm i -g @factory/cli'));
+      } else if (resolvedTarget === 'codex') {
+        console.error(info('Install a recent @openai/codex build, then retry.'));
       }
       process.exit(1);
     }
@@ -446,24 +538,16 @@ async function main(): Promise<void> {
     }
 
     let targetRemainingArgs = remainingArgs;
-    let droidReasoningOverride: string | number | undefined;
+    let runtimeReasoningOverride: string | number | undefined;
     if (resolvedTarget === 'droid') {
       try {
         const droidRoute = routeDroidCommandArgs(remainingArgs);
         targetRemainingArgs = droidRoute.argsForDroid;
 
         if (droidRoute.mode === 'interactive') {
-          const runtime = resolveDroidReasoningRuntime(remainingArgs, process.env.CCS_THINKING);
+          const runtime = resolveRuntimeReasoningFlags(remainingArgs, process.env.CCS_THINKING);
           targetRemainingArgs = runtime.argsWithoutReasoningFlags;
-          droidReasoningOverride = runtime.reasoningOverride;
-
-          if (runtime.duplicateDisplays.length > 0) {
-            console.error(
-              warn(
-                `[!] Multiple reasoning flags detected. Using first occurrence: ${runtime.sourceDisplay || '<first-flag>'}`
-              )
-            );
-          }
+          runtimeReasoningOverride = runtime.reasoningOverride;
         } else {
           if (droidRoute.duplicateReasoningDisplays.length > 0) {
             console.error(
@@ -480,11 +564,36 @@ async function main(): Promise<void> {
         }
       } catch (error) {
         if (error instanceof DroidReasoningFlagError || error instanceof DroidCommandRouterError) {
-          console.error(fail(error.message));
-          console.error('    Examples: --thinking low, --thinking 8192, --thinking off');
-          console.error('    Codex alias: --effort medium|high|xhigh');
-          console.error('    Droid exec: --reasoning-effort high');
-          process.exit(1);
+          exitWithRuntimeReasoningFlagError(error.message, {
+            codexAliasLevels: 'minimal|low|medium|high|xhigh',
+            includeDroidExecExample: true,
+          });
+        }
+        throw error;
+      }
+    } else if (resolvedTarget === 'codex') {
+      try {
+        const runtime = resolveRuntimeReasoningFlags(remainingArgs, process.env.CCS_THINKING);
+        targetRemainingArgs = runtime.argsWithoutReasoningFlags;
+        const normalizedReasoning = normalizeCodexRuntimeReasoningOverride(
+          runtime.reasoningOverride
+        );
+        if (runtime.reasoningOverride !== undefined && !normalizedReasoning) {
+          if (runtime.reasoningSource === 'flag') {
+            throw new DroidReasoningFlagError(
+              'Codex target supports reasoning levels only: minimal, low, medium, high, xhigh.',
+              '--effort'
+            );
+          }
+          runtimeReasoningOverride = undefined;
+        } else {
+          runtimeReasoningOverride = normalizedReasoning;
+        }
+      } catch (error) {
+        if (error instanceof DroidReasoningFlagError) {
+          exitWithRuntimeReasoningFlagError(error.message, {
+            codexAliasLevels: 'minimal|low|medium|high|xhigh',
+          });
         }
         throw error;
       }
@@ -625,7 +734,7 @@ async function main(): Promise<void> {
             baseUrl: envVars['ANTHROPIC_BASE_URL'],
             model: envVars['ANTHROPIC_MODEL'],
           }),
-          reasoningOverride: droidReasoningOverride,
+          reasoningOverride: runtimeReasoningOverride,
           envVars,
         };
 
@@ -643,7 +752,11 @@ async function main(): Promise<void> {
         }
 
         await adapter.prepareCredentials(creds);
-        const targetArgs = adapter.buildArgs(profileInfo.name, targetRemainingArgs);
+        const targetArgs = adapter.buildArgs(profileInfo.name, targetRemainingArgs, {
+          creds,
+          profileType: profileInfo.type,
+          binaryInfo: targetBinaryInfo || undefined,
+        });
         const targetEnv = adapter.buildEnv(creds, profileInfo.type);
         adapter.exec(targetArgs, targetEnv, { binaryInfo: targetBinaryInfo || undefined });
         return;
@@ -718,10 +831,32 @@ async function main(): Promise<void> {
         );
       }
       const inheritedClaudeConfigDir = continuityInheritance.claudeConfigDir;
-      const expandedSettingsPath = profileInfo.settingsPath
-        ? expandPath(profileInfo.settingsPath)
-        : getSettingsPath(profileInfo.name);
-      const settings = loadSettings(expandedSettingsPath);
+      const expandedSettingsPath =
+        resolvedSettingsPath ??
+        (profileInfo.settingsPath
+          ? expandPath(profileInfo.settingsPath)
+          : getSettingsPath(profileInfo.name));
+      const settings = resolvedSettings ?? loadSettings(expandedSettingsPath);
+      const cliproxyBridge = resolvedCliproxyBridge ?? resolveCliproxyBridgeMetadata(settings);
+      if (resolvedTarget !== 'claude') {
+        const compatibility = evaluateTargetRuntimeCompatibility({
+          target: resolvedTarget,
+          profileType: profileInfo.type,
+          cliproxyBridgeProvider: cliproxyBridge?.provider ?? null,
+        });
+        if (!compatibility.supported) {
+          console.error(
+            fail(
+              compatibility.reason ||
+                `${targetAdapter?.displayName || resolvedTarget} does not support this profile.`
+            )
+          );
+          if (compatibility.suggestion) {
+            console.error(info(compatibility.suggestion));
+          }
+          process.exit(1);
+        }
+      }
       const rawSettingsEnv = profileInfo.env ?? settings.env ?? {};
       const isDeprecatedGlmtProfile = isDeprecatedGlmtProfileName(profileInfo.name);
       const glmtNormalization = isDeprecatedGlmtProfile
@@ -841,11 +976,15 @@ async function main(): Promise<void> {
             baseUrl: directAnthropicBaseUrl,
             model: settingsEnv['ANTHROPIC_MODEL'],
           }),
-          reasoningOverride: droidReasoningOverride,
+          reasoningOverride: runtimeReasoningOverride,
           envVars,
         };
         await adapter.prepareCredentials(creds);
-        const targetArgs = adapter.buildArgs(profileInfo.name, targetRemainingArgs);
+        const targetArgs = adapter.buildArgs(profileInfo.name, targetRemainingArgs, {
+          creds,
+          profileType: profileInfo.type,
+          binaryInfo: targetBinaryInfo || undefined,
+        });
         const targetEnv = adapter.buildEnv(creds, profileInfo.type);
         adapter.exec(targetArgs, targetEnv, { binaryInfo: targetBinaryInfo || undefined });
         return;
@@ -938,9 +1077,9 @@ async function main(): Promise<void> {
             baseUrl: process.env['ANTHROPIC_BASE_URL'],
             model: process.env['ANTHROPIC_MODEL'],
           }),
-          reasoningOverride: droidReasoningOverride,
+          reasoningOverride: runtimeReasoningOverride,
         };
-        if (!creds.baseUrl || !creds.apiKey) {
+        if (resolvedTarget === 'droid' && (!creds.baseUrl || !creds.apiKey)) {
           console.error(
             fail(
               `${adapter.displayName} default mode requires ANTHROPIC_BASE_URL and ANTHROPIC_AUTH_TOKEN`
@@ -950,7 +1089,11 @@ async function main(): Promise<void> {
           process.exit(1);
         }
         await adapter.prepareCredentials(creds);
-        const targetArgs = adapter.buildArgs('default', targetRemainingArgs);
+        const targetArgs = adapter.buildArgs('default', targetRemainingArgs, {
+          creds,
+          profileType: 'default',
+          binaryInfo: targetBinaryInfo || undefined,
+        });
         const targetEnv = adapter.buildEnv(creds, 'default');
         adapter.exec(targetArgs, targetEnv, { binaryInfo: targetBinaryInfo || undefined });
         return;
