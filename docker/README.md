@@ -65,10 +65,11 @@ environment:
 Generate a bcrypt hash:
 
 ```bash
-docker exec ccs-cliproxy node -e "
-  const bcrypt = require('/usr/local/lib/node_modules/@kaitranntt/ccs/node_modules/bcrypt');
-  console.log(bcrypt.hashSync('your-password', 10));
+docker exec ccs-cliproxy npx -y bcryptjs -e "
+  const b = require('bcryptjs'); console.log(b.hashSync('your-password', 10));
 "
+# Or if bcrypt is available in the container's CCS install:
+docker exec ccs-cliproxy node -e "console.log(require('bcrypt').hashSync('your-password', 10))"
 ```
 
 After configuring auth, restart the dashboard:
@@ -129,7 +130,7 @@ docker exec ccs-cliproxy curl -fsS http://127.0.0.1:3000/api/health \
   | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'{d[\"summary\"][\"passed\"]} passed, {d[\"summary\"][\"errors\"]} errors')"
 
 # 4. Verify auth tokens loaded (check client count)
-docker exec ccs-cliproxy cat /var/log/ccs/cliproxy.log | grep "client load complete"
+docker exec ccs-cliproxy grep "client load complete" /var/log/ccs/cliproxy.log
 
 # 5. Test dashboard API (from remote -- requires auth)
 curl -fsS -X POST http://<host>:3000/api/auth/login \
@@ -340,7 +341,7 @@ If CLIProxy logs show "0 clients" after copying auth tokens:
 docker exec ccs-cliproxy supervisorctl -c /etc/supervisord.conf restart cliproxy
 
 # Verify tokens loaded
-docker exec ccs-cliproxy cat /var/log/ccs/cliproxy.log | grep "client load complete"
+docker exec ccs-cliproxy grep "client load complete" /var/log/ccs/cliproxy.log
 ```
 
 ### ETXTBSY Error on First Boot

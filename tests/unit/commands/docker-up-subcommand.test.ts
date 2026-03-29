@@ -38,6 +38,7 @@ describe('docker up subcommand', () => {
       expect(rendered).toContain('Docker stack is running on docker-box.');
       expect(rendered).toContain('Dashboard port: 4000');
       expect(rendered).toContain('CLIProxy port: 9317');
+      expect(rendered).toContain('Remote access requires dashboard auth');
       expect(capture.errorLines).toEqual([]);
       expect(process.exitCode).toBe(0);
     } finally {
