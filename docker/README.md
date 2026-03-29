@@ -45,6 +45,104 @@ The `ccs docker` flow uses the integrated assets in this directory:
 - `docker/supervisord.conf`
 - `docker/entrypoint-integrated.sh`
 
+### Post-Deployment: Enable Dashboard Auth (Required for Remote Access)
+
+When accessing the dashboard from a different machine (not `localhost`), the API blocks requests with **403 Forbidden** unless authentication is configured. Without auth, the dashboard appears empty (no providers, no version).
+
+Set up auth inside the running container:
+
+```bash
+# Interactive setup (recommended)
+docker exec -it ccs-cliproxy ccs config auth setup
+
+# Or via environment variables in docker-compose
+environment:
+  CCS_DASHBOARD_AUTH_ENABLED: "true"
+  CCS_DASHBOARD_USERNAME: "admin"
+  CCS_DASHBOARD_PASSWORD_HASH: "<bcrypt-hash>"
+```
+
+Generate a bcrypt hash:
+
+```bash
+docker exec ccs-cliproxy node -e "console.log(require('bcrypt').hashSync('your-password', 10))"
+```
+
+> **Note:** Do not commit the password hash in `docker-compose.yml`. Use Docker secrets or a `.env` file (not tracked in git) for sensitive values like `CCS_DASHBOARD_PASSWORD_HASH`.
+
+After configuring auth, restart the dashboard:
+
+```bash
+docker exec ccs-cliproxy supervisorctl -c /etc/supervisord.conf restart ccs-dashboard
+```
+
+If accessing from `localhost` only (e.g., via SSH tunnel), auth is not required:
+
+```bash
+ssh -L 3000:localhost:3000 my-server
+# Then open http://localhost:3000 in browser
+```
+
+### Post-Deployment: Migrate Existing Auth Tokens
+
+If you have existing CLIProxy OAuth tokens from a previous deployment, copy them into the Docker volume:
+
+```bash
+# Copy auth files into the running container
+for f in /path/to/old/auth/*.json; do
+  docker cp "$f" ccs-cliproxy:/root/.ccs/cliproxy/auth/
+done
+
+# Restart CLIProxy to load new tokens
+docker exec ccs-cliproxy supervisorctl -c /etc/supervisord.conf restart cliproxy
+```
+
+For remote deployments via `ccs docker up --host`:
+
+```bash
+# Copy tokens into the running container (no root/sudo needed)
+scp /path/to/auth/*.json my-server:/tmp/ccs-auth/
+ssh my-server 'for f in /tmp/ccs-auth/*.json; do docker cp "$f" ccs-cliproxy:/root/.ccs/cliproxy/auth/; done'
+
+# Restart CLIProxy to load new tokens
+ssh my-server "docker exec ccs-cliproxy supervisorctl -c /etc/supervisord.conf restart cliproxy"
+
+# Clean up temp files
+ssh my-server "rm -rf /tmp/ccs-auth"
+```
+
+> **Tip:** `docker cp` is preferred over writing directly to Docker volume mountpoints, which require root access.
+
+### Post-Deployment: Verification Checklist
+
+After `ccs docker up`, verify the deployment:
+
+```bash
+# 1. Check container is healthy
+ccs docker status --host my-server
+
+# 2. Verify CLIProxy responds
+curl -fsS http://<host>:8317/
+
+# 3. Check health API (from inside container -- no auth needed)
+docker exec ccs-cliproxy curl -fsS http://127.0.0.1:3000/api/health \
+  | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'{d[\"summary\"][\"passed\"]} passed, {d[\"summary\"][\"errors\"]} errors')"
+
+# 4. Verify auth tokens loaded (check client count)
+docker exec ccs-cliproxy grep "client load complete" /var/log/ccs/cliproxy.log
+
+# 5. Test dashboard API (from remote -- requires auth)
+curl -fsS -X POST http://<host>:3000/api/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"admin","password":"your-password"}'
+```
+
+Expected healthy output:
+- Container status: `healthy`
+- Both supervisor services: `RUNNING`
+- CLIProxy health: `cliproxy-port: ok, CLIProxy running`
+- Client count matches number of auth token files
+
 ## Prebuilt Image Quick Start
 
 This existing image still runs the CCS dashboard and its locally managed CLIProxy inside one
@@ -217,6 +315,37 @@ docker logs ccs-dashboard --tail 50
 # Check container health
 docker inspect ccs-dashboard --format='{{.State.Health.Status}}'
 ```
+
+### Dashboard Shows Empty (No Providers, Wrong Version)
+
+If the dashboard page loads but shows "0 providers", "Not running", or version "v5.0.0":
+
+**Cause:** The dashboard API blocks non-localhost requests when auth is disabled (security feature). The page HTML loads from any host, but all API calls return 403.
+
+**Fix:** Enable dashboard authentication:
+
+```bash
+docker exec -it ccs-cliproxy ccs config auth setup
+docker exec ccs-cliproxy supervisorctl -c /etc/supervisord.conf restart ccs-dashboard
+```
+
+Then log in at the dashboard URL. See [Post-Deployment: Enable Dashboard Auth](#post-deployment-enable-dashboard-auth-required-for-remote-access) above.
+
+### CLIProxy Shows 0 Clients After Token Migration
+
+If CLIProxy logs show "0 clients" after copying auth tokens:
+
+```bash
+# CLIProxy needs a restart to detect new auth files
+docker exec ccs-cliproxy supervisorctl -c /etc/supervisord.conf restart cliproxy
+
+# Verify tokens loaded
+docker exec ccs-cliproxy grep "client load complete" /var/log/ccs/cliproxy.log
+```
+
+### ETXTBSY Error on First Boot
+
+On first container start, you may see `ETXTBSY: text file is busy` in dashboard logs. This is a known race condition where the dashboard tries to update the CLIProxy binary while it's already running. The dashboard recovers automatically on the next attempt. No action needed.
 
 ### Debug Mode
 

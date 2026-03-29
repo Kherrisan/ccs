@@ -37,6 +37,13 @@ export async function handleUp(args: string[]): Promise<void> {
     console.log(ok(`Docker stack is running${parsed.host ? ` on ${parsed.host}` : ' locally'}.`));
     console.log(info(`Dashboard port: ${port}`));
     console.log(info(`CLIProxy port: ${proxyPort}`));
+    if (parsed.host) {
+      console.log(
+        info(
+          'Remote access requires dashboard auth. Run inside the container:\n  docker exec -it ccs-cliproxy ccs config auth setup'
+        )
+      );
+    }
   } catch (error) {
     console.error(
       box(fail(error instanceof Error ? error.message : String(error)), {

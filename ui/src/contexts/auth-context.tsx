@@ -47,9 +47,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUsername(res.username);
       })
       .catch(() => {
-        // If check fails, assume no auth required (backward compat)
-        setAuthRequired(false);
-        setIsAuthenticated(true);
+        // If auth check fails (network error, server down, CORS issue),
+        // fail closed: require auth instead of granting access.
+        // Prevents silently broken dashboard when server is unreachable.
+        setAuthRequired(true);
+        setIsAuthenticated(false);
       })
       .finally(() => setLoading(false));
   }, []);
