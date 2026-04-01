@@ -57,6 +57,7 @@ export function ControlPanelEmbed({ port = CLIPROXY_DEFAULT_PORT }: ControlPanel
   // Calculate URLs and settings based on remote or local mode
   const { managementUrl, checkUrl, authToken, isRemote, displayHost } = useMemo(() => {
     const remote = cliproxyConfig?.remote;
+    const localPort = cliproxyConfig?.local?.port ?? port;
 
     if (remote?.enabled && remote?.host) {
       const protocol = remote.protocol || 'http';
@@ -78,14 +79,15 @@ export function ControlPanelEmbed({ port = CLIPROXY_DEFAULT_PORT }: ControlPanel
       };
     }
 
-    // Local mode - use effective management secret from auth tokens API
+    // Local mode - proxy through dashboard server to avoid cross-origin/port issues
+    // (e.g., in Docker the browser cannot reach the internal CLIProxy port directly)
     const effectiveSecret = authTokens?.managementSecret?.value || 'ccs';
     return {
-      managementUrl: `http://localhost:${port}/management.html`,
-      checkUrl: `http://localhost:${port}/`,
+      managementUrl: withApiBase('/cliproxy-local/management.html'),
+      checkUrl: withApiBase('/cliproxy-local/'),
       authToken: effectiveSecret,
       isRemote: false,
-      displayHost: `localhost:${port}`,
+      displayHost: `localhost:${localPort}`,
     };
   }, [cliproxyConfig, authTokens, port]);
 
@@ -95,29 +97,50 @@ export function ControlPanelEmbed({ port = CLIPROXY_DEFAULT_PORT }: ControlPanel
   // Check if CLIProxy is running
   useEffect(() => {
     const controller = new AbortController();
+    let cancelled = false;
+
+    const updateConnectionState = (connected: boolean, nextError: string | null) => {
+      if (cancelled) return;
+      setIsConnected(connected);
+      setError(nextError);
+    };
 
     const checkConnection = async () => {
       try {
-        const response = await fetch(checkUrl, {
-          signal: controller.signal,
-        });
-        if (response.ok) {
-          setIsConnected(true);
-          setError(null);
+        if (isRemote) {
+          // Remote mode: use the test endpoint via same-origin API to avoid CORS
+          const remote = cliproxyConfig?.remote;
+          const result = await api.cliproxyServer.test({
+            host: remote?.host ?? '',
+            port: remote?.port,
+            protocol: remote?.protocol ?? 'http',
+            authToken: remote?.auth_token,
+          });
+          if (result?.reachable) {
+            updateConnectionState(true, null);
+          } else {
+            updateConnectionState(
+              false,
+              result?.error
+                ? `Remote CLIProxy at ${displayHost}: ${result.error}`
+                : `Remote CLIProxy at ${displayHost} returned an error`
+            );
+          }
         } else {
-          setIsConnected(false);
-          setError(
-            isRemote
-              ? `Remote CLIProxy at ${displayHost} returned an error`
-              : 'CLIProxy returned an error'
-          );
+          // Local mode: probe the proxied control panel root directly.
+          const response = await fetch(checkUrl, { signal: controller.signal });
+          if (response.ok) {
+            updateConnectionState(true, null);
+          } else {
+            updateConnectionState(false, 'CLIProxy returned an error');
+          }
         }
       } catch (e) {
         // Ignore abort errors (component unmounting)
         if (e instanceof Error && e.name === 'AbortError') return;
 
-        setIsConnected(false);
-        setError(
+        updateConnectionState(
+          false,
           isRemote
             ? `Remote CLIProxy at ${displayHost} is not reachable`
             : 'CLIProxy is not running'
@@ -130,8 +153,11 @@ export function ControlPanelEmbed({ port = CLIPROXY_DEFAULT_PORT }: ControlPanel
     checkConnection().finally(() => clearTimeout(timeoutId));
 
     // Cleanup: abort fetch on unmount
-    return () => controller.abort();
-  }, [checkUrl, isRemote, displayHost]);
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [checkUrl, isRemote, displayHost, cliproxyConfig]);
 
   const postAutoLoginCredentials = useCallback(() => {
     // Auto-login can only run when iframe has loaded and authToken is available.
@@ -140,12 +166,20 @@ export function ControlPanelEmbed({ port = CLIPROXY_DEFAULT_PORT }: ControlPanel
     }
 
     try {
-      // Derive apiBase from checkUrl (remove trailing slash)
-      const apiBase = checkUrl.replace(/\/$/, '');
+      // Derive apiBase and targetOrigin from checkUrl.
+      // Local mode uses the same-origin dashboard proxy; remote mode stays absolute.
+      const apiBase = checkUrl.startsWith('/')
+        ? new URL(checkUrl.replace(/\/$/, ''), window.location.origin).href
+        : checkUrl.replace(/\/$/, '');
+      const apiBaseUrl = new URL(`${apiBase}/`);
+      const targetOrigin = apiBaseUrl.origin;
 
-      // Security: Validate iframe src matches target origin before sending credentials
-      const iframeSrc = iframeRef.current.src;
-      if (!iframeSrc.startsWith(apiBase)) {
+      // Security: Validate iframe src matches the expected origin/path before sending credentials.
+      const iframeUrl = new URL(iframeRef.current.src, window.location.origin);
+      if (
+        iframeUrl.origin !== apiBaseUrl.origin ||
+        !iframeUrl.pathname.startsWith(apiBaseUrl.pathname)
+      ) {
         console.warn('[ControlPanelEmbed] Iframe origin mismatch, skipping postMessage');
         return;
       }
@@ -157,7 +191,7 @@ export function ControlPanelEmbed({ port = CLIPROXY_DEFAULT_PORT }: ControlPanel
           apiBase,
           managementKey: authToken,
         },
-        apiBase
+        targetOrigin
       );
     } catch (e) {
       // Cross-origin restriction - expected if not same origin
