@@ -209,7 +209,7 @@ export async function execClaudeWithCLIProxy(
 
   // Setup first-class CCS WebSearch runtime
   ensureWebSearchMcpOrThrow();
-  ensureImageAnalysisMcpOrThrow();
+  const imageAnalysisMcpReady = ensureImageAnalysisMcpOrThrow();
   displayWebSearchStatus();
 
   const providerConfig = getProviderConfig(provider);
@@ -843,15 +843,27 @@ export async function execClaudeWithCLIProxy(
           protocol: 'http' as const,
           isRemote: false as const,
         };
-  const { env: imageAnalysisEnv, warning: imageAnalysisWarning } =
-    await resolveCliproxyImageAnalysisEnv({
-      profileName: cfg.profileName || provider,
-      provider,
-      profileSettingsPath: cfg.customSettingsPath,
-      isComposite: cfg.isComposite,
-      proxyTarget: imageAnalysisProxyTarget,
-      proxyReachable: true,
-    });
+  const imageAnalysisResolution = await resolveCliproxyImageAnalysisEnv({
+    profileName: cfg.profileName || provider,
+    provider,
+    profileSettingsPath: cfg.customSettingsPath,
+    isComposite: cfg.isComposite,
+    proxyTarget: imageAnalysisProxyTarget,
+    tunnelPort,
+    proxyReachable: true,
+  });
+  const imageAnalysisProvisioningFailed =
+    !imageAnalysisMcpReady && imageAnalysisResolution.env.CCS_IMAGE_ANALYSIS_ENABLED === '1';
+  const imageAnalysisEnv = imageAnalysisProvisioningFailed
+    ? {
+        ...imageAnalysisResolution.env,
+        CCS_CURRENT_PROVIDER: '',
+        CCS_IMAGE_ANALYSIS_SKIP: '1',
+      }
+    : imageAnalysisResolution.env;
+  const imageAnalysisWarning = imageAnalysisProvisioningFailed
+    ? 'ImageAnalysis MCP provisioning failed. This session will use native Read.'
+    : imageAnalysisResolution.warning;
 
   // 9. Setup tool sanitization proxy
   let toolSanitizationProxy: ToolSanitizationProxy | null = null;
@@ -1076,10 +1088,13 @@ export async function execClaudeWithCLIProxy(
     : getProviderSettingsPath(provider);
 
   let claude: ChildProcess;
+  const imageAnalysisArgs = imageAnalysisMcpReady
+    ? appendThirdPartyImageAnalysisToolArgs(claudeArgs)
+    : claudeArgs;
   const launchArgs = [
     '--settings',
     settingsPath,
-    ...appendThirdPartyWebSearchToolArgs(appendThirdPartyImageAnalysisToolArgs(claudeArgs)),
+    ...appendThirdPartyWebSearchToolArgs(imageAnalysisArgs),
   ];
   const traceEnv = createWebSearchTraceContext({
     launcher: 'cliproxy.executor',

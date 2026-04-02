@@ -28,12 +28,12 @@ import {
   applyImageAnalysisRuntimeOverrides,
   getImageAnalysisHookEnv,
   prepareImageAnalysisFallbackHook,
+  resolveImageAnalysisRuntimeConnection,
   resolveImageAnalysisRuntimeStatus,
 } from '../utils/hooks';
 import { ensureProfileHooks as ensureImageAnalyzerHooks } from '../utils/hooks/image-analyzer-profile-hook-injector';
-import { resolveCliproxyBridgeMetadata, resolveCliproxyBridgeProfile } from '../api/services';
+import { resolveCliproxyBridgeMetadata } from '../api/services';
 import { ensureCliproxyService } from '../cliproxy';
-import { getEffectiveApiKey } from '../cliproxy/auth-token-manager';
 import { CLIPROXY_DEFAULT_PORT } from '../cliproxy/config/port-manager';
 import {
   appendThirdPartyWebSearchToolArgs,
@@ -121,7 +121,7 @@ export class HeadlessExecutor {
     }
 
     ensureWebSearchMcpOrThrow();
-    ensureImageAnalysisMcpOrThrow();
+    const imageAnalysisMcpReady = ensureImageAnalysisMcpOrThrow();
     syncWebSearchMcpToConfigDir(inheritedClaudeConfigDir);
     syncImageAnalysisMcpToConfigDir(inheritedClaudeConfigDir);
 
@@ -143,9 +143,7 @@ export class HeadlessExecutor {
       cliproxyBridge,
       sharedHookInstalled: imageAnalysisFallbackHookReady,
     });
-    const currentBridgeAuthToken = cliproxyBridge
-      ? resolveCliproxyBridgeProfile(cliproxyBridge.provider).apiKey
-      : getEffectiveApiKey();
+    const runtimeConnection = resolveImageAnalysisRuntimeConnection();
     let imageAnalysisEnv = getImageAnalysisHookEnv({
       profileName: profile,
       profileType: 'settings',
@@ -156,9 +154,18 @@ export class HeadlessExecutor {
       backendId: imageAnalysisStatus.backendId,
       model: imageAnalysisStatus.model,
       runtimePath: imageAnalysisStatus.runtimePath,
-      baseUrl: cliproxyBridge?.currentBaseUrl || '',
-      apiKey: currentBridgeAuthToken,
+      baseUrl: runtimeConnection.baseUrl,
+      apiKey: runtimeConnection.apiKey,
+      allowSelfSigned: runtimeConnection.allowSelfSigned,
     });
+
+    if (!imageAnalysisMcpReady) {
+      imageAnalysisEnv = {
+        ...imageAnalysisEnv,
+        CCS_CURRENT_PROVIDER: '',
+        CCS_IMAGE_ANALYSIS_SKIP: '1',
+      };
+    }
 
     const imageAnalysisProvider = imageAnalysisEnv['CCS_CURRENT_PROVIDER'];
     if (
@@ -279,9 +286,10 @@ export class HeadlessExecutor {
       }
     }
 
-    const launchArgs = appendThirdPartyWebSearchToolArgs(
-      appendThirdPartyImageAnalysisToolArgs(args)
-    );
+    const imageAnalysisArgs = imageAnalysisMcpReady
+      ? appendThirdPartyImageAnalysisToolArgs(args)
+      : args;
+    const launchArgs = appendThirdPartyWebSearchToolArgs(imageAnalysisArgs);
     const traceEnv = createWebSearchTraceContext({
       launcher: 'delegation.headless-executor',
       args: launchArgs,

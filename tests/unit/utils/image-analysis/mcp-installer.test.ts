@@ -1,12 +1,14 @@
-import { afterEach, describe, expect, it, mock } from 'bun:test';
+import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import * as lockfile from 'proper-lockfile';
 import {
   ensureImageAnalysisMcp,
   getImageAnalysisMcpRuntimePath,
   getImageAnalysisMcpServerName,
   getImageAnalysisMcpServerPath,
+  hasImageAnalysisMcpReady,
   uninstallImageAnalysisMcp,
 } from '../../../../src/utils/image-analysis';
 
@@ -102,6 +104,7 @@ describe('ensureImageAnalysisMcp', () => {
 
     expect(config.mcpServers.existing).toEqual({ command: 'uvx', args: ['some-server'] });
     expect(config.mcpServers[getImageAnalysisMcpServerName()]).toEqual(getManagedConfig());
+    expect(hasImageAnalysisMcpReady(claudeUserConfigPath)).toBe(true);
   });
 
   it('removes the managed MCP runtime while preserving unrelated server entries', () => {
@@ -176,5 +179,15 @@ describe('ensureImageAnalysisMcp', () => {
     expect(ensureImageAnalysisMcp()).toBe(true);
     expect(fs.existsSync(getImageAnalysisMcpServerPath())).toBe(true);
     expect(fs.existsSync(getImageAnalysisMcpRuntimePath())).toBe(true);
+  });
+
+  it('serializes ~/.claude.json updates with a file lock', () => {
+    setupTempHome();
+    writeEnabledConfig();
+
+    const lockSpy = spyOn(lockfile, 'lockSync');
+
+    expect(ensureImageAnalysisMcp()).toBe(true);
+    expect(lockSpy).toHaveBeenCalled();
   });
 });

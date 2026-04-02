@@ -1,4 +1,9 @@
 import { getAuthStatus, initializeAccounts, type AuthStatus } from '../../cliproxy/auth-handler';
+import {
+  checkRemoteProxy,
+  type RemoteProxyClientConfig,
+  type RemoteProxyStatus,
+} from '../../cliproxy/remote-proxy-client';
 import { fetchRemoteAuthStatus, type RemoteAuthStatus } from '../../cliproxy/remote-auth-fetcher';
 import { getProxyTarget, type ProxyTarget } from '../../cliproxy/proxy-target-resolver';
 import { getProviderDisplayName, isCLIProxyProvider } from '../../cliproxy/provider-capabilities';
@@ -15,6 +20,7 @@ import {
 } from './image-analysis-backend-resolver';
 
 interface ImageAnalysisRuntimeStatusDeps {
+  checkRemoteProxy: (config: RemoteProxyClientConfig) => Promise<RemoteProxyStatus>;
   fetchRemoteAuthStatus: (target: ProxyTarget) => Promise<RemoteAuthStatus[]>;
   getAuthStatus: (provider: CLIProxyProvider) => AuthStatus;
   getProxyTarget: () => ProxyTarget;
@@ -23,6 +29,7 @@ interface ImageAnalysisRuntimeStatusDeps {
 }
 
 const defaultDeps: ImageAnalysisRuntimeStatusDeps = {
+  checkRemoteProxy,
   fetchRemoteAuthStatus,
   getAuthStatus,
   getProxyTarget,
@@ -91,16 +98,25 @@ async function resolveProxyReadiness(
   }
 
   const target = deps.getProxyTarget();
-  const reachable = await deps.isCliproxyRunning();
   if (target.isRemote) {
+    const remoteStatus = await deps.checkRemoteProxy({
+      host: target.host,
+      port: target.port,
+      protocol: target.protocol,
+      authToken: target.authToken,
+      allowSelfSigned: target.allowSelfSigned,
+    });
+
     return {
-      proxyReadiness: reachable ? 'remote' : 'unavailable',
-      proxyReason: reachable
+      proxyReadiness: remoteStatus.reachable ? 'remote' : 'unavailable',
+      proxyReason: remoteStatus.reachable
         ? `Remote CLIProxy target ${target.host}:${target.port} is reachable.`
-        : `Remote CLIProxy target ${target.host}:${target.port} is unreachable.`,
+        : remoteStatus.error ||
+          `Remote CLIProxy target ${target.host}:${target.port} is unreachable.`,
     };
   }
 
+  const reachable = await deps.isCliproxyRunning();
   return {
     proxyReadiness: reachable ? 'ready' : 'stopped',
     proxyReason: reachable

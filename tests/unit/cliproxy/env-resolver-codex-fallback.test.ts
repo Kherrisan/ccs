@@ -261,6 +261,7 @@ describe('resolveCliproxyImageAnalysisEnv', () => {
     expect(result.env.CCS_IMAGE_ANALYSIS_RUNTIME_BASE_URL).toBe('https://remote.example.com:9443');
     expect(result.env.CCS_IMAGE_ANALYSIS_RUNTIME_PATH).toBe('/api/provider/agy');
     expect(result.env.CCS_IMAGE_ANALYSIS_RUNTIME_API_KEY).toBe('remote-token');
+    expect(result.env.CCS_IMAGE_ANALYSIS_RUNTIME_ALLOW_SELF_SIGNED).toBe('1');
     expect(result.warning).toBeNull();
   });
 
@@ -296,6 +297,45 @@ describe('resolveCliproxyImageAnalysisEnv', () => {
     expect(result.env.CCS_IMAGE_ANALYSIS_RUNTIME_BASE_URL).toBe('http://127.0.0.1:8317');
     expect(result.env.CCS_IMAGE_ANALYSIS_RUNTIME_PATH).toBe('/api/provider/agy');
     expect(result.env.CCS_IMAGE_ANALYSIS_RUNTIME_API_KEY).toBe('local-runtime-token');
+    expect(result.env.CCS_IMAGE_ANALYSIS_RUNTIME_ALLOW_SELF_SIGNED).toBe('0');
+    expect(result.warning).toBeNull();
+  });
+
+  it('routes remote HTTPS image analysis through the local tunnel when available', async () => {
+    const result = await resolveCliproxyImageAnalysisEnv(
+      {
+        profileName: 'orq',
+        provider: 'agy',
+        profileSettingsPath: '/tmp/orq.settings.json',
+        proxyTarget: {
+          host: 'remote.example.com',
+          port: 9443,
+          protocol: 'https',
+          authToken: 'remote-token',
+          managementKey: 'remote-management-key',
+          allowSelfSigned: true,
+          isRemote: true,
+        },
+        tunnelPort: 9911,
+        proxyReachable: true,
+      },
+      {
+        getImageAnalysisHookEnv: () => ({
+          CCS_IMAGE_ANALYSIS_ENABLED: '1',
+          CCS_IMAGE_ANALYSIS_TIMEOUT: '60',
+          CCS_IMAGE_ANALYSIS_PROVIDER_MODELS: 'agy:gemini-2.5-pro',
+          CCS_CURRENT_PROVIDER: 'agy',
+          CCS_IMAGE_ANALYSIS_SKIP: '0',
+        }),
+        hasImageAnalysisProfileHook: () => true,
+        hasImageAnalyzerHook: () => true,
+        resolveImageAnalysisRuntimeStatus: async () => createImageAnalysisStatus(),
+      }
+    );
+
+    expect(result.env.CCS_IMAGE_ANALYSIS_RUNTIME_BASE_URL).toBe('http://127.0.0.1:9911');
+    expect(result.env.CCS_IMAGE_ANALYSIS_RUNTIME_API_KEY).toBe('remote-token');
+    expect(result.env.CCS_IMAGE_ANALYSIS_RUNTIME_ALLOW_SELF_SIGNED).toBe('0');
     expect(result.warning).toBeNull();
   });
 });

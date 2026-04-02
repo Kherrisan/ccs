@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 import { spawn } from 'child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import * as http from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -9,6 +9,11 @@ const serverPath = join(process.cwd(), 'lib', 'mcp', 'ccs-image-analysis-server.
 
 function encodeMessage(message: unknown): string {
   return `${JSON.stringify(message)}\n`;
+}
+
+function encodeLegacyMessage(message: unknown): string {
+  const body = JSON.stringify(message);
+  return `Content-Length: ${Buffer.byteLength(body)}\r\n\r\n${body}`;
 }
 
 function collectResponses(
@@ -133,6 +138,7 @@ describe('ccs-image-analysis MCP server', () => {
     });
 
     const child = spawn('node', [serverPath], {
+      cwd: tempDir,
       env: {
         ...process.env,
         CCS_IMAGE_ANALYSIS_ENABLED: '1',
@@ -189,7 +195,7 @@ describe('ccs-image-analysis MCP server', () => {
                 filePath: {
                   type: 'string',
                   description:
-                    'Absolute or workspace-relative path to a local image or PDF file to analyze.',
+                    'Workspace-relative path, or an absolute path inside the current workspace, to a local image or PDF file to analyze.',
                 },
                 focus: {
                   type: 'string',
@@ -228,7 +234,10 @@ describe('ccs-image-analysis MCP server', () => {
   });
 
   it('returns a structured tool error when the file does not exist', async () => {
+    tempDir = mkdtempSync(join(tmpdir(), 'ccs-image-analysis-mcp-server-missing-'));
+    const missingPath = join(tempDir, 'missing-image.png');
     const child = spawn('node', [serverPath], {
+      cwd: tempDir,
       env: {
         ...process.env,
         CCS_IMAGE_ANALYSIS_ENABLED: '1',
@@ -260,7 +269,7 @@ describe('ccs-image-analysis MCP server', () => {
           method: 'tools/call',
           params: {
             name: 'ImageAnalysis',
-            arguments: { filePath: join(tmpdir(), 'missing-image.png') },
+            arguments: { filePath: missingPath },
           },
         })
       );
@@ -272,10 +281,66 @@ describe('ccs-image-analysis MCP server', () => {
         content: [
           {
             type: 'text',
-            text: `ImageAnalysis could not find file: ${join(tmpdir(), 'missing-image.png')}`,
+            text: `ImageAnalysis could not find file: ${missingPath}`,
           },
         ],
         isError: true,
+      });
+    } finally {
+      child.kill();
+    }
+  });
+
+  it('rejects paths outside the current workspace', async () => {
+    tempDir = mkdtempSync(join(tmpdir(), 'ccs-image-analysis-mcp-server-scope-'));
+    const workspaceDir = join(tempDir, 'workspace');
+    mkdirSync(workspaceDir, { recursive: true });
+    const outsidePath = join(tempDir, 'outside.png');
+    createTestPng(outsidePath);
+
+    const child = spawn('node', [serverPath], {
+      cwd: workspaceDir,
+      env: {
+        ...process.env,
+        CCS_IMAGE_ANALYSIS_ENABLED: '1',
+        CCS_IMAGE_ANALYSIS_SKIP: '0',
+        CCS_CURRENT_PROVIDER: 'agy',
+        CCS_IMAGE_ANALYSIS_MODEL: 'gemini-3-1-flash-preview',
+      },
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+
+    try {
+      const responsesPromise = collectResponses(child, 2);
+      child.stdin.write(
+        encodeMessage({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'initialize',
+          params: {
+            protocolVersion: '2024-11-05',
+            capabilities: {},
+            clientInfo: { name: 'bun-test', version: '1.0.0' },
+          },
+        })
+      );
+      child.stdin.write(
+        encodeMessage({
+          jsonrpc: '2.0',
+          id: 2,
+          method: 'tools/call',
+          params: {
+            name: 'ImageAnalysis',
+            arguments: { filePath: '../outside.png' },
+          },
+        })
+      );
+
+      const responses = await responsesPromise;
+      const toolCall = responses.find((message) => message.id === 2);
+      expect(toolCall?.error).toEqual({
+        code: -32602,
+        message: 'ImageAnalysis only allows files inside the current workspace.',
       });
     } finally {
       child.kill();
@@ -322,6 +387,7 @@ describe('ccs-image-analysis MCP server', () => {
     });
 
     const child = spawn('node', [serverPath], {
+      cwd: tempDir,
       env: {
         ...process.env,
         CCS_IMAGE_ANALYSIS_ENABLED: '1',
@@ -373,6 +439,41 @@ describe('ccs-image-analysis MCP server', () => {
       expect(((responses[1]?.result as { content: Array<{ text: string }> }).content[0] || {}).text).toContain(
         'one-page fixture'
       );
+    } finally {
+      child.kill();
+    }
+  });
+
+  it('accepts legacy Content-Length framed requests for compatibility', async () => {
+    const child = spawn('node', [serverPath], {
+      env: {
+        ...process.env,
+        CCS_IMAGE_ANALYSIS_ENABLED: '1',
+        CCS_IMAGE_ANALYSIS_SKIP: '1',
+        CCS_CURRENT_PROVIDER: 'agy',
+      },
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+
+    try {
+      const responsesPromise = collectResponses(child, 2);
+      child.stdin.write(
+        encodeLegacyMessage({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'initialize',
+          params: {
+            protocolVersion: '2024-11-05',
+            capabilities: {},
+            clientInfo: { name: 'bun-test', version: '1.0.0' },
+          },
+        })
+      );
+      child.stdin.write(encodeLegacyMessage({ jsonrpc: '2.0', id: 2, method: 'tools/list' }));
+
+      const responses = await responsesPromise;
+      const toolsList = responses.find((message) => message.id === 2);
+      expect(toolsList?.result).toEqual({ tools: [] });
     } finally {
       child.kill();
     }

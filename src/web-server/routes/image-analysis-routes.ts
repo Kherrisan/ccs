@@ -16,9 +16,15 @@ import { extractProviderFromPathname } from '../../cliproxy/model-id-normalizer'
 import {
   normalizeImageAnalysisBackendId,
   resolveImageAnalysisRuntimeStatus,
+  prepareImageAnalysisFallbackHook,
 } from '../../utils/hooks';
 import { hasImageAnalyzerHook } from '../../utils/hooks/image-analyzer-hook-installer';
 import { hasImageAnalysisProfileHook } from '../../utils/hooks/image-analyzer-profile-hook-injector';
+import { InstanceManager } from '../../management/instance-manager';
+import {
+  ensureImageAnalysisMcpOrThrow,
+  hasImageAnalysisMcpReady,
+} from '../../utils/image-analysis';
 
 const router = Router();
 const IMAGE_ANALYSIS_LOCAL_ACCESS_ERROR =
@@ -78,14 +84,23 @@ function resolveTarget(target: unknown): DashboardTarget {
 
 function resolveCurrentTargetMode(
   target: DashboardTarget,
-  status: Awaited<ReturnType<typeof resolveImageAnalysisRuntimeStatus>>
+  status: Awaited<ReturnType<typeof resolveImageAnalysisRuntimeStatus>>,
+  managedToolReady: boolean
 ): CurrentTargetMode {
   if (!status.enabled) return 'disabled';
   if (target !== 'claude') return 'bypassed';
   if (status.nativeReadPreference) return 'native';
+  if (!managedToolReady) return 'setup';
   if (!status.backendId) return 'unresolved';
   if (status.effectiveRuntimeMode === 'native-read') return 'fallback';
   return 'active';
+}
+
+function syncManagedImageAnalysisToInstances(): void {
+  const instanceManager = new InstanceManager();
+  for (const instanceName of instanceManager.listInstances()) {
+    instanceManager.syncMcpServers(instanceManager.getInstancePath(instanceName));
+  }
 }
 
 function resolveBackendState(
@@ -109,6 +124,7 @@ async function buildDashboardPayload() {
   const config = getImageAnalysisConfig();
   const { profiles, variants } = listApiProfiles();
   const sharedHookInstalled = hasImageAnalyzerHook();
+  const managedToolReady = hasImageAnalysisMcpReady();
 
   const profileRows = await Promise.all(
     profiles.map(async (profile) => {
@@ -146,7 +162,11 @@ async function buildDashboardPayload() {
         status: status.status,
         effectiveRuntimeMode: status.effectiveRuntimeMode,
         effectiveRuntimeReason: status.effectiveRuntimeReason,
-        currentTargetMode: resolveCurrentTargetMode(resolveTarget(profile.target), status),
+        currentTargetMode: resolveCurrentTargetMode(
+          resolveTarget(profile.target),
+          status,
+          managedToolReady
+        ),
         profileModel: status.profileModel,
         nativeReadPreference: status.nativeReadPreference,
         nativeImageCapable: status.nativeImageCapable,
@@ -190,7 +210,11 @@ async function buildDashboardPayload() {
         status: status.status,
         effectiveRuntimeMode: status.effectiveRuntimeMode,
         effectiveRuntimeReason: status.effectiveRuntimeReason,
-        currentTargetMode: resolveCurrentTargetMode(resolveTarget(variant.target), status),
+        currentTargetMode: resolveCurrentTargetMode(
+          resolveTarget(variant.target),
+          status,
+          managedToolReady
+        ),
         profileModel: status.profileModel,
         nativeReadPreference: status.nativeReadPreference,
         nativeImageCapable: status.nativeImageCapable,
@@ -260,6 +284,11 @@ async function buildDashboardPayload() {
     summaryState = 'disabled';
     title = 'Disabled';
     detail = 'Image is turned off globally. Images and PDFs fall back to native file access.';
+  } else if (!managedToolReady) {
+    summaryState = 'needs_setup';
+    title = 'Needs local runtime';
+    detail =
+      'CCS could not provision the local ImageAnalysis MCP runtime yet. Profiles will fall back to native Read until provisioning succeeds.';
   } else if (backendRows.length === 0) {
     summaryState = 'needs_setup';
     title = 'Needs provider models';
@@ -287,6 +316,10 @@ async function buildDashboardPayload() {
       activeProfileCount,
       bypassedProfileCount,
       nativeProfileCount,
+    },
+    runtime: {
+      managedToolReady,
+      sharedHookInstalled,
     },
     backends: backendRows,
     profiles: allProfileRows,
@@ -433,6 +466,13 @@ router.put('/', async (req: Request, res: Response): Promise<void> => {
         profile_backends: nextProfileBackends,
       };
     });
+
+    const nextEnabled = body.enabled ?? currentConfig.enabled;
+    if (nextEnabled) {
+      ensureImageAnalysisMcpOrThrow();
+      prepareImageAnalysisFallbackHook();
+      syncManagedImageAnalysisToInstances();
+    }
 
     res.json(await buildDashboardPayload());
   } catch (error) {

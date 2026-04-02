@@ -151,8 +151,20 @@ exit 0
     expect(result.stderr).not.toContain('could not prepare the local ImageAnalysis tool');
     expect(fs.existsSync(claudeArgsLogPath)).toBe(true);
     const launchedArgs = fs.readFileSync(claudeArgsLogPath, 'utf8');
-    expect(launchedArgs).toContain('--append-system-prompt');
-    expect(launchedArgs).toContain(STEERING_PROMPT_SNIPPET);
+    expect(launchedArgs).not.toContain(STEERING_PROMPT_SNIPPET);
+  });
+
+  it('falls back to native Read when the ImageAnalysis MCP runtime cannot be provisioned', () => {
+    if (process.platform === 'win32') return;
+
+    fs.writeFileSync(path.join(tmpHome, '.claude.json'), '{not-json', 'utf8');
+
+    const result = runCcs(['glm', 'smoke'], baseEnv);
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toContain('could not prepare the local ImageAnalysis tool');
+    const launchedArgs = fs.readFileSync(claudeArgsLogPath, 'utf8');
+    expect(launchedArgs).not.toContain(STEERING_PROMPT_SNIPPET);
   });
 
   it('pins bridge-backed image analysis to the current CLIProxy auth token', () => {

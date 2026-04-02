@@ -23,6 +23,7 @@ import { getWebSearchHookEnv } from '../../utils/websearch-manager';
 import {
   applyImageAnalysisRuntimeOverrides,
   getImageAnalysisHookEnv,
+  resolveImageAnalysisRuntimeConnection,
 } from '../../utils/hooks/get-image-analysis-hook-env';
 import { resolveImageAnalysisRuntimeStatus } from '../../utils/hooks/image-analysis-runtime-status';
 import { hasImageAnalysisProfileHook } from '../../utils/hooks/image-analyzer-profile-hook-injector';
@@ -89,6 +90,7 @@ interface ResolveCliproxyImageAnalysisEnvOptions {
   profileSettingsPath?: string;
   isComposite?: boolean;
   proxyTarget: ProxyTarget;
+  tunnelPort?: number | null;
   proxyReachable: boolean;
 }
 
@@ -154,14 +156,6 @@ function loadImageAnalysisSettings(settingsPath?: string): Settings | undefined 
   }
 }
 
-function buildDirectProxyBaseUrl(target: ProxyTarget): string {
-  const isDefaultPort =
-    (target.protocol === 'https' && target.port === 443) ||
-    (target.protocol === 'http' && target.port === 80);
-  const portSuffix = isDefaultPort ? '' : `:${target.port}`;
-  return `${target.protocol}://${target.host}${portSuffix}`;
-}
-
 export async function resolveCliproxyImageAnalysisEnv(
   options: ResolveCliproxyImageAnalysisEnvOptions,
   deps: Partial<CliproxyImageAnalysisDeps> = {}
@@ -204,15 +198,21 @@ export async function resolveCliproxyImageAnalysisEnv(
     };
   }
 
+  const runtimeConnection = resolveImageAnalysisRuntimeConnection({
+    proxyTarget: options.proxyTarget,
+    tunnelPort: options.tunnelPort,
+  });
+
   return {
     env: applyImageAnalysisRuntimeOverrides(env, {
       backendId: status.backendId,
       model: status.model,
       runtimePath: status.runtimePath,
-      baseUrl: buildDirectProxyBaseUrl(options.proxyTarget),
+      baseUrl: runtimeConnection.baseUrl,
       apiKey: options.proxyTarget.isRemote
-        ? options.proxyTarget.authToken || ''
+        ? runtimeConnection.apiKey
         : resolvedDeps.getLocalRuntimeApiKey(),
+      allowSelfSigned: runtimeConnection.allowSelfSigned,
     }),
     warning: null,
   };

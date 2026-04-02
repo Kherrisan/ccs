@@ -9,7 +9,13 @@
 
 import { getImageAnalysisConfig } from '../../config/unified-config-loader';
 import { resolveCliproxyBridgeProfile } from '../../api/services/cliproxy-profile-bridge';
+import { getEffectiveApiKey } from '../../cliproxy/auth-token-manager';
 import { mapExternalProviderName } from '../../cliproxy/provider-capabilities';
+import {
+  buildProxyUrl,
+  getProxyTarget,
+  type ProxyTarget,
+} from '../../cliproxy/proxy-target-resolver';
 import { getPromptsDir } from '../image-analysis/hook-installer';
 import {
   resolveImageAnalysisStatus,
@@ -31,6 +37,53 @@ export interface ImageAnalysisRuntimeOverrides {
   runtimePath?: string | null;
   baseUrl?: string | null;
   apiKey?: string | null;
+  allowSelfSigned?: boolean | null;
+}
+
+export interface ImageAnalysisRuntimeConnection {
+  baseUrl: string;
+  apiKey: string;
+  allowSelfSigned: boolean;
+  proxyTarget: ProxyTarget;
+}
+
+export interface ResolveImageAnalysisRuntimeConnectionOptions {
+  proxyTarget?: ProxyTarget;
+  tunnelPort?: number | null;
+}
+
+function stripTrailingSlash(value: string): string {
+  return value.replace(/\/+$/, '');
+}
+
+export function resolveImageAnalysisRuntimeConnection(
+  options: ResolveImageAnalysisRuntimeConnectionOptions = {}
+): ImageAnalysisRuntimeConnection {
+  const proxyTarget = options.proxyTarget ?? getProxyTarget();
+  const apiKey = proxyTarget.authToken?.trim() || getEffectiveApiKey();
+
+  if (proxyTarget.isRemote && options.tunnelPort && options.tunnelPort > 0) {
+    return {
+      baseUrl: `http://127.0.0.1:${options.tunnelPort}`,
+      apiKey,
+      allowSelfSigned: false,
+      proxyTarget: {
+        host: '127.0.0.1',
+        port: options.tunnelPort,
+        protocol: 'http',
+        isRemote: false,
+      },
+    };
+  }
+
+  return {
+    baseUrl: stripTrailingSlash(buildProxyUrl(proxyTarget, '')),
+    apiKey,
+    allowSelfSigned: Boolean(
+      proxyTarget.isRemote && proxyTarget.protocol === 'https' && proxyTarget.allowSelfSigned
+    ),
+    proxyTarget,
+  };
 }
 
 /**
@@ -114,6 +167,10 @@ export function applyImageAnalysisRuntimeOverrides(
     } else {
       delete nextEnv.CCS_IMAGE_ANALYSIS_RUNTIME_API_KEY;
     }
+  }
+
+  if (overrides.allowSelfSigned !== undefined) {
+    nextEnv.CCS_IMAGE_ANALYSIS_RUNTIME_ALLOW_SELF_SIGNED = overrides.allowSelfSigned ? '1' : '0';
   }
 
   return nextEnv;

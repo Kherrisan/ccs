@@ -38,6 +38,7 @@ function createStatus(overrides: Partial<ImageAnalysisStatus> = {}): ImageAnalys
 describe('image-analysis-runtime-status', () => {
   it('falls back to native read when provider auth is missing', async () => {
     const status = await hydrateImageAnalysisRuntimeStatus(createStatus(), {
+      checkRemoteProxy: async () => ({ reachable: false, error: 'not-used' }),
       getProxyTarget: () => ({
         host: '127.0.0.1',
         port: 8317,
@@ -63,6 +64,7 @@ describe('image-analysis-runtime-status', () => {
 
   it('marks an idle local proxy as launchable when auth is ready', async () => {
     const status = await hydrateImageAnalysisRuntimeStatus(createStatus(), {
+      checkRemoteProxy: async () => ({ reachable: false, error: 'not-used' }),
       getProxyTarget: () => ({
         host: '127.0.0.1',
         port: 8317,
@@ -107,7 +109,10 @@ describe('image-analysis-runtime-status', () => {
           source: 'remote',
         },
       ],
-      isCliproxyRunning: async () => false,
+      checkRemoteProxy: async () => ({
+        reachable: false,
+        error: 'Remote CLIProxy target remote.example:443 is unreachable.',
+      }),
     });
 
     expect(status.authReadiness).toBe('ready');
@@ -123,6 +128,7 @@ describe('image-analysis-runtime-status', () => {
         reason: 'Profile hook is missing from the persisted settings file.',
       }),
       {
+        checkRemoteProxy: async () => ({ reachable: false, error: 'not-used' }),
         getProxyTarget: () => ({
           host: '127.0.0.1',
           port: 8317,
@@ -146,5 +152,39 @@ describe('image-analysis-runtime-status', () => {
     expect(status.proxyReadiness).toBe('ready');
     expect(status.effectiveRuntimeMode).toBe('cliproxy-image-analysis');
     expect(status.effectiveRuntimeReason).toContain('Profile hook is missing');
+  });
+
+  it('marks a reachable remote proxy as remote instead of inspecting local 8317', async () => {
+    const status = await hydrateImageAnalysisRuntimeStatus(createStatus(), {
+      getProxyTarget: () => ({
+        host: 'remote.example',
+        port: 443,
+        protocol: 'https',
+        authToken: 'token',
+        managementKey: 'secret',
+        allowSelfSigned: true,
+        isRemote: true,
+      }),
+      fetchRemoteAuthStatus: async () => [
+        {
+          provider: 'ghcp',
+          displayName: 'GitHub Copilot (OAuth)',
+          authenticated: true,
+          tokenFiles: 1,
+          accounts: [],
+          defaultAccount: null,
+          source: 'remote',
+        },
+      ],
+      checkRemoteProxy: async () => ({
+        reachable: true,
+        latencyMs: 42,
+      }),
+      isCliproxyRunning: async () => false,
+    });
+
+    expect(status.proxyReadiness).toBe('remote');
+    expect(status.proxyReason).toContain('remote.example:443');
+    expect(status.effectiveRuntimeMode).toBe('cliproxy-image-analysis');
   });
 });

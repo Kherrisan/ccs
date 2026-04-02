@@ -75,7 +75,7 @@ export async function handleUninstallCommand(): Promise<void> {
     console.log(ok('Uninstall complete!'));
     console.log('');
     console.log(info('~/.ccs/ directory preserved'));
-    console.log(info('To reinstall: ccs --install'));
+    console.log(info('To reinstall: npm install -g @kaitranntt/ccs --force'));
   } else {
     console.log(info('Nothing to uninstall'));
   }

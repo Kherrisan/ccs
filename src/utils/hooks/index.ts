@@ -14,7 +14,10 @@ import {
 export {
   getImageAnalysisHookEnv,
   applyImageAnalysisRuntimeOverrides,
+  resolveImageAnalysisRuntimeConnection,
   type ImageAnalysisRuntimeOverrides,
+  type ImageAnalysisRuntimeConnection,
+  type ResolveImageAnalysisRuntimeConnectionOptions,
 } from './get-image-analysis-hook-env';
 export {
   canonicalizeImageAnalysisConfig,

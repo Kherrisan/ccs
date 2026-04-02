@@ -42,6 +42,7 @@ import {
   applyImageAnalysisRuntimeOverrides,
   getImageAnalysisHookEnv,
   prepareImageAnalysisFallbackHook,
+  resolveImageAnalysisRuntimeConnection,
   resolveImageAnalysisRuntimeStatus,
 } from './utils/hooks';
 import { fail, info, warn } from './utils/ui';
@@ -80,11 +81,7 @@ import {
   resolveDroidReasoningRuntime,
 } from './targets/droid-reasoning-runtime';
 import { DroidCommandRouterError, routeDroidCommandArgs } from './targets/droid-command-router';
-import {
-  resolveCliproxyBridgeMetadata,
-  resolveCliproxyBridgeProfile,
-} from './api/services/cliproxy-profile-bridge';
-import { getEffectiveApiKey } from './cliproxy/auth-token-manager';
+import { resolveCliproxyBridgeMetadata } from './api/services/cliproxy-profile-bridge';
 
 // Version and Update check utilities
 import { getVersion } from './utils/version';
@@ -899,9 +896,10 @@ async function main(): Promise<void> {
       process.exit(exitCode);
     } else if (profileInfo.type === 'settings') {
       // Settings-based profiles (glm, glmt) are third-party providers
+      const imageAnalysisMcpReady =
+        resolvedTarget === 'claude' ? ensureImageAnalysisMcpOrThrow() : true;
       if (resolvedTarget === 'claude') {
         ensureWebSearchMcpOrThrow();
-        ensureImageAnalysisMcpOrThrow();
       }
 
       // Display WebSearch status (single line, equilibrium UX)
@@ -1045,9 +1043,7 @@ async function main(): Promise<void> {
         cliproxyBridge,
         sharedHookInstalled: imageAnalysisFallbackHookReady,
       });
-      const currentBridgeAuthToken = cliproxyBridge
-        ? resolveCliproxyBridgeProfile(cliproxyBridge.provider).apiKey
-        : getEffectiveApiKey();
+      const runtimeConnection = resolveImageAnalysisRuntimeConnection();
       let imageAnalysisEnv = getImageAnalysisHookEnv({
         profileName: profileInfo.name,
         profileType: profileInfo.type,
@@ -1058,9 +1054,18 @@ async function main(): Promise<void> {
         backendId: imageAnalysisStatus.backendId,
         model: imageAnalysisStatus.model,
         runtimePath: imageAnalysisStatus.runtimePath,
-        baseUrl: cliproxyBridge?.currentBaseUrl || '',
-        apiKey: currentBridgeAuthToken,
+        baseUrl: runtimeConnection.baseUrl,
+        apiKey: runtimeConnection.apiKey,
+        allowSelfSigned: runtimeConnection.allowSelfSigned,
       });
+
+      if (!imageAnalysisMcpReady) {
+        imageAnalysisEnv = {
+          ...imageAnalysisEnv,
+          CCS_CURRENT_PROVIDER: '',
+          CCS_IMAGE_ANALYSIS_SKIP: '1',
+        };
+      }
 
       const imageAnalysisProvider = imageAnalysisEnv['CCS_CURRENT_PROVIDER'];
       if (
@@ -1159,10 +1164,13 @@ async function main(): Promise<void> {
         return;
       }
 
+      const imageAnalysisArgs = imageAnalysisMcpReady
+        ? appendThirdPartyImageAnalysisToolArgs(remainingArgs)
+        : remainingArgs;
       const launchArgs = [
         '--settings',
         expandedSettingsPath,
-        ...appendThirdPartyWebSearchToolArgs(appendThirdPartyImageAnalysisToolArgs(remainingArgs)),
+        ...appendThirdPartyWebSearchToolArgs(imageAnalysisArgs),
       ];
       const traceEnv = createWebSearchTraceContext({
         launcher: 'ccs.settings-profile',

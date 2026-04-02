@@ -4,6 +4,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import * as lockfile from 'proper-lockfile';
 import { getImageAnalysisConfig } from '../../config/unified-config-loader';
 import { getCcsDir } from '../config-manager';
 import { getClaudeUserConfigPath } from '../claude-config-path';
@@ -119,53 +120,115 @@ function writeClaudeUserConfig(configPath: string, config: ClaudeUserConfig): bo
   }
 }
 
-function removeManagedServerConfig(configPath: string): boolean {
-  if (!fs.existsSync(configPath)) {
-    return false;
+function withClaudeUserConfigLock<T>(configPath: string, callback: () => T): T {
+  const lockTarget = fs.existsSync(configPath) ? configPath : path.dirname(configPath);
+  let release: (() => void) | undefined;
+
+  if (!fs.existsSync(path.dirname(configPath))) {
+    fs.mkdirSync(path.dirname(configPath), { recursive: true, mode: 0o700 });
   }
 
+  try {
+    release = lockfile.lockSync(lockTarget, { stale: 10000 }) as () => void;
+    return callback();
+  } finally {
+    if (release) {
+      try {
+        release();
+      } catch {
+        // Best-effort release.
+      }
+    }
+  }
+}
+
+export function hasImageAnalysisMcpServerInstalled(): boolean {
+  return (
+    fs.existsSync(getImageAnalysisMcpServerPath()) &&
+    fs.existsSync(getImageAnalysisMcpRuntimePath())
+  );
+}
+
+export function hasImageAnalysisMcpConfig(configPath = getClaudeUserConfigPath()): boolean {
   const config = readClaudeUserConfig(configPath);
   if (config === null) {
-    if (process.env.CCS_DEBUG) {
-      console.error(warn(`Malformed Claude config prevents MCP cleanup: ${configPath}`));
-    }
     return false;
   }
 
   const existingServers =
     config.mcpServers && typeof config.mcpServers === 'object' && !Array.isArray(config.mcpServers)
-      ? { ...(config.mcpServers as Record<string, unknown>) }
+      ? (config.mcpServers as Record<string, unknown>)
       : {};
+  const currentConfig = existingServers[IMAGE_ANALYSIS_MCP_SERVER_NAME];
 
-  if (!(IMAGE_ANALYSIS_MCP_SERVER_NAME in existingServers)) {
+  return (
+    typeof currentConfig === 'object' &&
+    currentConfig !== null &&
+    JSON.stringify(currentConfig) ===
+      JSON.stringify({
+        type: 'stdio',
+        command: 'node',
+        args: [getImageAnalysisMcpServerPath()],
+        env: {},
+      })
+  );
+}
+
+export function hasImageAnalysisMcpReady(configPath = getClaudeUserConfigPath()): boolean {
+  return hasImageAnalysisMcpServerInstalled() && hasImageAnalysisMcpConfig(configPath);
+}
+
+function removeManagedServerConfig(configPath: string): boolean {
+  if (!fs.existsSync(configPath)) {
     return false;
   }
 
-  delete existingServers[IMAGE_ANALYSIS_MCP_SERVER_NAME];
-
-  const nextConfig: ClaudeUserConfig = { ...config };
-  if (Object.keys(existingServers).length === 0) {
-    delete nextConfig.mcpServers;
-  } else {
-    nextConfig.mcpServers = existingServers;
-  }
-
-  try {
-    writeClaudeUserConfig(configPath, nextConfig);
-    if (process.env.CCS_DEBUG) {
-      console.error(info(`Removed Image Analysis MCP config from ${configPath}`));
+  return withClaudeUserConfigLock(configPath, () => {
+    const config = readClaudeUserConfig(configPath);
+    if (config === null) {
+      if (process.env.CCS_DEBUG) {
+        console.error(warn(`Malformed Claude config prevents MCP cleanup: ${configPath}`));
+      }
+      return false;
     }
-    return true;
-  } catch (error) {
-    if (process.env.CCS_DEBUG) {
-      console.error(
-        warn(
-          `Failed to remove Image Analysis MCP config from ${configPath}: ${(error as Error).message}`
-        )
-      );
+
+    const existingServers =
+      config.mcpServers &&
+      typeof config.mcpServers === 'object' &&
+      !Array.isArray(config.mcpServers)
+        ? { ...(config.mcpServers as Record<string, unknown>) }
+        : {};
+
+    if (!(IMAGE_ANALYSIS_MCP_SERVER_NAME in existingServers)) {
+      return false;
     }
-    return false;
-  }
+
+    delete existingServers[IMAGE_ANALYSIS_MCP_SERVER_NAME];
+
+    const nextConfig: ClaudeUserConfig = { ...config };
+    if (Object.keys(existingServers).length === 0) {
+      delete nextConfig.mcpServers;
+    } else {
+      nextConfig.mcpServers = existingServers;
+    }
+
+    try {
+      writeClaudeUserConfig(configPath, nextConfig);
+      if (process.env.CCS_DEBUG) {
+        console.error(info(`Removed Image Analysis MCP config from ${configPath}`));
+      }
+      return true;
+    } catch (error) {
+      if (process.env.CCS_DEBUG) {
+        console.error(
+          warn(
+            `Failed to remove Image Analysis MCP config from ${configPath}: ${(error as Error).message}`
+          )
+        );
+      }
+      return false;
+    }
+  });
 }
 
 export function installImageAnalysisMcpServer(): boolean {
@@ -258,23 +321,9 @@ export function ensureImageAnalysisMcpConfig(): boolean {
 
   const claudeUserConfigPath = getClaudeUserConfigPath();
   const claudeUserConfigDir = path.dirname(claudeUserConfigPath);
-  const config = readClaudeUserConfig(claudeUserConfigPath);
-
-  if (config === null) {
-    if (process.env.CCS_DEBUG) {
-      console.error(warn('Malformed ~/.claude.json prevents Image Analysis MCP provisioning'));
-    }
-    return false;
-  }
-
   if (!fs.existsSync(claudeUserConfigDir)) {
     fs.mkdirSync(claudeUserConfigDir, { recursive: true, mode: 0o700 });
   }
-
-  const existingServers =
-    config.mcpServers && typeof config.mcpServers === 'object' && !Array.isArray(config.mcpServers)
-      ? (config.mcpServers as Record<string, unknown>)
-      : {};
   const desiredServerConfig: ManagedImageAnalysisMcpConfig = {
     type: 'stdio',
     command: 'node',
@@ -282,35 +331,52 @@ export function ensureImageAnalysisMcpConfig(): boolean {
     env: {},
   };
 
-  const currentConfig = existingServers[IMAGE_ANALYSIS_MCP_SERVER_NAME];
-  if (
-    typeof currentConfig === 'object' &&
-    currentConfig !== null &&
-    JSON.stringify(currentConfig) === JSON.stringify(desiredServerConfig)
-  ) {
-    return true;
-  }
+  return withClaudeUserConfigLock(claudeUserConfigPath, () => {
+    const config = readClaudeUserConfig(claudeUserConfigPath);
 
-  const nextConfig: ClaudeUserConfig = {
-    ...config,
-    mcpServers: {
-      ...existingServers,
-      [IMAGE_ANALYSIS_MCP_SERVER_NAME]: desiredServerConfig,
-    },
-  };
+    if (config === null) {
+      if (process.env.CCS_DEBUG) {
+        console.error(warn('Malformed ~/.claude.json prevents Image Analysis MCP provisioning'));
+      }
+      return false;
+    }
 
-  try {
-    writeClaudeUserConfig(claudeUserConfigPath, nextConfig);
-    if (process.env.CCS_DEBUG) {
-      console.error(info(`Ensured Image Analysis MCP config in ${claudeUserConfigPath}`));
+    const existingServers =
+      config.mcpServers &&
+      typeof config.mcpServers === 'object' &&
+      !Array.isArray(config.mcpServers)
+        ? (config.mcpServers as Record<string, unknown>)
+        : {};
+    const currentConfig = existingServers[IMAGE_ANALYSIS_MCP_SERVER_NAME];
+    if (
+      typeof currentConfig === 'object' &&
+      currentConfig !== null &&
+      JSON.stringify(currentConfig) === JSON.stringify(desiredServerConfig)
+    ) {
+      return true;
     }
-    return true;
-  } catch (error) {
-    if (process.env.CCS_DEBUG) {
-      console.error(warn(`Failed to update ~/.claude.json: ${(error as Error).message}`));
+
+    const nextConfig: ClaudeUserConfig = {
+      ...config,
+      mcpServers: {
+        ...existingServers,
+        [IMAGE_ANALYSIS_MCP_SERVER_NAME]: desiredServerConfig,
+      },
+    };
+
+    try {
+      writeClaudeUserConfig(claudeUserConfigPath, nextConfig);
+      if (process.env.CCS_DEBUG) {
+        console.error(info(`Ensured Image Analysis MCP config in ${claudeUserConfigPath}`));
+      }
+      return true;
+    } catch (error) {
+      if (process.env.CCS_DEBUG) {
+        console.error(warn(`Failed to update ~/.claude.json: ${(error as Error).message}`));
+      }
+      return false;
     }
-    return false;
-  }
+  });
 }
 
 export function ensureImageAnalysisMcp(): boolean {
@@ -377,17 +443,20 @@ export function uninstallImageAnalysisMcp(): boolean {
   return removedConfig || removedServer;
 }
 
-export function ensureImageAnalysisMcpOrThrow(): void {
+export function ensureImageAnalysisMcpOrThrow(): boolean {
   const imageConfig = getImageAnalysisConfig();
   if (!imageConfig.enabled) {
-    return;
+    return false;
   }
 
-  if (!ensureImageAnalysisMcp()) {
+  const ready = ensureImageAnalysisMcp();
+  if (!ready) {
     console.error(
       warn(
         'Image Analysis is enabled, but CCS could not prepare the local ImageAnalysis tool. This session will fall back to native Read.'
       )
     );
   }
+
+  return ready;
 }

@@ -171,7 +171,7 @@ describe('image-analysis routes', () => {
         expect.objectContaining({
           name: 'glm',
           target: 'claude',
-          currentTargetMode: 'fallback',
+          currentTargetMode: 'setup',
         }),
         expect.objectContaining({
           name: 'codexProfile',
@@ -185,9 +185,13 @@ describe('image-analysis routes', () => {
       backendCount: 2,
       bypassedProfileCount: 1,
     });
+    expect(payload.runtime).toMatchObject({
+      managedToolReady: false,
+      sharedHookInstalled: false,
+    });
   });
 
-  it('updates the saved config through the dashboard route', async () => {
+  it('updates the saved config through the dashboard route and provisions the local runtime', async () => {
     const response = await fetch(`${baseUrl}/api/image-analysis`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -218,6 +222,28 @@ describe('image-analysis routes', () => {
     });
     expect(payload.config.providerModels).toMatchObject({
       gemini: 'gemini-2.5-pro',
+    });
+    expect(payload.runtime).toMatchObject({
+      managedToolReady: true,
+      sharedHookInstalled: true,
+    });
+
+    const ccsDir = path.join(tempHome, '.ccs');
+    expect(fs.existsSync(path.join(ccsDir, 'mcp', 'ccs-image-analysis-server.cjs'))).toBe(true);
+    expect(fs.existsSync(path.join(ccsDir, 'mcp', 'image-analysis-runtime.cjs'))).toBe(true);
+    expect(fs.existsSync(path.join(ccsDir, 'hooks', 'image-analyzer-transformer.cjs'))).toBe(true);
+    expect(fs.existsSync(path.join(ccsDir, 'hooks', 'image-analysis-runtime.cjs'))).toBe(true);
+
+    const claudeConfig = JSON.parse(
+      fs.readFileSync(path.join(tempHome, '.claude.json'), 'utf8')
+    ) as {
+      mcpServers?: Record<string, unknown>;
+    };
+    expect(claudeConfig.mcpServers?.['ccs-image-analysis']).toEqual({
+      type: 'stdio',
+      command: 'node',
+      args: [path.join(ccsDir, 'mcp', 'ccs-image-analysis-server.cjs')],
+      env: {},
     });
   });
 
