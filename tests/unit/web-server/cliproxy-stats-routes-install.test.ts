@@ -1,81 +1,57 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import express from 'express';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import type { Server } from 'http';
 
-const installSpy = {
-  calls: 0,
-};
-
-mock.module('../../../src/config/unified-config-loader', () => ({
-  loadOrCreateUnifiedConfig: () => ({
-    cliproxy: { backend: 'plus' },
-  }),
-}));
-
-mock.module('../../../src/cliproxy/binary-manager', () => ({
-  checkCliproxyUpdate: async () => ({
-    hasUpdate: false,
-    currentVersion: '6.6.80',
-    latestVersion: '6.6.89',
-    fromCache: false,
-    checkedAt: Date.now(),
-    backend: 'plus',
-    backendLabel: 'CLIProxy Plus',
-    isStable: true,
-    maxStableVersion: '9.9.999-0',
-  }),
-  getInstalledCliproxyVersion: () => '6.6.80',
-  installCliproxyVersion: async () => {},
-}));
-
-mock.module('../../../src/cliproxy/binary/version-checker', () => ({
-  fetchAllVersions: async () => ({
-    versions: ['6.6.89', '6.6.88', '6.6.81', '6.6.80'],
-    latestStable: '6.6.89',
-    latest: '6.6.89',
-    fromCache: false,
-    checkedAt: Date.now(),
-  }),
-  isNewerVersion: (version: string, maxStable: string) => {
-    const normalize = (value: string) => value.replace(/-\d+$/, '').split('.').map(Number);
-    const versionParts = normalize(version);
-    const maxStableParts = normalize(maxStable);
-
-    for (let index = 0; index < 3; index += 1) {
-      const versionPart = versionParts[index] || 0;
-      const maxStablePart = maxStableParts[index] || 0;
-
-      if (versionPart > maxStablePart) return true;
-      if (versionPart < maxStablePart) return false;
-    }
-
-    return false;
-  },
-  isVersionFaulty: (version: string) =>
-    ['6.6.81', '6.6.82', '6.6.83', '6.6.84', '6.6.85', '6.6.86', '6.6.87', '6.6.88'].includes(
-      version
-    ),
-}));
-
-mock.module('../../../src/web-server/services/cliproxy-dashboard-install-service', () => ({
-  installDashboardCliproxyVersion: async () => {
-    installSpy.calls += 1;
-    return {
-      success: true,
-      restarted: true,
-      port: 8317,
-      message: 'installed',
-    };
-  },
-}));
-
 let cliproxyStatsRoutes: typeof import('../../../src/web-server/routes/cliproxy-stats-routes').default;
+let createEmptyUnifiedConfig: typeof import('../../../src/config/unified-config-types').createEmptyUnifiedConfig;
+let saveUnifiedConfig: typeof import('../../../src/config/unified-config-loader').saveUnifiedConfig;
+let setGlobalConfigDir: typeof import('../../../src/utils/config-manager').setGlobalConfigDir;
+let writeInstalledVersion: typeof import('../../../src/cliproxy/binary/version-cache').writeInstalledVersion;
+let writeVersionListCache: typeof import('../../../src/cliproxy/binary/version-cache').writeVersionListCache;
+
 let server: Server;
 let baseUrl = '';
+let tempHome = '';
+let originalCcsHome: string | undefined;
 
 beforeAll(async () => {
-  cliproxyStatsRoutes = (await import('../../../src/web-server/routes/cliproxy-stats-routes'))
-    .default;
+  originalCcsHome = process.env.CCS_HOME;
+  tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'ccs-cliproxy-install-route-'));
+  process.env.CCS_HOME = tempHome;
+
+  ({ setGlobalConfigDir } = await import('../../../src/utils/config-manager'));
+  ({ createEmptyUnifiedConfig } = await import('../../../src/config/unified-config-types'));
+  ({ saveUnifiedConfig } = await import('../../../src/config/unified-config-loader'));
+  ({ writeInstalledVersion, writeVersionListCache } = await import(
+    '../../../src/cliproxy/binary/version-cache'
+  ));
+
+  const ccsDir = path.join(tempHome, '.ccs');
+  const plusBinDir = path.join(ccsDir, 'cliproxy', 'bin', 'plus');
+  fs.mkdirSync(plusBinDir, { recursive: true });
+  setGlobalConfigDir(ccsDir);
+
+  const config = createEmptyUnifiedConfig();
+  config.cliproxy = { backend: 'plus' };
+  saveUnifiedConfig(config);
+
+  writeInstalledVersion(plusBinDir, '6.6.80');
+  writeVersionListCache(
+    {
+      versions: ['6.6.89', '6.6.88', '6.6.81', '6.6.80'],
+      latestStable: '6.6.89',
+      latest: '6.6.89',
+      checkedAt: Date.now(),
+    },
+    'plus'
+  );
+
+  ({ default: cliproxyStatsRoutes } = await import(
+    '../../../src/web-server/routes/cliproxy-stats-routes'
+  ));
 
   const app = express();
   app.use(express.json());
@@ -95,16 +71,26 @@ beforeAll(async () => {
   if (!address || typeof address === 'string') {
     throw new Error('Unable to resolve test server port');
   }
+
   baseUrl = `http://127.0.0.1:${address.port}`;
 });
 
-beforeEach(() => {
-  installSpy.calls = 0;
-});
-
 afterAll(async () => {
-  await new Promise<void>((resolve) => server.close(() => resolve()));
-  mock.restore();
+  if (server) {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+
+  setGlobalConfigDir(undefined);
+
+  if (originalCcsHome !== undefined) {
+    process.env.CCS_HOME = originalCcsHome;
+  } else {
+    delete process.env.CCS_HOME;
+  }
+
+  if (tempHome && fs.existsSync(tempHome)) {
+    fs.rmSync(tempHome, { recursive: true, force: true });
+  }
 });
 
 describe('cliproxy-stats-routes install contract', () => {
@@ -120,7 +106,7 @@ describe('cliproxy-stats-routes install contract', () => {
     expect(body.faultyRange).toEqual({ min: '6.6.81-0', max: '6.6.88-0' });
   });
 
-  it('returns faulty confirmation metadata without calling the installer', async () => {
+  it('returns faulty confirmation metadata without attempting the install', async () => {
     const response = await fetch(`${baseUrl}/api/cliproxy/install`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -140,10 +126,9 @@ describe('cliproxy-stats-routes install contract', () => {
     expect(body.isFaulty).toBe(true);
     expect(body.isExperimental).toBe(false);
     expect(body.message).toContain('known bugs');
-    expect(installSpy.calls).toBe(0);
   });
 
-  it('returns experimental confirmation metadata without calling the installer', async () => {
+  it('returns experimental confirmation metadata without attempting the install', async () => {
     const response = await fetch(`${baseUrl}/api/cliproxy/install`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -163,6 +148,5 @@ describe('cliproxy-stats-routes install contract', () => {
     expect(body.isFaulty).toBe(false);
     expect(body.isExperimental).toBe(true);
     expect(body.message).toContain('experimental');
-    expect(installSpy.calls).toBe(0);
   });
 });

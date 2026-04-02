@@ -11,7 +11,7 @@ Run Claude, Gemini, GLM, and any Anthropic-compatible API - concurrently, withou
 [![npm](https://img.shields.io/npm/v/@kaitranntt/ccs?style=for-the-badge&logo=npm)](https://www.npmjs.com/package/@kaitranntt/ccs)
 [![PoweredBy](https://img.shields.io/badge/PoweredBy-ClaudeKit-C15F3C?style=for-the-badge)](https://claudekit.cc?ref=HMNKXOHN)
 
-**[Features & Pricing](https://ccs.kaitran.ca)** | **[Documentation](https://docs.ccs.kaitran.ca)**
+**[Features & Pricing](https://ccs.kaitran.ca)** | **[Documentation Hub](https://docs.ccs.kaitran.ca)**
 
 </div>
 
@@ -28,6 +28,16 @@ Run Claude, Gemini, GLM, and any Anthropic-compatible API - concurrently, withou
 <br>
 
 ## Quick Start
+
+Looking for the full setup guide, command reference, provider guides, or troubleshooting?
+Start at **https://docs.ccs.kaitran.ca**.
+
+## Contribute And Report Safely
+
+- Contributing guide: [CONTRIBUTING.md](./CONTRIBUTING.md)
+- Starter work: [good first issue](https://github.com/kaitranntt/ccs/labels/good%20first%20issue), [help wanted](https://github.com/kaitranntt/ccs/labels/help%20wanted)
+- Questions: [open a question issue](https://github.com/kaitranntt/ccs/issues/new/choose)
+- Security reports: [SECURITY.md](./SECURITY.md) and the [private advisory form](https://github.com/kaitranntt/ccs/security/advisories/new)
 
 ### 1. Install
 
@@ -50,12 +60,26 @@ bun add -g @kaitranntt/ccs         # bun (30x faster)
 
 ```bash
 ccs config
-# Opens http://localhost:3000
+# Opens a local browser URL
 ```
+
+CCS uses the runtime's system-default bind. If that bind is reachable beyond loopback,
+the CLI also prints bind/network details plus an auth reminder.
+
+Force all-interface binding for remote devices:
+
+```bash
+ccs config --host 0.0.0.0
+# Terminal prints the reachable URLs to open from the other device
+```
+
+If you expose the dashboard beyond localhost, protect it first with `ccs config auth setup`.
+
+Use `ccs config --host 127.0.0.1` to force local-only binding.
 
 Dashboard updates hub: `http://localhost:3000/updates`
 
-Want to run the dashboard in Docker? See `docker/README.md`.
+Want to run the dashboard in Docker or pull the prebuilt image? See `docker/README.md`.
 
 ### 3. Configure Your Accounts
 
@@ -63,7 +87,9 @@ The dashboard provides visual management for all account types:
 
 - **Claude Accounts**: Isolation-first by default (work, personal, client), with explicit shared context opt-in
 - **OAuth Providers**: One-click auth for Gemini, Codex, Antigravity, Kiro, Copilot
-- **API Profiles**: Configure GLM, Kimi with your keys
+- **AI Providers**: Configure Gemini, Codex, Claude, Vertex, and OpenAI-compatible API keys under `CLIProxy -> AI Providers`
+- **API Profiles**: Configure GLM, Kimi, OpenRouter, and other Anthropic-compatible APIs as CCS-native profiles
+- **Codex CLI**: Dedicated dashboard page for native runtime diagnostics and guarded `config.toml` editing
 - **Factory Droid**: Track Droid install location and BYOK settings health
 - **Updates Center**: Track support rollouts (Droid target, CLIProxy provider changes, WebSearch integrations)
 - **Health Monitor**: Real-time status across all profiles
@@ -110,6 +136,7 @@ The dashboard provides visual management for all account types:
 | **Azure Foundry** | API Key | `ccs foundry` | Claude via Microsoft Azure |
 | **Minimax** | API Key | `ccs mm` | M2 series, 1M context |
 | **DeepSeek** | API Key | `ccs deepseek` | V3.2 and R1 reasoning |
+| **Novita AI** | API Key | `ccs api create --preset novita` | Anthropic-compatible Novita endpoint for Claude Code |
 | **Qwen (OAuth)** | OAuth | `ccs qwen` | Qwen Code via CLIProxy |
 | **Qwen API** | API Key | `ccs api create --preset qwen` | DashScope Anthropic-compatible API |
 | **Alibaba Coding Plan** | API Key | `ccs api create --preset alibaba-coding-plan` | Model Studio Coding Plan endpoint |
@@ -120,6 +147,13 @@ The dashboard provides visual management for all account types:
 
 **Ollama Integration**: Run local open-source models (qwen3-coder, gpt-oss:20b) with full privacy. Use `ccs api create --preset ollama` - requires [Ollama v0.14.0+](https://ollama.com) installed. For cloud models, use `ccs api create --preset ollama-cloud`.
 
+> **Third-party WebSearch steering:** Claude-backed third-party launches keep Anthropic's native `WebSearch` disabled, provision `ccs-websearch.WebSearch` when the managed runtime is available, and append a short system hint so Claude prefers that managed tool over ad hoc Bash or `curl` lookups whenever current web information is needed.
+> Setting `websearch.enabled: false` disables the managed local runtime, but CCS still suppresses Anthropic's native `WebSearch` on third-party backends because those providers cannot execute it correctly.
+
+> **Image backend visibility:** `ccs config image-analysis --set-fallback <backend>` defines the backend CCS should use when a profile alias cannot be inferred directly. Use `--set-profile-backend <profile> <backend>` and `--clear-profile-backend <profile>` for explicit per-profile mappings. In the dashboard, the global `Settings -> Image` section now shows the shared backend routing state, while each profile editor keeps a compact `Image` status card that links back to those global controls.
+
+> **Copilot config behavior:** Opening the dashboard or other read-only Copilot endpoints does not rewrite `~/.ccs/copilot.settings.json`. If CCS detects deprecated Copilot model IDs such as `raptor-mini`, it shows warnings immediately and only persists replacements when you explicitly save the Copilot configuration.
+
 **llama.cpp Integration**: Run a local llama.cpp OpenAI-compatible server and create a profile with `ccs api create --preset llamacpp`. CCS defaults to `http://127.0.0.1:8080`, matching the standard llama.cpp server port.
 
 **Azure Foundry**: Use `ccs api create --preset foundry` to set up Claude via Microsoft Azure AI Foundry. Requires Azure resource and API key from [ai.azure.com](https://ai.azure.com).
@@ -127,6 +161,10 @@ The dashboard provides visual management for all account types:
 ![OpenRouter API Profiles](assets/screenshots/api-profiles-openrouter.webp)
 
 > **OAuth providers** authenticate via browser on first run. Tokens are cached in `~/.ccs/cliproxy/auth/`.
+
+> **Kiro / Copilot account naming:** Manual nicknames are optional. If the provider does not expose an email, CCS derives a safe internal identifier automatically and you can rename it later.
+
+> **AI Providers dashboard:** Configure CLIProxy-managed API key families at `ccs config` -> `CLIProxy` -> `AI Providers`. Use `API Profiles` only for CCS-native Anthropic-compatible profiles.
 
 **Powered by:**
 - [CLIProxyAPIPlus](https://github.com/router-for-me/CLIProxyAPIPlus) - Extended OAuth proxy with Kiro ([@fuko2935](https://github.com/fuko2935), [@Ravens2121](https://github.com/Ravens2121)) and Copilot ([@em4go](https://github.com/em4go)) support
@@ -162,16 +200,35 @@ ccs api export glm --out ./glm.ccs-profile.json  # Export for cross-device trans
 ccs api import ./glm.ccs-profile.json        # Import exported profile bundle
 ```
 
-### Droid Alias (`argv[0]` pattern)
+### Runtime Aliases (built-in bins / `argv[0]` pattern)
 
-By default, invoking CCS as `ccsd` auto-selects the Droid target:
+Built-in Droid and native Codex runtime aliases are installed with the package:
 
 ```bash
-ln -s "$(command -v ccs)" /usr/local/bin/ccsd
-ccsd glm
+ccs-droid glm   # explicit alias
+ccsd glm        # legacy shortcut
+ccs-codex       # explicit native Codex alias
+ccsx            # short native Codex alias
 ```
 
-Need additional alias names? Set `CCS_DROID_ALIASES` as a comma-separated list (for example: `CCS_DROID_ALIASES=ccs-droid,mydroid`).
+CCS also ships an opinionated Codex provider shortcut:
+
+```bash
+ccsxp           # same as: ccs codex --target codex
+```
+
+Need additional alias names? First create the matching symlink or another launcher that
+preserves the invoked basename, then map that name with `CCS_TARGET_ALIASES` (preferred) or legacy
+target-specific env vars:
+
+```bash
+ln -s "$(command -v ccs)" /usr/local/bin/mydroid
+ln -s "$(command -v ccs)" /usr/local/bin/mycodex
+CCS_TARGET_ALIASES='droid=mydroid;codex=mycodex'
+# Legacy fallback still supported:
+CCS_DROID_ALIASES='mydroid'
+CCS_CODEX_ALIASES='mycodex'
+```
 
 For Factory BYOK compatibility, CCS also stores a per-profile Droid provider hint
 (`CCS_DROID_PROVIDER`) using one of:
@@ -185,9 +242,9 @@ which Droid treats as queued prompt text.
 CCS supports structural Droid command passthrough after profile selection:
 
 ```bash
-ccsd codex exec --skip-permissions-unsafe "fix failing tests"
-ccsd codex --skip-permissions-unsafe "fix failing tests"   # auto-routed to: droid exec ...
-ccsd codex -m custom:gpt-5.3-codex "fix failing tests"     # short exec flags auto-routed too
+ccs-droid codex exec --skip-permissions-unsafe "fix failing tests"
+ccs-droid codex --skip-permissions-unsafe "fix failing tests"   # auto-routed to: droid exec ...
+ccs-droid codex -m custom:gpt-5.3-codex "fix failing tests"     # short exec flags auto-routed too
 ```
 
 If you pass exec-only flags without a prompt (for example `--skip-permissions-unsafe`),
@@ -197,6 +254,86 @@ If multiple reasoning flags are provided in Droid exec mode, CCS keeps the first
 flag and warns about duplicates.
 
 Dashboard parity: `ccs config` -> `Factory Droid`
+
+### Native Codex Runtime (runtime-only in v1)
+
+CCS can launch native Codex as a first-class runtime target without rewriting your
+`~/.codex/config.toml` on every run. CCS uses transient `codex -c key=value` overrides for
+Codex-routed sessions and leaves your existing Codex home/config in place.
+
+Supported in v1:
+
+```bash
+ccs --target codex                 # native Codex default session
+ccs-codex                          # explicit Codex alias
+ccsx                               # short native Codex alias
+ccsxp                              # built-in CCS Codex provider on native Codex
+ccs codex --target codex           # explicit equivalent of ccsxp
+ccs api create codex-api --cliproxy-provider codex
+ccs codex-api --target codex       # Codex bridge profile on native Codex
+```
+
+Not supported in v1:
+- Claude account profiles on Codex target
+- Copilot profiles on Codex target
+- Generic API profiles that are not Codex-routed CLIProxy bridges
+- Non-Codex CLIProxy providers on Codex target
+- Composite CLIProxy variants on Codex target
+
+Dashboard parity: `ccs config` -> `Compatible` -> `Codex CLI`
+
+The dedicated Codex dashboard reads and writes the user layer only: `~/.codex/config.toml`
+(or `$CODEX_HOME/config.toml`). It now ships as a split-view control center:
+
+- left pane: guided controls for top-level runtime defaults, project trust, profiles,
+  model providers, MCP servers, and supported feature toggles
+- right pane: raw `config.toml` editor for unsupported or exact-fidelity edits
+- overview/docs tabs: binary detection, user-layer summary, support matrix guidance, and
+  upstream OpenAI references
+
+Structured saves intentionally normalize TOML formatting and drop comments. Use the raw editor
+when exact layout matters. Structured edits also refresh the raw snapshot immediately. Guided
+controls stay disabled while the raw editor has unsaved or invalid TOML, project trust paths must
+be absolute or start with `~/`, and supported feature flags can be cleared back to Codex defaults
+with `Use default`. CCS also keeps warning that transient runtime overrides such as
+`codex -c key=value` and `CCS_CODEX_API_KEY` can change the effective runtime without persisting
+back into the user config file.
+
+#### CLIProxy-backed native Codex
+
+There are two supported ways to use CLIProxy with native Codex:
+
+1. `ccsxp` or `ccs codex --target codex`
+   Uses the built-in CCS Codex provider route on native Codex. This path relies on transient
+   CCS-managed `-c` overrides and does **not** require changing your saved `model_provider`.
+
+2. Plain `codex` or a personal alias like `cxp`
+   Save CLIProxy as the native default provider in `~/.codex/config.toml` (or
+   `$CODEX_HOME/config.toml`), then export `CLIPROXY_API_KEY` in your shell.
+
+```toml
+model_provider = "cliproxy"
+
+[model_providers.cliproxy]
+base_url = "http://127.0.0.1:8317/api/provider/codex"
+env_key = "CLIPROXY_API_KEY"
+wire_api = "responses"
+```
+
+The top-level `model_provider = "cliproxy"` line is required. Defining only
+`[model_providers.cliproxy]` is not enough for plain `codex` to pick it by default.
+
+```bash
+export CLIPROXY_API_KEY="ccs-internal-managed"
+ccsxp "your prompt"                # CCS shortcut for the built-in provider route
+codex "your prompt"                # native Codex using your saved cliproxy default
+```
+
+Dashboard parity: `ccs config` -> `Compatible` -> `Codex CLI`
+
+- `Overview`: explains `ccsx` vs `ccsxp`
+- `Top-level settings`: set **Default provider** to `cliproxy`
+- `Model providers`: save `cliproxy` with `env_key = "CLIPROXY_API_KEY"`
 
 ### Per-Profile Target Defaults
 
@@ -213,10 +350,10 @@ ccs cliproxy create mycodex --provider codex --target droid
 Built-in CLIProxy providers also work with Droid alias/target override:
 
 ```bash
-ccsd codex
-ccsd agy
+ccs-droid codex
+ccs-droid agy
 ccs codex --target droid
-ccsd codex exec --auto high "triage this bug report"
+ccs-droid codex exec --auto high "triage this bug report"
 ```
 
 Dashboard parity:
@@ -257,6 +394,44 @@ Defaults:
 - Dashboard page: `ccs config` -> `Cursor IDE`
 
 Detailed guide: [`docs/cursor-integration.md`](./docs/cursor-integration.md)
+
+### Claude IDE Extension Setup
+
+CCS now has a native setup flow for the Anthropic Claude extension in VS Code and compatible hosts.
+Use the same resolver in both the CLI and dashboard, so API profiles, CCS auth accounts,
+CLIProxy-backed profiles, Copilot, and default-profile continuity all map to the correct env shape.
+
+Preferred shared-settings path:
+
+```bash
+ccs persist glm
+ccs persist work
+ccs persist default
+```
+
+This writes the resolved setup to `~/.claude/settings.json`, which is the best option when you want
+the Claude CLI and the IDE extension to share one CCS profile.
+
+IDE-local snippet path:
+
+```bash
+ccs env glm --format claude-extension --ide vscode
+ccs env work --format claude-extension --ide cursor
+ccs env default --format claude-extension --ide windsurf
+```
+
+This prints a copy-ready `settings.json` snippet for the installed Claude extension host:
+
+- `vscode` / `cursor`: `claudeCode.environmentVariables` plus `claudeCode.disableLoginPrompt`
+- `windsurf`: `claude-code.environmentVariables`
+
+Account and continuity-aware flows use `CLAUDE_CONFIG_DIR` instead of Anthropic transport env vars.
+CLIProxy and Copilot flows emit the required `ANTHROPIC_*` variables and still depend on their local
+proxy/daemon being reachable.
+
+Dashboard parity:
+- `ccs config` -> `Claude Extension`
+- Select a CCS profile and IDE host to copy either the shared `~/.claude/settings.json` payload or the IDE-local extension snippet
 
 ### Parallel Workflows
 
@@ -460,24 +635,26 @@ Without Developer Mode, CCS falls back to copying directories.
 
 ## WebSearch
 
-Third-party profiles (Gemini, Codex, GLM, etc.) cannot use Anthropic's native WebSearch. CCS automatically provides web search via CLI tools with automatic fallback.
+Third-party profiles (Gemini, Codex, GLM, etc.) cannot use Anthropic's native WebSearch. CCS now provisions a first-class local `ccs-websearch` MCP tool when the managed runtime is available, disables native `WebSearch` on third-party launches, and steers Claude toward real local providers instead of surfacing a denied native-tool call.
 
 ### How It Works
 
 | Profile Type | WebSearch Method |
 |--------------|------------------|
 | Claude (native) | Anthropic WebSearch API |
-| Third-party profiles | CLI Tool Fallback Chain |
+| Third-party profiles | CCS local MCP `WebSearch` tool when available; otherwise Bash/network fallback |
 
-### CLI Tool Fallback Chain
+### Local Search Backend Chain
 
-CCS intercepts WebSearch requests and routes them through available CLI tools:
+For third-party profiles, CCS steers Claude toward the managed `ccs-websearch.WebSearch` MCP tool when it is available. The tool is intentionally named to match the native `WebSearch` concept, which helps Claude prefer it over ad hoc Bash or `curl` fetches, but Bash/network fallback can still happen if the tool is unavailable or ignored. When the tool is used, CCS routes that request through deterministic search providers in this order:
 
-| Priority | Tool | Auth | Install |
-|----------|------|------|---------|
-| 1st | Gemini CLI | OAuth (free) | `npm install -g @google/gemini-cli` |
-| 2nd | OpenCode | OAuth (free) | `curl -fsSL https://opencode.ai/install \| bash` |
-| 3rd | Grok CLI | API Key | `npm install -g @vibe-kit/grok-cli` |
+| Priority | Provider | Setup | Notes |
+|----------|----------|-------|-------|
+| 1st | Exa | `EXA_API_KEY` | API-backed search with extracted content |
+| 2nd | Tavily | `TAVILY_API_KEY` | Agent-oriented search API |
+| 3rd | Brave Search | `BRAVE_API_KEY` | Cleaner API-backed results |
+| 4th | DuckDuckGo | None | Built-in default fallback |
+| 5th | Gemini / OpenCode / Grok | Optional | Legacy compatibility fallback only |
 
 ### Configuration
 
@@ -486,17 +663,25 @@ Configure via dashboard (**Settings** page) or `~/.ccs/config.yaml`:
 ```yaml
 websearch:
   enabled: true                    # Enable/disable (default: true)
-  gemini:
-    enabled: true                  # Use Gemini CLI (default: true)
-    model: gemini-2.5-flash        # Model to use
-  opencode:
-    enabled: true                  # Use OpenCode as fallback
-  grok:
-    enabled: false                 # Requires XAI_API_KEY
+  providers:
+    exa:
+      enabled: false               # Enable when EXA_API_KEY is set
+    tavily:
+      enabled: false               # Enable when TAVILY_API_KEY is set
+    duckduckgo:
+      enabled: true                # Built-in zero-setup fallback
+    brave:
+      enabled: false               # Enable when BRAVE_API_KEY is set
+    gemini:
+      enabled: false               # Optional legacy fallback
 ```
 
 > [!TIP]
-> **Gemini CLI** is recommended - free OAuth authentication with 1000 requests/day. Just run `gemini` once to authenticate via browser.
+> **DuckDuckGo** still works out of the box. Add **Exa**, **Tavily**, or **Brave Search** if you want API-backed results, then keep Gemini/OpenCode/Grok only if you explicitly want legacy fallback behavior.
+> CCS manages the user-scope MCP entry in `~/.claude.json` and syncs it into isolated account configs when needed.
+
+> [!NOTE]
+> Set `CCS_WEBSEARCH_TRACE=1` to write correlated launch, MCP, provider, and headless summary records to `~/.ccs/logs/websearch-trace.jsonl`. That trace is designed to answer whether CCS exposed the managed tool, whether Claude called it, which provider won, and when a headless run likely bypassed it via `Bash` or `WebFetch`.
 
 See [docs/websearch.md](./docs/websearch.md) for detailed configuration and troubleshooting.
 
@@ -553,10 +738,14 @@ Notes:
 
 <br>
 
-## Documentation
+## Documentation Hub
+
+If you are not sure where to start, open **https://docs.ccs.kaitran.ca** first.
+The hosted docs are the best entry point for setup, command reference, provider guides, and troubleshooting.
 
 | Topic | Link |
 |-------|------|
+| Docs Home | [docs.ccs.kaitran.ca](https://docs.ccs.kaitran.ca) |
 | Installation | [docs.ccs.kaitran.ca/getting-started/installation](https://docs.ccs.kaitran.ca/getting-started/installation) |
 | Configuration | [docs.ccs.kaitran.ca/getting-started/configuration](https://docs.ccs.kaitran.ca/getting-started/configuration) |
 | OAuth Providers | [docs.ccs.kaitran.ca/providers/oauth-providers](https://docs.ccs.kaitran.ca/providers/oauth-providers) |
@@ -600,7 +789,7 @@ bun remove -g @kaitranntt/ccs
 
 ## Contributing
 
-See [CONTRIBUTING.md](./CONTRIBUTING.md).
+See [CONTRIBUTING.md](./CONTRIBUTING.md). For suspected vulnerabilities, use [SECURITY.md](./SECURITY.md) instead of a public issue.
 
 <br>
 
@@ -618,6 +807,6 @@ MIT License - see [LICENSE](LICENSE).
 
 ---
 
-**[ccs.kaitran.ca](https://ccs.kaitran.ca)** | [Report Issues](https://github.com/kaitranntt/ccs/issues) | [Star on GitHub](https://github.com/kaitranntt/ccs)
+**[ccs.kaitran.ca](https://ccs.kaitran.ca)** | **[docs.ccs.kaitran.ca](https://docs.ccs.kaitran.ca)** | [Issue Templates](https://github.com/kaitranntt/ccs/issues/new/choose) | [Private Security Report](https://github.com/kaitranntt/ccs/security/advisories/new) | [Star on GitHub](https://github.com/kaitranntt/ccs)
 
 </div>

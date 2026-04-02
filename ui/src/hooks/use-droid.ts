@@ -1,6 +1,10 @@
 import { useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiConflictError, withApiBase } from '@/lib/api-client';
+import type {
+  CompatibleCliDocLink,
+  CompatibleCliProviderDocLink,
+} from '@shared/compatible-cli-contracts';
 
 export interface DroidBinaryDiagnostics {
   installed: boolean;
@@ -34,22 +38,6 @@ export interface DroidCustomModelDiagnostics {
   isCcsManaged: boolean;
   apiKeyState: 'set' | 'missing';
   apiKeyPreview: string | null;
-}
-
-export interface CompatibleCliDocLink {
-  id: string;
-  label: string;
-  url: string;
-  category: 'overview' | 'configuration' | 'byok' | 'reference';
-  source: 'factory' | 'provider';
-  description: string;
-}
-
-export interface CompatibleCliProviderDocLink {
-  provider: string;
-  label: string;
-  apiFormat: string;
-  url: string;
 }
 
 export interface DroidDashboardDiagnostics {

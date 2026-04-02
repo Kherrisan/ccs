@@ -9,6 +9,7 @@ import { Router, Request, Response } from 'express';
 import { isReservedName, RESERVED_PROFILE_NAMES } from '../../config/reserved-names';
 import {
   createApiProfile,
+  createCliproxyBridgeProfile,
   removeApiProfile,
   updateApiProfileTarget,
   discoverApiProfileOrphans,
@@ -17,10 +18,13 @@ import {
   exportApiProfile,
   importApiProfileBundle,
   apiProfileExists,
+  listCliproxyBridgeProviders,
   listApiProfiles,
   validateApiName,
 } from '../../api/services';
 import { normalizeDroidProvider } from '../../targets/droid-provider';
+import { getPersistedTargetChoices } from '../../targets/target-metadata';
+import { isCLIProxyProvider } from '../../cliproxy/provider-capabilities';
 import { isAnthropicDirectProfile, updateSettingsFile, parseTarget } from './route-helpers';
 
 const router = Router();
@@ -66,11 +70,60 @@ router.get('/', (_req: Request, res: Response): void => {
       settingsPath: p.settingsPath,
       configured: p.isConfigured,
       target: p.target,
+      cliproxyBridge: p.cliproxyBridge ?? null,
     }));
     res.json({ profiles });
   } catch (error) {
     res.status(500).json({ error: (error as Error).message });
   }
+});
+
+router.get('/cliproxy-bridge/providers', (_req: Request, res: Response): void => {
+  try {
+    res.json({ providers: listCliproxyBridgeProviders() });
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+router.post('/cliproxy-bridge', (req: Request, res: Response): void => {
+  const shape = validatePayloadShape(req.body, ['provider', 'name', 'target']);
+  if (!shape.ok) {
+    res.status(400).json({ error: shape.error });
+    return;
+  }
+
+  const provider = typeof shape.payload.provider === 'string' ? shape.payload.provider.trim() : '';
+  if (!isCLIProxyProvider(provider)) {
+    res.status(400).json({ error: 'Invalid provider. Expected a supported CLIProxy provider ID.' });
+    return;
+  }
+
+  const target = parseTarget(shape.payload.target);
+  if (shape.payload.target !== undefined && target === null) {
+    res.status(400).json({ error: `Invalid target. Expected: ${getPersistedTargetChoices()}` });
+    return;
+  }
+
+  const result = createCliproxyBridgeProfile(provider, {
+    name: typeof shape.payload.name === 'string' ? shape.payload.name : undefined,
+    target: target || 'claude',
+  });
+
+  if (!result.success || !result.name) {
+    const errorMessage = result.error || 'Failed to create CLIProxy bridge profile';
+    res.status(errorMessage.toLowerCase().includes('already exists') ? 409 : 400).json({
+      error: errorMessage,
+    });
+    return;
+  }
+
+  res.status(201).json({
+    name: result.name,
+    settingsPath: result.settingsFile,
+    target: result.target || 'claude',
+    cliproxyBridge: result.cliproxyBridge ?? null,
+  });
 });
 
 /**
@@ -103,7 +156,7 @@ router.post('/', (req: Request, res: Response): void => {
 
   const parsedTarget = parseTarget(target);
   if (target !== undefined && parsedTarget === null) {
-    res.status(400).json({ error: 'Invalid target. Expected: claude or droid' });
+    res.status(400).json({ error: `Invalid target. Expected: ${getPersistedTargetChoices()}` });
     return;
   }
   if (providerHint !== undefined && parsedProvider === null) {
@@ -160,6 +213,7 @@ router.post('/', (req: Request, res: Response): void => {
     name,
     settingsPath: result.settingsFile,
     target: parsedTarget || 'claude',
+    cliproxyBridge: null,
   });
 });
 
@@ -212,7 +266,7 @@ router.post('/orphans/register', (req: Request, res: Response): void => {
   const force = payload.force === true;
 
   if (payload.target !== undefined && target === null) {
-    res.status(400).json({ error: 'Invalid target. Expected: claude or droid' });
+    res.status(400).json({ error: `Invalid target. Expected: ${getPersistedTargetChoices()}` });
     return;
   }
 
@@ -253,7 +307,7 @@ router.post('/:name/copy', (req: Request, res: Response): void => {
     return;
   }
   if (shape.payload.target !== undefined && target === null) {
-    res.status(400).json({ error: 'Invalid target. Expected: claude or droid' });
+    res.status(400).json({ error: `Invalid target. Expected: ${getPersistedTargetChoices()}` });
     return;
   }
 
@@ -304,7 +358,7 @@ router.post('/import', (req: Request, res: Response): void => {
 
   const target = parseTarget(shape.payload.target);
   if (shape.payload.target !== undefined && target === null) {
-    res.status(400).json({ error: 'Invalid target. Expected: claude or droid' });
+    res.status(400).json({ error: `Invalid target. Expected: ${getPersistedTargetChoices()}` });
     return;
   }
 
@@ -315,7 +369,9 @@ router.post('/import', (req: Request, res: Response): void => {
   }
   const bundleTarget = (bundle as { profile?: { target?: unknown } }).profile?.target;
   if (bundleTarget !== undefined && parseTarget(bundleTarget) === null) {
-    res.status(400).json({ error: 'Invalid bundle profile target. Expected: claude or droid' });
+    res.status(400).json({
+      error: `Invalid bundle profile target. Expected: ${getPersistedTargetChoices()}`,
+    });
     return;
   }
 
@@ -365,7 +421,7 @@ router.put('/:name', (req: Request, res: Response): void => {
 
   const parsedTarget = parseTarget(target);
   if (target !== undefined && parsedTarget === null) {
-    res.status(400).json({ error: 'Invalid target. Expected: claude or droid' });
+    res.status(400).json({ error: `Invalid target. Expected: ${getPersistedTargetChoices()}` });
     return;
   }
   if (providerHint !== undefined && parsedProvider === null) {
@@ -458,3 +514,4 @@ router.delete('/:name', (req: Request, res: Response): void => {
 });
 
 export default router;
+export { parseTarget } from './route-helpers';

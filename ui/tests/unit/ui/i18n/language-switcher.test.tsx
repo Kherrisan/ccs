@@ -2,12 +2,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, userEvent, waitFor } from '@tests/setup/test-utils';
 import i18n from '@/lib/i18n';
 import { LanguageSwitcher } from '@/components/layout/language-switcher';
+import { HistorySyncLearningMap } from '@/components/account/history-sync-learning-map';
 import { TabNavigation } from '@/pages/settings/components/tab-navigation';
 import {
   getInitialLocale,
   LOCALE_STORAGE_KEY,
   normalizeLocale,
   persistLocale,
+  SUPPORTED_LOCALES,
 } from '@/lib/locales';
 
 function flattenKeys(node: unknown, prefix = '', out = new Set<string>()): Set<string> {
@@ -91,22 +93,28 @@ describe('Dashboard i18n', () => {
     expect(localStorageMock.setItem).toHaveBeenCalledWith(LOCALE_STORAGE_KEY, 'zh-CN');
   }, 10000);
 
-  it('supports Vietnamese locale in switcher and persistence', async () => {
-    render(<LanguageSwitcher />);
+  it.each([
+    { locale: 'vi', label: 'Vietnamese', browserLocale: 'vi-VN' },
+    { locale: 'ja', label: 'Japanese', browserLocale: 'ja-JP' },
+  ])(
+    'supports $locale locale in switcher and persistence',
+    async ({ locale, label, browserLocale }) => {
+      render(<LanguageSwitcher />);
 
-    await userEvent.click(screen.getByRole('combobox'));
-    await userEvent.click(await screen.findByText('Vietnamese'));
+      await userEvent.click(screen.getByRole('combobox'));
+      await userEvent.click(await screen.findByText(label));
 
-    await waitFor(() => {
-      expect(i18n.language).toBe('vi');
-    });
-    expect(localStorageMock.setItem).toHaveBeenCalledWith(LOCALE_STORAGE_KEY, 'vi');
-    expect(normalizeLocale('vi-VN')).toBe('vi');
-  });
+      await waitFor(() => {
+        expect(i18n.language).toBe(locale);
+      });
+      expect(localStorageMock.setItem).toHaveBeenCalledWith(LOCALE_STORAGE_KEY, locale);
+      expect(normalizeLocale(browserLocale)).toBe(locale);
+    }
+  );
 
   it('restores locale from persisted storage', () => {
-    persistLocale('vi');
-    expect(getInitialLocale()).toBe('vi');
+    persistLocale('ja');
+    expect(getInitialLocale()).toBe('ja');
   });
 
   it('shows Chinese labels on translated settings tabs', async () => {
@@ -119,32 +127,76 @@ describe('Dashboard i18n', () => {
     expect(screen.getByText('认证')).toBeInTheDocument();
   });
 
-  it('keeps vi translation keys in parity with en and preserves placeholders', () => {
-    const resources = i18n.options.resources as
-      | Record<string, { translation: Record<string, unknown> }>
-      | undefined;
+  it('shows Japanese labels on translated settings tabs', async () => {
+    await i18n.changeLanguage('ja');
 
-    const enTranslation = resources?.en?.translation;
-    const viTranslation = resources?.vi?.translation;
+    render(<TabNavigation activeTab="websearch" onTabChange={() => {}} />);
 
-    expect(enTranslation).toBeDefined();
-    expect(viTranslation).toBeDefined();
-
-    const enKeys = flattenKeys(enTranslation);
-    const viKeys = flattenKeys(viTranslation);
-
-    expect([...viKeys].sort()).toEqual([...enKeys].sort());
-
-    for (const key of enKeys) {
-      const enValue = key
-        .split('.')
-        .reduce<unknown>((acc, part) => (acc as Record<string, unknown>)?.[part], enTranslation);
-      const viValue = key
-        .split('.')
-        .reduce<unknown>((acc, part) => (acc as Record<string, unknown>)?.[part], viTranslation);
-
-      if (typeof enValue !== 'string' || typeof viValue !== 'string') continue;
-      expect(collectPlaceholders(viValue)).toEqual(collectPlaceholders(enValue));
-    }
+    expect(screen.getByText('Web検索')).toBeInTheDocument();
+    expect(screen.getByText('環境変数')).toBeInTheDocument();
+    expect(screen.getByText('思考')).toBeInTheDocument();
   });
+
+  it('renders Japanese history sync guidance without fallback English copy', async () => {
+    await i18n.changeLanguage('ja');
+
+    render(
+      <HistorySyncLearningMap
+        isolatedCount={1}
+        sharedStandardCount={2}
+        deeperSharedCount={3}
+        sharedGroups={['default']}
+        legacyTargetCount={2}
+        cliproxyCount={1}
+      />
+    );
+
+    expect(screen.getByText('履歴同期の仕組み')).toBeInTheDocument();
+    expect(
+      screen.getByText('1 件の CLIProxy Claude Pool アカウントは、CLIProxy ページで管理します。')
+    ).toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getByRole('button', { name: '詳細を表示: グループ、切り替え、レガシーポリシー' })
+    );
+
+    expect(
+      screen.getByText('2 件のレガシーアカウントで明示的な確認がまだ必要です。')
+    ).toBeInTheDocument();
+  });
+
+  it.each(SUPPORTED_LOCALES.filter((locale) => locale !== 'en'))(
+    'keeps %s translation keys in parity with en and preserves placeholders',
+    (locale) => {
+      const resources = i18n.options.resources as
+        | Record<string, { translation: Record<string, unknown> }>
+        | undefined;
+
+      const enTranslation = resources?.en?.translation;
+      const localeTranslation = resources?.[locale]?.translation;
+
+      expect(enTranslation).toBeDefined();
+      expect(localeTranslation).toBeDefined();
+
+      const enKeys = flattenKeys(enTranslation);
+      const localeKeys = flattenKeys(localeTranslation);
+
+      expect([...localeKeys].sort()).toEqual([...enKeys].sort());
+
+      for (const key of enKeys) {
+        const enValue = key
+          .split('.')
+          .reduce<unknown>((acc, part) => (acc as Record<string, unknown>)?.[part], enTranslation);
+        const localeValue = key
+          .split('.')
+          .reduce<unknown>(
+            (acc, part) => (acc as Record<string, unknown>)?.[part],
+            localeTranslation
+          );
+
+        if (typeof enValue !== 'string' || typeof localeValue !== 'string') continue;
+        expect(collectPlaceholders(localeValue)).toEqual(collectPlaceholders(enValue));
+      }
+    }
+  );
 });

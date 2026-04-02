@@ -14,8 +14,12 @@ export {
   type CliproxyVariantInfo,
   type ApiListResult,
   type CreateApiProfileResult,
+  type CreateCliproxyBridgeProfileResult,
   type RemoveApiProfileResult,
   type UpdateApiProfileTargetResult,
+  type CliproxyBridgeProviderInfo,
+  type CliproxyBridgeMetadata,
+  type ResolvedCliproxyBridgeProfile,
   type ProfileValidationIssue,
   type ProfileValidationSummary,
   type ApiProfileOrphanCandidate,
@@ -38,6 +42,14 @@ export {
 
 // Profile write operations
 export { createApiProfile, removeApiProfile, updateApiProfileTarget } from './profile-writer';
+export { createCliproxyBridgeProfile } from './profile-writer';
+export {
+  getDefaultCliproxyBridgeName,
+  listCliproxyBridgeProviders,
+  resolveCliproxyBridgeMetadata,
+  resolveCliproxyBridgeProfile,
+  suggestCliproxyBridgeName,
+} from './cliproxy-profile-bridge';
 
 // Lifecycle validation and operations
 export { validateApiProfileSettingsPayload } from './profile-lifecycle-validation';

@@ -6,7 +6,7 @@
 import { CLIProxyProvider } from '../types';
 import { CLIPROXY_PROFILES } from '../../auth/profile-detector';
 import { AccountInfo } from './types';
-import { loadAccountsRegistry, syncRegistryWithTokenFiles, saveAccountsRegistry } from './registry';
+import { hydrateRegistryFromTokenFiles, loadAccountsRegistry } from './registry';
 
 /**
  * Get all accounts for a provider
@@ -14,10 +14,8 @@ import { loadAccountsRegistry, syncRegistryWithTokenFiles, saveAccountsRegistry 
 export function getProviderAccounts(provider: CLIProxyProvider): AccountInfo[] {
   const registry = loadAccountsRegistry();
 
-  // Sync with actual token files (removes stale entries)
-  if (syncRegistryWithTokenFiles(registry)) {
-    saveAccountsRegistry(registry);
-  }
+  // Hydrate the in-memory view from token files without mutating disk on read.
+  hydrateRegistryFromTokenFiles(registry);
 
   const providerAccounts = registry.providers[provider];
 
@@ -57,22 +55,24 @@ export function findAccountByQuery(provider: CLIProxyProvider, query: string): A
   const accounts = getProviderAccounts(provider);
   const lowerQuery = query.toLowerCase();
 
-  // Exact match first (id, email, nickname)
-  const exactMatch = accounts.find(
-    (a) =>
-      a.id === query ||
-      a.email?.toLowerCase() === lowerQuery ||
-      a.nickname?.toLowerCase() === lowerQuery
-  );
-  if (exactMatch) return exactMatch;
+  const exactIdMatch = accounts.find((a) => a.id === query);
+  if (exactIdMatch) return exactIdMatch;
+
+  const emailMatches = accounts.filter((a) => a.email?.toLowerCase() === lowerQuery);
+  if (emailMatches.length === 1) return emailMatches[0];
+  if (emailMatches.length > 1) return null;
+
+  const nicknameMatches = accounts.filter((a) => a.nickname?.toLowerCase() === lowerQuery);
+  if (nicknameMatches.length === 1) return nicknameMatches[0];
+  if (nicknameMatches.length > 1) return null;
 
   // Partial match on nickname or email prefix
-  const partialMatch = accounts.find(
+  const partialMatches = accounts.filter(
     (a) =>
       a.nickname?.toLowerCase().startsWith(lowerQuery) ||
       a.email?.toLowerCase().startsWith(lowerQuery)
   );
-  return partialMatch || null;
+  return partialMatches.length === 1 ? partialMatches[0] : null;
 }
 
 /**

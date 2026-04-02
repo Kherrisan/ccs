@@ -5,12 +5,14 @@
  * Models are mapped to their internal names used by the proxy backend.
  */
 
-import { CLIProxyProvider } from './types';
+import type { CLIProxyProvider } from './types';
 import {
   isAntigravityProvider,
   migrateDeniedAntigravityModelAliases,
   normalizeModelIdForProvider,
 } from './model-id-normalizer';
+import { stripModelConfigurationSuffixes } from '../shared/extended-context-utils';
+import { GEMINI_MINOR_VERSION_COMPATIBILITY_IDS } from '../shared/gemini-minor-version-compatibility';
 
 /**
  * Thinking support configuration for a model.
@@ -57,6 +59,8 @@ export interface ModelEntry {
   thinking?: ThinkingSupport;
   /** Whether model supports 1M extended context window (appends [1m] suffix) */
   extendedContext?: boolean;
+  /** Whether model can read image inputs natively without the Image transformer */
+  nativeImageInput?: boolean;
 }
 
 /**
@@ -84,6 +88,7 @@ export const MODEL_CATALOG: Partial<Record<CLIProxyProvider, ProviderCatalog>> =
         id: 'claude-opus-4-6-thinking',
         name: 'Claude Opus 4.6 Thinking',
         description: 'Latest flagship, extended thinking',
+        nativeImageInput: true,
         thinking: {
           type: 'budget',
           min: 1024,
@@ -99,6 +104,7 @@ export const MODEL_CATALOG: Partial<Record<CLIProxyProvider, ProviderCatalog>> =
         id: 'claude-sonnet-4-6',
         name: 'Claude Sonnet 4.6',
         description: 'Latest Sonnet with thinking budget support',
+        nativeImageInput: true,
         thinking: {
           type: 'budget',
           min: 1024,
@@ -108,9 +114,18 @@ export const MODEL_CATALOG: Partial<Record<CLIProxyProvider, ProviderCatalog>> =
         },
       },
       {
-        id: 'gemini-3-pro-preview',
-        name: 'Gemini 3 Pro',
-        description: 'Google latest model via Antigravity',
+        id: 'gemini-3.1-pro-preview',
+        name: 'Gemini 3.1 Pro',
+        description: 'Google latest Gemini Pro model via Antigravity',
+        nativeImageInput: true,
+        thinking: { type: 'levels', levels: ['low', 'high'], dynamicAllowed: true },
+        extendedContext: true,
+      },
+      {
+        id: 'gemini-3-1-flash-preview',
+        name: 'Gemini Flash',
+        description: 'Latest Gemini Flash model via Antigravity',
+        nativeImageInput: true,
         thinking: { type: 'levels', levels: ['low', 'high'], dynamicAllowed: true },
         extendedContext: true,
       },
@@ -122,10 +137,20 @@ export const MODEL_CATALOG: Partial<Record<CLIProxyProvider, ProviderCatalog>> =
     defaultModel: 'gemini-2.5-pro',
     models: [
       {
-        id: 'gemini-3-pro-preview',
-        name: 'Gemini 3 Pro',
+        id: 'gemini-3.1-pro-preview',
+        name: 'Gemini 3.1 Pro',
         tier: 'pro',
-        description: 'Latest model, requires paid Google account',
+        description: 'Latest Gemini Pro model, requires paid Google account',
+        nativeImageInput: true,
+        thinking: { type: 'levels', levels: ['low', 'high'], dynamicAllowed: true },
+        extendedContext: true,
+      },
+      {
+        id: 'gemini-3-flash-preview',
+        name: 'Gemini Flash',
+        tier: 'pro',
+        description: 'Latest Gemini Flash model, requires paid Google account',
+        nativeImageInput: true,
         thinking: { type: 'levels', levels: ['low', 'high'], dynamicAllowed: true },
         extendedContext: true,
       },
@@ -133,6 +158,7 @@ export const MODEL_CATALOG: Partial<Record<CLIProxyProvider, ProviderCatalog>> =
         id: 'gemini-2.5-pro',
         name: 'Gemini 2.5 Pro',
         description: 'Stable, works with free Google account',
+        nativeImageInput: true,
         thinking: {
           type: 'budget',
           min: 128,
@@ -147,15 +173,59 @@ export const MODEL_CATALOG: Partial<Record<CLIProxyProvider, ProviderCatalog>> =
   codex: {
     provider: 'codex',
     displayName: 'Copilot Codex',
-    defaultModel: 'gpt-5.3-codex',
+    defaultModel: 'gpt-5-codex',
     models: [
       {
-        id: 'gpt-5.3-codex',
-        name: 'GPT-5.3 Codex',
-        description: 'Supports up to xhigh effort',
+        id: 'gpt-5-codex',
+        name: 'GPT-5 Codex',
+        description: 'Cross-plan safe Codex default',
         thinking: {
           type: 'levels',
-          levels: ['medium', 'high', 'xhigh'],
+          levels: ['low', 'medium', 'high'],
+          maxLevel: 'high',
+          dynamicAllowed: false,
+        },
+      },
+      {
+        id: 'gpt-5-codex-mini',
+        name: 'GPT-5 Codex Mini',
+        description: 'Faster and cheaper Codex option',
+        thinking: {
+          type: 'levels',
+          levels: ['low', 'medium', 'high'],
+          maxLevel: 'high',
+          dynamicAllowed: false,
+        },
+      },
+      {
+        id: 'gpt-5-mini',
+        name: 'GPT-5 Mini',
+        description: 'Legacy mini model ID kept for backwards compatibility',
+        thinking: {
+          type: 'levels',
+          levels: ['low', 'medium', 'high'],
+          maxLevel: 'high',
+          dynamicAllowed: false,
+        },
+      },
+      {
+        id: 'gpt-5.1-codex-mini',
+        name: 'GPT-5.1 Codex Mini',
+        description: 'Legacy fast Codex mini model',
+        thinking: {
+          type: 'levels',
+          levels: ['low', 'medium', 'high'],
+          maxLevel: 'high',
+          dynamicAllowed: false,
+        },
+      },
+      {
+        id: 'gpt-5.1-codex-max',
+        name: 'GPT-5.1 Codex Max',
+        description: 'Higher-effort Codex model with xhigh support',
+        thinking: {
+          type: 'levels',
+          levels: ['low', 'medium', 'high', 'xhigh'],
           maxLevel: 'xhigh',
           dynamicAllowed: false,
         },
@@ -163,22 +233,47 @@ export const MODEL_CATALOG: Partial<Record<CLIProxyProvider, ProviderCatalog>> =
       {
         id: 'gpt-5.2-codex',
         name: 'GPT-5.2 Codex',
-        description: 'Previous stable Codex model',
+        description: 'Cross-plan Codex model with xhigh support',
         thinking: {
           type: 'levels',
-          levels: ['medium', 'high', 'xhigh'],
+          levels: ['low', 'medium', 'high', 'xhigh'],
           maxLevel: 'xhigh',
           dynamicAllowed: false,
         },
       },
       {
-        id: 'gpt-5-mini',
-        name: 'GPT-5 Mini',
-        description: 'Capped at high effort (no xhigh)',
+        id: 'gpt-5.3-codex',
+        name: 'GPT-5.3 Codex',
+        tier: 'pro',
+        description: 'Paid Codex plans only',
         thinking: {
           type: 'levels',
-          levels: ['medium', 'high'],
-          maxLevel: 'high',
+          levels: ['low', 'medium', 'high', 'xhigh'],
+          maxLevel: 'xhigh',
+          dynamicAllowed: false,
+        },
+      },
+      {
+        id: 'gpt-5.3-codex-spark',
+        name: 'GPT-5.3 Codex Spark',
+        tier: 'pro',
+        description: 'Paid Codex plans only, ultra-fast coding model',
+        thinking: {
+          type: 'levels',
+          levels: ['low', 'medium', 'high', 'xhigh'],
+          maxLevel: 'xhigh',
+          dynamicAllowed: false,
+        },
+      },
+      {
+        id: 'gpt-5.4',
+        name: 'GPT-5.4',
+        tier: 'pro',
+        description: 'Paid Codex plans only, latest GPT-5 family model',
+        thinking: {
+          type: 'levels',
+          levels: ['low', 'medium', 'high', 'xhigh'],
+          maxLevel: 'xhigh',
           dynamicAllowed: false,
         },
       },
@@ -193,6 +288,7 @@ export const MODEL_CATALOG: Partial<Record<CLIProxyProvider, ProviderCatalog>> =
         id: 'kimi-k2.5',
         name: 'Kimi K2.5',
         description: 'Latest multimodal model (262K context)',
+        nativeImageInput: true,
         thinking: {
           type: 'budget',
           min: 1024,
@@ -229,6 +325,7 @@ export const MODEL_CATALOG: Partial<Record<CLIProxyProvider, ProviderCatalog>> =
         id: 'claude-opus-4-6',
         name: 'Claude Opus 4.6',
         description: 'Latest flagship model',
+        nativeImageInput: true,
         thinking: {
           type: 'budget',
           min: 1024,
@@ -242,6 +339,7 @@ export const MODEL_CATALOG: Partial<Record<CLIProxyProvider, ProviderCatalog>> =
         id: 'claude-sonnet-4-6',
         name: 'Claude Sonnet 4.6',
         description: 'Balanced performance and speed',
+        nativeImageInput: true,
         thinking: {
           type: 'budget',
           min: 1024,
@@ -255,6 +353,7 @@ export const MODEL_CATALOG: Partial<Record<CLIProxyProvider, ProviderCatalog>> =
         id: 'claude-opus-4-5-20251101',
         name: 'Claude Opus 4.5',
         description: 'Most capable Claude model',
+        nativeImageInput: true,
         thinking: {
           type: 'budget',
           min: 1024,
@@ -268,6 +367,7 @@ export const MODEL_CATALOG: Partial<Record<CLIProxyProvider, ProviderCatalog>> =
         id: 'claude-sonnet-4-5-20250929',
         name: 'Claude Sonnet 4.5',
         description: 'Balanced performance and speed',
+        nativeImageInput: true,
         thinking: {
           type: 'budget',
           min: 1024,
@@ -281,6 +381,7 @@ export const MODEL_CATALOG: Partial<Record<CLIProxyProvider, ProviderCatalog>> =
         id: 'claude-sonnet-4-20250514',
         name: 'Claude Sonnet 4',
         description: 'Previous generation Sonnet',
+        nativeImageInput: true,
         thinking: {
           type: 'budget',
           min: 1024,
@@ -294,6 +395,7 @@ export const MODEL_CATALOG: Partial<Record<CLIProxyProvider, ProviderCatalog>> =
         id: 'claude-haiku-4-5-20251001',
         name: 'Claude Haiku 4.5',
         description: 'Fast and efficient',
+        nativeImageInput: true,
         thinking: { type: 'none' },
       },
     ],
@@ -315,13 +417,33 @@ export function getProviderCatalog(provider: CLIProxyProvider): ProviderCatalog 
 }
 
 /**
+ * Suggest a supported replacement model from the provider catalog.
+ * Prefers the provider default unless it matches the excluded model or is itself broken.
+ */
+export function getSuggestedReplacementModel(
+  provider: CLIProxyProvider,
+  excludedModelId?: string
+): string | undefined {
+  const catalog = MODEL_CATALOG[provider];
+  if (!catalog) return undefined;
+
+  const excludedId = excludedModelId ? findModel(provider, excludedModelId)?.id : undefined;
+  const defaultModel = findModel(provider, catalog.defaultModel);
+  if (defaultModel && !defaultModel.broken && defaultModel.id !== excludedId) {
+    return defaultModel.id;
+  }
+
+  return catalog.models.find((model) => !model.broken && model.id !== excludedId)?.id;
+}
+
+/**
  * Find model entry by ID
  * Note: Model IDs are normalized to lowercase for case-insensitive comparison
  */
 export function findModel(provider: CLIProxyProvider, modelId: string): ModelEntry | undefined {
   const catalog = MODEL_CATALOG[provider];
   if (!catalog || !modelId) return undefined;
-  const normalizedId = modelId.trim().toLowerCase();
+  const normalizedId = stripModelConfigurationSuffixes(modelId).trim().toLowerCase();
   const providerNormalizedId = normalizeModelIdForProvider(normalizedId, provider)
     .trim()
     .toLowerCase();
@@ -333,6 +455,16 @@ export function findModel(provider: CLIProxyProvider, modelId: string): ModelEnt
       .toLowerCase();
     lookupCandidates.add(migratedRaw);
     lookupCandidates.add(migratedProvider);
+  }
+
+  for (const candidate of [...lookupCandidates]) {
+    const compatibilityId =
+      GEMINI_MINOR_VERSION_COMPATIBILITY_IDS[
+        candidate as keyof typeof GEMINI_MINOR_VERSION_COMPATIBILITY_IDS
+      ];
+    if (compatibilityId) {
+      lookupCandidates.add(compatibilityId);
+    }
   }
 
   return catalog.models.find((m) => lookupCandidates.has(m.id.toLowerCase()));
@@ -411,6 +543,14 @@ export function supportsThinking(provider: CLIProxyProvider, modelId: string): b
 export function supportsExtendedContext(provider: CLIProxyProvider, modelId: string): boolean {
   const model = findModel(provider, modelId);
   return model?.extendedContext === true;
+}
+
+/**
+ * Check if a model can read image inputs natively.
+ */
+export function supportsNativeImageInput(provider: CLIProxyProvider, modelId: string): boolean {
+  const model = findModel(provider, modelId);
+  return model?.nativeImageInput === true;
 }
 
 /**

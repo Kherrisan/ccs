@@ -13,6 +13,7 @@ import { CLIProxyProfileName, CLIPROXY_PROFILES } from '../../auth/profile-detec
 import { supportsModelConfig, getProviderCatalog, ModelEntry } from '../../cliproxy/model-catalog';
 import { CLIProxyProvider, CLIProxyBackend } from '../../cliproxy/types';
 import type { TargetType } from '../../targets/target-adapter';
+import { getPersistedTargetChoices, isPersistedTargetType } from '../../targets/target-metadata';
 import { isUnifiedMode } from '../../config/unified-config-loader';
 import { initUI, header, color, ok, fail, warn, info, infoBox, dim } from '../../utils/ui';
 import { InteractivePrompt } from '../../utils/prompt';
@@ -27,6 +28,7 @@ import {
 } from '../../cliproxy/services';
 import { DEFAULT_BACKEND } from '../../cliproxy/platform-detector';
 import { CompositeTierConfig } from '../../config/unified-config-types';
+import { formatAccountDisplayName } from '../../cliproxy/accounts/email-account-identity';
 
 interface CliproxyProfileArgs {
   name?: string;
@@ -42,7 +44,7 @@ interface CliproxyProfileArgs {
 
 function parseTargetValue(rawValue: string): TargetType | null {
   const normalized = rawValue.trim().toLowerCase();
-  if (normalized === 'claude' || normalized === 'droid') {
+  if (isPersistedTargetType(normalized)) {
     return normalized;
   }
   return null;
@@ -73,7 +75,9 @@ export function parseProfileArgs(args: string[]): CliproxyProfileArgs {
         i += 1;
         const parsedTarget = parseTargetValue(rawValue);
         if (!parsedTarget) {
-          result.errors.push(`Invalid --target value "${rawValue}". Use: claude or droid`);
+          result.errors.push(
+            `Invalid --target value "${rawValue}". Use: ${getPersistedTargetChoices()}`
+          );
         } else {
           result.target = parsedTarget;
         }
@@ -82,7 +86,9 @@ export function parseProfileArgs(args: string[]): CliproxyProfileArgs {
       const rawValue = arg.slice('--target='.length);
       const parsedTarget = parseTargetValue(rawValue);
       if (!parsedTarget) {
-        result.errors.push(`Invalid --target value "${rawValue}". Use: claude or droid`);
+        result.errors.push(
+          `Invalid --target value "${rawValue}". Use: ${getPersistedTargetChoices()}`
+        );
       } else {
         result.target = parsedTarget;
       }
@@ -111,6 +117,15 @@ function formatModelOption(model: ModelEntry): string {
 
 function getBackendLabel(backend: CLIProxyBackend): string {
   return backend === 'plus' ? 'CLIProxy Plus' : 'CLIProxy';
+}
+
+function formatVariantAccountLabel(account: {
+  id: string;
+  email?: string;
+  nickname?: string;
+}): string {
+  const displayName = formatAccountDisplayName(account);
+  return account.nickname ? `${account.nickname} (${displayName})` : displayName;
 }
 
 /**
@@ -153,7 +168,7 @@ async function selectTierConfig(
       console.log(fail('Authentication failed'));
       process.exit(1);
     }
-    console.log(ok(`Authenticated as ${newAccount.email || newAccount.id}`));
+    console.log(ok(`Authenticated as ${formatVariantAccountLabel(newAccount)}`));
   }
 
   // Select model
@@ -290,7 +305,10 @@ export async function handleCreate(
         `  ${color(`ccs ${name} "your prompt"`, 'command')} ${dim('# uses droid by default')}`
       );
       console.log(
-        `  ${color(`ccsd ${name} "your prompt"`, 'command')} ${dim('# explicit droid alias')}`
+        `  ${color(`ccs-droid ${name} "your prompt"`, 'command')} ${dim('# explicit droid alias')}`
+      );
+      console.log(
+        `  ${color(`ccsd ${name} "your prompt"`, 'command')} ${dim('# legacy shortcut')}`
       );
       console.log(
         `  ${color(`ccs ${name} --target claude "your prompt"`, 'command')} ${dim('# override to Claude')}`
@@ -300,7 +318,10 @@ export async function handleCreate(
         `  ${color(`ccs ${name} "your prompt"`, 'command')} ${dim('# uses claude by default')}`
       );
       console.log(
-        `  ${color(`ccs ${name} --target droid "your prompt"`, 'command')} ${dim('# run on droid for this call')}`
+        `  ${color(`ccs-droid ${name} "your prompt"`, 'command')} ${dim('# explicit one-off droid alias')}`
+      );
+      console.log(
+        `  ${color(`ccs ${name} --target droid "your prompt"`, 'command')} ${dim('# target flag alternative')}`
       );
     }
     console.log('');
@@ -353,7 +374,7 @@ export async function handleCreate(
       }
       account = newAccount.id;
       console.log('');
-      console.log(ok(`Authenticated as ${newAccount.email || newAccount.id}`));
+      console.log(ok(`Authenticated as ${formatVariantAccountLabel(newAccount)}`));
     } else if (providerAccounts.length === 1) {
       account = providerAccounts[0].id;
     } else {
@@ -361,7 +382,7 @@ export async function handleCreate(
       const accountOptions = [
         ...providerAccounts.map((acc) => ({
           id: acc.id,
-          label: `${acc.email || acc.id}${acc.isDefault ? ' (default)' : ''}`,
+          label: `${formatVariantAccountLabel(acc)}${acc.isDefault ? ' (default)' : ''}`,
         })),
         { id: ADD_NEW_ID, label: color('[+ Add new account...]', 'info') },
       ];
@@ -383,7 +404,7 @@ export async function handleCreate(
         }
         account = newAccount.id;
         console.log('');
-        console.log(ok(`Authenticated as ${newAccount.email || newAccount.id}`));
+        console.log(ok(`Authenticated as ${formatVariantAccountLabel(newAccount)}`));
       } else {
         account = selectedAccount;
       }
@@ -395,7 +416,7 @@ export async function handleCreate(
       console.log('');
       console.log('Available accounts:');
       providerAccounts.forEach((a) =>
-        console.log(`  - ${a.email || a.id}${a.isDefault ? ' (default)' : ''}`)
+        console.log(`  - ${formatVariantAccountLabel(a)}${a.isDefault ? ' (default)' : ''}`)
       );
       process.exit(1);
     }
@@ -439,9 +460,13 @@ export async function handleCreate(
     ? '~/.ccs/config.yaml'
     : `~/.ccs/${path.basename(result.settingsPath || '')}`;
   const portInfo = result.variant?.port ? `Port:     ${result.variant.port}\n` : '';
+  const selectedAccount =
+    account && provider
+      ? getProviderAccounts(provider as CLIProxyProvider).find((acc) => acc.id === account)
+      : null;
   console.log(
     infoBox(
-      `Variant:  ${name}\nProvider: ${provider}\nModel:    ${model}\nTarget:   ${resolvedTarget}\n${portInfo}${account ? `Account:  ${account}\n` : ''}${isUnifiedMode() ? 'Config' : 'Settings'}:   ${settingsDisplay}`,
+      `Variant:  ${name}\nProvider: ${provider}\nModel:    ${model}\nTarget:   ${resolvedTarget}\n${portInfo}${selectedAccount ? `Account:  ${formatVariantAccountLabel(selectedAccount)}\n` : account ? `Account:  ${account}\n` : ''}${isUnifiedMode() ? 'Config' : 'Settings'}:   ${settingsDisplay}`,
       configType
     )
   );
@@ -452,8 +477,9 @@ export async function handleCreate(
       `  ${color(`ccs ${name} "your prompt"`, 'command')} ${dim('# uses droid by default')}`
     );
     console.log(
-      `  ${color(`ccsd ${name} "your prompt"`, 'command')} ${dim('# explicit droid alias')}`
+      `  ${color(`ccs-droid ${name} "your prompt"`, 'command')} ${dim('# explicit droid alias')}`
     );
+    console.log(`  ${color(`ccsd ${name} "your prompt"`, 'command')} ${dim('# legacy shortcut')}`);
     console.log(
       `  ${color(`ccs ${name} --target claude "your prompt"`, 'command')} ${dim('# override to Claude')}`
     );
@@ -462,7 +488,10 @@ export async function handleCreate(
       `  ${color(`ccs ${name} "your prompt"`, 'command')} ${dim('# uses claude by default')}`
     );
     console.log(
-      `  ${color(`ccs ${name} --target droid "your prompt"`, 'command')} ${dim('# run on droid for this call')}`
+      `  ${color(`ccs-droid ${name} "your prompt"`, 'command')} ${dim('# explicit one-off droid alias')}`
+    );
+    console.log(
+      `  ${color(`ccs ${name} --target droid "your prompt"`, 'command')} ${dim('# target flag alternative')}`
     );
   }
   console.log('');
@@ -697,7 +726,10 @@ export async function handleEdit(
         `  ${color(`ccs ${name} "your prompt"`, 'command')} ${dim('# uses droid by default')}`
       );
       console.log(
-        `  ${color(`ccsd ${name} "your prompt"`, 'command')} ${dim('# explicit droid alias')}`
+        `  ${color(`ccs-droid ${name} "your prompt"`, 'command')} ${dim('# explicit droid alias')}`
+      );
+      console.log(
+        `  ${color(`ccsd ${name} "your prompt"`, 'command')} ${dim('# legacy shortcut')}`
       );
       console.log(
         `  ${color(`ccs ${name} --target claude "your prompt"`, 'command')} ${dim('# override to Claude')}`
@@ -707,7 +739,10 @@ export async function handleEdit(
         `  ${color(`ccs ${name} "your prompt"`, 'command')} ${dim('# uses claude by default')}`
       );
       console.log(
-        `  ${color(`ccs ${name} --target droid "your prompt"`, 'command')} ${dim('# run on droid for this call')}`
+        `  ${color(`ccs-droid ${name} "your prompt"`, 'command')} ${dim('# explicit one-off droid alias')}`
+      );
+      console.log(
+        `  ${color(`ccs ${name} --target droid "your prompt"`, 'command')} ${dim('# target flag alternative')}`
       );
     }
     console.log('');

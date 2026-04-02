@@ -7,7 +7,7 @@ import { Router, type Request, type Response } from 'express';
 import bcrypt from 'bcrypt';
 import crypto from 'crypto';
 import { getDashboardAuthConfig } from '../../config/unified-config-loader';
-import { loginRateLimiter } from '../middleware/auth-middleware';
+import { isLoopbackRemoteAddress, loginRateLimiter } from '../middleware/auth-middleware';
 
 /**
  * Timing-safe string comparison to prevent timing attacks.
@@ -94,9 +94,15 @@ router.post('/logout', (req: Request, res: Response) => {
  */
 router.get('/check', (req: Request, res: Response) => {
   const authConfig = getDashboardAuthConfig();
+  const isLocal = isLoopbackRemoteAddress(req.socket.remoteAddress);
+
+  // When auth is not configured and access is remote, the dashboard API
+  // endpoints return 403. Signal auth-required so the UI can show the
+  // login/setup page instead of a silently broken dashboard.
+  const effectiveAuthRequired = authConfig.enabled || !isLocal;
 
   res.json({
-    authRequired: authConfig.enabled,
+    authRequired: effectiveAuthRequired,
     authenticated: req.session?.authenticated ?? false,
     username: req.session?.username ?? null,
   });

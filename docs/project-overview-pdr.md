@@ -1,6 +1,6 @@
 # CCS Product Development Requirements (PDR)
 
-Last Updated: 2026-02-04
+Last Updated: 2026-03-24
 
 ## Product Overview
 
@@ -8,7 +8,7 @@ Last Updated: 2026-02-04
 
 **Tagline**: The universal AI profile manager for Claude Code
 
-**Description**: CLI wrapper enabling seamless switching between multiple Claude accounts and alternative AI providers (GLM, Gemini, Codex, OpenRouter, Qwen, Kimi, DeepSeek) with a React-based dashboard for configuration management. Supports both local and remote CLIProxyAPI instances with hybrid quota management.
+**Description**: CLI wrapper enabling seamless switching between multiple Claude accounts and alternative AI providers (GLM, Gemini, Codex, OpenRouter, Qwen, Kimi, DeepSeek) with a React-based dashboard for configuration management. Supports both local and remote CLIProxyAPI instances, hybrid quota management, and official Claude channel runtime setup for Telegram, Discord, and iMessage.
 
 **Current Version**: v7.34.x (Image Analysis Hook + Performance Improvements)
 
@@ -32,10 +32,12 @@ CCS provides:
 
 1. **Multi-Account Claude**: Isolated instances via `CLAUDE_CONFIG_DIR`
 2. **OAuth Providers**: Zero-config Gemini, Codex, Antigravity, Copilot, Kiro (ghcp) integration
-3. **API Profiles**: GLM, Kimi, OpenRouter, any Anthropic-compatible API
-4. **Visual Dashboard**: React SPA for configuration management
-5. **Automatic WebSearch**: MCP fallback for third-party providers
-6. **Usage Analytics**: Token tracking, cost analysis, model breakdown
+3. **AI Providers**: Dedicated CLIProxy dashboard for Gemini, Codex, Claude, Vertex, and OpenAI-compatible API-key families
+4. **API Profiles**: GLM, Kimi, OpenRouter, any Anthropic-compatible API
+5. **Visual Dashboard**: React SPA for configuration management
+6. **Automatic WebSearch**: First-class local WebSearch tool with deterministic provider chain for third-party providers
+7. **Usage Analytics**: Token tracking, cost analysis, model breakdown
+8. **Official Claude Channels**: Runtime auto-enable plus dashboard token/config flow for Telegram, Discord, and macOS-only iMessage
 
 ---
 
@@ -74,6 +76,11 @@ CCS provides:
 - Model mapping and configuration
 - OpenRouter integration with 300+ models
 
+### FR-004A: CLIProxy AI Provider Management
+- Configure CLIProxy-managed Gemini, Codex, Claude, Vertex, and OpenAI-compatible API-key entries
+- Keep provider authoring separate from CCS API Profile creation
+- Support local config editing and remote CLIProxy management parity where available
+
 ### FR-005: Dashboard UI
 - Visual profile management
 - Real-time health monitoring
@@ -86,8 +93,10 @@ CCS provides:
 - Validate symlinks and permissions
 
 ### FR-007: WebSearch Fallback
-- Auto-configure MCP web search for third-party profiles
-- Support Gemini CLI, OpenCode, Grok providers
+- Expose a CCS-managed local WebSearch tool for third-party profiles that cannot reach Anthropic's native tool
+- Suppress native `WebSearch` on third-party launches and steer Claude toward the CCS-owned path when it is available
+- Support Exa, Tavily, Brave, and DuckDuckGo real search backends
+- Keep Gemini CLI, OpenCode, and Grok as optional legacy fallback
 - Graceful fallback chain
 
 ### FR-008: Remote CLIProxy Support
@@ -121,6 +130,16 @@ CCS provides:
 - Auto-detect shell (bash/zsh, fish, PowerShell) from $SHELL
 - Security: single-quoted output, key sanitization, shell-specific escaping
 - Cross-platform compatibility (macOS, Linux, Windows)
+
+### FR-012: Official Claude Channels
+- Support Telegram, Discord, and iMessage selection via `ccs config channels` and the dashboard
+- Auto-inject `--channels` only for native Claude `default` and `account` sessions
+- Store Telegram/Discord bot tokens in Claude's own `~/.claude/channels/<channel>/.env` state or the official `*_STATE_DIR` override path when one is configured
+- Treat iMessage as macOS-only, tokenless, and dependent on Claude-side install plus OS permissions
+- Require Bun, Claude Code v2.1.80+, and verified `claude.ai` auth before runtime auto-enable
+- Keep `--dangerously-skip-permissions` optional and never add it when the user already made an explicit permission choice
+- Surface platform/auth/version/setup blockers clearly in both CLI and dashboard flows
+- Preserve dashboard token drafts when save/refresh fails, and let already-selected unsupported iMessage entries be turned off without allowing re-enable on unsupported platforms
 
 ---
 
@@ -163,13 +182,15 @@ CCS provides:
 
 ### TR-002: Optional Dependencies
 - CLIProxyAPI binary (auto-managed)
-- Gemini CLI for WebSearch
-- Additional MCP servers
+- Exa/Tavily/Brave API keys for higher-quality WebSearch
+- Gemini CLI for legacy WebSearch fallback
+- Bun plus Claude Code v2.1.80+ with `claude.ai` auth for Official Channels auto-enable
 
 ### TR-003: Configuration
 - YAML-based config (`~/.ccs/config.yaml`)
 - JSON settings per profile
 - Environment variable overrides
+- Official channel bot tokens stored in Claude-managed `~/.claude/channels/<channel>/.env`
 
 ---
 
@@ -332,5 +353,5 @@ CCS provides:
 
 - [Codebase Summary](./codebase-summary.md) - Technical structure
 - [Code Standards](./code-standards.md) - Development conventions
-- [System Architecture](./system-architecture.md) - Architecture diagrams
+- [System Architecture](./system-architecture/index.md) - Architecture diagrams
 - [Project Roadmap](./project-roadmap.md) - Development phases and GitHub issues

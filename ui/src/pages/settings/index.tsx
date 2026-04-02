@@ -48,6 +48,8 @@ function lazyWithRetry<T extends ComponentType<unknown>>(importFn: () => Promise
 
 // Lazy-loaded sections with retry capability
 const WebSearchSection = lazyWithRetry(() => import('./sections/websearch'));
+const ImageAnalysisSection = lazyWithRetry(() => import('./sections/image-analysis'));
+const ChannelsSection = lazyWithRetry(() => import('./sections/channels'));
 const GlobalEnvSection = lazyWithRetry(() => import('./sections/globalenv-section'));
 const ThinkingSection = lazyWithRetry(() => import('./sections/thinking'));
 const ProxySection = lazyWithRetry(() => import('./sections/proxy'));
@@ -121,7 +123,7 @@ function SettingsPageInner() {
   };
 
   return (
-    <div className="h-[calc(100vh-100px)]">
+    <div className="h-full min-h-0">
       {/* Mobile View - Stacked vertically */}
       <div className="md:hidden h-full flex flex-col">
         <div className="border-b bg-background p-4">
@@ -130,6 +132,8 @@ function SettingsPageInner() {
         <SectionErrorBoundary>
           <Suspense fallback={<SectionSkeleton />}>
             {activeTab === 'websearch' && <WebSearchSection />}
+            {activeTab === 'image' && <ImageAnalysisSection />}
+            {activeTab === 'channels' && <ChannelsSection />}
             {activeTab === 'globalenv' && <GlobalEnvSection />}
             {activeTab === 'thinking' && <ThinkingSection />}
             {activeTab === 'proxy' && <ProxySection />}
@@ -142,7 +146,7 @@ function SettingsPageInner() {
       {/* Desktop View - Side-by-side panels */}
       <PanelGroup direction="horizontal" className="h-full hidden md:flex">
         {/* Left Panel - Settings Controls */}
-        <Panel defaultSize={40} minSize={30} maxSize={55}>
+        <Panel defaultSize={46} minSize={36} maxSize={62}>
           <div className="h-full border-r flex flex-col bg-muted/30 relative">
             {/* Header with Tabs */}
             <div className="p-5 border-b bg-background">
@@ -153,6 +157,8 @@ function SettingsPageInner() {
             <SectionErrorBoundary>
               <Suspense fallback={<SectionSkeleton />}>
                 {activeTab === 'websearch' && <WebSearchSection />}
+                {activeTab === 'image' && <ImageAnalysisSection />}
+                {activeTab === 'channels' && <ChannelsSection />}
                 {activeTab === 'globalenv' && <GlobalEnvSection />}
                 {activeTab === 'thinking' && <ThinkingSection />}
                 {activeTab === 'proxy' && <ProxySection />}
@@ -169,7 +175,7 @@ function SettingsPageInner() {
         </PanelResizeHandle>
 
         {/* Right Panel - Config Viewer */}
-        <Panel defaultSize={60} minSize={35}>
+        <Panel defaultSize={54} minSize={35}>
           <div className="h-full flex flex-col">
             {/* Header */}
             <div className="p-4 border-b bg-background flex items-center justify-between">
@@ -207,12 +213,7 @@ function SettingsPageInner() {
 
             {/* Config Content - scrollable */}
             <div className="flex-1 overflow-auto">
-              {rawConfigLoading ? (
-                <div className="flex items-center justify-center h-full text-muted-foreground">
-                  <RefreshCw className="w-5 h-5 animate-spin mr-2" />
-                  {t('settings.loading')}
-                </div>
-              ) : rawConfig ? (
+              {rawConfig ? (
                 <CodeEditor
                   value={rawConfig}
                   onChange={() => {}}
@@ -221,6 +222,11 @@ function SettingsPageInner() {
                   minHeight="auto"
                   className="min-h-full"
                 />
+              ) : rawConfigLoading ? (
+                <div className="flex items-center justify-center h-full text-muted-foreground">
+                  <RefreshCw className="w-5 h-5 animate-spin mr-2" />
+                  {t('settings.loading')}
+                </div>
               ) : (
                 <div className="flex items-center justify-center h-full text-muted-foreground">
                   <div className="text-center">

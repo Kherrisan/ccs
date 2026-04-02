@@ -77,8 +77,9 @@ describe('npm CLI', () => {
   });
 
   describe('Profile handling', () => {
-    // Note: GLM/GLMT/Kimi profiles are no longer auto-created (v6.0)
-    // Users create these via UI presets or CLI: ccs api create --preset glm
+    // Note: GLM/Kimi profiles are no longer auto-created (v6.0).
+    // Legacy GLMT files may still exist, but new supported API profiles are created
+    // via UI presets or CLI: ccs api create --preset glm
 
     it('shows helpful error for non-existent profile', function() {
       try {

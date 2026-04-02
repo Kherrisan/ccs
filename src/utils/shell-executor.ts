@@ -9,6 +9,7 @@ import { ErrorManager } from './error-manager';
 import { getWebSearchHookEnv } from './websearch-manager';
 import { wireChildProcessSignals } from './signal-forwarder';
 import { loadOrCreateUnifiedConfig } from '../config/unified-config-loader';
+import SharedManager from '../management/shared-manager';
 
 /**
  * Strip ANTHROPIC_* env vars from an environment object.
@@ -37,6 +38,25 @@ export function stripClaudeCodeEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
     if (key.toUpperCase() !== 'CLAUDECODE') {
       result[key] = env[key];
     }
+  }
+  return result;
+}
+
+/**
+ * Strip Codex session-scoped env vars before launching a nested Codex process.
+ *
+ * Keep real user config such as CODEX_HOME intact. Only remove the known
+ * session/runtime metadata exported by the current Codex host process.
+ */
+export function stripCodexSessionEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const sessionKeys = new Set(['CODEX_CI', 'CODEX_MANAGED_BY_BUN', 'CODEX_THREAD_ID']);
+  const result: NodeJS.ProcessEnv = {};
+  for (const key of Object.keys(env)) {
+    const upperKey = key.toUpperCase();
+    if (sessionKeys.has(upperKey)) {
+      continue;
+    }
+    result[key] = env[key];
   }
   return result;
 }
@@ -121,6 +141,14 @@ export function execClaude(
   // Strip Claude Code nested session guard env var to allow CCS delegation
   // (Claude Code v2.1.39+ sets CLAUDECODE to detect nested sessions)
   const env = stripClaudeCodeEnv(mergedEnv);
+
+  if (profileType !== 'account') {
+    try {
+      new SharedManager().normalizeSharedPluginMetadataPathsLocked(env.CLAUDE_CONFIG_DIR);
+    } catch {
+      // Best-effort normalization should never block Claude launch.
+    }
+  }
 
   // propagate key env vars to tmux session so agent team teammates
   // (spawned via tmux split-window) inherit the correct config dir

@@ -15,7 +15,7 @@
 # Set up completion styles for better formatting and colors
 zstyle ':completion:*:*:ccs:*:commands' list-colors '=(#b)(auth|api|cliproxy|doctor|env|sync|update)([[:space:]]#--[[:space:]]#*)==0\;34=2\;37'
 zstyle ':completion:*:*:ccs:*:proxy-profiles' list-colors '=(#b)(gemini|codex|agy|qwen)([[:space:]]#--[[:space:]]#*)==0\;35=2\;37'
-zstyle ':completion:*:*:ccs:*:model-profiles' list-colors '=(#b)(default|glm|glmt|kimi|[^[:space:]]##)([[:space:]]#--[[:space:]]#*)==0\;32=2\;37'
+zstyle ':completion:*:*:ccs:*:model-profiles' list-colors '=(#b)(default|glm|kimi|[^[:space:]]##)([[:space:]]#--[[:space:]]#*)==0\;32=2\;37'
 zstyle ':completion:*:*:ccs:*:account-profiles' list-colors '=(#b)([^[:space:]]##)([[:space:]]#--[[:space:]]#*)==0\;33=2\;37'
 zstyle ':completion:*:*:ccs:*' group-name ''
 zstyle ':completion:*:*:ccs:*:descriptions' format $'\n%B%F{yellow}── %d ──%f%b'
@@ -56,7 +56,6 @@ _ccs() {
   profile_descriptions=(
     'default' 'Default Claude Sonnet 4.5'
     'glm'     'GLM-4.6 (cost-optimized)'
-    'glmt'    'GLM-4.6 with thinking mode'
     'kimi'    'Kimi for Coding (long-context)'
   )
 

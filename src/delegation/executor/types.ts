@@ -44,6 +44,12 @@ export interface ExecutionError {
   [key: string]: unknown;
 }
 
+export interface ToolUsageSummary {
+  toolNames: string[];
+  calledWebSearch: boolean;
+  fallbackToolsUsed: string[];
+}
+
 /**
  * Options for headless execution
  */
@@ -86,6 +92,7 @@ export interface ExecutionResult {
   permissionDenials?: PermissionDenial[];
   errors?: ExecutionError[];
   content?: string;
+  toolUsageSummary?: ToolUsageSummary;
 }
 
 /**

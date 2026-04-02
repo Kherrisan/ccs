@@ -3,7 +3,111 @@
  * Shared data for Quick Setup Wizard and Provider Editor
  */
 
-import type { ProviderCatalog } from '@/components/cliproxy/provider-model-selector';
+import type { ModelEntry, ProviderCatalog } from '@/components/cliproxy/provider-model-selector';
+import { stripModelConfigurationSuffixes } from '@/lib/extended-context-utils';
+import { GEMINI_MINOR_VERSION_COMPATIBILITY_IDS } from '@shared/gemini-minor-version-compatibility';
+
+const GEMINI_PREVIEW_MODEL_ID_PATTERN =
+  /^gemini-(\d+(?:[.-]\d+)*)-(pro|flash)-preview(-customtools)?$/i;
+
+export type CatalogAvailableModel = {
+  id: string;
+  owned_by: string;
+};
+
+type GeminiPreviewFamily = 'pro' | 'flash';
+
+type GeminiPreviewModelInfo = {
+  normalizedId: string;
+  version: number[];
+  family: GeminiPreviewFamily;
+  customtools: boolean;
+  dottedVersion: boolean;
+};
+
+function normalizeModelId(modelId: string): string {
+  return stripModelConfigurationSuffixes(modelId).toLowerCase();
+}
+
+function parseGeminiPreviewModelId(modelId: string): GeminiPreviewModelInfo | null {
+  const normalizedId = normalizeModelId(modelId);
+  const match = normalizedId.match(GEMINI_PREVIEW_MODEL_ID_PATTERN);
+  if (!match) return null;
+
+  const [, versionString, family, customtoolsSuffix] = match;
+
+  return {
+    normalizedId,
+    version: versionString.split(/[.-]/).map((segment) => Number(segment)),
+    family: family as GeminiPreviewFamily,
+    customtools: Boolean(customtoolsSuffix),
+    dottedVersion: versionString.includes('.'),
+  };
+}
+
+function compareGeminiVersions(a: number[], b: number[]): number {
+  const maxLength = Math.max(a.length, b.length);
+  for (let index = 0; index < maxLength; index += 1) {
+    const left = a[index] ?? 0;
+    const right = b[index] ?? 0;
+    if (left === right) continue;
+    return left > right ? 1 : -1;
+  }
+
+  return 0;
+}
+
+function compareGeminiPreviewCandidates(
+  left: GeminiPreviewModelInfo,
+  right: GeminiPreviewModelInfo,
+  target: GeminiPreviewModelInfo
+): number {
+  if (left.customtools !== right.customtools) {
+    return left.customtools ? 1 : -1;
+  }
+
+  const versionComparison = compareGeminiVersions(left.version, right.version);
+  if (versionComparison !== 0) {
+    return versionComparison > 0 ? -1 : 1;
+  }
+
+  const leftStyleMatch = Number(left.dottedVersion === target.dottedVersion);
+  const rightStyleMatch = Number(right.dottedVersion === target.dottedVersion);
+  if (leftStyleMatch !== rightStyleMatch) {
+    return rightStyleMatch - leftStyleMatch;
+  }
+
+  return left.normalizedId.localeCompare(right.normalizedId);
+}
+
+function findAvailableModelId(
+  availableModels: CatalogAvailableModel[],
+  modelId: string
+): string | undefined {
+  const normalizedModelId = normalizeModelId(modelId);
+  return availableModels.find((model) => normalizeModelId(model.id) === normalizedModelId)?.id;
+}
+
+function resolveGeminiPreviewModelId(
+  modelId: string,
+  availableModels: CatalogAvailableModel[]
+): string | undefined {
+  const targetModel = parseGeminiPreviewModelId(modelId);
+  if (!targetModel || availableModels.length === 0) return undefined;
+
+  const bestMatch = availableModels
+    .map((model) => {
+      const info = parseGeminiPreviewModelId(model.id);
+      if (!info || info.family !== targetModel.family) return null;
+      return { id: model.id, info };
+    })
+    .filter((candidate): candidate is { id: string; info: GeminiPreviewModelInfo } =>
+      Boolean(candidate)
+    )
+    .sort((left, right) => compareGeminiPreviewCandidates(left.info, right.info, targetModel))[0];
+
+  return bestMatch?.id;
+}
 
 /** Model catalog data - mirrors src/cliproxy/model-catalog.ts */
 export const MODEL_CATALOGS: Record<string, ProviderCatalog> = {
@@ -38,27 +142,27 @@ export const MODEL_CATALOGS: Record<string, ProviderCatalog> = {
         },
       },
       {
-        id: 'gemini-3-pro-preview',
-        name: 'Gemini 3 Pro',
-        description: 'Google latest model via Antigravity',
+        id: 'gemini-3.1-pro-preview',
+        name: 'Gemini Pro',
+        description: 'Resolves to the best advertised Gemini Pro preview via Antigravity',
         extendedContext: true,
         presetMapping: {
-          default: 'gemini-3-pro-preview',
-          opus: 'gemini-3-pro-preview',
-          sonnet: 'gemini-3-pro-preview',
-          haiku: 'gemini-3-flash-preview',
+          default: 'gemini-3.1-pro-preview',
+          opus: 'gemini-3.1-pro-preview',
+          sonnet: 'gemini-3.1-pro-preview',
+          haiku: 'gemini-3-1-flash-preview',
         },
       },
       {
-        id: 'gemini-3-flash-preview',
-        name: 'Gemini 3 Flash',
-        description: 'Fast Gemini model via Antigravity',
+        id: 'gemini-3-1-flash-preview',
+        name: 'Gemini Flash',
+        description: 'Resolves to the best advertised Gemini Flash preview via Antigravity',
         extendedContext: true,
         presetMapping: {
-          default: 'gemini-3-flash-preview',
-          opus: 'gemini-3-pro-preview',
-          sonnet: 'gemini-3-pro-preview',
-          haiku: 'gemini-3-flash-preview',
+          default: 'gemini-3-1-flash-preview',
+          opus: 'gemini-3.1-pro-preview',
+          sonnet: 'gemini-3.1-pro-preview',
+          haiku: 'gemini-3-1-flash-preview',
         },
       },
     ],
@@ -69,28 +173,28 @@ export const MODEL_CATALOGS: Record<string, ProviderCatalog> = {
     defaultModel: 'gemini-2.5-pro',
     models: [
       {
-        id: 'gemini-3-pro-preview',
-        name: 'Gemini 3 Pro',
+        id: 'gemini-3.1-pro-preview',
+        name: 'Gemini Pro',
         tier: 'paid',
-        description: 'Latest model, requires paid Google account',
+        description: 'Uses the best advertised Gemini Pro preview when Google exposes one',
         extendedContext: true,
         presetMapping: {
-          default: 'gemini-3-pro-preview',
-          opus: 'gemini-3-pro-preview',
-          sonnet: 'gemini-3-pro-preview',
+          default: 'gemini-3.1-pro-preview',
+          opus: 'gemini-3.1-pro-preview',
+          sonnet: 'gemini-3.1-pro-preview',
           haiku: 'gemini-3-flash-preview',
         },
       },
       {
         id: 'gemini-3-flash-preview',
-        name: 'Gemini 3 Flash',
+        name: 'Gemini Flash',
         tier: 'paid',
-        description: 'Fast Gemini 3 model, requires paid Google account',
+        description: 'Uses the best advertised Gemini Flash preview when Google exposes one',
         extendedContext: true,
         presetMapping: {
           default: 'gemini-3-flash-preview',
-          opus: 'gemini-3-pro-preview',
-          sonnet: 'gemini-3-pro-preview',
+          opus: 'gemini-3.1-pro-preview',
+          sonnet: 'gemini-3.1-pro-preview',
           haiku: 'gemini-3-flash-preview',
         },
       },
@@ -111,45 +215,56 @@ export const MODEL_CATALOGS: Record<string, ProviderCatalog> = {
   codex: {
     provider: 'codex',
     displayName: 'Codex',
-    defaultModel: 'gpt-5.3-codex',
+    defaultModel: 'gpt-5-codex',
     models: [
       {
-        id: 'gpt-5.3-codex',
-        name: 'GPT-5.3 Codex',
-        description: 'Supports up to xhigh effort',
+        id: 'gpt-5-codex',
+        name: 'GPT-5 Codex',
+        description: 'Cross-plan safe Codex default',
         presetMapping: {
-          default: 'gpt-5.3-codex',
-          opus: 'gpt-5.3-codex',
-          sonnet: 'gpt-5.3-codex',
-          haiku: 'gpt-5.1-codex-mini',
+          default: 'gpt-5-codex',
+          opus: 'gpt-5-codex',
+          sonnet: 'gpt-5-codex',
+          haiku: 'gpt-5-codex-mini',
         },
       },
       {
-        id: 'gpt-5.2-codex',
-        name: 'GPT-5.2 Codex',
-        description: 'Previous stable Codex model',
+        id: 'gpt-5-codex-mini',
+        name: 'GPT-5 Codex Mini',
+        description: 'Faster and cheaper Codex option',
         presetMapping: {
-          default: 'gpt-5.2-codex',
-          opus: 'gpt-5.2-codex',
-          sonnet: 'gpt-5.2-codex',
-          haiku: 'gpt-5.1-codex-mini',
+          default: 'gpt-5-codex-mini',
+          opus: 'gpt-5-codex',
+          sonnet: 'gpt-5-codex',
+          haiku: 'gpt-5-codex-mini',
         },
       },
       {
         id: 'gpt-5-mini',
         name: 'GPT-5 Mini',
-        description: 'Fast, capped at high effort (no xhigh)',
+        description: 'Legacy mini model ID kept for backwards compatibility',
         presetMapping: {
           default: 'gpt-5-mini',
-          opus: 'gpt-5.3-codex',
+          opus: 'gpt-5-codex',
           sonnet: 'gpt-5-mini',
           haiku: 'gpt-5-mini',
         },
       },
       {
+        id: 'gpt-5.1-codex-mini',
+        name: 'GPT-5.1 Codex Mini',
+        description: 'Legacy fast Codex mini model',
+        presetMapping: {
+          default: 'gpt-5.1-codex-mini',
+          opus: 'gpt-5.1-codex-max',
+          sonnet: 'gpt-5.1-codex-max',
+          haiku: 'gpt-5.1-codex-mini',
+        },
+      },
+      {
         id: 'gpt-5.1-codex-max',
-        name: 'Codex Max (5.1)',
-        description: 'Legacy most capable Codex model',
+        name: 'GPT-5.1 Codex Max',
+        description: 'Higher-effort Codex model with xhigh support',
         presetMapping: {
           default: 'gpt-5.1-codex-max',
           opus: 'gpt-5.1-codex-max',
@@ -158,20 +273,51 @@ export const MODEL_CATALOGS: Record<string, ProviderCatalog> = {
         },
       },
       {
-        id: 'gpt-5.2',
-        name: 'GPT 5.2',
-        description: 'Latest GPT model',
+        id: 'gpt-5.2-codex',
+        name: 'GPT-5.2 Codex',
+        description: 'Cross-plan Codex model with xhigh support',
         presetMapping: {
-          default: 'gpt-5.2',
-          opus: 'gpt-5.2',
-          sonnet: 'gpt-5.2',
-          haiku: 'gpt-5.2',
+          default: 'gpt-5.2-codex',
+          opus: 'gpt-5.2-codex',
+          sonnet: 'gpt-5.2-codex',
+          haiku: 'gpt-5-codex-mini',
         },
       },
       {
-        id: 'gpt-5.1-codex-mini',
-        name: 'Codex Mini',
-        description: 'Fast and efficient Codex model',
+        id: 'gpt-5.3-codex',
+        name: 'GPT-5.3 Codex',
+        tier: 'paid',
+        description: 'Paid Codex plans only',
+        presetMapping: {
+          default: 'gpt-5.3-codex',
+          opus: 'gpt-5.3-codex',
+          sonnet: 'gpt-5.3-codex',
+          haiku: 'gpt-5-codex-mini',
+        },
+      },
+      {
+        id: 'gpt-5.3-codex-spark',
+        name: 'GPT-5.3 Codex Spark',
+        tier: 'paid',
+        description: 'Paid Codex plans only, ultra-fast coding model',
+        presetMapping: {
+          default: 'gpt-5.3-codex-spark',
+          opus: 'gpt-5.3-codex',
+          sonnet: 'gpt-5.3-codex',
+          haiku: 'gpt-5-codex-mini',
+        },
+      },
+      {
+        id: 'gpt-5.4',
+        name: 'GPT-5.4',
+        tier: 'paid',
+        description: 'Paid Codex plans only, latest GPT-5 family model',
+        presetMapping: {
+          default: 'gpt-5.4',
+          opus: 'gpt-5.4',
+          sonnet: 'gpt-5.4',
+          haiku: 'gpt-5-codex-mini',
+        },
       },
     ],
   },
@@ -326,8 +472,30 @@ export const MODEL_CATALOGS: Record<string, ProviderCatalog> = {
   kiro: {
     provider: 'kiro',
     displayName: 'Kiro (AWS)',
-    defaultModel: 'kiro-claude-sonnet-4-5',
+    defaultModel: 'kiro-claude-sonnet-4-6',
     models: [
+      {
+        id: 'kiro-claude-opus-4-6',
+        name: 'Kiro Claude Opus 4.6',
+        description: 'Claude Opus 4.6 via Kiro (2.2x credit)',
+        presetMapping: {
+          default: 'kiro-claude-opus-4-6',
+          opus: 'kiro-claude-opus-4-6',
+          sonnet: 'kiro-claude-sonnet-4-6',
+          haiku: 'kiro-claude-haiku-4-5',
+        },
+      },
+      {
+        id: 'kiro-claude-sonnet-4-6',
+        name: 'Kiro Claude Sonnet 4.6',
+        description: 'Claude Sonnet 4.6 via Kiro (1.3x credit)',
+        presetMapping: {
+          default: 'kiro-claude-sonnet-4-6',
+          opus: 'kiro-claude-opus-4-6',
+          sonnet: 'kiro-claude-sonnet-4-6',
+          haiku: 'kiro-claude-haiku-4-5',
+        },
+      },
       {
         id: 'kiro-claude-opus-4-5',
         name: 'Kiro Claude Opus 4.5',
@@ -511,3 +679,100 @@ export const MODEL_CATALOGS: Record<string, ProviderCatalog> = {
     ],
   },
 };
+
+export function findCatalogModel(provider: string, modelId: string) {
+  const catalog = MODEL_CATALOGS[provider.toLowerCase()];
+  if (!catalog) return undefined;
+
+  const normalizedModelId = normalizeModelId(modelId);
+  const compatibilityModelId =
+    GEMINI_MINOR_VERSION_COMPATIBILITY_IDS[
+      normalizedModelId.toLowerCase() as keyof typeof GEMINI_MINOR_VERSION_COMPATIBILITY_IDS
+    ];
+
+  const exactMatch = catalog.models.find(
+    (model) => model.id === normalizedModelId || model.id === compatibilityModelId
+  );
+  if (exactMatch) return exactMatch;
+
+  const geminiModelInfo = parseGeminiPreviewModelId(normalizedModelId);
+  if (!geminiModelInfo) return undefined;
+
+  return catalog.models
+    .map((model) => ({ model, info: parseGeminiPreviewModelId(model.id) }))
+    .filter(
+      (
+        candidate
+      ): candidate is {
+        model: ModelEntry;
+        info: GeminiPreviewModelInfo;
+      } => Boolean(candidate.info && candidate.info.family === geminiModelInfo.family)
+    )
+    .sort((left, right) => compareGeminiVersions(right.info.version, left.info.version))[0]?.model;
+}
+
+export function resolveCatalogModelId(
+  modelId: string,
+  availableModels: CatalogAvailableModel[] = []
+): string {
+  const normalizedModelId = normalizeModelId(modelId);
+  const liveGeminiModelId = resolveGeminiPreviewModelId(normalizedModelId, availableModels);
+  if (liveGeminiModelId) return liveGeminiModelId;
+
+  const exactLiveModelId = findAvailableModelId(availableModels, normalizedModelId);
+  if (exactLiveModelId) return exactLiveModelId;
+
+  const compatibilityModelId =
+    GEMINI_MINOR_VERSION_COMPATIBILITY_IDS[
+      normalizedModelId as keyof typeof GEMINI_MINOR_VERSION_COMPATIBILITY_IDS
+    ];
+  const compatibleLiveModelId = compatibilityModelId
+    ? findAvailableModelId(availableModels, compatibilityModelId)
+    : undefined;
+
+  return compatibleLiveModelId ?? normalizedModelId;
+}
+
+export function resolvePresetMapping(
+  presetMapping: NonNullable<ModelEntry['presetMapping']>,
+  availableModels: CatalogAvailableModel[] = []
+) {
+  return {
+    default: resolveCatalogModelId(presetMapping.default, availableModels),
+    opus: resolveCatalogModelId(presetMapping.opus, availableModels),
+    sonnet: resolveCatalogModelId(presetMapping.sonnet, availableModels),
+    haiku: resolveCatalogModelId(presetMapping.haiku, availableModels),
+  };
+}
+
+export function getResolvedCatalogModels(
+  catalog: ProviderCatalog | undefined,
+  availableModels: CatalogAvailableModel[] = []
+) {
+  if (!catalog) return [];
+
+  const seenModelIds = new Set<string>();
+
+  return catalog.models
+    .map((model) => {
+      const resolvedModelId = resolveCatalogModelId(model.id, availableModels);
+      const resolvedPresetModelMapping = model.presetMapping
+        ? resolvePresetMapping(model.presetMapping, availableModels)
+        : undefined;
+
+      return {
+        ...model,
+        id: resolvedModelId,
+        presetMapping: resolvedPresetModelMapping,
+      };
+    })
+    .filter((model) => {
+      if (seenModelIds.has(model.id)) return false;
+      seenModelIds.add(model.id);
+      return true;
+    });
+}
+
+export function supportsExtendedContext(provider: string, modelId: string): boolean {
+  return findCatalogModel(provider, modelId)?.extendedContext === true;
+}

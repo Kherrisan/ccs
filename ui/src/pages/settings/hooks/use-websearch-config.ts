@@ -2,17 +2,13 @@
  * WebSearch Config Hook
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback } from 'react';
 import { useSettingsContext, useSettingsActions } from './context-hooks';
-import type { WebSearchConfig } from '../types';
+import type { WebSearchConfig, WebSearchSavePayload } from '../types';
 
 export function useWebSearchConfig() {
   const { state } = useSettingsContext();
   const actions = useSettingsActions();
-  const [geminiModelInput, setGeminiModelInput] = useState('');
-  const [opencodeModelInput, setOpencodeModelInput] = useState('');
-  const [geminiModelSaved, setGeminiModelSaved] = useState(false);
-  const [opencodeModelSaved, setOpencodeModelSaved] = useState(false);
 
   const fetchConfig = useCallback(async () => {
     try {
@@ -44,21 +40,34 @@ export function useWebSearchConfig() {
   }, [actions]);
 
   const saveConfig = useCallback(
-    async (updates: Partial<WebSearchConfig>) => {
+    async (updates: WebSearchSavePayload) => {
       const config = state.webSearchConfig;
-      if (!config) return;
+      if (!config) return false;
 
-      const optimisticConfig = { ...config, ...updates };
+      const optimisticConfig: WebSearchConfig = {
+        ...config,
+        ...updates,
+        providers: { ...config.providers, ...updates.providers },
+        apiKeys: config.apiKeys,
+      };
       actions.setWebSearchConfig(optimisticConfig);
 
       try {
         actions.setWebSearchSaving(true);
         actions.setWebSearchError(null);
 
+        const requestBody: WebSearchSavePayload = {
+          enabled: optimisticConfig.enabled,
+          providers: optimisticConfig.providers,
+        };
+        if (updates.apiKeys) {
+          requestBody.apiKeys = updates.apiKeys;
+        }
+
         const res = await fetch('/api/websearch', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(optimisticConfig),
+          body: JSON.stringify(requestBody),
         });
 
         if (!res.ok) {
@@ -68,51 +77,20 @@ export function useWebSearchConfig() {
 
         const data = await res.json();
         actions.setWebSearchConfig(data.websearch);
+        await fetchStatus();
         actions.setWebSearchSuccess(true);
         setTimeout(() => actions.setWebSearchSuccess(false), 1500);
+        return true;
       } catch (err) {
         actions.setWebSearchConfig(config);
         actions.setWebSearchError((err as Error).message);
+        return false;
       } finally {
         actions.setWebSearchSaving(false);
       }
     },
-    [state.webSearchConfig, actions]
+    [state.webSearchConfig, actions, fetchStatus]
   );
-
-  // Sync model inputs with config
-  useEffect(() => {
-    if (state.webSearchConfig) {
-      setGeminiModelInput(state.webSearchConfig.providers?.gemini?.model ?? 'gemini-2.5-flash');
-      setOpencodeModelInput(
-        state.webSearchConfig.providers?.opencode?.model ?? 'opencode/grok-code'
-      );
-    }
-  }, [state.webSearchConfig]);
-
-  const saveGeminiModel = useCallback(async () => {
-    const currentModel = state.webSearchConfig?.providers?.gemini?.model ?? 'gemini-2.5-flash';
-    if (geminiModelInput !== currentModel) {
-      const providers = state.webSearchConfig?.providers || {};
-      await saveConfig({
-        providers: { ...providers, gemini: { ...providers.gemini, model: geminiModelInput } },
-      });
-      setGeminiModelSaved(true);
-      setTimeout(() => setGeminiModelSaved(false), 2000);
-    }
-  }, [geminiModelInput, state.webSearchConfig, saveConfig]);
-
-  const saveOpencodeModel = useCallback(async () => {
-    const currentModel = state.webSearchConfig?.providers?.opencode?.model ?? 'opencode/grok-code';
-    if (opencodeModelInput !== currentModel) {
-      const providers = state.webSearchConfig?.providers || {};
-      await saveConfig({
-        providers: { ...providers, opencode: { ...providers.opencode, model: opencodeModelInput } },
-      });
-      setOpencodeModelSaved(true);
-      setTimeout(() => setOpencodeModelSaved(false), 2000);
-    }
-  }, [opencodeModelInput, state.webSearchConfig, saveConfig]);
 
   return {
     config: state.webSearchConfig,
@@ -122,16 +100,8 @@ export function useWebSearchConfig() {
     saving: state.webSearchSaving,
     error: state.webSearchError,
     success: state.webSearchSuccess,
-    geminiModelInput,
-    setGeminiModelInput,
-    opencodeModelInput,
-    setOpencodeModelInput,
-    geminiModelSaved,
-    opencodeModelSaved,
     fetchConfig,
     fetchStatus,
     saveConfig,
-    saveGeminiModel,
-    saveOpencodeModel,
   };
 }

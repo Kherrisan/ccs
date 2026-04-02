@@ -32,8 +32,15 @@ import { isAuthenticated } from '../auth-handler';
 import { CLIProxyProvider, CLIProxyBackend, PLUS_ONLY_PROVIDERS, ExecutorConfig } from '../types';
 import { DEFAULT_BACKEND } from '../platform-detector';
 import { configureProviderModel, getCurrentModel } from '../model-config';
+import { reconcileCodexModelForActivePlan } from '../codex-plan-compatibility';
 import { resolveProxyConfig, PROXY_CLI_FLAGS } from '../proxy-config-resolver';
-import { supportsModelConfig, isModelBroken, getModelIssueUrl, findModel } from '../model-catalog';
+import {
+  supportsModelConfig,
+  isModelBroken,
+  getModelIssueUrl,
+  findModel,
+  getSuggestedReplacementModel,
+} from '../model-catalog';
 import { CodexReasoningProxy } from '../codex-reasoning-proxy';
 import { ToolSanitizationProxy } from '../tool-sanitization-proxy';
 import {
@@ -44,10 +51,12 @@ import {
   renameAccount,
   getDefaultAccount,
 } from '../account-manager';
+import { formatAccountDisplayName } from '../accounts/email-account-identity';
 import {
-  ensureMcpWebSearch,
-  installWebSearchHook,
+  ensureWebSearchMcpOrThrow,
   displayWebSearchStatus,
+  appendThirdPartyWebSearchToolArgs,
+  createWebSearchTraceContext,
 } from '../../utils/websearch-manager';
 import { loadOrCreateUnifiedConfig, getThinkingConfig } from '../../config/unified-config-loader';
 import { installImageAnalyzerHook } from '../../utils/hooks';
@@ -57,7 +66,11 @@ import { resolveProfileContinuityInheritance } from '../../auth/profile-continui
 
 // Import modular components
 import { waitForProxyReadyWithSpinner, spawnProxy } from './lifecycle-manager';
-import { buildClaudeEnvironment, logEnvironment } from './env-resolver';
+import {
+  buildClaudeEnvironment,
+  logEnvironment,
+  resolveCliproxyImageAnalysisEnv,
+} from './env-resolver';
 import {
   isNetworkError,
   handleNetworkError,
@@ -163,6 +176,7 @@ export async function execClaudeWithCLIProxy(
           port: cliproxyServerConfig.remote.port,
           protocol: cliproxyServerConfig.remote.protocol,
           auth_token: cliproxyServerConfig.remote.auth_token,
+          management_key: cliproxyServerConfig.remote.management_key,
           timeout: cliproxyServerConfig.remote.timeout,
         }
       : undefined,
@@ -189,9 +203,8 @@ export async function execClaudeWithCLIProxy(
     log(`Remote host: ${proxyConfig.host}:${proxyConfig.port} (${proxyConfig.protocol})`);
   }
 
-  // Setup WebSearch hooks
-  ensureMcpWebSearch();
-  installWebSearchHook();
+  // Setup first-class CCS WebSearch runtime
+  ensureWebSearchMcpOrThrow();
   displayWebSearchStatus();
 
   // Sync image analyzer hook from npm package to ~/.ccs/hooks/
@@ -415,9 +428,9 @@ export async function execClaudeWithCLIProxy(
       for (const acct of accounts) {
         const defaultMark = acct.isDefault ? ' (default)' : '';
         const nickname = acct.nickname ? `[${acct.nickname}]` : '';
-        console.log(`  ${nickname.padEnd(12)} ${acct.email || acct.id}${defaultMark}`);
+        console.log(`  ${nickname.padEnd(12)} ${formatAccountDisplayName(acct)}${defaultMark}`);
       }
-      console.log(`\n  Use "ccs ${provider} --use <nickname>" to switch accounts`);
+      console.log(`\n  Use "ccs ${provider} --use <nickname-or-id>" to switch accounts`);
     }
     process.exit(0);
   }
@@ -431,14 +444,19 @@ export async function execClaudeWithCLIProxy(
       if (accounts.length > 0) {
         console.error(`    Available accounts:`);
         for (const acct of accounts) {
-          console.error(`      - ${acct.nickname || acct.id} (${acct.email || 'no email'})`);
+          const displayName = formatAccountDisplayName(acct);
+          const label = acct.nickname ? `${acct.nickname} (${displayName})` : displayName;
+          console.error(`      - ${label}`);
         }
       }
       process.exit(1);
     }
     setDefaultAccount(provider, account.id);
     touchAccount(provider, account.id);
-    console.log(ok(`Switched to account: ${account.nickname || account.email || account.id}`));
+    const switchedLabel = account.nickname
+      ? `${account.nickname} (${formatAccountDisplayName(account)})`
+      : formatAccountDisplayName(account);
+    console.log(ok(`Switched to account: ${switchedLabel}`));
   }
 
   // Handle --nickname (rename account)
@@ -713,9 +731,14 @@ export async function execClaudeWithCLIProxy(
     if (currentModel && isModelBroken(provider, currentModel)) {
       const modelEntry = findModel(provider, currentModel);
       const issueUrl = getModelIssueUrl(provider, currentModel);
+      const replacementModel = getSuggestedReplacementModel(provider, currentModel);
       console.error('');
       console.error(warn(`${modelEntry?.name || currentModel} has known issues with Claude Code`));
-      console.error('    Tool calls will fail. Use "gemini-3-pro-preview" instead.');
+      if (replacementModel) {
+        console.error(`    Tool calls will fail. Use "${replacementModel}" instead.`);
+      } else {
+        console.error('    Tool calls will fail. Consider changing the model in config.yaml.');
+      }
       if (issueUrl) {
         console.error(`    Tracking: ${issueUrl}`);
       }
@@ -730,6 +753,14 @@ export async function execClaudeWithCLIProxy(
 
   // 6. Ensure user settings file exists
   ensureProviderSettings(provider);
+
+  if (provider === 'codex' && !cfg.isComposite && !skipLocalAuth) {
+    await reconcileCodexModelForActivePlan({
+      settingsPath: cfg.customSettingsPath || getProviderSettingsPath(provider),
+      currentModel: getCurrentModel(provider, cfg.customSettingsPath),
+      verbose,
+    });
+  }
 
   // Local proxy mode: generate config, spawn/join proxy, track session
   let proxy: ChildProcess | null = null;
@@ -793,6 +824,33 @@ export async function execClaudeWithCLIProxy(
     }
   }
 
+  const imageAnalysisProxyTarget =
+    useRemoteProxy && proxyConfig.host
+      ? {
+          host: proxyConfig.host,
+          port: proxyConfig.port,
+          protocol: proxyConfig.protocol,
+          authToken: proxyConfig.authToken,
+          managementKey: proxyConfig.managementKey,
+          allowSelfSigned: proxyConfig.allowSelfSigned,
+          isRemote: true as const,
+        }
+      : {
+          host: '127.0.0.1',
+          port: cfg.port,
+          protocol: 'http' as const,
+          isRemote: false as const,
+        };
+  const { env: imageAnalysisEnv, warning: imageAnalysisWarning } =
+    await resolveCliproxyImageAnalysisEnv({
+      profileName: cfg.profileName || provider,
+      provider,
+      profileSettingsPath: cfg.customSettingsPath,
+      isComposite: cfg.isComposite,
+      proxyTarget: imageAnalysisProxyTarget,
+      proxyReachable: true,
+    });
+
   // 9. Setup tool sanitization proxy
   let toolSanitizationProxy: ToolSanitizationProxy | null = null;
   let toolSanitizationPort: number | null = null;
@@ -835,6 +893,7 @@ export async function execClaudeWithCLIProxy(
     compositeTiers: cfg.compositeTiers,
     compositeDefaultTier: cfg.compositeDefaultTier,
     claudeConfigDir: inheritedClaudeConfigDir,
+    imageAnalysisEnv,
   });
 
   if (initialEnvVars.ANTHROPIC_BASE_URL) {
@@ -931,6 +990,7 @@ export async function execClaudeWithCLIProxy(
     compositeTiers: cfg.compositeTiers,
     compositeDefaultTier: cfg.compositeDefaultTier,
     claudeConfigDir: inheritedClaudeConfigDir,
+    imageAnalysisEnv,
   });
 
   if (cfg.isComposite && cfg.compositeTiers && cfg.compositeDefaultTier) {
@@ -947,6 +1007,9 @@ export async function execClaudeWithCLIProxy(
 
   const webSearchEnv = getWebSearchHookEnv();
   logEnvironment(env, webSearchEnv, verbose);
+  if (imageAnalysisWarning) {
+    console.error(info(imageAnalysisWarning));
+  }
 
   // 11b. Print thinking status feedback (TTY only, non-piped sessions)
   if (process.stderr.isTTY) {
@@ -1009,21 +1072,29 @@ export async function execClaudeWithCLIProxy(
     : getProviderSettingsPath(provider);
 
   let claude: ChildProcess;
+  const launchArgs = ['--settings', settingsPath, ...appendThirdPartyWebSearchToolArgs(claudeArgs)];
+  const traceEnv = createWebSearchTraceContext({
+    launcher: 'cliproxy.executor',
+    args: launchArgs,
+    profile: cfg.profileName || provider,
+    profileType: 'cliproxy',
+    settingsPath,
+    claudeConfigDir: inheritedClaudeConfigDir,
+  });
+  const tracedEnv = { ...env, ...traceEnv };
   if (needsShell) {
-    const cmdString = [claudeCli, '--settings', settingsPath, ...claudeArgs]
-      .map(escapeShellArg)
-      .join(' ');
+    const cmdString = [claudeCli, ...launchArgs].map(escapeShellArg).join(' ');
     claude = spawn(cmdString, {
       stdio: 'inherit',
       windowsHide: true,
       shell: true,
-      env,
+      env: tracedEnv,
     });
   } else {
-    claude = spawn(claudeCli, ['--settings', settingsPath, ...claudeArgs], {
+    claude = spawn(claudeCli, launchArgs, {
       stdio: 'inherit',
       windowsHide: true,
-      env,
+      env: tracedEnv,
     });
   }
 

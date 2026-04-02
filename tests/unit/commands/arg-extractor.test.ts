@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { extractOption, hasAnyFlag } from '../../../src/commands/arg-extractor';
+import { extractOption, hasAnyFlag, scanCommandArgs } from '../../../src/commands/arg-extractor';
 
 describe('arg-extractor', () => {
   describe('extractOption', () => {
@@ -70,10 +70,39 @@ describe('arg-extractor', () => {
       });
     });
 
+    it('accepts long dash-prefixed values when allowLongDashValue is enabled', () => {
+      const result = extractOption(['--out', '--snapshot.json', '--yes'], ['--out'], {
+        allowDashValue: true,
+        allowLongDashValue: true,
+        knownFlags: ['--out', '--yes'],
+      });
+
+      expect(result).toEqual({
+        found: true,
+        value: '--snapshot.json',
+        missingValue: false,
+        remainingArgs: ['--yes'],
+      });
+    });
+
     it('still treats known flags as missing when allowDashValue is enabled', () => {
       const result = extractOption(['--model', '--yes', 'prompt'], ['--model'], {
         allowDashValue: true,
         knownFlags: ['--model', '--yes'],
+      });
+
+      expect(result).toEqual({
+        found: true,
+        missingValue: true,
+        remainingArgs: ['--yes', 'prompt'],
+      });
+    });
+
+    it('still treats known long flags as missing when allowLongDashValue is enabled', () => {
+      const result = extractOption(['--out', '--yes', 'prompt'], ['--out'], {
+        allowDashValue: true,
+        allowLongDashValue: true,
+        knownFlags: ['--out', '--yes'],
       });
 
       expect(result).toEqual({
@@ -131,6 +160,64 @@ describe('arg-extractor', () => {
     it('returns false for non-truthy or unrelated inline tokens', () => {
       expect(hasAnyFlag(['prompt', '--yes=false'], ['--yes', '-y'])).toBe(false);
       expect(hasAnyFlag(['prompt', '--profile=gemini'], ['--yes', '-y'])).toBe(false);
+    });
+  });
+
+  describe('scanCommandArgs', () => {
+    it('collects positionals and unknown flags while ignoring known boolean flags', () => {
+      const result = scanCommandArgs(['profile-a', '--yes', '--bogus', 'extra'], {
+        knownFlags: ['--yes'],
+      });
+
+      expect(result).toEqual({
+        positionals: ['profile-a', 'extra'],
+        unknownFlags: ['--bogus'],
+      });
+    });
+
+    it('skips values for known value flags', () => {
+      const result = scanCommandArgs(['--model', 'claude-3-7-sonnet', 'profile-a', '--force'], {
+        knownFlags: ['--model', '--force'],
+        valueFlags: ['--model'],
+      });
+
+      expect(result).toEqual({
+        positionals: ['profile-a'],
+        unknownFlags: [],
+      });
+    });
+
+    it('preserves option-terminator positionals', () => {
+      const result = scanCommandArgs(['--yes', '--', '--literal-name'], {
+        knownFlags: ['--yes'],
+      });
+
+      expect(result).toEqual({
+        positionals: ['--literal-name'],
+        unknownFlags: [],
+      });
+    });
+
+    it('consumes single-dash values but not long-flag lookalikes when allowDashValue is enabled', () => {
+      const singleDashValue = scanCommandArgs(['--model', '-preview', '--yes'], {
+        knownFlags: ['--model', '--yes'],
+        valueFlags: ['--model'],
+        allowDashValue: true,
+      });
+      const longFlagLookalike = scanCommandArgs(['--model', '--target', 'droid'], {
+        knownFlags: ['--model', '--target'],
+        valueFlags: ['--model'],
+        allowDashValue: true,
+      });
+
+      expect(singleDashValue).toEqual({
+        positionals: [],
+        unknownFlags: [],
+      });
+      expect(longFlagLookalike).toEqual({
+        positionals: ['droid'],
+        unknownFlags: [],
+      });
     });
   });
 });

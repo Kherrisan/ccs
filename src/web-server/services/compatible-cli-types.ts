@@ -1,3 +1,28 @@
+import type { CompatibleCliDocsReference } from '../../shared/compatible-cli-contracts';
+
+export type {
+  CompatibleCliDocLink,
+  CompatibleCliDocsReference,
+  CompatibleCliProviderDocLink,
+  CodexBinaryDiagnostics,
+  CodexBinarySource,
+  CodexConfigFileDiagnostics,
+  CodexConfigPatchInput,
+  CodexConfigPatchResult,
+  CodexDashboardDiagnostics,
+  CodexFeatureFlagDiagnostics,
+  CodexMcpServerDiagnostics,
+  CodexMcpServerPatchValues,
+  CodexModelProviderDiagnostics,
+  CodexModelProviderPatchValues,
+  CodexProfilePatchValues,
+  CodexProjectTrustDiagnostics,
+  CodexRawConfigResponse,
+  CodexSupportMatrixEntry,
+  CodexTopLevelSettingsPatch,
+  CodexUserConfigDiagnostics,
+} from '../../shared/compatible-cli-contracts';
+
 export type DroidBinarySource = 'CCS_DROID_PATH' | 'PATH' | 'missing';
 
 export interface DroidBinaryDiagnostics {
@@ -42,30 +67,6 @@ export interface DroidByokDiagnostics {
   invalidModelEntryCount: number;
   providerBreakdown: Record<string, number>;
   customModels: DroidCustomModelDiagnostics[];
-}
-
-export interface CompatibleCliDocLink {
-  id: string;
-  label: string;
-  url: string;
-  category: 'overview' | 'configuration' | 'byok' | 'reference';
-  source: 'factory' | 'provider';
-  description: string;
-}
-
-export interface CompatibleCliProviderDocLink {
-  provider: string;
-  label: string;
-  apiFormat: string;
-  url: string;
-}
-
-export interface CompatibleCliDocsReference {
-  providerValues: string[];
-  settingsHierarchy: string[];
-  notes: string[];
-  links: CompatibleCliDocLink[];
-  providerDocs: CompatibleCliProviderDocLink[];
 }
 
 export interface DroidDashboardDiagnostics {

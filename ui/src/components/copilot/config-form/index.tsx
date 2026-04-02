@@ -9,8 +9,9 @@
 
 /* eslint-disable react-refresh/only-export-components */
 import { Skeleton } from '@/components/ui/skeleton';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Code2 } from 'lucide-react';
+import { AlertTriangle, Code2 } from 'lucide-react';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 
 import { HeaderSection } from './header-section';
@@ -43,6 +44,7 @@ export function CopilotConfigForm() {
     haikuModel,
     isRawJsonValid,
     hasChanges,
+    normalizationWarnings,
     conflictDialog,
     updateField,
     applyPreset,
@@ -76,6 +78,26 @@ export function CopilotConfigForm() {
         onRefresh={() => refetchRawSettings()}
         onSave={handleSave}
       />
+
+      {normalizationWarnings.length > 0 && (
+        <div className="px-6 pt-4 shrink-0">
+          <Alert variant="warning">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle>Deprecated Copilot models detected</AlertTitle>
+            <AlertDescription className="space-y-2">
+              <p>
+                Loading this page did not rewrite your files. Save the Copilot configuration to
+                persist these replacements.
+              </p>
+              <div className="space-y-1">
+                {normalizationWarnings.map((warning) => (
+                  <p key={warning.message}>{warning.message}</p>
+                ))}
+              </div>
+            </AlertDescription>
+          </Alert>
+        </div>
+      )}
 
       {/* Split Layout */}
       <div className="flex-1 flex divide-x overflow-hidden">

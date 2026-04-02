@@ -2,7 +2,7 @@
  * React Query hook for CLIProxyAPI stats
  */
 
-import { useQuery } from '@tanstack/react-query';
+import { useQueries, useQuery } from '@tanstack/react-query';
 import type {
   ModelQuota,
   QuotaResult,
@@ -15,7 +15,11 @@ import type { UnifiedQuotaResult } from '@/lib/utils';
 
 /** Per-account usage statistics */
 export interface AccountUsageStats {
-  /** Account email or identifier */
+  /** Provider-qualified lookup key (for example: "codex:user@example.com") */
+  accountKey?: string;
+  /** Canonical provider name reported by CLIProxyAPI */
+  provider?: string;
+  /** Raw account email or identifier */
   source: string;
   /** Number of successful requests */
   successCount: number;
@@ -330,6 +334,21 @@ async function fetchGhcpQuotaApi(accountId: string): Promise<GhcpQuotaResult> {
 // Re-export unified type from utils for consumers
 export type { UnifiedQuotaResult } from '@/lib/utils';
 
+function getAccountQuotaQueryOptions(provider: string, accountId: string, enabled = true) {
+  const canonicalProvider = normalizeQuotaProvider(provider);
+
+  return {
+    queryKey: ['account-quota', canonicalProvider ?? provider, accountId],
+    queryFn: () => fetchQuotaByProvider(canonicalProvider ?? provider, accountId),
+    enabled: enabled && !!canonicalProvider && !!accountId,
+    staleTime: 60000,
+    refetchInterval: 60000,
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
+    retry: 1 as const,
+  };
+}
+
 /**
  * Fetch quota by provider (dispatcher)
  */
@@ -361,16 +380,16 @@ async function fetchQuotaByProvider(
  * Supports agy, codex, claude, gemini, and ghcp providers
  */
 export function useAccountQuota(provider: string, accountId: string, enabled = true) {
-  const canonicalProvider = normalizeQuotaProvider(provider);
+  return useQuery(getAccountQuotaQueryOptions(provider, accountId, enabled));
+}
 
-  return useQuery({
-    queryKey: ['account-quota', canonicalProvider ?? provider, accountId],
-    queryFn: () => fetchQuotaByProvider(canonicalProvider ?? provider, accountId),
-    enabled: enabled && !!canonicalProvider && !!accountId,
-    staleTime: 60000, // Match refetchInterval to prevent early refetching
-    refetchInterval: 60000, // Refresh every 1 minute
-    refetchOnWindowFocus: false, // Don't refetch on tab switch
-    refetchOnMount: false, // Don't refetch on component remount (AuthMonitor re-renders)
-    retry: 1,
+export function useAccountQuotas(
+  accounts: Array<{ provider: string; accountId: string }>,
+  enabled = true
+) {
+  return useQueries({
+    queries: accounts.map((account) =>
+      getAccountQuotaQueryOptions(account.provider, account.accountId, enabled)
+    ),
   });
 }

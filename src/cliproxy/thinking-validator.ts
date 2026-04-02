@@ -7,8 +7,9 @@
  * - Warns when model doesn't support thinking
  */
 
-import { getModelThinkingSupport, ThinkingSupport } from './model-catalog';
-import { CLIProxyProvider } from './types';
+import { getModelThinkingSupport } from './model-catalog';
+import type { ThinkingSupport } from './model-catalog';
+import type { CLIProxyProvider } from './types';
 
 /**
  * Thinking budget bounds (used for validation across API and CLI)
@@ -380,6 +381,32 @@ function validateLevelThinking(
       closest,
       `Level "${value}" not valid for ${modelId}. Mapped to "${closest}".`
     );
+  }
+
+  // If the input is a standard named level but this model only supports a subset,
+  // choose the highest supported level that does not exceed the requested intensity.
+  const requestedRank = THINKING_LEVEL_RANK[normalizedLevel];
+  if (requestedRank && validLevels.length > 0) {
+    const rankedValidLevels = validLevels
+      .filter((level) => THINKING_LEVEL_RANK[level] !== undefined)
+      .sort((a, b) => (THINKING_LEVEL_RANK[a] ?? 0) - (THINKING_LEVEL_RANK[b] ?? 0));
+
+    if (rankedValidLevels.length > 0) {
+      let mappedLevel = rankedValidLevels[0];
+      for (const level of rankedValidLevels) {
+        const levelRank = THINKING_LEVEL_RANK[level] ?? 0;
+        if (levelRank <= requestedRank) {
+          mappedLevel = level;
+          continue;
+        }
+        break;
+      }
+
+      return applyMaxCap(
+        mappedLevel,
+        `Level "${value}" mapped to "${mappedLevel}" for ${modelId} (available: ${validLevels.join(', ')}).`
+      );
+    }
   }
 
   // Try to map from standard level names to model's levels

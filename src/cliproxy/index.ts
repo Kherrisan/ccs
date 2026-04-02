@@ -100,6 +100,11 @@ export {
   configureProviderModel,
   showCurrentConfig,
 } from './model-config';
+export {
+  getDefaultCodexModel,
+  getFreePlanFallbackCodexModel,
+  reconcileCodexModelForActivePlan,
+} from './codex-plan-compatibility';
 
 // Executor
 export { execClaudeWithCLIProxy, isPortAvailable, findAvailablePort } from './cliproxy-executor';
@@ -137,6 +142,23 @@ export {
   OPENROUTER_TEMPLATE,
   TOGETHER_TEMPLATE,
 } from './openai-compat-manager';
+
+// AI provider management
+export type {
+  AiProviderFamilyId,
+  AiProviderFamilyState,
+  AiProviderEntryView,
+  ListAiProvidersResult,
+  UpsertAiProviderEntryInput,
+} from './ai-providers';
+export {
+  AI_PROVIDER_FAMILY_DEFINITIONS,
+  AI_PROVIDER_FAMILY_IDS,
+  listAiProviders,
+  createAiProviderEntry,
+  updateAiProviderEntry,
+  deleteAiProviderEntry,
+} from './ai-providers';
 
 // Service manager (background CLIProxy for dashboard)
 export type { ServiceStartResult } from './service-manager';

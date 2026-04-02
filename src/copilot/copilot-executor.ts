@@ -8,29 +8,49 @@
 import { spawn } from 'child_process';
 import { CopilotConfig } from '../config/unified-config-types';
 import { getGlobalEnvConfig } from '../config/unified-config-loader';
+import { ensureCliproxyService } from '../cliproxy';
+import { CLIPROXY_DEFAULT_PORT } from '../cliproxy/config/port-manager';
 import { checkAuthStatus, isCopilotApiInstalled } from './copilot-auth';
 import { isDaemonRunning, startDaemon } from './copilot-daemon';
 import { ensureCopilotApi } from './copilot-package-manager';
+import { normalizeCopilotConfigWithWarnings } from './copilot-model-normalizer';
 import { CopilotStatus } from './types';
-import { fail, info, ok } from '../utils/ui';
-import { getWebSearchHookEnv } from '../utils/websearch-manager';
-import { getImageAnalysisHookEnv } from '../utils/hooks';
+import { fail, info, ok, warn } from '../utils/ui';
+import {
+  getWebSearchHookEnv,
+  appendThirdPartyWebSearchToolArgs,
+  createWebSearchTraceContext,
+  syncWebSearchMcpToConfigDir,
+} from '../utils/websearch-manager';
+import { getImageAnalysisHookEnv, resolveImageAnalysisRuntimeStatus } from '../utils/hooks';
 import { stripClaudeCodeEnv } from '../utils/shell-executor';
+
+interface CopilotImageAnalysisDeps {
+  ensureCliproxyService: typeof ensureCliproxyService;
+  getImageAnalysisHookEnv: typeof getImageAnalysisHookEnv;
+  resolveImageAnalysisRuntimeStatus: typeof resolveImageAnalysisRuntimeStatus;
+}
+
+interface CopilotImageAnalysisResolution {
+  env: Record<string, string>;
+  warning: string | null;
+}
 
 /**
  * Get full copilot status (auth + daemon).
  */
 export async function getCopilotStatus(config: CopilotConfig): Promise<CopilotStatus> {
+  const normalizedConfig = normalizeCopilotConfigWithWarnings(config).config;
   const [auth, daemonRunning] = await Promise.all([
     checkAuthStatus(),
-    isDaemonRunning(config.port),
+    isDaemonRunning(normalizedConfig.port),
   ]);
 
   return {
     auth,
     daemon: {
       running: daemonRunning,
-      port: config.port,
+      port: normalizedConfig.port,
     },
   };
 }
@@ -43,17 +63,19 @@ export function generateCopilotEnv(
   config: CopilotConfig,
   claudeConfigDir?: string
 ): Record<string, string> {
+  const normalizedConfig = normalizeCopilotConfigWithWarnings(config).config;
+
   // Use mapped models if configured, otherwise fall back to default model
-  const opusModel = config.opus_model || config.model;
-  const sonnetModel = config.sonnet_model || config.model;
-  const haikuModel = config.haiku_model || config.model;
+  const opusModel = normalizedConfig.opus_model || normalizedConfig.model;
+  const sonnetModel = normalizedConfig.sonnet_model || normalizedConfig.model;
+  const haikuModel = normalizedConfig.haiku_model || normalizedConfig.model;
 
   // Use 127.0.0.1 instead of localhost for more reliable local connections
   // (bypasses DNS resolution and potential IPv6 issues)
   return {
-    ANTHROPIC_BASE_URL: `http://127.0.0.1:${config.port}`,
+    ANTHROPIC_BASE_URL: `http://127.0.0.1:${normalizedConfig.port}`,
     ANTHROPIC_AUTH_TOKEN: 'dummy', // copilot-api handles auth internally
-    ANTHROPIC_MODEL: config.model,
+    ANTHROPIC_MODEL: normalizedConfig.model,
     // Model tier mapping - allows different models for opus/sonnet/haiku
     ANTHROPIC_DEFAULT_OPUS_MODEL: opusModel,
     ANTHROPIC_DEFAULT_SONNET_MODEL: sonnetModel,
@@ -64,6 +86,62 @@ export function generateCopilotEnv(
     CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
     ...(claudeConfigDir ? { CLAUDE_CONFIG_DIR: claudeConfigDir } : {}),
   };
+}
+
+export async function resolveCopilotImageAnalysisEnv(
+  verbose = false,
+  deps: Partial<CopilotImageAnalysisDeps> = {}
+): Promise<CopilotImageAnalysisResolution> {
+  const resolvedDeps: CopilotImageAnalysisDeps = {
+    ensureCliproxyService,
+    getImageAnalysisHookEnv,
+    resolveImageAnalysisRuntimeStatus,
+    ...deps,
+  };
+
+  const env = resolvedDeps.getImageAnalysisHookEnv({
+    profileName: 'copilot',
+    profileType: 'copilot',
+  });
+  const provider = env['CCS_CURRENT_PROVIDER'];
+  if (env['CCS_IMAGE_ANALYSIS_SKIP'] === '1' || !provider) {
+    return { env, warning: null };
+  }
+
+  const status = await resolvedDeps.resolveImageAnalysisRuntimeStatus({
+    profileName: 'copilot',
+    profileType: 'copilot',
+  });
+
+  if (status.effectiveRuntimeMode === 'native-read') {
+    return {
+      env: {
+        ...env,
+        CCS_CURRENT_PROVIDER: '',
+        CCS_IMAGE_ANALYSIS_SKIP: '1',
+      },
+      warning: `${status.effectiveRuntimeReason || `Image analysis via ${provider} is unavailable.`} This session will use native Read.`,
+    };
+  }
+
+  if (status.proxyReadiness === 'stopped') {
+    const ensureServiceResult = await resolvedDeps.ensureCliproxyService(
+      CLIPROXY_DEFAULT_PORT,
+      verbose
+    );
+    if (!ensureServiceResult.started) {
+      return {
+        env: {
+          ...env,
+          CCS_CURRENT_PROVIDER: '',
+          CCS_IMAGE_ANALYSIS_SKIP: '1',
+        },
+        warning: `Image analysis via ${provider} is unavailable because CCS could not start the local CLIProxy service. This session will use native Read.`,
+      };
+    }
+  }
+
+  return { env, warning: null };
 }
 
 /**
@@ -79,6 +157,16 @@ export async function executeCopilotProfile(
   claudeConfigDir?: string,
   claudeCliPath: string = 'claude'
 ): Promise<number> {
+  const { config: normalizedConfig, warnings } = normalizeCopilotConfigWithWarnings(config);
+
+  if (warnings.length > 0) {
+    warnings.forEach(({ message }) => console.log(warn(message)));
+    console.log(
+      warn('Run `ccs config` and save the Copilot section to persist these replacements.')
+    );
+    console.log('');
+  }
+
   // Ensure copilot-api is installed (auto-install if missing, auto-update if outdated)
   try {
     await ensureCopilotApi();
@@ -111,17 +199,17 @@ export async function executeCopilotProfile(
   }
 
   // Check if daemon is running or needs to be started
-  let daemonRunning = await isDaemonRunning(config.port);
+  let daemonRunning = await isDaemonRunning(normalizedConfig.port);
 
   if (!daemonRunning) {
-    if (config.auto_start) {
+    if (normalizedConfig.auto_start) {
       console.log(info('Starting copilot-api daemon...'));
-      const result = await startDaemon(config);
+      const result = await startDaemon(normalizedConfig);
       if (!result.success) {
         console.error(fail(`Failed to start daemon: ${result.error}`));
         return 1;
       }
-      console.log(ok(`Daemon started on port ${config.port}`));
+      console.log(ok(`Daemon started on port ${normalizedConfig.port}`));
       daemonRunning = true;
     } else {
       console.error(fail('copilot-api daemon is not running.'));
@@ -129,7 +217,7 @@ export async function executeCopilotProfile(
       console.error('Start the daemon:');
       console.error('  ccs copilot start');
       console.error('Fallback manual command:');
-      console.error(`  npx copilot-api start --port ${config.port}`);
+      console.error(`  npx copilot-api start --port ${normalizedConfig.port}`);
       console.error('');
       console.error('Or enable auto_start in config:');
       console.error('  ccs config  (then enable auto_start in Copilot section)');
@@ -138,7 +226,7 @@ export async function executeCopilotProfile(
   }
 
   // Generate environment for Claude
-  const copilotEnv = generateCopilotEnv(config, claudeConfigDir);
+  const copilotEnv = generateCopilotEnv(normalizedConfig, claudeConfigDir);
 
   // Get global env vars (DISABLE_TELEMETRY, etc.) for third-party profiles
   const globalEnvConfig = getGlobalEnvConfig();
@@ -146,7 +234,8 @@ export async function executeCopilotProfile(
 
   // Merge with current environment (global env first, copilot overrides, then hook env vars)
   const webSearchEnv = getWebSearchHookEnv();
-  const imageAnalysisEnv = getImageAnalysisHookEnv('copilot');
+  const { env: imageAnalysisEnv, warning: imageAnalysisWarning } =
+    await resolveCopilotImageAnalysisEnv();
   const env = stripClaudeCodeEnv({
     ...process.env,
     ...globalEnv,
@@ -156,14 +245,28 @@ export async function executeCopilotProfile(
     CCS_PROFILE_TYPE: 'copilot',
   });
 
-  console.log(info(`Using GitHub Copilot proxy (model: ${config.model})`));
+  console.log(info(`Using GitHub Copilot proxy (model: ${normalizedConfig.model})`));
+  if (imageAnalysisWarning) {
+    console.log(info(imageAnalysisWarning));
+  }
   console.log('');
+
+  syncWebSearchMcpToConfigDir(claudeConfigDir);
 
   // Spawn Claude CLI
   return new Promise((resolve) => {
-    const proc = spawn(claudeCliPath, claudeArgs, {
+    const launchArgs = appendThirdPartyWebSearchToolArgs(claudeArgs);
+    const traceEnv = createWebSearchTraceContext({
+      launcher: 'copilot.executor',
+      args: launchArgs,
+      profile: 'copilot',
+      profileType: 'copilot',
+      claudeConfigDir,
+    });
+
+    const proc = spawn(claudeCliPath, launchArgs, {
       stdio: 'inherit',
-      env,
+      env: { ...env, ...traceEnv },
       shell: process.platform === 'win32',
     });
 

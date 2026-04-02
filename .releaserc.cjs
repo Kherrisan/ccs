@@ -20,6 +20,7 @@ const commitAnalyzer = [
   {
     preset: 'conventionalcommits',
     releaseRules: [
+      { type: 'hotfix', release: 'patch' },
       { type: 'docs', scope: 'README', release: 'patch' },
       { type: 'refactor', release: 'patch' },
       { type: 'style', release: 'patch' },
@@ -35,6 +36,7 @@ const releaseNotesGenerator = [
       types: [
         { type: 'feat', section: 'Features' },
         { type: 'fix', section: 'Bug Fixes' },
+        { type: 'hotfix', section: 'Hotfixes' },
         { type: 'docs', section: 'Documentation' },
         { type: 'style', section: 'Styles' },
         { type: 'refactor', section: 'Code Refactoring' },

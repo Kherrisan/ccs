@@ -116,7 +116,7 @@ sudo cp scripts/completion/ccs.fish /usr/share/fish/vendor_completions.d/
 
 ```bash
 $ ccs <TAB>
-auth      doctor    glm       glmt      kimi      work      personal  --help    --version
+auth      doctor    glm       kimi      work      personal  --help    --version
 
 $ ccs auth <TAB>
 create    list      show      remove    default   --help

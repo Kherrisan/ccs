@@ -5,7 +5,7 @@
  */
 
 import { info, ok, color, box, initUI } from '../utils/ui';
-import { uninstallWebSearchHook } from '../utils/websearch';
+import { uninstallWebSearchHook, uninstallWebSearchMcp } from '../utils/websearch';
 import { ClaudeSymlinkManager } from '../utils/claude-symlink-manager';
 
 /**
@@ -42,12 +42,19 @@ export async function handleUninstallCommand(): Promise<void> {
     removed += 1; // Count as 1 item (the hook file)
   }
 
-  // 2. Remove symlinks from ~/.claude/
+  // 2. Remove managed WebSearch MCP runtime/config
+  const mcpRemoved = uninstallWebSearchMcp();
+  if (mcpRemoved) {
+    console.log(ok('Removed WebSearch MCP runtime'));
+    removed += 1;
+  }
+
+  // 3. Remove symlinks from ~/.claude/
   const symlinkManager = new ClaudeSymlinkManager();
   const symlinksRemoved = symlinkManager.uninstall();
   removed += symlinksRemoved; // Add actual count of symlinks removed
 
-  // 3. Summary
+  // 4. Summary
   console.log('');
   if (removed > 0) {
     console.log(ok('Uninstall complete!'));

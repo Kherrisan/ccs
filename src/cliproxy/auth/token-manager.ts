@@ -11,6 +11,8 @@ import { CLIProxyProvider } from '../types';
 import { CLIPROXY_PROFILES } from '../../auth/profile-detector';
 import { getProviderAuthDir } from '../config-generator';
 import { getProviderAccounts, getDefaultAccount } from '../account-manager';
+import { deleteTokenFile, extractAccountIdFromTokenFile } from '../accounts/token-file-ops';
+import { buildEmailBackedAccountId } from '../accounts/email-account-identity';
 import {
   AuthStatus,
   PROVIDER_AUTH_PREFIXES,
@@ -202,50 +204,137 @@ export function registerAccountFromToken(
   provider: CLIProxyProvider,
   tokenDir: string,
   nickname?: string,
-  verbose = false
+  verbose = false,
+  expectedAccountId?: string
 ): import('../account-manager').AccountInfo | null {
-  const { registerAccount, generateNickname } = require('../account-manager');
+  type TokenCandidate = {
+    file: string;
+    filePath: string;
+    email?: string;
+    projectId?: string;
+    accountId: string;
+    mtimeMs: number;
+    alreadyRegistered: boolean;
+  };
+  type RawTokenCandidate = Omit<TokenCandidate, 'accountId'>;
+
+  const { registerAccount } = require('../account-manager');
+  let selectedCandidate: Omit<TokenCandidate, 'mtimeMs'> | null = null;
   try {
     const files = fs.readdirSync(tokenDir);
     const jsonFiles = files.filter((f: string) => f.endsWith('.json'));
-
-    let newestFile: string | null = null;
-    let newestMtime = 0;
-
-    for (const file of jsonFiles) {
+    const existingAccounts = getProviderAccounts(provider);
+    const rawCandidates: RawTokenCandidate[] = jsonFiles.flatMap((file) => {
       const filePath = path.join(tokenDir, file);
-      if (!isTokenFileForProvider(filePath, provider)) continue;
+      if (!isTokenFileForProvider(filePath, provider)) return [];
 
+      const content = fs.readFileSync(filePath, 'utf-8');
+      const data = JSON.parse(content) as { email?: string; project_id?: string };
+      const email = data.email || undefined;
+      const projectId = data.project_id || undefined;
       const stats = fs.statSync(filePath);
-      if (stats.mtimeMs > newestMtime) {
-        newestMtime = stats.mtimeMs;
-        newestFile = file;
-      }
+
+      return [
+        {
+          file,
+          filePath,
+          email,
+          projectId,
+          mtimeMs: stats.mtimeMs,
+          alreadyRegistered: existingAccounts.some((account) => account.tokenFile === file),
+        },
+      ];
+    });
+    const duplicateEmailCounts = new Map<string, number>();
+    const duplicateEmailTokenSets = new Map<string, Set<string>>();
+    for (const account of existingAccounts) {
+      if (!account.email) continue;
+      const key = account.email.toLowerCase();
+      const tokenSet = duplicateEmailTokenSets.get(key) ?? new Set<string>();
+      tokenSet.add(account.tokenFile);
+      duplicateEmailTokenSets.set(key, tokenSet);
+    }
+    for (const candidate of rawCandidates) {
+      if (!candidate.email) continue;
+      const key = candidate.email.toLowerCase();
+      const tokenSet = duplicateEmailTokenSets.get(key) ?? new Set<string>();
+      tokenSet.add(candidate.file);
+      duplicateEmailTokenSets.set(key, tokenSet);
+    }
+    for (const [key, tokenSet] of duplicateEmailTokenSets) {
+      duplicateEmailCounts.set(key, tokenSet.size);
+    }
+    const candidates: TokenCandidate[] = rawCandidates
+      .map((rawCandidate) => {
+        const duplicateEmailCount = rawCandidate.email
+          ? (duplicateEmailCounts.get(rawCandidate.email.toLowerCase()) ?? 1)
+          : 1;
+        const accountId = rawCandidate.email
+          ? buildEmailBackedAccountId(
+              provider,
+              rawCandidate.file,
+              rawCandidate.email,
+              duplicateEmailCount
+            )
+          : extractAccountIdFromTokenFile(rawCandidate.file, rawCandidate.email);
+
+        return {
+          ...rawCandidate,
+          accountId,
+        };
+      })
+      .sort((a, b) => b.mtimeMs - a.mtimeMs);
+
+    if (expectedAccountId) {
+      selectedCandidate =
+        candidates.find((candidate) => candidate.accountId === expectedAccountId) ||
+        candidates.find((candidate) => candidate.file === expectedAccountId) ||
+        candidates.find((candidate) => {
+          const existingAccount = existingAccounts.find(
+            (account) => account.id === expectedAccountId
+          );
+          return !!existingAccount && existingAccount.tokenFile === candidate.file;
+        }) ||
+        null;
+    } else {
+      selectedCandidate = candidates[0] || null;
     }
 
-    if (!newestFile) {
+    if (!selectedCandidate) {
+      if (verbose && expectedAccountId) {
+        console.error(
+          `[auth] No token matched the expected account ${expectedAccountId}; refusing ambiguous registration`
+        );
+      }
       return null;
     }
 
-    const tokenPath = path.join(tokenDir, newestFile);
-    const content = fs.readFileSync(tokenPath, 'utf-8');
-    const data = JSON.parse(content);
-    const email = data.email || undefined;
-    const projectId = data.project_id || undefined;
-
     const account = registerAccount(
       provider,
-      newestFile,
-      email,
-      nickname || generateNickname(email),
-      projectId
+      selectedCandidate.file,
+      selectedCandidate.email,
+      nickname,
+      selectedCandidate.projectId
     );
 
-    // Upload token to remote server if configured (async, don't block)
-    uploadTokenToRemoteAsync(tokenPath, verbose);
-
+    uploadTokenToRemoteAsync(selectedCandidate.filePath, verbose);
     return account;
-  } catch {
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (verbose) {
+      console.error(`[auth] Failed to register token-backed account: ${message}`);
+    }
+
+    if (selectedCandidate && !selectedCandidate.alreadyRegistered && !expectedAccountId) {
+      deleteTokenFile(selectedCandidate.file);
+    }
+
+    if (expectedAccountId && verbose) {
+      console.error(
+        `[auth] Reauthentication target ${expectedAccountId} did not resolve cleanly from the new token`
+      );
+    }
+
     return null;
   }
 }

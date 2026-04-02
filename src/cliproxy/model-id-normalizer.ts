@@ -5,15 +5,11 @@
  * model version formats (e.g., 4.6 vs 4-6).
  */
 
-import { CLIProxyProvider } from './types';
+import type { CLIProxyProvider } from './types';
+import { ANTHROPIC_MODEL_ENV_KEYS } from '../shared/extended-context-utils';
 
 /** Env vars that carry model identifiers. */
-export const MODEL_ENV_VAR_KEYS = [
-  'ANTHROPIC_MODEL',
-  'ANTHROPIC_DEFAULT_OPUS_MODEL',
-  'ANTHROPIC_DEFAULT_SONNET_MODEL',
-  'ANTHROPIC_DEFAULT_HAIKU_MODEL',
-] as const;
+export const MODEL_ENV_VAR_KEYS = ANTHROPIC_MODEL_ENV_KEYS;
 
 type ProviderLike = CLIProxyProvider | string | null | undefined;
 

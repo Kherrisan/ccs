@@ -32,7 +32,7 @@ export type {
   DelegationEvent,
 } from './delegation';
 
-// GLMT types
+// Legacy GLMT transformer types
 export type {
   AnthropicMessage,
   ContentBlock,
