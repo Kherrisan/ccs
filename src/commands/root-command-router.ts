@@ -16,7 +16,7 @@ async function printUpdateCommandHelp(): Promise<void> {
   console.log('');
 }
 
-const ROOT_COMMAND_ROUTES: readonly NamedCommandRoute[] = [
+export const ROOT_COMMAND_ROUTES: readonly NamedCommandRoute[] = [
   {
     name: 'migrate',
     aliases: ['--migrate'],
@@ -55,9 +55,9 @@ const ROOT_COMMAND_ROUTES: readonly NamedCommandRoute[] = [
   {
     name: 'help',
     aliases: ['--help', '-h'],
-    handle: async () => {
-      const { handleHelpCommand } = await import('./help-command');
-      await handleHelpCommand();
+    handle: async (args) => {
+      const { handleHelpRoute } = await import('./help-command');
+      await handleHelpRoute(args);
     },
   },
   {
@@ -80,6 +80,13 @@ const ROOT_COMMAND_ROUTES: readonly NamedCommandRoute[] = [
     handle: async (args) => {
       const { handleShellCompletionCommand } = await import('./shell-completion-command');
       await handleShellCompletionCommand(args);
+    },
+  },
+  {
+    name: '__complete',
+    handle: async (args) => {
+      const { handleCompletionCommand } = await import('./completion-backend');
+      await handleCompletionCommand(args);
     },
   },
   {

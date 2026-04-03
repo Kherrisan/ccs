@@ -205,8 +205,10 @@ export async function fetchModelsFromDaemon(port: number): Promise<CursorModel[]
           data += chunk;
           if (data.length > MAX_BODY_SIZE) {
             debugLog('Cursor daemon /v1/models body exceeded 1MB; falling back to defaults');
+            res.destroy();
             req.destroy();
             safeResolve(DEFAULT_CURSOR_MODELS);
+            return;
           }
         });
 

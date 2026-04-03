@@ -1,6 +1,6 @@
 # CCS Project Roadmap
 
-Last Updated: 2026-04-02
+Last Updated: 2026-04-03
 
 Forward-looking roadmap documenting current priorities, GitHub issues, and future feature plans.
 
@@ -41,6 +41,7 @@ All major modularization work is complete. The codebase evolved from monolithic 
 
 ### Recent Fixes
 
+- **2026-04-03**: CCS CLI help and completion UX was refreshed. Root help is now shorter and task-oriented, `ccs help <topic|command>` routes to topic-aware help, and shell completions now delegate to the hidden `ccs __complete` backend.
 - **2026-04-02**: Third-party image and PDF analysis now follows the same first-class local-tool model as WebSearch. CCS provisions `ccs-image-analysis` as a managed MCP tool, routes requests directly to provider-scoped CCS endpoints such as `/api/provider/agy/v1/messages`, keeps editable prompt templates under `~/.ccs/prompts/image-analysis/`, and demotes the old `Read` hook to a best-effort compatibility fallback. Launches now stay non-fatal and fall back to native `Read` when the managed runtime cannot be prepared.
 - **2026-04-01**: The `Compatible -> Codex CLI` dashboard now exposes manual long-context controls for `model_context_window` and `model_auto_compact_token_limit`. CCS reads and patches those upstream Codex config keys directly, adds official guidance that GPT-5.4 long context is experimental and opt-in, and keeps the behavior manual-only so the dashboard never auto-fills or auto-saves long-context values for the user.
 - **2026-03-30**: **#862** Third-party WebSearch now uses a first-class CCS-managed MCP tool path instead of relying on a denied native Anthropic `WebSearch` call as the normal UX. CCS provisions `ccs-websearch` into `~/.claude.json`, syncs it into isolated account configs when needed, suppresses native `WebSearch` on third-party launches, preserves the provider order `Exa -> Tavily -> Brave -> DuckDuckGo -> legacy CLI fallback`, and keeps the old hook runtime only as shared provider plumbing plus compatibility fallback. Uninstall cleanup now also removes the managed WebSearch MCP runtime.
