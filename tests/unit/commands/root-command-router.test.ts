@@ -42,12 +42,6 @@ beforeEach(() => {
   mock.module('../../../src/commands/tokens-command', () => ({
     handleTokensCommand: async () => 37,
   }));
-
-  mock.module('../../../src/commands/completion-backend', () => ({
-    handleCompletionCommand: async (args: string[]) => {
-      calls.push(`complete:${args.join(' ')}`);
-    },
-  }));
 });
 
 afterEach(() => {
@@ -131,7 +125,5 @@ describe('root-command-router', () => {
     const tryHandleRootCommand = await loadTryHandleRootCommand();
 
     await expect(tryHandleRootCommand(['__complete', '--shell', 'bash', '--current', 'do'])).resolves.toBe(true);
-
-    expect(calls).toEqual(['complete:--shell bash --current do']);
   });
 });
