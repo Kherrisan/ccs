@@ -254,7 +254,11 @@ function formatForShell(
 }
 
 export async function handleCompletionCommand(args: string[]): Promise<void> {
-  const request = parseCompletionArgs(args);
-  const suggestions = getCompletionSuggestions(request);
-  process.stdout.write(formatForShell(request.shell, suggestions).join('\n'));
+  try {
+    const request = parseCompletionArgs(args);
+    const suggestions = getCompletionSuggestions(request);
+    process.stdout.write(formatForShell(request.shell, suggestions).join('\n'));
+  } catch {
+    // Completion must fail closed and quietly so shell TAB does not surface stack traces.
+  }
 }
