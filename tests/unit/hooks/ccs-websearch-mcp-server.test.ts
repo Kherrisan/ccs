@@ -198,6 +198,81 @@ describe('ccs-websearch MCP server', () => {
     }
   });
 
+  it('returns an MCP error result when DuckDuckGo responds with non-result HTML', async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), 'ccs-websearch-mcp-server-'));
+    const preloadPath = join(tempDir, 'mock-fetch.cjs');
+    const html = `
+      <html>
+        <body>
+          <form action="/anomaly.js" method="post">
+            <input type="hidden" name="q" value="btc price" />
+          </form>
+        </body>
+      </html>
+    `.trim();
+    writeFileSync(
+      preloadPath,
+      `global.fetch = async () => ({ ok: true, status: 202, headers: { get: () => null }, text: async () => ${JSON.stringify(html)} });\n`,
+      'utf8'
+    );
+
+    const child = spawn('node', ['-r', preloadPath, serverPath], {
+      env: {
+        ...process.env,
+        CCS_PROFILE_TYPE: 'settings',
+        CCS_WEBSEARCH_ENABLED: '1',
+        CCS_WEBSEARCH_SKIP: '0',
+        CCS_WEBSEARCH_BRAVE: '0',
+        CCS_WEBSEARCH_DUCKDUCKGO: '1',
+        CCS_WEBSEARCH_EXA: '0',
+        CCS_WEBSEARCH_GEMINI: '0',
+        CCS_WEBSEARCH_GROK: '0',
+        CCS_WEBSEARCH_OPENCODE: '0',
+        CCS_WEBSEARCH_TAVILY: '0',
+      },
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+
+    try {
+      const responsesPromise = collectResponses(child, 2);
+      child.stdin.write(
+        encodeMessage({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'initialize',
+          params: {
+            protocolVersion: '2024-11-05',
+            capabilities: {},
+            clientInfo: { name: 'bun-test', version: '1.0.0' },
+          },
+        })
+      );
+      child.stdin.write(
+        encodeMessage({
+          jsonrpc: '2.0',
+          id: 2,
+          method: 'tools/call',
+          params: { name: 'WebSearch', arguments: { query: 'btc price' } },
+        })
+      );
+
+      const responses = await responsesPromise;
+      const toolCall = responses.find((message) => message.id === 2);
+
+      expect(toolCall?.result).toBeDefined();
+      expect((toolCall?.result as { isError: boolean }).isError).toBe(true);
+      expect(
+        ((toolCall?.result as { content: Array<{ text: string }> }).content[0] || {}).text
+      ).toContain('DuckDuckGo returned non-result HTML response');
+      expect(
+        ((toolCall?.result as { content: Array<{ text: string }> }).content[0] || {}).text
+      ).not.toContain('Result count: 0');
+    } finally {
+      child.kill();
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it('accepts the legacy search alias for direct calls', async () => {
     const tempDir = mkdtempSync(join(tmpdir(), 'ccs-websearch-mcp-server-'));
     const preloadPath = join(tempDir, 'mock-fetch.cjs');

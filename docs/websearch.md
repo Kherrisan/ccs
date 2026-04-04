@@ -1,6 +1,6 @@
 # WebSearch Configuration Guide
 
-Last Updated: 2026-03-30
+Last Updated: 2026-04-04
 
 CCS provides automatic web search for third-party profiles that cannot access Anthropic's native WebSearch API.
 
@@ -177,6 +177,7 @@ Queries are fingerprinted (`queryHash`, `queryLength`) instead of logged raw by 
 2. Keep DuckDuckGo enabled unless you have a strong reason to disable it
 3. If using Exa, Tavily, or Brave, verify the matching API key
 4. Run with `CCS_DEBUG=1` for runtime logs, or `CCS_WEBSEARCH_TRACE=1` for correlated launch/MCP/provider traces
+5. If DuckDuckGo returns a non-result HTML error, retry later or enable another provider. CCS now treats that as a provider failure instead of a false empty result.
 
 ## Security Considerations
 

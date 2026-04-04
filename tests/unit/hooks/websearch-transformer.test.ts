@@ -31,6 +31,14 @@ const hook = require('../../../lib/hooks/websearch-transformer.cjs') as {
     providerName: string,
     content: string
   ) => HookOutput;
+  classifyDuckDuckGoHtml: (
+    html: string,
+    count: number
+  ) => {
+    error?: string;
+    kind: 'results' | 'no_results' | 'non_result_html';
+    results: Array<{ title: string; url: string; description: string }>;
+  };
   extractDuckDuckGoResults: (html: string, count: number) => Array<{
     title: string;
     url: string;
@@ -50,17 +58,37 @@ const hook = require('../../../lib/hooks/websearch-transformer.cjs') as {
   parseRetryAfterSeconds: (rawValue: string) => number | null;
 };
 
-function runHookWithMockedFetch(mode: 'success' | 'failure') {
+function runHookWithMockedFetch(mode: 'success' | 'empty' | 'non-result' | 'failure') {
   const tempDir = mkdtempSync(join(tmpdir(), 'websearch-hook-'));
   const preloadPath = join(tempDir, 'mock-fetch.cjs');
-  const html = `
+  const successHtml = `
     <a class="result__a" href="/l/?uddg=https%3A%2F%2Fexample.com%2Farticle">Example title</a>
     <a class="result__snippet">Example snippet</a>
   `.trim();
+  const emptyHtml = `
+    <span class="no-results">
+      <div class="no-results__message">
+        <h1>No results found for <strong>btc price</strong></h1>
+      </div>
+    </span>
+  `.trim();
+  const nonResultHtml = `
+    <html>
+      <body>
+        <form action="/anomaly.js" method="post">
+          <input type="hidden" name="q" value="btc price" />
+        </form>
+      </body>
+    </html>
+  `.trim();
   const preloadScript =
     mode === 'success'
-      ? `global.fetch = async () => ({ ok: true, text: async () => ${JSON.stringify(html)} });\n`
-      : `global.fetch = async () => ({ ok: false, status: 503, text: async () => 'Service unavailable' });\n`;
+      ? `global.fetch = async () => ({ ok: true, status: 200, headers: { get: () => null }, text: async () => ${JSON.stringify(successHtml)} });\n`
+      : mode === 'empty'
+        ? `global.fetch = async () => ({ ok: true, status: 200, headers: { get: () => null }, text: async () => ${JSON.stringify(emptyHtml)} });\n`
+        : mode === 'non-result'
+          ? `global.fetch = async () => ({ ok: true, status: 202, headers: { get: () => null }, text: async () => ${JSON.stringify(nonResultHtml)} });\n`
+          : `global.fetch = async () => ({ ok: false, status: 503, headers: { get: () => null }, text: async () => 'Service unavailable' });\n`;
 
   writeFileSync(preloadPath, preloadScript, 'utf8');
 
@@ -149,6 +177,35 @@ describe('websearch-transformer hook helpers', () => {
     });
   });
 
+  it('distinguishes legitimate DuckDuckGo zero-result pages from unusable HTML', () => {
+    const emptyPage = `
+      <span class="no-results">
+        <div class="no-results__message">
+          <h1>No results found for <strong>btc price</strong></h1>
+        </div>
+      </span>
+    `;
+    const nonResultPage = `
+      <html>
+        <body>
+          <form action="/anomaly.js" method="post">
+            <input type="hidden" name="q" value="btc price" />
+          </form>
+        </body>
+      </html>
+    `;
+
+    expect(hook.classifyDuckDuckGoHtml(emptyPage, 5)).toEqual({
+      kind: 'no_results',
+      results: [],
+    });
+    expect(hook.classifyDuckDuckGoHtml(nonResultPage, 5)).toEqual({
+      kind: 'non_result_html',
+      results: [],
+      error: 'DuckDuckGo returned non-result HTML response (possible anti-bot/challenge page)',
+    });
+  });
+
   it('formats structured search results for hook deny output', () => {
     const formatted = hook.formatStructuredSearchResults('ccs websearch', 'DuckDuckGo', [
       {
@@ -224,6 +281,18 @@ describe('websearch-transformer hook helpers', () => {
     expect(output).not.toHaveProperty('additionalContext');
   });
 
+  it('preserves genuine DuckDuckGo zero-result pages as successful empty searches', () => {
+    const result = runHookWithMockedFetch('empty');
+
+    expect(result.status).toBe(0);
+    expect(result.stderr.trim()).toBe('');
+
+    const output = JSON.parse(result.stdout.trim()) as HookOutput;
+    expect(output.hookSpecificOutput.additionalContext).toContain('Provider: DuckDuckGo');
+    expect(output.hookSpecificOutput.additionalContext).toContain('Result count: 0');
+    expect(output.hookSpecificOutput.additionalContext).toContain('No results found.');
+  });
+
   it('emits runtime failure output with attempted provider details nested under hookSpecificOutput', () => {
     const result = runHookWithMockedFetch('failure');
 
@@ -242,6 +311,20 @@ describe('websearch-transformer hook helpers', () => {
       'Attempted providers: DuckDuckGo: DuckDuckGo returned 503'
     );
     expect(output).not.toHaveProperty('additionalContext');
+  });
+
+  it('treats DuckDuckGo non-result HTML as provider failure instead of fake empty results', () => {
+    const result = runHookWithMockedFetch('non-result');
+
+    expect(result.status).toBe(0);
+    expect(result.stderr.trim()).toBe('');
+
+    const output = JSON.parse(result.stdout.trim()) as HookOutput;
+    expect(output.hookSpecificOutput.permissionDecision).toBe('deny');
+    expect(output.hookSpecificOutput.additionalContext).toContain(
+      'Attempted providers: DuckDuckGo: DuckDuckGo returned non-result HTML response'
+    );
+    expect(output.hookSpecificOutput.additionalContext).not.toContain('Result count: 0');
   });
 
   it('writes opt-in trace records with redacted query fingerprints', () => {
