@@ -11,9 +11,17 @@ Run Claude, Gemini, GLM, and any Anthropic-compatible API - concurrently, withou
 [![npm](https://img.shields.io/npm/v/@kaitranntt/ccs?style=for-the-badge&logo=npm)](https://www.npmjs.com/package/@kaitranntt/ccs)
 [![PoweredBy](https://img.shields.io/badge/PoweredBy-ClaudeKit-C15F3C?style=for-the-badge)](https://claudekit.cc?ref=HMNKXOHN)
 
-**[Features & Pricing](https://ccs.kaitran.ca)** | **[Documentation Hub](https://docs.ccs.kaitran.ca)**
+**[Features](https://ccs.kaitran.ca)** | **[Documentation Hub](https://docs.ccs.kaitran.ca)**
 
 </div>
+
+<br>
+
+## Community Projects
+
+| Project | Author | Description |
+|---------|--------|-------------|
+| [opencode-ccs-sync](https://github.com/JasonLandbridge/opencode-ccs-sync) | [@JasonLandbridge](https://github.com/JasonLandbridge) | Auto-sync CCS providers into OpenCode |
 
 <br>
 
