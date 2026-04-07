@@ -118,7 +118,7 @@ jobs:
     name: Claude Code Review
     needs: prepare
     if: needs.prepare.result == 'success'
-    timeout-minutes: 15
+    timeout-minutes: 20
     runs-on: ${{ fromJSON(needs.prepare.outputs.runs_on) }}
     permissions:
       contents: read
@@ -127,12 +127,12 @@ jobs:
 
     env:
       ANTHROPIC_BASE_URL: https://api.z.ai/api/anthropic
-      REVIEW_MODEL: glm-5-turbo
+      REVIEW_MODEL: glm-5.1
       ANTHROPIC_AUTH_TOKEN: ${{ secrets.GLM_API_KEY }}
-      ANTHROPIC_MODEL: glm-5-turbo
-      ANTHROPIC_DEFAULT_OPUS_MODEL: glm-5-turbo
-      ANTHROPIC_DEFAULT_SONNET_MODEL: glm-5-turbo
-      ANTHROPIC_DEFAULT_HAIKU_MODEL: glm-5-turbo
+      ANTHROPIC_MODEL: glm-5.1
+      ANTHROPIC_DEFAULT_OPUS_MODEL: glm-5.1
+      ANTHROPIC_DEFAULT_SONNET_MODEL: glm-5.1
+      ANTHROPIC_DEFAULT_HAIKU_MODEL: glm-5.1
       DISABLE_BUG_COMMAND: '1'
       DISABLE_ERROR_REPORTING: '1'
       DISABLE_TELEMETRY: '1'
@@ -277,7 +277,7 @@ jobs:
             --bare
             --model ${{ env.REVIEW_MODEL }}
             --permission-mode bypassPermissions
-            --max-turns 40
+            --max-turns 45
             --allowedTools "Read,Bash(gh pr diff:*),Bash(gh pr view:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(cat:*),Bash(ls:*),Bash(wc:*),Bash(head:*),Bash(tail:*),Bash(find:*),Bash(grep:*)"
             --json-schema '${{ env.REVIEW_OUTPUT_SCHEMA }}'
 
