@@ -45,7 +45,7 @@ async function importCompatibilityModule(cacheTag: string) {
 const identity = (message: string) => message;
 
 describe('codex plan compatibility reconcile', () => {
-  it('repairs stale paid-only Codex settings for free-plan accounts before launch', async () => {
+  it('keeps saved Codex settings intact and warns about runtime fallback for free-plan accounts', async () => {
     const { tmpDir, settingsPath } = createCodexSettingsFixture('gpt-5.3-codex-spark');
     const errorSpy = spyOn(console, 'error').mockImplementation(() => {});
 
@@ -76,12 +76,12 @@ describe('codex plan compatibility reconcile', () => {
       const repaired = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as {
         env: Record<string, string>;
       };
-      expect(repaired.env.ANTHROPIC_MODEL).toBe('gpt-5-codex');
-      expect(repaired.env.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe('gpt-5-codex');
-      expect(repaired.env.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe('gpt-5-codex');
-      expect(repaired.env.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe('gpt-5-codex-mini');
+      expect(repaired.env.ANTHROPIC_MODEL).toBe('gpt-5.3-codex');
+      expect(repaired.env.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe('gpt-5.3-codex');
+      expect(repaired.env.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe('gpt-5.3-codex');
+      expect(repaired.env.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe('gpt-5.3-codex-spark');
       expect(errorSpy).toHaveBeenCalledWith(
-        'Codex free plan detected. Switched unsupported model "gpt-5.3-codex" to "gpt-5-codex".'
+        'Codex free plan detected. Keeping saved model "gpt-5.3-codex" in settings; runtime requests will fall back to "gpt-5-codex" when needed.'
       );
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });

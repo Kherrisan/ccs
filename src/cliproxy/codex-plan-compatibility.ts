@@ -3,7 +3,6 @@ import { getProviderCatalog } from './model-catalog';
 import { fetchCodexQuota } from './quota-fetcher-codex';
 import { getCachedQuota, setCachedQuota } from './quota-response-cache';
 import type { CodexQuotaResult } from './quota-types';
-import { updateSettingsModel } from './services/variant-settings';
 import { info, warn } from '../utils/ui';
 
 export type CodexPlanType = CodexQuotaResult['planType'];
@@ -146,7 +145,7 @@ export async function reconcileCodexModelForActivePlan(
   },
   deps: CodexPlanCompatibilityDeps = {}
 ): Promise<void> {
-  const { settingsPath, currentModel, verbose } = options;
+  const { currentModel, verbose } = options;
   if (!currentModel) return;
 
   const fallbackModel = getFreePlanFallbackCodexModel(currentModel);
@@ -175,13 +174,10 @@ export async function reconcileCodexModelForActivePlan(
   }
 
   if (quota.planType === 'free') {
-    updateSettingsModel(settingsPath, fallbackModel, 'codex', {
-      rewriteHaikuModel: (haikuModel) => getFreePlanFallbackCodexModel(haikuModel) ?? haikuModel,
-    });
     console.error(
       formatInfo(
-        `Codex free plan detected. Switched unsupported model "${normalizeCodexModelId(currentModel)}" ` +
-          `to "${fallbackModel}".`
+        `Codex free plan detected. Keeping saved model "${normalizeCodexModelId(currentModel)}" in settings; ` +
+          `runtime requests will fall back to "${fallbackModel}" when needed.`
       )
     );
     return;
