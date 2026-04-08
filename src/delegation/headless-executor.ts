@@ -31,7 +31,10 @@ import {
   resolveImageAnalysisRuntimeConnection,
   resolveImageAnalysisRuntimeStatus,
 } from '../utils/hooks';
-import { ensureProfileHooks as ensureImageAnalyzerHooks } from '../utils/hooks/image-analyzer-profile-hook-injector';
+import {
+  ensureProfileHooks as ensureImageAnalyzerHooks,
+  removeImageAnalysisProfileHook,
+} from '../utils/hooks/image-analyzer-profile-hook-injector';
 import { resolveCliproxyBridgeMetadata } from '../api/services';
 import { ensureCliproxyService } from '../cliproxy';
 import { CLIPROXY_DEFAULT_PORT } from '../cliproxy/config/port-manager';
@@ -127,15 +130,20 @@ export class HeadlessExecutor {
 
     const settings = loadSettings(settingsPath);
     const cliproxyBridge = resolveCliproxyBridgeMetadata(settings);
-    const imageAnalysisFallbackHookReady = prepareImageAnalysisFallbackHook();
-    ensureImageAnalyzerHooks({
-      profileName: profile,
-      profileType: 'settings',
-      settingsPath,
-      settings,
-      cliproxyBridge,
-      sharedHookInstalled: imageAnalysisFallbackHookReady,
-    });
+    let imageAnalysisFallbackHookReady: boolean | undefined;
+    if (imageAnalysisMcpReady) {
+      removeImageAnalysisProfileHook(profile, settingsPath);
+    } else {
+      imageAnalysisFallbackHookReady = prepareImageAnalysisFallbackHook();
+      ensureImageAnalyzerHooks({
+        profileName: profile,
+        profileType: 'settings',
+        settingsPath,
+        settings,
+        cliproxyBridge,
+        sharedHookInstalled: imageAnalysisFallbackHookReady,
+      });
+    }
     const imageAnalysisStatus = await resolveImageAnalysisRuntimeStatus({
       profileName: profile,
       profileType: 'settings',
@@ -158,14 +166,10 @@ export class HeadlessExecutor {
       apiKey: runtimeConnection.apiKey,
       allowSelfSigned: runtimeConnection.allowSelfSigned,
     });
-
-    if (!imageAnalysisMcpReady) {
-      imageAnalysisEnv = {
-        ...imageAnalysisEnv,
-        CCS_CURRENT_PROVIDER: '',
-        CCS_IMAGE_ANALYSIS_SKIP: '1',
-      };
-    }
+    imageAnalysisEnv = {
+      ...imageAnalysisEnv,
+      CCS_IMAGE_ANALYSIS_SKIP_HOOK: imageAnalysisMcpReady ? '1' : '0',
+    };
 
     const imageAnalysisProvider = imageAnalysisEnv['CCS_CURRENT_PROVIDER'];
     if (

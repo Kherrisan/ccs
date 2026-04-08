@@ -978,15 +978,12 @@ export async function execClaudeWithCLIProxy(
   });
   const imageAnalysisProvisioningFailed =
     !imageAnalysisMcpReady && imageAnalysisResolution.env.CCS_IMAGE_ANALYSIS_ENABLED === '1';
-  const imageAnalysisEnv = imageAnalysisProvisioningFailed
-    ? {
-        ...imageAnalysisResolution.env,
-        CCS_CURRENT_PROVIDER: '',
-        CCS_IMAGE_ANALYSIS_SKIP: '1',
-      }
-    : imageAnalysisResolution.env;
+  const imageAnalysisEnv = {
+    ...imageAnalysisResolution.env,
+    CCS_IMAGE_ANALYSIS_SKIP_HOOK: imageAnalysisMcpReady ? '1' : '0',
+  };
   const imageAnalysisWarning = imageAnalysisProvisioningFailed
-    ? 'ImageAnalysis MCP provisioning failed. This session will use native Read.'
+    ? 'ImageAnalysis MCP provisioning failed. This session will use compatibility fallback when available.'
     : imageAnalysisResolution.warning;
 
   // 9. Setup tool sanitization proxy

@@ -16,14 +16,12 @@ import { extractProviderFromPathname } from '../../cliproxy/model-id-normalizer'
 import {
   normalizeImageAnalysisBackendId,
   resolveImageAnalysisRuntimeStatus,
-  prepareImageAnalysisFallbackHook,
 } from '../../utils/hooks';
 import { hasImageAnalyzerHook } from '../../utils/hooks/image-analyzer-hook-installer';
 import { hasImageAnalysisProfileHook } from '../../utils/hooks/image-analyzer-profile-hook-injector';
-import { InstanceManager } from '../../management/instance-manager';
 import {
-  ensureImageAnalysisMcpOrThrow,
   hasImageAnalysisMcpReady,
+  repairImageAnalysisRuntimeState,
 } from '../../utils/image-analysis';
 
 const router = Router();
@@ -94,13 +92,6 @@ function resolveCurrentTargetMode(
   if (!status.backendId) return 'unresolved';
   if (status.effectiveRuntimeMode === 'native-read') return 'fallback';
   return 'active';
-}
-
-function syncManagedImageAnalysisToInstances(): void {
-  const instanceManager = new InstanceManager();
-  for (const instanceName of instanceManager.listInstances()) {
-    instanceManager.syncMcpServers(instanceManager.getInstancePath(instanceName));
-  }
 }
 
 function resolveBackendState(
@@ -469,9 +460,7 @@ router.put('/', async (req: Request, res: Response): Promise<void> => {
 
     const nextEnabled = body.enabled ?? currentConfig.enabled;
     if (nextEnabled) {
-      ensureImageAnalysisMcpOrThrow();
-      prepareImageAnalysisFallbackHook();
-      syncManagedImageAnalysisToInstances();
+      repairImageAnalysisRuntimeState();
     }
 
     res.json(await buildDashboardPayload());

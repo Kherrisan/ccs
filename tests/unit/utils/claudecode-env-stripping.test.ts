@@ -384,7 +384,7 @@ describe('CLAUDECODE environment stripping', () => {
     });
   });
 
-  it('headless executor prepares image-analysis MCP and compatibility hook fallback', async () => {
+  it('headless executor prepares image-analysis MCP and suppresses the legacy hook on healthy launches', async () => {
     writeConfigWithAutoUpdatePreference(false);
     const ccsDir = path.join(process.env.CCS_HOME as string, '.ccs');
     const settingsPath = path.join(ccsDir, 'glm.settings.json');
@@ -398,11 +398,16 @@ describe('CLAUDECODE environment stripping', () => {
 
     expect(result.success).toBe(true);
     expect(spawnCalls.length).toBeGreaterThan(0);
+    const launch = spawnCalls[0];
+    const env = launch.options?.env as NodeJS.ProcessEnv;
 
     const persistedSettings = JSON.parse(fs.readFileSync(settingsPath, 'utf8')) as {
       hooks?: { PreToolUse?: Array<{ matcher?: string }> };
     };
-    expect(persistedSettings.hooks?.PreToolUse?.some((hook) => hook.matcher === 'Read')).toBe(true);
+    expect(
+      persistedSettings.hooks?.PreToolUse?.some((hook) => hook.matcher === 'Read') ?? false
+    ).toBe(false);
+    expect(env.CCS_IMAGE_ANALYSIS_SKIP_HOOK).toBe('1');
 
     const claudeUserConfig = JSON.parse(
       fs.readFileSync(path.join(process.env.CCS_HOME as string, '.claude.json'), 'utf8')
@@ -415,8 +420,10 @@ describe('CLAUDECODE environment stripping', () => {
       args: [path.join(ccsDir, 'mcp', 'ccs-image-analysis-server.cjs')],
       env: {},
     });
-    expect(fs.existsSync(path.join(ccsDir, 'hooks', 'image-analyzer-transformer.cjs'))).toBe(true);
-    expect(fs.existsSync(path.join(ccsDir, 'hooks', 'image-analysis-runtime.cjs'))).toBe(true);
+    expect(fs.existsSync(path.join(ccsDir, 'hooks', 'image-analyzer-transformer.cjs'))).toBe(
+      false
+    );
+    expect(fs.existsSync(path.join(ccsDir, 'hooks', 'image-analysis-runtime.cjs'))).toBe(false);
   });
 
   it('headless executor propagates a WebSearch trace launch id when tracing is enabled', async () => {

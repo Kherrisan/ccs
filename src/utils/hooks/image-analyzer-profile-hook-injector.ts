@@ -16,6 +16,11 @@ import {
   getImageAnalyzerHookConfig,
   getImageAnalyzerHookPath,
 } from './image-analyzer-hook-configuration';
+import {
+  deduplicateCcsImageAnalyzerHooks,
+  isCcsImageAnalyzerHook,
+  removeCcsImageAnalyzerHooks,
+} from './image-analyzer-hook-utils';
 import { getImageAnalysisConfig } from '../../config/unified-config-loader';
 import { getCcsDir } from '../config-manager';
 import {
@@ -41,17 +46,7 @@ function hasCcsHook(settings: Record<string, unknown>): boolean {
   if (!hooks?.PreToolUse) return false;
 
   return hooks.PreToolUse.some((h: unknown) => {
-    const hook = h as Record<string, unknown>;
-    if (hook.matcher !== 'Read') return false;
-
-    const hookArray = hook.hooks as Array<Record<string, unknown>> | undefined;
-    const command = hookArray?.[0]?.command;
-    if (typeof command !== 'string') return false;
-
-    const normalized = command
-      .replace(/\\/g, '/') // Windows backslashes
-      .replace(/\/+/g, '/'); // Collapse multiple slashes
-    return normalized.includes('.ccs/hooks/image-analyzer-transformer');
+    return isCcsImageAnalyzerHook(h as Record<string, unknown>);
   });
 }
 
@@ -83,6 +78,39 @@ export function hasImageAnalysisProfileHook(
     const content = fs.readFileSync(resolvedSettingsPath, 'utf8');
     const settings = JSON.parse(content) as Record<string, unknown>;
     return hasCcsHook(settings);
+  } catch {
+    return false;
+  }
+}
+
+export function removeImageAnalysisProfileHook(
+  profileName: string,
+  settingsPath?: string | null
+): boolean {
+  if (!VALID_PROFILE_NAME.test(profileName)) {
+    return false;
+  }
+
+  const resolvedSettingsPath = getImageAnalysisProfileSettingsPath(profileName, settingsPath);
+  if (!fs.existsSync(resolvedSettingsPath)) {
+    return false;
+  }
+
+  try {
+    const content = fs.readFileSync(resolvedSettingsPath, 'utf8');
+    const settings = JSON.parse(content) as Record<string, unknown>;
+    const removed = removeCcsImageAnalyzerHooks(settings);
+    if (!removed) {
+      return false;
+    }
+
+    fs.writeFileSync(resolvedSettingsPath, JSON.stringify(settings, null, 2), 'utf8');
+    if (process.env.CCS_DEBUG) {
+      console.error(
+        info(`Removed image analyzer hook from ${path.basename(resolvedSettingsPath)}`)
+      );
+    }
+    return true;
   } catch {
     return false;
   }
@@ -174,6 +202,10 @@ export function ensureProfileHooks(input: string | ImageAnalysisResolutionContex
 
     // Check if CCS hook already present
     if (hasCcsHook(settings)) {
+      const hadDuplicates = deduplicateCcsImageAnalyzerHooks(settings);
+      if (hadDuplicates) {
+        fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf8');
+      }
       // Update timeout if needed
       return updateHookTimeoutIfNeeded(settings, settingsPath);
     }

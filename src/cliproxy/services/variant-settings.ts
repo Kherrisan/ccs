@@ -16,7 +16,10 @@ import { CLIProxyProvider } from '../types';
 import { CompositeTierConfig } from '../../config/unified-config-types';
 import { ensureWebSearchMcpOrThrow } from '../../utils/websearch-manager';
 import { ensureImageAnalysisMcpOrThrow } from '../../utils/image-analysis';
-import { ensureProfileHooks as ensureImageAnalyzerHooks } from '../../utils/hooks/image-analyzer-profile-hook-injector';
+import {
+  ensureProfileHooks as ensureImageAnalyzerHooks,
+  removeImageAnalysisProfileHook,
+} from '../../utils/hooks/image-analyzer-profile-hook-injector';
 import { prepareImageAnalysisFallbackHook } from '../../utils/hooks';
 import { getEffectiveApiKey } from '../auth-token-manager';
 import { warn } from '../../utils/ui';
@@ -157,21 +160,23 @@ export function createSettingsFile(
 
   try {
     ensureWebSearchMcpOrThrow();
-    ensureImageAnalysisMcpOrThrow();
+    const imageAnalysisMcpReady = ensureImageAnalysisMcpOrThrow();
+    if (imageAnalysisMcpReady) {
+      removeImageAnalysisProfileHook(`${provider}-${name}`, settingsPath);
+    } else {
+      const imageAnalysisFallbackHookReady = prepareImageAnalysisFallbackHook();
+      ensureImageAnalyzerHooks({
+        profileName: `${provider}-${name}`,
+        profileType: 'cliproxy',
+        cliproxyProvider: provider,
+        settingsPath,
+        sharedHookInstalled: imageAnalysisFallbackHookReady,
+      });
+    }
   } catch (error) {
     rollbackSettingsFile(settingsPath, previousSettingsContent, settingsExisted);
     throw error;
   }
-  const imageAnalysisFallbackHookReady = prepareImageAnalysisFallbackHook();
-
-  // Inject Image Analyzer hooks into variant settings
-  ensureImageAnalyzerHooks({
-    profileName: `${provider}-${name}`,
-    profileType: 'cliproxy',
-    cliproxyProvider: provider,
-    settingsPath,
-    sharedHookInstalled: imageAnalysisFallbackHookReady,
-  });
 
   return settingsPath;
 }
@@ -199,21 +204,23 @@ export function createSettingsFileUnified(
 
   try {
     ensureWebSearchMcpOrThrow();
-    ensureImageAnalysisMcpOrThrow();
+    const imageAnalysisMcpReady = ensureImageAnalysisMcpOrThrow();
+    if (imageAnalysisMcpReady) {
+      removeImageAnalysisProfileHook(`${provider}-${name}`, settingsPath);
+    } else {
+      const imageAnalysisFallbackHookReady = prepareImageAnalysisFallbackHook();
+      ensureImageAnalyzerHooks({
+        profileName: `${provider}-${name}`,
+        profileType: 'cliproxy',
+        cliproxyProvider: provider,
+        settingsPath,
+        sharedHookInstalled: imageAnalysisFallbackHookReady,
+      });
+    }
   } catch (error) {
     rollbackSettingsFile(settingsPath, previousSettingsContent, settingsExisted);
     throw error;
   }
-  const imageAnalysisFallbackHookReady = prepareImageAnalysisFallbackHook();
-
-  // Inject Image Analyzer hooks into variant settings
-  ensureImageAnalyzerHooks({
-    profileName: `${provider}-${name}`,
-    profileType: 'cliproxy',
-    cliproxyProvider: provider,
-    settingsPath,
-    sharedHookInstalled: imageAnalysisFallbackHookReady,
-  });
 
   return settingsPath;
 }
@@ -305,20 +312,24 @@ export function createCompositeSettingsFile(
   if (path.resolve(settingsPath) === path.resolve(defaultSettingsPath)) {
     try {
       ensureWebSearchMcpOrThrow();
-      ensureImageAnalysisMcpOrThrow();
+      const imageAnalysisMcpReady = ensureImageAnalysisMcpOrThrow();
+      if (imageAnalysisMcpReady) {
+        removeImageAnalysisProfileHook(`composite-${name}`, settingsPath);
+      } else {
+        const imageAnalysisFallbackHookReady = prepareImageAnalysisFallbackHook();
+        ensureImageAnalyzerHooks({
+          profileName: `composite-${name}`,
+          profileType: 'cliproxy',
+          cliproxyProvider: tiers[defaultTier].provider,
+          isComposite: true,
+          settingsPath,
+          sharedHookInstalled: imageAnalysisFallbackHookReady,
+        });
+      }
     } catch (error) {
       rollbackSettingsFile(settingsPath, previousSettingsContent, settingsExisted);
       throw error;
     }
-    const imageAnalysisFallbackHookReady = prepareImageAnalysisFallbackHook();
-    ensureImageAnalyzerHooks({
-      profileName: `composite-${name}`,
-      profileType: 'cliproxy',
-      cliproxyProvider: tiers[defaultTier].provider,
-      isComposite: true,
-      settingsPath,
-      sharedHookInstalled: imageAnalysisFallbackHookReady,
-    });
   }
 
   return settingsPath;

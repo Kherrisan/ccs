@@ -7,10 +7,16 @@
 
 import { getImageAnalysisConfig } from '../../config/unified-config-loader';
 import { DEFAULT_IMAGE_ANALYSIS_CONFIG } from '../../config/unified-config-types';
+import {
+  countManagedImageAnalysisHookFiles,
+  hasImageAnalysisMcpReady,
+  repairImageAnalysisRuntimeState,
+} from '../../utils/image-analysis';
 import { ok, warn, dim } from '../../utils/ui';
 import { isCliproxyRunning } from '../../cliproxy/stats-fetcher';
 import { CLIPROXY_DEFAULT_PORT } from '../../cliproxy/config-generator';
 import type { HealthCheck } from './types';
+import { hasImageAnalyzerHook } from '../../utils/hooks/image-analyzer-hook-installer';
 
 /**
  * Run image analysis configuration check
@@ -65,6 +71,16 @@ export async function runImageAnalysisCheck(results: HealthCheck): Promise<void>
   }
   console.log(`  ${ok('Timeout:')} ${config.timeout}s`);
 
+  const staleHookCount = countManagedImageAnalysisHookFiles();
+  if (staleHookCount > 0) {
+    results.warnings.push({
+      name: 'Image Analysis',
+      message: `${staleHookCount} stale CCS-managed image hook setting file(s) were detected`,
+      fix: 'Run: ccs doctor --fix',
+    });
+    console.log(`  ${warn('Hooks:')} ${staleHookCount} stale setting file(s) can be repaired`);
+  }
+
   // Check 4: CLIProxy availability (only if enabled)
   const cliproxyAvailable = await isCliproxyRunning(CLIPROXY_DEFAULT_PORT);
   if (!cliproxyAvailable) {
@@ -102,6 +118,8 @@ export async function fixImageAnalysisConfig(): Promise<boolean> {
 
   const config = loadOrCreateUnifiedConfig();
   let fixed = false;
+  const hadManagedToolReady = hasImageAnalysisMcpReady();
+  const hadSharedHookReady = hasImageAnalyzerHook();
 
   // Fix missing provider_models
   if (
@@ -130,5 +148,12 @@ export async function fixImageAnalysisConfig(): Promise<boolean> {
     updateUnifiedConfig({ image_analysis: config.image_analysis });
   }
 
-  return fixed;
+  const repairStats = repairImageAnalysisRuntimeState();
+  return (
+    fixed ||
+    repairStats.cleanedSettingsFiles > 0 ||
+    repairStats.syncedInstances > 0 ||
+    (!hadManagedToolReady && repairStats.managedToolReady) ||
+    (!hadSharedHookReady && repairStats.sharedHookReady)
+  );
 }

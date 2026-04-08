@@ -25,6 +25,13 @@ export {
   appendThirdPartyImageAnalysisToolArgs,
   getImageAnalysisSteeringPrompt,
 } from './claude-tool-args';
+export {
+  cleanupManagedImageAnalysisHooks,
+  countManagedImageAnalysisHookFiles,
+  repairImageAnalysisRuntimeState,
+  syncManagedImageAnalysisInstances,
+  type ImageAnalysisRepairStats,
+} from './repair';
 
 export const IMAGE_ANALYSIS_PROMPT_TEMPLATES = ['default', 'screenshot', 'document'] as const;
 export type ImageAnalysisPromptTemplate = (typeof IMAGE_ANALYSIS_PROMPT_TEMPLATES)[number];

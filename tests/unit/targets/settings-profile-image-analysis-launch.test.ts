@@ -92,6 +92,9 @@ describe('settings profile ImageAnalysis launch', () => {
       `#!/bin/sh
 printf "%s\n" "$@" > "${claudeArgsLogPath}"
 {
+  printf "currentProvider=%s\n" "$CCS_CURRENT_PROVIDER"
+  printf "skip=%s\n" "$CCS_IMAGE_ANALYSIS_SKIP"
+  printf "skipHook=%s\n" "$CCS_IMAGE_ANALYSIS_SKIP_HOOK"
   printf "runtimeApiKey=%s\n" "$CCS_IMAGE_ANALYSIS_RUNTIME_API_KEY"
   printf "runtimeBaseUrl=%s\n" "$CCS_IMAGE_ANALYSIS_RUNTIME_BASE_URL"
   printf "runtimePath=%s\n" "$CCS_IMAGE_ANALYSIS_RUNTIME_PATH"
@@ -165,6 +168,73 @@ exit 0
     expect(result.stderr).toContain('could not prepare the local ImageAnalysis tool');
     const launchedArgs = fs.readFileSync(claudeArgsLogPath, 'utf8');
     expect(launchedArgs).not.toContain(STEERING_PROMPT_SNIPPET);
+  });
+
+  it('suppresses stale CCS image hooks during a healthy MCP-first launch', () => {
+    if (process.platform === 'win32') return;
+
+    fs.writeFileSync(
+      settingsPath,
+      JSON.stringify(
+        {
+          env: {
+            ANTHROPIC_BASE_URL: 'https://api.z.ai/api/provider/agy',
+            ANTHROPIC_AUTH_TOKEN: 'stale-token',
+            ANTHROPIC_MODEL: 'glm-5',
+          },
+          hooks: {
+            PreToolUse: [
+              {
+                matcher: 'Read',
+                hooks: [
+                  {
+                    type: 'command',
+                    command: 'node "/home/kai/.ccs/hooks/image-analyzer-transformer.cjs"',
+                    timeout: 65000,
+                  },
+                ],
+              },
+            ],
+          },
+        },
+        null,
+        2
+      ) + '\n'
+    );
+
+    const result = runCcs(['glm', 'smoke'], baseEnv);
+
+    expect(result.status).toBe(0);
+    const launchedArgs = fs.readFileSync(claudeArgsLogPath, 'utf8');
+    const launchedEnv = fs.readFileSync(claudeEnvLogPath, 'utf8');
+    const persistedSettings = JSON.parse(fs.readFileSync(settingsPath, 'utf8')) as {
+      hooks?: { PreToolUse?: Array<{ matcher?: string }> };
+    };
+
+    expect(launchedArgs).toContain(STEERING_PROMPT_SNIPPET);
+    expect(launchedEnv).toContain('skipHook=1');
+    expect(
+      persistedSettings.hooks?.PreToolUse?.some((hook) => hook.matcher === 'Read') ?? false
+    ).toBe(false);
+  });
+
+  it('keeps the legacy hook available when MCP provisioning fails', () => {
+    if (process.platform === 'win32') return;
+
+    fs.writeFileSync(path.join(tmpHome, '.claude.json'), '{not-json', 'utf8');
+
+    const result = runCcs(['glm', 'smoke'], baseEnv);
+
+    expect(result.status).toBe(0);
+    const launchedEnv = fs.readFileSync(claudeEnvLogPath, 'utf8');
+    const persistedSettings = JSON.parse(fs.readFileSync(settingsPath, 'utf8')) as {
+      hooks?: { PreToolUse?: Array<{ matcher?: string }> };
+    };
+
+    expect(launchedEnv).not.toContain('skipHook=1');
+    expect(persistedSettings.hooks?.PreToolUse?.some((hook) => hook.matcher === 'Read')).toBe(
+      true
+    );
   });
 
   it('pins bridge-backed image analysis to the current CLIProxy auth token', () => {

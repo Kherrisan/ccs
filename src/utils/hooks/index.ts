@@ -38,6 +38,7 @@ export {
   uninstallImageAnalyzerHook,
 } from './image-analyzer-hook-installer';
 export { ensureProfileHooks as ensureImageAnalyzerProfileHooks } from './image-analyzer-profile-hook-injector';
+export { removeImageAnalysisProfileHook } from './image-analyzer-profile-hook-injector';
 
 export function prepareImageAnalysisFallbackHook(): boolean {
   return hasInstalledImageAnalyzerHook() || installSharedImageAnalyzerHook();

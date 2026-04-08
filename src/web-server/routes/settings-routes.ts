@@ -19,6 +19,7 @@ import {
 } from '../../cliproxy';
 import { regenerateConfig } from '../../cliproxy/config-generator';
 import { deduplicateCcsHooks } from '../../utils/websearch/hook-utils';
+import { removeCcsImageAnalyzerHooks } from '../../utils/hooks/image-analyzer-hook-utils';
 import { resolveCliproxyBridgeMetadata } from '../../api/services';
 import {
   getImageAnalysisConfig,
@@ -508,6 +509,7 @@ router.put('/:profile', (req: Request, res: Response): void => {
     // Deduplicate CCS hooks to prevent accumulation (fixes #450)
     // This handles cases where duplicate hooks were added by previous versions
     deduplicateCcsHooks(normalizedSettings as Record<string, unknown>);
+    removeCcsImageAnalyzerHooks(normalizedSettings as Record<string, unknown>);
 
     const ccsDir = getCcsDir();
 

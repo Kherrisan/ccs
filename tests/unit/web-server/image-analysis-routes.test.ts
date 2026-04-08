@@ -192,6 +192,54 @@ describe('image-analysis routes', () => {
   });
 
   it('updates the saved config through the dashboard route and provisions the local runtime', async () => {
+    const staleSettingsPath = path.join(tempHome, '.ccs', 'legacy.settings.json');
+    fs.writeFileSync(
+      staleSettingsPath,
+      JSON.stringify(
+        {
+          env: {
+            ANTHROPIC_BASE_URL: 'https://proxy.example/api/provider/gemini',
+            ANTHROPIC_AUTH_TOKEN: 'legacy-token',
+          },
+          hooks: {
+            PreToolUse: [
+              {
+                matcher: 'Read',
+                hooks: [
+                  {
+                    type: 'command',
+                    command: 'node "/home/kai/.ccs/hooks/image-analyzer-transformer.cjs"',
+                    timeout: 65000,
+                  },
+                ],
+              },
+            ],
+          },
+        },
+        null,
+        2
+      )
+    );
+    const instanceDir = path.join(tempHome, '.ccs', 'instances', 'demo');
+    fs.mkdirSync(instanceDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(instanceDir, '.claude.json'),
+      JSON.stringify(
+        {
+          mcpServers: {
+            custom: {
+              type: 'stdio',
+              command: 'node',
+              args: ['custom-server.cjs'],
+              env: {},
+            },
+          },
+        },
+        null,
+        2
+      )
+    );
+
     const response = await fetch(`${baseUrl}/api/image-analysis`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -240,6 +288,31 @@ describe('image-analysis routes', () => {
       mcpServers?: Record<string, unknown>;
     };
     expect(claudeConfig.mcpServers?.['ccs-image-analysis']).toEqual({
+      type: 'stdio',
+      command: 'node',
+      args: [path.join(ccsDir, 'mcp', 'ccs-image-analysis-server.cjs')],
+      env: {},
+    });
+
+    const repairedSettings = JSON.parse(fs.readFileSync(staleSettingsPath, 'utf8')) as {
+      hooks?: { PreToolUse?: Array<{ matcher?: string }> };
+    };
+    expect(repairedSettings.hooks?.PreToolUse?.some((hook) => hook.matcher === 'Read') ?? false).toBe(
+      false
+    );
+
+    const instanceConfig = JSON.parse(
+      fs.readFileSync(path.join(instanceDir, '.claude.json'), 'utf8')
+    ) as {
+      mcpServers?: Record<string, unknown>;
+    };
+    expect(instanceConfig.mcpServers?.custom).toEqual({
+      type: 'stdio',
+      command: 'node',
+      args: ['custom-server.cjs'],
+      env: {},
+    });
+    expect(instanceConfig.mcpServers?.['ccs-image-analysis']).toEqual({
       type: 'stdio',
       command: 'node',
       args: [path.join(ccsDir, 'mcp', 'ccs-image-analysis-server.cjs')],
