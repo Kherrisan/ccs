@@ -1,3 +1,60 @@
+## [7.67.0](https://github.com/kaitranntt/ccs/compare/v7.66.1...v7.67.0) (2026-04-09)
+
+### Features
+
+* **cliproxy:** add routing guidance and strategy controls ([6393249](https://github.com/kaitranntt/ccs/commit/6393249111acb54e1d388411c3349dd8ad35267c))
+* **cliproxy:** source model pickers from upstream catalogs ([7bbf32a](https://github.com/kaitranntt/ccs/commit/7bbf32ae9a40b7a38ee7dc09e47feb94527c5ec0))
+* **dashboard-auth:** clarify remote dashboard login flow ([d130972](https://github.com/kaitranntt/ccs/commit/d13097291604e51d1248ef7cd86ea9f930b7f103))
+* **image-analysis:** make MCP-first provisioning self-healing ([64ecd8b](https://github.com/kaitranntt/ccs/commit/64ecd8b3dcf49d7aff1533721d0cc35dd81ed44d))
+* **logging:** unify CCS runtime logs and dashboard viewer ([6c799b2](https://github.com/kaitranntt/ccs/commit/6c799b2e58710149deb25399ad25dcb1bf5600d7)), closes [#926](https://github.com/kaitranntt/ccs/issues/926)
+* **logs-ui:** redesign the log viewer workspace ([382aa04](https://github.com/kaitranntt/ccs/commit/382aa04ca086938fac0baf66f1380f73c528df98)), closes [#926](https://github.com/kaitranntt/ccs/issues/926)
+
+### Bug Fixes
+
+* **ci:** track dashboard logs components ([4c15a07](https://github.com/kaitranntt/ccs/commit/4c15a072dc07841b8b5544d5d7d24b916dea8cae)), closes [#926](https://github.com/kaitranntt/ccs/issues/926)
+* **cliproxy:** preserve saved codex model selections ([a39ded0](https://github.com/kaitranntt/ccs/commit/a39ded0b1a0e589046db204030bf171d94fb1ce7))
+* **cliproxy:** remove dead codex reconcile settings arg ([c1d4294](https://github.com/kaitranntt/ccs/commit/c1d429470872ee726d1578797e00aac0f217554d))
+* **cliproxy:** streamline sidebar routing control ([fabf3d4](https://github.com/kaitranntt/ccs/commit/fabf3d4ad3cf1643837eded96c2a0b21503c7883))
+* **cliproxy:** tighten sidebar routing presentation ([5bb5faa](https://github.com/kaitranntt/ccs/commit/5bb5faa4b79c52f28875336edfc6b57306d36a7a))
+* **dashboard:** gate remote read-only auth ([431c22a](https://github.com/kaitranntt/ccs/commit/431c22a16a64448c3ee70078ab403f7cb046c6e5))
+* **kiro:** align auth flows with CLIProxyAPIPlus ([0fbea0f](https://github.com/kaitranntt/ccs/commit/0fbea0f33557b17d2e4fd3ef79d1a6230672d295))
+* **kiro:** eliminate TOCTOU in token fingerprinting and harden tests ([d95cee1](https://github.com/kaitranntt/ccs/commit/d95cee1e84455a5cc69da106117709b8e16ae5b5))
+* **kiro:** harden callback replay and auth detection ([1434c3d](https://github.com/kaitranntt/ccs/commit/1434c3d1e074c70b551ffb8c99c60eb800c4222f))
+* **kiro:** harden idc and callback auth paths ([f40d435](https://github.com/kaitranntt/ccs/commit/f40d435a9291bb18c4df2692a0fdfaf55d7087dc))
+* **kiro:** parse Builder ID selector dynamically ([325d8d8](https://github.com/kaitranntt/ccs/commit/325d8d861d96ddc3527751e98f7541868a2d46fb))
+* **kiro:** prefer scored URL extraction for stderr manual callback ([5b1754a](https://github.com/kaitranntt/ccs/commit/5b1754a32043e667bf778180ac1d859e2c629d2f))
+* **kiro:** require fresh token before auth success ([25bcee2](https://github.com/kaitranntt/ccs/commit/25bcee2fa1994fd4e74f81b007a237dfa3937d46))
+* **logging:** address review feedback on cleanup and log reader ([42481c0](https://github.com/kaitranntt/ccs/commit/42481c0bb96d69f433a40003c425706e2697153b))
+* **logging:** harden log storage and cleanup ([1923fce](https://github.com/kaitranntt/ccs/commit/1923fce2ed103aa6345e2f9d62a647bd7df8f0c0))
+* **logs-ui:** stabilize the dashboard log layout ([6e39f33](https://github.com/kaitranntt/ccs/commit/6e39f338ce3a71a06b6f1afedad5a943dde8f297))
+* **recovery:** harden shared commands startup recovery ([103f054](https://github.com/kaitranntt/ccs/commit/103f0547c97f513e6d744eef817dd200dbb8bb7f))
+* **ui:** gate preset catalog reuse on query readiness ([87f00c5](https://github.com/kaitranntt/ccs/commit/87f00c524d6de26d8bee88d95b9147dd64f84777))
+* **ui:** improve Kiro dashboard auth flow ([699b192](https://github.com/kaitranntt/ccs/commit/699b19213720d65d76a28f5a907751210255f956))
+* **ui:** keep remote read-only notice accurate ([173149b](https://github.com/kaitranntt/ccs/commit/173149ba718503cb3b5b95ebd3fdc879e0fac9eb))
+* **ui:** restore searchable-select dropdown scrolling ([a70eae5](https://github.com/kaitranntt/ccs/commit/a70eae558ef3e43e5ddf2d44315e64a3c1a219cd))
+* **ui:** reuse cached cliproxy catalogs for presets ([564ed3d](https://github.com/kaitranntt/ccs/commit/564ed3def716d837e648feec82c340c1442c2878))
+* **usage:** block remote refresh without auth ([1603f19](https://github.com/kaitranntt/ccs/commit/1603f1938802d1dd03b8e6b94310012dfc6ba99c))
+* **web-server:** block remote dashboard writes ([5fbe731](https://github.com/kaitranntt/ccs/commit/5fbe7313416187b2393fa2bf5e7a7a583aefde5e))
+
+### Documentation
+
+* **dashboard-auth:** clarify remote setup guidance ([bfb8782](https://github.com/kaitranntt/ccs/commit/bfb8782c155ec5a6200c9778e0d2208e69e9313a))
+* **help:** add kiro idc flag guidance ([bf5fcfc](https://github.com/kaitranntt/ccs/commit/bf5fcfc034e3e58d6dace28521adc223965520a3))
+* **image-analysis:** update MCP-first behavior docs ([5d1880a](https://github.com/kaitranntt/ccs/commit/5d1880abf545410960c264196aba8939568d8d82))
+* **kiro:** document idc and callback auth flows ([bb7dbd1](https://github.com/kaitranntt/ccs/commit/bb7dbd108d63cbd762e2df626ca59519f3645ec7))
+* **logging:** document structured logs workspace ([548edda](https://github.com/kaitranntt/ccs/commit/548edda58bd88d47be8bd059abed052b2b152497)), closes [#926](https://github.com/kaitranntt/ccs/issues/926)
+* **roadmap:** clarify codex runtime fallback behavior ([3f36c09](https://github.com/kaitranntt/ccs/commit/3f36c09064157f4afe306eef9b61d837fde91d66))
+* **roadmap:** record upstream cliproxy picker sync ([002b7fe](https://github.com/kaitranntt/ccs/commit/002b7feb1e129947150aa11dbd10d5b7206c543d))
+
+### Code Refactoring
+
+* **dashboard:** use shared token fingerprinting for auth detection ([d4f434a](https://github.com/kaitranntt/ccs/commit/d4f434a0e7c4986778ba183c3d03e6a744fcb23f))
+
+### Tests
+
+* **dashboard-auth:** cover incomplete setup login copy ([a17b82d](https://github.com/kaitranntt/ccs/commit/a17b82d0c34a2b7e5b5d885fe87d09407aa2ca42))
+* **logging:** stabilize log reader cache refresh coverage ([a47cf02](https://github.com/kaitranntt/ccs/commit/a47cf022c6a1afe4a87c712d98fa80f2cf76dd02))
+
 ## [7.66.1](https://github.com/kaitranntt/ccs/compare/v7.66.0...v7.66.1) (2026-04-07)
 
 ### Hotfixes
