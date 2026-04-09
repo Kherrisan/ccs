@@ -6,9 +6,11 @@ import {
   getResolvedCatalog,
   refreshCatalogFromProxy,
 } from '../../cliproxy/catalog-cache';
+import { getCatalogRoutingSnapshot } from '../../cliproxy/catalog-routing';
 import { getProxyTarget } from '../../cliproxy/proxy-target-resolver';
 import type { CLIProxyProvider } from '../../cliproxy/types';
 import type { RemoteModelInfo } from '../../cliproxy/management-api-types';
+import type { CliproxyProviderRoutingHints } from '../../shared/cliproxy-model-routing';
 
 /** Fetch model definitions from CLIProxyAPI for all syncable providers */
 async function fetchRemoteCatalogs(
@@ -44,7 +46,8 @@ export async function handleCatalogStatus(verbose: boolean): Promise<void> {
   console.log(header('Model Catalog'));
   console.log('');
 
-  const cacheAge = getCacheAge();
+  const routingSnapshot = await getCatalogRoutingSnapshot();
+  const cacheAge = routingSnapshot.cacheAge ?? getCacheAge();
   if (cacheAge) {
     console.log(`  Cache: ${color('synced', 'success')} (${cacheAge})`);
   } else {
@@ -55,14 +58,14 @@ export async function handleCatalogStatus(verbose: boolean): Promise<void> {
   console.log(subheader('Providers:'));
 
   for (const provider of SYNCABLE_PROVIDERS) {
-    const catalog = getResolvedCatalog(provider);
+    const catalog = routingSnapshot.catalogs[provider] ?? getResolvedCatalog(provider);
     if (catalog) {
       const count = catalog.models.length;
-      console.log(`  ${color(catalog.displayName.padEnd(20), 'command')} ${count} models`);
+      const routing = routingSnapshot.routing[provider];
+      const suffix = renderRoutingSummary(routing);
+      console.log(`  ${color(catalog.displayName.padEnd(20), 'command')} ${count} models${suffix}`);
       if (verbose) {
-        for (const model of catalog.models) {
-          console.log(dim(`    - ${model.id} (${model.name})`));
-        }
+        renderVerboseRouting(provider, catalog.models, routing);
       }
     }
   }
@@ -72,6 +75,60 @@ export async function handleCatalogStatus(verbose: boolean): Promise<void> {
     console.log(dim('  Run "ccs cliproxy catalog refresh" to sync from CLIProxy'));
   }
   console.log('');
+}
+
+function renderRoutingSummary(routing: CliproxyProviderRoutingHints | undefined): string {
+  if (!routing) {
+    return '';
+  }
+
+  const parts = [`prefix ${routing.prefix}`];
+  if (routing.shadowedCount > 0) {
+    parts.push(`${routing.shadowedCount} shadowed`);
+  }
+  if (routing.prefixOnlyCount > 0) {
+    parts.push(`${routing.prefixOnlyCount} prefix-only`);
+  }
+  return parts.length > 0 ? `  ${dim(`(${parts.join(', ')})`)}` : '';
+}
+
+function renderVerboseRouting(
+  provider: CLIProxyProvider,
+  models: Array<{ id: string; name: string }>,
+  routing: CliproxyProviderRoutingHints | undefined
+): void {
+  if (!routing) {
+    for (const model of models) {
+      console.log(dim(`    - ${model.id} (${model.name})`));
+    }
+    return;
+  }
+
+  const routingMap = new Map(routing.models.map((hint) => [hint.modelId, hint]));
+  for (const model of models) {
+    const hint = routingMap.get(model.id);
+    console.log(dim(`    - ${model.id} (${model.name})`));
+    if (!hint) {
+      continue;
+    }
+
+    console.log(dim(`      preferred: ${hint.recommendedModelId}`));
+    if (hint.unprefixedStatus === 'safe') {
+      console.log(dim(`      unprefixed: resolves to ${routing.displayName}`));
+      continue;
+    }
+
+    if (hint.unprefixedStatus === 'shadowed' && hint.effectiveDisplayName) {
+      console.log(dim(`      unprefixed: currently resolves to ${hint.effectiveDisplayName}`));
+      continue;
+    }
+
+    console.log(dim(`      unprefixed: not advertised, use ${hint.recommendedModelId}`));
+  }
+
+  if (provider === 'gemini' || provider === 'agy') {
+    console.log(dim(`      short prefix stays backend-pinned even when unprefixed names overlap.`));
+  }
 }
 
 /** Refresh catalog from CLIProxyAPI */

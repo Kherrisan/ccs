@@ -33,6 +33,7 @@ export function ProviderEditor({
   displayName,
   authStatus,
   catalog,
+  routing,
   logoProvider,
   baseProvider,
   isRemoteMode,
@@ -263,6 +264,7 @@ export function ProviderEditor({
                     sonnetModel={sonnetModel}
                     haikuModel={haikuModel}
                     providerModels={providerModels}
+                    routing={routing}
                     extendedContextEnabled={extendedContextEnabled}
                     onExtendedContextToggle={toggleExtendedContext}
                     onApplyPreset={handleApplyPreset}
@@ -349,6 +351,7 @@ export function ProviderEditor({
         isSaving={createPresetMutation.isPending}
         catalog={catalog}
         allModels={providerModels}
+        routing={routing}
       />
     </div>
   );

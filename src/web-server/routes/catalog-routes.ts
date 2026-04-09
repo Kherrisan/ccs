@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { getResolvedCatalogSnapshot } from '../../cliproxy/catalog-cache';
+import { getCatalogRoutingSnapshot } from '../../cliproxy/catalog-routing';
 
 const router = Router();
 
@@ -9,9 +9,10 @@ const router = Router();
  */
 router.get('/', async (_req: Request, res: Response): Promise<void> => {
   try {
-    const snapshot = await getResolvedCatalogSnapshot();
+    const snapshot = await getCatalogRoutingSnapshot();
     res.json({
       catalogs: snapshot.catalogs,
+      routing: snapshot.routing,
       source: snapshot.source,
       cache: {
         synced: snapshot.source !== 'static' || snapshot.cacheAge !== null,

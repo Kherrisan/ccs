@@ -11,6 +11,7 @@ import { useTranslation } from 'react-i18next';
 import { Badge } from '@/components/ui/badge';
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import { Skeleton } from '@/components/ui/skeleton';
+import type { CliproxyProviderRoutingHints } from '@/lib/api-client';
 import { getCodexEffortDisplay } from '@/lib/codex-effort';
 import { getResolvedCatalogModels } from '@/lib/model-catalogs';
 import { cn } from '@/lib/utils';
@@ -291,7 +292,18 @@ interface FlexibleModelSelectorProps {
   onChange: (model: string) => void;
   catalog?: ProviderCatalog;
   allModels: { id: string; owned_by: string }[];
+  routing?: CliproxyProviderRoutingHints;
   disabled?: boolean;
+}
+
+function normalizeModelValue(
+  value: string | undefined,
+  routing?: CliproxyProviderRoutingHints
+): string {
+  if (!value) return '';
+  if (!routing?.prefix) return value;
+  const prefix = `${routing.prefix}/`;
+  return value.startsWith(prefix) ? value.slice(prefix.length) : value;
 }
 
 export function FlexibleModelSelector({
@@ -301,6 +313,7 @@ export function FlexibleModelSelector({
   onChange,
   catalog,
   allModels,
+  routing,
   disabled,
 }: FlexibleModelSelectorProps) {
   const { t } = useTranslation();
@@ -310,22 +323,50 @@ export function FlexibleModelSelector({
     [allModels, catalog]
   );
   const catalogModelIds = new Set(resolvedCatalogModels.map((model) => model.id));
+  const routingHints = useMemo(
+    () =>
+      new Map((routing?.models ?? []).map((hint) => [hint.modelId.toLowerCase(), hint] as const)),
+    [routing]
+  );
+  const selectedRoutingHint = useMemo(
+    () => routingHints.get(normalizeModelValue(value, routing).toLowerCase()),
+    [routing, routingHints, value]
+  );
 
   const recommendedOptions = resolvedCatalogModels.map((model) => ({
-    value: model.id,
+    value: routingHints.get(model.id.toLowerCase())?.recommendedModelId ?? model.id,
     groupKey: 'recommended',
-    searchText: `${model.id} ${model.name}`,
+    searchText: `${model.id} ${model.name} ${routingHints.get(model.id.toLowerCase())?.recommendedModelId ?? ''}`,
     keywords: [model.tier ?? '', catalog?.provider ?? ''],
     triggerContent: (
       <div className="flex min-w-0 items-center gap-2">
-        <span className="truncate font-mono text-xs">{model.id}</span>
+        <span className="truncate font-mono text-xs">
+          {routingHints.get(model.id.toLowerCase())?.recommendedModelId ?? model.id}
+        </span>
+        {routingHints.get(model.id.toLowerCase()) ? (
+          <Badge variant="secondary" className="text-[9px] h-4 px-1 uppercase">
+            {routingHints.get(model.id.toLowerCase())?.prefix}
+          </Badge>
+        ) : null}
         {isCodexProvider && <CodexEffortBadge modelId={model.id} />}
       </div>
     ),
     itemContent: (
       <div className="flex min-w-0 items-center gap-2">
-        <span className="truncate font-mono text-xs">{model.id}</span>
+        <span className="truncate font-mono text-xs">
+          {routingHints.get(model.id.toLowerCase())?.recommendedModelId ?? model.id}
+        </span>
         {model.tier === 'paid' && <PaidBadge label={t('providerModelSelector.paid')} />}
+        {routingHints.get(model.id.toLowerCase())?.unprefixedStatus === 'shadowed' ? (
+          <Badge variant="outline" className="text-[9px] h-4 px-1">
+            Shadowed
+          </Badge>
+        ) : null}
+        {routingHints.get(model.id.toLowerCase())?.unprefixedStatus === 'prefix-only' ? (
+          <Badge variant="outline" className="text-[9px] h-4 px-1">
+            Prefix only
+          </Badge>
+        ) : null}
         {isCodexProvider && <CodexEffortBadge modelId={model.id} />}
       </div>
     ),
@@ -351,6 +392,33 @@ export function FlexibleModelSelector({
         </div>
       ),
     }));
+  const selectedValueMissing =
+    Boolean(value) &&
+    !recommendedOptions.some((option) => option.value === value) &&
+    !allModelOptions.some((option) => option.value === value);
+  const legacySelectedOption = value
+    ? {
+        value,
+        groupKey: 'current',
+        searchText: value,
+        triggerContent: (
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="truncate font-mono text-xs">{value}</span>
+            <Badge variant="outline" className="text-[9px] h-4 px-1">
+              Current
+            </Badge>
+          </div>
+        ),
+        itemContent: (
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="truncate font-mono text-xs">{value}</span>
+            <Badge variant="outline" className="text-[9px] h-4 px-1">
+              Current
+            </Badge>
+          </div>
+        ),
+      }
+    : null;
   const hasAvailableModels = recommendedOptions.length + allModelOptions.length > 0;
 
   return (
@@ -372,6 +440,14 @@ export function FlexibleModelSelector({
         }
         triggerClassName="h-9"
         groups={[
+          ...(selectedValueMissing && legacySelectedOption
+            ? [
+                {
+                  key: 'current',
+                  label: <span className="text-xs text-muted-foreground">Current value</span>,
+                },
+              ]
+            : []),
           {
             key: 'recommended',
             label: (
@@ -387,8 +463,32 @@ export function FlexibleModelSelector({
             ),
           },
         ]}
-        options={[...recommendedOptions, ...allModelOptions]}
+        options={[
+          ...(selectedValueMissing && legacySelectedOption ? [legacySelectedOption] : []),
+          ...recommendedOptions,
+          ...allModelOptions,
+        ]}
       />
+      {selectedRoutingHint ? (
+        <div
+          className={cn(
+            'rounded-md border px-2.5 py-2 text-[11px]',
+            selectedRoutingHint.unprefixedStatus === 'safe'
+              ? 'border-border/70 bg-muted/25 text-muted-foreground'
+              : 'border-amber-300/60 bg-amber-50 text-amber-900 dark:border-amber-500/30 dark:bg-amber-950/25 dark:text-amber-100'
+          )}
+        >
+          <div className="font-medium">
+            Preferred pinned model: <code>{selectedRoutingHint.recommendedModelId}</code>
+          </div>
+          <p className="mt-1 leading-5">{selectedRoutingHint.summary}</p>
+        </div>
+      ) : null}
+      {value && !selectedRoutingHint && normalizeModelValue(value, routing) !== value ? (
+        <div className="rounded-md border border-border/70 bg-muted/25 px-2.5 py-2 text-[11px] text-muted-foreground">
+          Using pinned model: <code>{value}</code>
+        </div>
+      ) : null}
     </div>
   );
 }

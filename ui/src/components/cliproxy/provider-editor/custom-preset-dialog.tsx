@@ -29,6 +29,7 @@ export function CustomPresetDialog({
   isSaving,
   catalog,
   allModels,
+  routing,
 }: CustomPresetDialogProps) {
   const { t } = useTranslation();
   const [values, setValues] = useState<ModelMappingValues>(currentValues);
@@ -78,6 +79,7 @@ export function CustomPresetDialog({
             onChange={(model) => setValues({ ...values, default: model })}
             catalog={catalog}
             allModels={allModels}
+            routing={routing}
           />
           <FlexibleModelSelector
             label={t('customPresetDialog.opusModel')}
@@ -86,6 +88,7 @@ export function CustomPresetDialog({
             onChange={(model) => setValues({ ...values, opus: model })}
             catalog={catalog}
             allModels={allModels}
+            routing={routing}
           />
           <FlexibleModelSelector
             label={t('customPresetDialog.sonnetModel')}
@@ -94,6 +97,7 @@ export function CustomPresetDialog({
             onChange={(model) => setValues({ ...values, sonnet: model })}
             catalog={catalog}
             allModels={allModels}
+            routing={routing}
           />
           <FlexibleModelSelector
             label={t('customPresetDialog.haikuModel')}
@@ -102,6 +106,7 @@ export function CustomPresetDialog({
             onChange={(model) => setValues({ ...values, haiku: model })}
             catalog={catalog}
             allModels={allModels}
+            routing={routing}
           />
         </div>
         <DialogFooter className="gap-2 sm:gap-0">

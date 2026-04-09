@@ -468,6 +468,29 @@ export interface CliproxyCatalogModel {
   presetMapping?: CliproxyCatalogPresetMapping;
 }
 
+export interface CliproxyModelRoutingHint {
+  modelId: string;
+  modelName: string;
+  prefix: string;
+  pinnedModelId: string;
+  recommendedModelId: string;
+  unprefixedStatus: 'safe' | 'shadowed' | 'prefix-only';
+  effectiveProvider: string | null;
+  effectiveDisplayName: string | null;
+  effectiveOwnedBy: string | null;
+  summary: string;
+}
+
+export interface CliproxyProviderRoutingHints {
+  provider: string;
+  displayName: string;
+  prefix: string;
+  safeCount: number;
+  shadowedCount: number;
+  prefixOnlyCount: number;
+  models: CliproxyModelRoutingHint[];
+}
+
 export interface CliproxyProviderCatalog {
   provider: string;
   displayName: string;
@@ -477,6 +500,7 @@ export interface CliproxyProviderCatalog {
 
 export interface CliproxyCatalogResponse {
   catalogs: Partial<Record<string, CliproxyProviderCatalog>>;
+  routing?: Partial<Record<string, CliproxyProviderRoutingHints>>;
   source: 'live' | 'cache' | 'static';
   cache: {
     synced: boolean;

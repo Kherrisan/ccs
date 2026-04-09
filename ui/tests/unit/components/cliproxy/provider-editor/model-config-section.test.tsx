@@ -110,4 +110,69 @@ describe('ModelConfigSection presets', () => {
       ANTHROPIC_DEFAULT_HAIKU_MODEL: 'gemini-3-9-flash-preview',
     });
   });
+
+  it('applies managed short prefixes when routing guidance is available', async () => {
+    const onApplyPreset = vi.fn();
+
+    render(
+      <ModelConfigSection
+        catalog={MODEL_CATALOGS.gemini}
+        savedPresets={[]}
+        currentModel="gemini-3-flash-preview"
+        opusModel="gemini-3.1-pro-preview"
+        sonnetModel="gemini-3.1-pro-preview"
+        haikuModel="gemini-3-flash-preview"
+        providerModels={[]}
+        routing={{
+          provider: 'gemini',
+          displayName: 'Gemini',
+          prefix: 'gcli',
+          safeCount: 0,
+          shadowedCount: 2,
+          prefixOnlyCount: 0,
+          models: [
+            {
+              modelId: 'gemini-3.1-pro-preview',
+              modelName: 'Gemini Pro',
+              prefix: 'gcli',
+              pinnedModelId: 'gcli/gemini-3.1-pro-preview',
+              recommendedModelId: 'gcli/gemini-3.1-pro-preview',
+              unprefixedStatus: 'shadowed',
+              effectiveProvider: 'agy',
+              effectiveDisplayName: 'Antigravity',
+              effectiveOwnedBy: 'antigravity',
+              summary: 'shadowed by Antigravity',
+            },
+            {
+              modelId: 'gemini-3-flash-preview',
+              modelName: 'Gemini Flash',
+              prefix: 'gcli',
+              pinnedModelId: 'gcli/gemini-3-flash-preview',
+              recommendedModelId: 'gcli/gemini-3-flash-preview',
+              unprefixedStatus: 'shadowed',
+              effectiveProvider: 'agy',
+              effectiveDisplayName: 'Antigravity',
+              effectiveOwnedBy: 'antigravity',
+              summary: 'shadowed by Antigravity',
+            },
+          ],
+        }}
+        provider="gemini"
+        onExtendedContextToggle={vi.fn()}
+        onApplyPreset={onApplyPreset}
+        onUpdateEnvValue={vi.fn()}
+        onOpenCustomPreset={vi.fn()}
+        onDeletePreset={vi.fn()}
+      />
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'Gemini Flash' }));
+
+    expect(onApplyPreset).toHaveBeenCalledWith({
+      ANTHROPIC_MODEL: 'gcli/gemini-3-flash-preview',
+      ANTHROPIC_DEFAULT_OPUS_MODEL: 'gcli/gemini-3.1-pro-preview',
+      ANTHROPIC_DEFAULT_SONNET_MODEL: 'gcli/gemini-3.1-pro-preview',
+      ANTHROPIC_DEFAULT_HAIKU_MODEL: 'gcli/gemini-3-flash-preview',
+    });
+  });
 });
