@@ -212,6 +212,8 @@ export function AccountFlowViz({
                 providerColor={providerColor}
                 totalRequests={totalRequests}
                 maxRequests={maxRequests}
+                showVisibleMetrics={!showPausedAccounts && pausedAccountsCount > 0}
+                hiddenPausedCount={showPausedAccounts ? 0 : pausedAccountsCount}
                 isDragging={draggingId === 'provider'}
                 offset={getOffset('provider')}
                 hoveredAccount={hoveredAccount}

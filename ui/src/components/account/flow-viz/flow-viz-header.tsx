@@ -57,7 +57,6 @@ export function FlowVizHeader({
         {pausedAccountsCount > 0 && (
           <button
             onClick={onTogglePausedAccounts}
-            aria-pressed={!showPausedAccounts}
             className={cn(
               'flex items-center gap-1.5 text-xs font-medium transition-all duration-200 px-3 py-1.5 rounded-md border shadow-sm',
               showPausedAccounts

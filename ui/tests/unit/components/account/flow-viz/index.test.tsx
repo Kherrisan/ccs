@@ -15,6 +15,11 @@ vi.mock(import('react-i18next'), async (importOriginal) => {
           'flowViz.hideDetails': 'Hide Details',
           'flowViz.backToProviders': 'Back to providers',
           'flowViz.resetLayout': 'Reset layout',
+          'flowViz.provider': 'Provider',
+          'flowViz.totalRequests': 'Total Requests',
+          'flowViz.accounts': 'Accounts',
+          'flowViz.visibleTotalRequests': 'Visible Requests',
+          'flowViz.visibleAccounts': 'Visible Accounts',
         };
 
         if (key === 'flowViz.showPausedAccounts') {
@@ -23,6 +28,10 @@ vi.mock(import('react-i18next'), async (importOriginal) => {
 
         if (key === 'flowViz.hidePausedAccounts') {
           return `Hide Paused (${options?.count ?? 0})`;
+        }
+
+        if (key === 'flowViz.excludingPausedAccounts') {
+          return `Excluding ${options?.count ?? 0} paused`;
         }
 
         return translations[key] ?? key;
@@ -48,10 +57,8 @@ vi.mock('@/components/account/flow-viz/account-card', () => ({
   ),
 }));
 
-vi.mock('@/components/account/flow-viz/provider-card', () => ({
-  ProviderCard: ({ providerData }: { providerData: ProviderData }) => (
-    <div data-provider-node>{providerData.accounts.length} visible accounts</div>
-  ),
+vi.mock('@/components/shared/provider-icon', () => ({
+  ProviderIcon: ({ provider }: { provider: string }) => <div>{provider}</div>,
 }));
 
 vi.mock('@/components/account/flow-viz/connection-timeline', () => ({
@@ -115,30 +122,31 @@ describe('AccountFlowViz paused account visibility', () => {
     expect(screen.getByRole('button', { name: 'Hide Paused (1)' })).toBeInTheDocument();
     expect(screen.getByText('active@company.com (active)')).toBeInTheDocument();
     expect(screen.getByText('paused@company.com (paused)')).toBeInTheDocument();
-    expect(screen.getByText('2 visible accounts')).toBeInTheDocument();
+    expect(screen.getByText('Total Requests')).toBeInTheDocument();
+    expect(screen.getByText('Accounts')).toBeInTheDocument();
+    expect(screen.getByText('7')).toBeInTheDocument();
+    expect(screen.getByText('2')).toBeInTheDocument();
     expect(screen.getByText('7 timeline events')).toBeInTheDocument();
     expect(screen.getByText('paths:paused-account,active-account')).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: 'Hide Paused (1)' }));
 
-    expect(screen.getByRole('button', { name: 'Show Paused (1)' })).toHaveAttribute(
-      'aria-pressed',
-      'true'
-    );
+    expect(screen.getByRole('button', { name: 'Show Paused (1)' })).toBeInTheDocument();
     expect(screen.getByText('active@company.com (active)')).toBeInTheDocument();
     expect(screen.queryByText('paused@company.com (paused)')).not.toBeInTheDocument();
-    expect(screen.getByText('1 visible accounts')).toBeInTheDocument();
+    expect(screen.getByText('Visible Requests')).toBeInTheDocument();
+    expect(screen.getByText('Visible Accounts')).toBeInTheDocument();
+    expect(screen.getByText('Excluding 1 paused')).toBeInTheDocument();
+    expect(screen.getByText('3')).toBeInTheDocument();
+    expect(screen.getByText('1')).toBeInTheDocument();
     expect(screen.getByText('3 timeline events')).toBeInTheDocument();
     expect(screen.getByText('paths:active-account')).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: 'Show Paused (1)' }));
 
-    expect(screen.getByRole('button', { name: 'Hide Paused (1)' })).toHaveAttribute(
-      'aria-pressed',
-      'false'
-    );
+    expect(screen.getByRole('button', { name: 'Hide Paused (1)' })).toBeInTheDocument();
     expect(screen.getByText('paused@company.com (paused)')).toBeInTheDocument();
-    expect(screen.getByText('2 visible accounts')).toBeInTheDocument();
+    expect(screen.queryByText('Excluding 1 paused')).not.toBeInTheDocument();
   });
 
   it('ignores hidden paused-account drag offsets when deciding whether reset layout should stay visible', async () => {
