@@ -49,17 +49,18 @@ export function AccountFlowViz({
     () => new Set(visibleAccounts.map((account) => account.id)),
     [visibleAccounts]
   );
-  const visibleProviderData = useMemo(
-    () => ({
-      ...providerData,
-      accounts: visibleAccounts,
-    }),
-    [providerData, visibleAccounts]
-  );
   const maxRequests = Math.max(...visibleAccounts.map((a) => a.successCount + a.failureCount), 1);
   const totalRequests = visibleAccounts.reduce(
     (acc, a) => acc + a.successCount + a.failureCount,
     0
+  );
+  const visibleProviderData = useMemo(
+    () => ({
+      ...providerData,
+      accounts: visibleAccounts,
+      totalRequests,
+    }),
+    [providerData, visibleAccounts, totalRequests]
   );
 
   const calculatePaths = useCallback(() => {
