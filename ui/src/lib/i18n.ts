@@ -673,6 +673,8 @@ const resources = {
         backToProviders: 'Back to providers',
         showDetails: 'Show Details',
         hideDetails: 'Hide Details',
+        showPausedAccounts: 'Show Paused ({{count}})',
+        hidePausedAccounts: 'Hide Paused ({{count}})',
         resetLayout: 'Reset layout',
         provider: 'Provider',
         totalRequests: 'Total Requests',

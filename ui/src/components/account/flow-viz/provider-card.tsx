@@ -42,6 +42,7 @@ export function ProviderCard({
 }: ProviderCardProps) {
   const { t } = useTranslation();
   const { accounts } = providerData;
+  const progressDenominator = Math.max(1, maxRequests * Math.max(1, accounts.length));
 
   return (
     <div
@@ -136,7 +137,7 @@ export function ProviderCard({
           <div
             className="h-full rounded-full transition-all duration-500"
             style={{
-              width: `${Math.min(100, (totalRequests / (maxRequests * accounts.length)) * 100)}%`,
+              width: `${Math.min(100, (totalRequests / progressDenominator) * 100)}%`,
               backgroundColor: providerColor,
             }}
           />
