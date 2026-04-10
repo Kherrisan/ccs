@@ -5,24 +5,15 @@
 
 import type { ModelEntry, ProviderCatalog } from '@/components/cliproxy/provider-model-selector';
 import { stripModelConfigurationSuffixes } from '@/lib/extended-context-utils';
+import {
+  AGY_GEMINI_PRO_COMPATIBILITY_IDS,
+  AGY_GEMINI_PRO_HIGH_ID,
+  AGY_GEMINI_PRO_LOW_ID,
+} from '@shared/agy-gemini-pro-compatibility';
 import { GEMINI_MINOR_VERSION_COMPATIBILITY_IDS } from '@shared/gemini-minor-version-compatibility';
 
 const GEMINI_PREVIEW_MODEL_ID_PATTERN =
   /^gemini-(\d+(?:[.-]\d+)*)-(pro|flash)-preview(-customtools)?$/i;
-const AGY_GEMINI_PRO_HIGH_ID = 'gemini-3.1-pro-high';
-const AGY_GEMINI_PRO_LOW_ID = 'gemini-3.1-pro-low';
-const AGY_GEMINI_PRO_COMPATIBILITY_IDS = new Map<string, string>([
-  ['gemini-3-pro-high', AGY_GEMINI_PRO_HIGH_ID],
-  ['gemini-3.1-pro-high', AGY_GEMINI_PRO_HIGH_ID],
-  ['gemini-3-pro-low', AGY_GEMINI_PRO_LOW_ID],
-  ['gemini-3.1-pro-low', AGY_GEMINI_PRO_LOW_ID],
-  ['gemini-3-pro-preview', AGY_GEMINI_PRO_HIGH_ID],
-  ['gemini-3-pro-preview-customtools', AGY_GEMINI_PRO_HIGH_ID],
-  ['gemini-3.1-pro-preview', AGY_GEMINI_PRO_HIGH_ID],
-  ['gemini-3.1-pro-preview-customtools', AGY_GEMINI_PRO_HIGH_ID],
-  ['gemini-3-1-pro-preview', AGY_GEMINI_PRO_HIGH_ID],
-  ['gemini-3-1-pro-preview-customtools', AGY_GEMINI_PRO_HIGH_ID],
-]);
 const MANAGED_MODEL_PREFIXES = ['agy/', 'gcli/'] as const;
 
 export type CatalogAvailableModel = {
@@ -62,7 +53,7 @@ function stripCustomtoolsSuffix(modelId: string): string {
 }
 
 function getAgyGeminiProCompatibilityId(modelId: string): string | undefined {
-  return AGY_GEMINI_PRO_COMPATIBILITY_IDS.get(normalizeModelId(modelId));
+  return AGY_GEMINI_PRO_COMPATIBILITY_IDS[normalizeModelId(modelId)];
 }
 
 function parseGeminiPreviewModelId(modelId: string): GeminiPreviewModelInfo | null {
@@ -208,8 +199,8 @@ export const MODEL_CATALOGS: Record<string, ProviderCatalog> = {
         extendedContext: true,
         presetMapping: {
           default: 'gemini-3-1-flash-preview',
-          opus: 'gemini-3.1-pro-preview',
-          sonnet: 'gemini-3.1-pro-preview',
+          opus: AGY_GEMINI_PRO_HIGH_ID,
+          sonnet: AGY_GEMINI_PRO_HIGH_ID,
           haiku: 'gemini-3-1-flash-preview',
         },
       },

@@ -158,6 +158,12 @@ describe('claude preset utils', () => {
     expect(resolvedAgyModels.find((model) => model.name === 'Gemini Flash')?.id).toBe(
       'gemini-3-1-flash-preview'
     );
+    expect(resolvedAgyModels.find((model) => model.name === 'Gemini Flash')?.presetMapping).toEqual(
+      expect.objectContaining({
+        opus: 'gemini-3.1-pro-high',
+        sonnet: 'gemini-3.1-pro-high',
+      })
+    );
 
     const supplementalAgyModels = getSupplementalCatalogModels(
       'agy',
