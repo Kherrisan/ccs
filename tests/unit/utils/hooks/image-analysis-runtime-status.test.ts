@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 import { describe, expect, it } from 'bun:test';
 import { hydrateImageAnalysisRuntimeStatus } from '../../../../src/utils/hooks/image-analysis-runtime-status';
 import type { ImageAnalysisStatus } from '../../../../src/utils/hooks/image-analysis-backend-resolver';
@@ -89,22 +92,38 @@ describe('image-analysis-runtime-status', () => {
   });
 
   it('uses getAuthStatus when initializeAccounts is omitted from an override', async () => {
-    const status = await hydrateImageAnalysisRuntimeStatus(createStatus(), {
-      getProxyTarget: () => ({ host: '127.0.0.1', port: 8317, protocol: 'http', isRemote: false }),
-      initializeAccounts: undefined as unknown as () => void,
-      getAuthStatus: () => ({
-        provider: 'ghcp',
-        authenticated: true,
-        tokenDir: '/tmp/auth',
-        tokenFiles: ['github-copilot-test.json'],
-        accounts: [],
-        defaultAccount: undefined,
-      }),
-      isCliproxyRunning: async () => true,
-    });
+    const tempCcsHome = mkdtempSync(join(tmpdir(), 'ccs-image-analysis-runtime-status-'));
+    const originalCcsHome = process.env.CCS_HOME;
+    const originalCcsDir = process.env.CCS_DIR;
+    delete process.env.CCS_DIR;
+    process.env.CCS_HOME = tempCcsHome;
 
-    expect(status.authReadiness).toBe('ready');
-    expect(status.effectiveRuntimeMode).toBe('cliproxy-image-analysis');
+    try {
+      const status = await hydrateImageAnalysisRuntimeStatus(createStatus(), {
+        getProxyTarget: () => ({ host: '127.0.0.1', port: 8317, protocol: 'http', isRemote: false }),
+        initializeAccounts: undefined as unknown as () => void,
+        getAuthStatus: () => ({
+          provider: 'ghcp',
+          authenticated: true,
+          tokenDir: '/tmp/auth',
+          tokenFiles: ['github-copilot-test.json'],
+          accounts: [],
+          defaultAccount: undefined,
+        }),
+        isCliproxyRunning: async () => true,
+      });
+
+      expect(status.authReadiness).toBe('ready');
+      expect(status.effectiveRuntimeMode).toBe('cliproxy-image-analysis');
+    } finally {
+      if (originalCcsHome === undefined) delete process.env.CCS_HOME;
+      else process.env.CCS_HOME = originalCcsHome;
+
+      if (originalCcsDir === undefined) delete process.env.CCS_DIR;
+      else process.env.CCS_DIR = originalCcsDir;
+
+      rmSync(tempCcsHome, { recursive: true, force: true });
+    }
   });
 
   it('treats an unreachable remote proxy as unavailable', async () => {

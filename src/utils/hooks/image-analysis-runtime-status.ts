@@ -37,6 +37,13 @@ const defaultDeps: ImageAnalysisRuntimeStatusDeps = {
   isCliproxyRunning: () => isCliproxyRunning(),
 };
 
+function mergeDefinedDeps<T extends object>(defaults: T, overrides: Partial<T>): T {
+  const definedOverrides = Object.fromEntries(
+    Object.entries(overrides as Record<string, unknown>).filter(([, value]) => value !== undefined)
+  ) as Partial<T>;
+  return { ...defaults, ...definedOverrides };
+}
+
 async function resolveAuthReadiness(
   status: ImageAnalysisStatus,
   deps: ImageAnalysisRuntimeStatusDeps
@@ -64,9 +71,7 @@ async function resolveAuthReadiness(
         (entry) => entry.provider === authProvider && entry.authenticated
       );
     } else {
-      if (typeof deps.initializeAccounts === 'function') {
-        deps.initializeAccounts();
-      }
+      deps.initializeAccounts();
       authenticated = deps.getAuthStatus(authProvider).authenticated;
     }
 
@@ -162,7 +167,7 @@ export async function hydrateImageAnalysisRuntimeStatus(
   baseStatus: ImageAnalysisStatus,
   deps: Partial<ImageAnalysisRuntimeStatusDeps> = {}
 ): Promise<ImageAnalysisStatus> {
-  const resolvedDeps = { ...defaultDeps, ...deps };
+  const resolvedDeps = mergeDefinedDeps(defaultDeps, deps);
   const authStatus = await resolveAuthReadiness(baseStatus, resolvedDeps);
   const proxyStatus = await resolveProxyReadiness(baseStatus, resolvedDeps);
   const mergedStatus = {
