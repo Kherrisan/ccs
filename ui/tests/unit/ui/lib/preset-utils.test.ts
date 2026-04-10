@@ -5,6 +5,7 @@ import {
   MODEL_CATALOGS,
   findCatalogModel,
   getResolvedCatalogModels,
+  getSupplementalCatalogModels,
   resolveCatalogModelId,
 } from '@/lib/model-catalogs';
 import { applyDefaultPreset } from '@/lib/preset-utils';
@@ -126,29 +127,49 @@ describe('claude preset utils', () => {
     );
   });
 
-  it('resolves Gemini preview presets to the best live family match', () => {
+  it('maps legacy Antigravity Gemini Pro aliases to the current catalog entries', () => {
+    expect(findCatalogModel('agy', 'gemini-3.1-pro-preview')?.id).toBe('gemini-3.1-pro-high');
+    expect(findCatalogModel('agy', 'gemini-3-pro-preview')?.id).toBe('gemini-3.1-pro-high');
+    expect(findCatalogModel('agy', 'gemini-3-pro-low')?.id).toBe('gemini-3.1-pro-low');
+  });
+
+  it('resolves Antigravity Gemini presets to the current live-safe model ids', () => {
     const availableModels = [
-      { id: 'gemini-3.9-pro-preview-customtools', owned_by: 'antigravity' },
-      { id: 'gemini-3.9-pro-preview', owned_by: 'antigravity' },
-      { id: 'gemini-3-9-flash-preview-customtools', owned_by: 'antigravity' },
-      { id: 'gemini-3-9-flash-preview', owned_by: 'antigravity' },
+      { id: 'agy/gemini-3.1-pro-high', owned_by: 'antigravity' },
+      { id: 'gemini-3.1-pro-high', owned_by: 'antigravity' },
+      { id: 'gemini-3.1-pro-low', owned_by: 'antigravity' },
       { id: 'gemini-3.1-pro-preview', owned_by: 'antigravity' },
+      { id: 'gemini-3.1-pro-preview-customtools', owned_by: 'antigravity' },
+      { id: 'gemini-3-pro-preview', owned_by: 'antigravity' },
+      { id: 'gemini-3-1-flash-preview-customtools', owned_by: 'antigravity' },
+      { id: 'gemini-3-1-flash-preview', owned_by: 'antigravity' },
+      { id: 'gpt-oss-120b-medium', owned_by: 'antigravity' },
     ];
 
-    expect(resolveCatalogModelId('gemini-3.1-pro-preview', availableModels)).toBe(
-      'gemini-3.9-pro-preview'
-    );
-    expect(resolveCatalogModelId('gemini-3-flash-preview', availableModels)).toBe(
-      'gemini-3-9-flash-preview'
-    );
-    expect(findCatalogModel('agy', 'gemini-3.9-pro-preview')?.id).toBe('gemini-3.1-pro-preview');
+    expect(findCatalogModel('agy', 'gemini-3.1-pro-preview')?.id).toBe('gemini-3.1-pro-high');
 
     const resolvedAgyModels = getResolvedCatalogModels(MODEL_CATALOGS.agy, availableModels);
-    expect(resolvedAgyModels.find((model) => model.name === 'Gemini Pro')?.id).toBe(
-      'gemini-3.9-pro-preview'
+    expect(resolvedAgyModels.find((model) => model.name === 'Gemini Pro High')?.id).toBe(
+      'gemini-3.1-pro-high'
+    );
+    expect(resolvedAgyModels.find((model) => model.name === 'Gemini Pro Low')?.id).toBe(
+      'gemini-3.1-pro-low'
     );
     expect(resolvedAgyModels.find((model) => model.name === 'Gemini Flash')?.id).toBe(
-      'gemini-3-9-flash-preview'
+      'gemini-3-1-flash-preview'
+    );
+
+    const supplementalAgyModels = getSupplementalCatalogModels(
+      'agy',
+      MODEL_CATALOGS.agy,
+      availableModels
+    );
+    expect(supplementalAgyModels.map((model) => model.id)).not.toContain('gpt-oss-120b-medium');
+    expect(supplementalAgyModels.map((model) => model.id)).not.toContain('gemini-3-pro-preview');
+    expect(supplementalAgyModels.map((model) => model.id)).not.toContain('gemini-3.1-pro-preview');
+    expect(supplementalAgyModels.map((model) => model.id)).not.toContain('agy/gemini-3.1-pro-high');
+    expect(supplementalAgyModels.map((model) => model.id)).not.toContain(
+      'gemini-3-1-flash-preview-customtools'
     );
   });
 

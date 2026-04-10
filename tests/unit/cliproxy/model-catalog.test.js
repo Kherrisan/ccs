@@ -91,11 +91,20 @@ describe('Model Catalog', () => {
       assert.strictEqual(ids.includes('claude-sonnet-4-5'), false);
     });
 
-    it('includes Gemini 3.1 Pro (free via Antigravity)', () => {
+    it('includes Gemini 3.1 Pro High via Antigravity', () => {
       const { MODEL_CATALOG } = modelCatalog;
-      const gem3 = MODEL_CATALOG.agy.models.find((m) => m.id === 'gemini-3.1-pro-preview');
-      assert(gem3, 'Should include Gemini 3.1 Pro');
-      assert.strictEqual(gem3.name, 'Gemini 3.1 Pro');
+      const gem3 = MODEL_CATALOG.agy.models.find((m) => m.id === 'gemini-3.1-pro-high');
+      assert(gem3, 'Should include Gemini 3.1 Pro High');
+      assert.strictEqual(gem3.name, 'Gemini 3.1 Pro High');
+      // AGY models are all free - no paid tier
+      assert.strictEqual(gem3.tier, undefined, 'AGY models should not have paid tier');
+    });
+
+    it('includes Gemini 3.1 Pro Low via Antigravity', () => {
+      const { MODEL_CATALOG } = modelCatalog;
+      const gem3 = MODEL_CATALOG.agy.models.find((m) => m.id === 'gemini-3.1-pro-low');
+      assert(gem3, 'Should include Gemini 3.1 Pro Low');
+      assert.strictEqual(gem3.name, 'Gemini 3.1 Pro Low');
       // AGY models are all free - no paid tier
       assert.strictEqual(gem3.tier, undefined, 'AGY models should not have paid tier');
     });
@@ -108,9 +117,9 @@ describe('Model Catalog', () => {
       assert.strictEqual(flash.tier, undefined, 'AGY models should not have paid tier');
     });
 
-    it('has 4 models total', () => {
+    it('has 5 models total', () => {
       const { MODEL_CATALOG } = modelCatalog;
-      assert.strictEqual(MODEL_CATALOG.agy.models.length, 4);
+      assert.strictEqual(MODEL_CATALOG.agy.models.length, 5);
     });
   });
 
@@ -262,13 +271,15 @@ describe('Model Catalog', () => {
       assert.strictEqual(legacySonnet?.id, 'claude-sonnet-4-6');
     });
 
-    it('treats Gemini 3 and 3.1 preview IDs as the same catalog family', () => {
+    it('maps legacy Antigravity Gemini Pro aliases onto the current 3.1 high/low models', () => {
       const { findModel, getSuggestedReplacementModel } = modelCatalog;
       const legacyAgyGemini = findModel('agy', 'gemini-3-pro-preview');
+      const legacyAgyGeminiLow = findModel('agy', 'gemini-3-pro-low');
       const legacyGemini = findModel('gemini', 'gemini-3-pro-preview');
       const currentGemini = findModel('gemini', 'gemini-3.1-pro-preview');
 
-      assert.strictEqual(legacyAgyGemini?.id, 'gemini-3.1-pro-preview');
+      assert.strictEqual(legacyAgyGemini?.id, 'gemini-3.1-pro-high');
+      assert.strictEqual(legacyAgyGeminiLow?.id, 'gemini-3.1-pro-low');
       assert.strictEqual(legacyGemini?.id, 'gemini-3.1-pro-preview');
       assert.strictEqual(currentGemini?.id, 'gemini-3.1-pro-preview');
       assert.strictEqual(
@@ -371,7 +382,7 @@ describe('Model Catalog', () => {
       const sonnetThinkingIdx = models.findIndex((m) => m.id === 'claude-sonnet-4-6');
 
       // Find indices of the remaining non-Claude model
-      const geminiIdx = models.findIndex((m) => m.id === 'gemini-3.1-pro-preview');
+      const geminiIdx = models.findIndex((m) => m.id === 'gemini-3.1-pro-high');
 
       // Primary Claude choices should appear ahead of Gemini fallback.
       assert(opusIdx < geminiIdx, 'Opus should be above Gemini');

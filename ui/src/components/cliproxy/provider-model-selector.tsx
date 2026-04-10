@@ -13,7 +13,7 @@ import { SearchableSelect } from '@/components/ui/searchable-select';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { CliproxyProviderRoutingHints } from '@/lib/api-client';
 import { getCodexEffortDisplay } from '@/lib/codex-effort';
-import { getResolvedCatalogModels } from '@/lib/model-catalogs';
+import { getResolvedCatalogModels, getSupplementalCatalogModels } from '@/lib/model-catalogs';
 import { cn } from '@/lib/utils';
 
 /** Model entry from catalog */
@@ -329,6 +329,10 @@ export function FlexibleModelSelector({
     () => getResolvedCatalogModels(catalog, allModels),
     [allModels, catalog]
   );
+  const supplementalModels = useMemo(
+    () => getSupplementalCatalogModels(catalog?.provider ?? '', catalog, allModels),
+    [allModels, catalog]
+  );
   const catalogModelIds = new Set(resolvedCatalogModels.map((model) => model.id));
   const routingHints = useMemo(
     () =>
@@ -388,7 +392,7 @@ export function FlexibleModelSelector({
     ),
   }));
 
-  const allModelOptions = allModels
+  const allModelOptions = supplementalModels
     .filter((model) => !catalogModelIds.has(model.id))
     .filter(
       (model) =>
@@ -495,14 +499,20 @@ export function FlexibleModelSelector({
               <span className="text-xs text-primary">{t('providerModelSelector.recommended')}</span>
             ),
           },
-          {
-            key: 'all',
-            label: (
-              <span className="text-xs text-muted-foreground">
-                {t('providerModelSelector.allModelsCount', { count: allModels.length })}
-              </span>
-            ),
-          },
+          ...(allModelOptions.length > 0
+            ? [
+                {
+                  key: 'all',
+                  label: (
+                    <span className="text-xs text-muted-foreground">
+                      {t('providerModelSelector.allModelsCount', {
+                        count: allModelOptions.length,
+                      })}
+                    </span>
+                  ),
+                },
+              ]
+            : []),
         ]}
         options={[
           ...(selectedValueMissing && legacySelectedOption ? [legacySelectedOption] : []),

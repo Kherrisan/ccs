@@ -14,6 +14,21 @@ import {
 import { stripModelConfigurationSuffixes } from '../shared/extended-context-utils';
 import { GEMINI_MINOR_VERSION_COMPATIBILITY_IDS } from '../shared/gemini-minor-version-compatibility';
 
+const AGY_GEMINI_PRO_HIGH_ID = 'gemini-3.1-pro-high';
+const AGY_GEMINI_PRO_LOW_ID = 'gemini-3.1-pro-low';
+const AGY_GEMINI_PRO_COMPATIBILITY_IDS = Object.freeze({
+  'gemini-3-pro-high': AGY_GEMINI_PRO_HIGH_ID,
+  'gemini-3.1-pro-high': AGY_GEMINI_PRO_HIGH_ID,
+  'gemini-3-pro-low': AGY_GEMINI_PRO_LOW_ID,
+  'gemini-3.1-pro-low': AGY_GEMINI_PRO_LOW_ID,
+  'gemini-3-pro-preview': AGY_GEMINI_PRO_HIGH_ID,
+  'gemini-3-pro-preview-customtools': AGY_GEMINI_PRO_HIGH_ID,
+  'gemini-3.1-pro-preview': AGY_GEMINI_PRO_HIGH_ID,
+  'gemini-3.1-pro-preview-customtools': AGY_GEMINI_PRO_HIGH_ID,
+  'gemini-3-1-pro-preview': AGY_GEMINI_PRO_HIGH_ID,
+  'gemini-3-1-pro-preview-customtools': AGY_GEMINI_PRO_HIGH_ID,
+} satisfies Record<string, string>);
+
 /**
  * Thinking support configuration for a model.
  * Defines how thinking/reasoning budget can be controlled.
@@ -114,11 +129,19 @@ export const MODEL_CATALOG: Partial<Record<CLIProxyProvider, ProviderCatalog>> =
         },
       },
       {
-        id: 'gemini-3.1-pro-preview',
-        name: 'Gemini 3.1 Pro',
-        description: 'Google latest Gemini Pro model via Antigravity',
+        id: AGY_GEMINI_PRO_HIGH_ID,
+        name: 'Gemini 3.1 Pro High',
+        description: 'Current Antigravity Gemini Pro route with higher reasoning budget',
         nativeImageInput: true,
-        thinking: { type: 'levels', levels: ['low', 'high'], dynamicAllowed: true },
+        thinking: { type: 'none' },
+        extendedContext: true,
+      },
+      {
+        id: AGY_GEMINI_PRO_LOW_ID,
+        name: 'Gemini 3.1 Pro Low',
+        description: 'Current Antigravity Gemini Pro route with the lighter quota tier',
+        nativeImageInput: true,
+        thinking: { type: 'none' },
         extendedContext: true,
       },
       {
@@ -464,6 +487,16 @@ export function findModel(provider: CLIProxyProvider, modelId: string): ModelEnt
       ];
     if (compatibilityId) {
       lookupCandidates.add(compatibilityId);
+    }
+
+    if (isAntigravityProvider(provider)) {
+      const agyCompatibilityId =
+        AGY_GEMINI_PRO_COMPATIBILITY_IDS[
+          candidate as keyof typeof AGY_GEMINI_PRO_COMPATIBILITY_IDS
+        ];
+      if (agyCompatibilityId) {
+        lookupCandidates.add(agyCompatibilityId);
+      }
     }
   }
 
