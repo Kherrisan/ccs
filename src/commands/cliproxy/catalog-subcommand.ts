@@ -174,16 +174,39 @@ export async function handleCatalogRefresh(verbose: boolean): Promise<void> {
   console.log('');
 }
 
+/** JSON-serialisable model entry emitted by `catalog --json`. */
+interface CatalogJsonModel {
+  id: string;
+  name: string;
+  tier?: 'free' | 'pro' | 'ultra';
+  description?: string;
+  deprecated?: boolean;
+  deprecationReason?: string;
+  broken?: boolean;
+  extendedContext?: boolean;
+  nativeImageInput?: boolean;
+}
+
 /**
  * Output catalog as JSON for programmatic consumption.
  * Used by OnSteroids and other tools to get available models per provider.
- * Format: { [providerName: string]: Array<{ id: string, name: string }> }
+ * Format: { [providerName: string]: CatalogJsonModel[] }
  */
 export function handleCatalogJson(): void {
   const catalogs = getAllResolvedCatalogs();
-  const result: Record<string, Array<{ id: string; name: string }>> = {};
+  const result: Record<string, CatalogJsonModel[]> = {};
   for (const [provider, catalog] of Object.entries(catalogs)) {
-    result[provider] = catalog.models.map((m) => ({ id: m.id, name: m.name }));
+    result[provider] = catalog.models.map((m) => {
+      const entry: CatalogJsonModel = { id: m.id, name: m.name };
+      if (m.tier) entry.tier = m.tier;
+      if (m.description) entry.description = m.description;
+      if (m.deprecated) entry.deprecated = m.deprecated;
+      if (m.deprecationReason) entry.deprecationReason = m.deprecationReason;
+      if (m.broken) entry.broken = m.broken;
+      if (m.extendedContext) entry.extendedContext = m.extendedContext;
+      if (m.nativeImageInput) entry.nativeImageInput = m.nativeImageInput;
+      return entry;
+    });
   }
   console.log(JSON.stringify(result));
 }

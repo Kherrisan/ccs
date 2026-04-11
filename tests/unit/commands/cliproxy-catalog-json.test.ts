@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
+import { handleCatalogJson } from '../../../src/commands/cliproxy/catalog-subcommand';
+import { handleCliproxyCommand } from '../../../src/commands/cliproxy/index';
 
 let originalConsoleLog: typeof console.log;
 let capturedOutput: string[];
@@ -16,49 +18,96 @@ afterEach(() => {
 });
 
 describe('cliproxy catalog --json output', () => {
-  it('outputs valid JSON mapping provider names to model arrays', async () => {
-    const { handleCatalogJson } = await import(
-      `../../../src/commands/cliproxy/catalog-subcommand?catalog-json-format=${Date.now()}`
-    );
-
+  it('outputs valid JSON mapping provider names to model arrays', () => {
     handleCatalogJson();
 
     expect(capturedOutput).toHaveLength(1);
-    const parsed = JSON.parse(capturedOutput[0]) as Record<
-      string,
-      Array<{ id: string; name: string }>
-    >;
+    const parsed = JSON.parse(capturedOutput[0]) as Record<string, unknown[]>;
 
     // Must be a non-empty object (static catalog always has providers)
     expect(typeof parsed).toBe('object');
     expect(Object.keys(parsed).length).toBeGreaterThan(0);
 
-    // Every provider entry must be an array of { id, name } objects
-    for (const [provider, models] of Object.entries(parsed)) {
+    // Every provider entry must be an array of objects with at least id and name
+    for (const models of Object.values(parsed)) {
       expect(Array.isArray(models)).toBe(true);
       expect(models.length).toBeGreaterThan(0);
-      for (const model of models) {
+      for (const model of models as Array<Record<string, unknown>>) {
         expect(typeof model.id).toBe('string');
         expect(typeof model.name).toBe('string');
-        // Only id and name — no extra metadata leaks
-        expect(Object.keys(model).sort()).toEqual(['id', 'name']);
       }
-      // Provider key should be a non-empty string
-      expect(provider.length).toBeGreaterThan(0);
     }
   });
 
-  it('outputs minified JSON (single line, no whitespace formatting)', async () => {
-    const { handleCatalogJson } = await import(
-      `../../../src/commands/cliproxy/catalog-subcommand?catalog-json-minified=${Date.now()}`
-    );
+  it('includes metadata fields when present on model entries', () => {
+    handleCatalogJson();
 
+    const parsed = JSON.parse(capturedOutput[0]) as Record<
+      string,
+      Array<Record<string, unknown>>
+    >;
+    const allModels = Object.values(parsed).flat();
+
+    // At least some models in the static catalog have tier set
+    const withTier = allModels.filter((m) => m.tier !== undefined);
+    expect(withTier.length).toBeGreaterThan(0);
+
+    // Tier values must be one of the allowed strings
+    for (const model of withTier) {
+      expect(['free', 'pro', 'ultra']).toContain(model.tier);
+    }
+  });
+
+  it('omits undefined optional fields instead of including nulls', () => {
+    handleCatalogJson();
+
+    const parsed = JSON.parse(capturedOutput[0]) as Record<
+      string,
+      Array<Record<string, unknown>>
+    >;
+    const allModels = Object.values(parsed).flat();
+
+    for (const model of allModels) {
+      for (const value of Object.values(model)) {
+        expect(value).not.toBeNull();
+        expect(value).not.toBeUndefined();
+      }
+    }
+  });
+
+  it('outputs minified JSON (single line, no whitespace formatting)', () => {
     handleCatalogJson();
 
     const output = capturedOutput[0];
-    // Minified JSON has no newlines
     expect(output.includes('\n')).toBe(false);
-    // Valid JSON roundtrip
     expect(JSON.stringify(JSON.parse(output))).toBe(output);
+  });
+});
+
+describe('cliproxy catalog --json routing', () => {
+  it('routes catalog --json through handleCliproxyCommand', async () => {
+    await handleCliproxyCommand(['catalog', '--json']);
+
+    expect(capturedOutput).toHaveLength(1);
+    const parsed = JSON.parse(capturedOutput[0]);
+    expect(typeof parsed).toBe('object');
+    expect(Object.keys(parsed).length).toBeGreaterThan(0);
+  });
+
+  it('--json takes priority over refresh subcommand', async () => {
+    await handleCliproxyCommand(['catalog', 'refresh', '--json']);
+
+    expect(capturedOutput).toHaveLength(1);
+    // Should output JSON, not refresh output
+    const parsed = JSON.parse(capturedOutput[0]);
+    expect(typeof parsed).toBe('object');
+  });
+
+  it('--json takes priority when placed before subcommand', async () => {
+    await handleCliproxyCommand(['catalog', '--json', 'reset']);
+
+    expect(capturedOutput).toHaveLength(1);
+    const parsed = JSON.parse(capturedOutput[0]);
+    expect(typeof parsed).toBe('object');
   });
 });
