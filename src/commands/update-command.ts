@@ -7,7 +7,14 @@
 
 import { spawn } from 'child_process';
 import { initUI, header, ok, fail, warn, info, color } from '../utils/ui';
-import { detectPackageManager } from '../utils/package-manager-detector';
+import {
+  buildPackageManagerEnv,
+  detectCurrentInstall,
+  formatManualUpdateCommand,
+  readInstalledPackageState,
+  type CurrentInstall,
+  type InstalledPackageState,
+} from '../utils/package-manager-detector';
 import { compareVersionsWithPrerelease } from '../utils/update-checker';
 import { getVersion } from '../utils/version';
 
@@ -22,6 +29,24 @@ export interface UpdateOptions {
 // Version (from centralized utility)
 const CCS_VERSION = getVersion();
 
+async function resolveTargetVersion(
+  currentVersion: string,
+  targetTag: 'latest' | 'dev'
+): Promise<string | undefined> {
+  const { checkForUpdates } = await import('../utils/update-checker');
+  const result = await checkForUpdates(currentVersion, true, 'npm', targetTag);
+
+  if (result.status === 'update_available' && result.latest) {
+    return result.latest;
+  }
+
+  if (result.status === 'no_update') {
+    return currentVersion;
+  }
+
+  return undefined;
+}
+
 /**
  * Handle the update command
  * Checks for updates and installs the latest version
@@ -30,6 +55,7 @@ export async function handleUpdateCommand(options: UpdateOptions = {}): Promise<
   await initUI();
   const { force = false, beta = false } = options;
   const targetTag = beta ? 'dev' : 'latest';
+  const currentInstall = detectCurrentInstall();
 
   console.log('');
   console.log(header('Checking for updates...'));
@@ -39,16 +65,16 @@ export async function handleUpdateCommand(options: UpdateOptions = {}): Promise<
   if (force) {
     console.log(info(`Force reinstall from @${targetTag} channel...`));
     console.log('');
-    await performNpmUpdate(targetTag, true);
+    const expectedVersion = await resolveTargetVersion(CCS_VERSION, targetTag);
+    await performNpmUpdate(currentInstall, targetTag, true, expectedVersion);
     return;
   }
 
   const { checkForUpdates } = await import('../utils/update-checker');
-
   const updateResult = await checkForUpdates(CCS_VERSION, true, 'npm', targetTag);
 
   if (updateResult.status === 'check_failed') {
-    handleCheckFailed(updateResult.message ?? 'Update check failed', targetTag);
+    handleCheckFailed(updateResult.message ?? 'Update check failed', targetTag, currentInstall);
     return;
   }
 
@@ -89,13 +115,17 @@ export async function handleUpdateCommand(options: UpdateOptions = {}): Promise<
     console.log('');
   }
 
-  await performNpmUpdate(targetTag);
+  await performNpmUpdate(currentInstall, targetTag, false, updateResult.latest);
 }
 
 /**
  * Handle failed update check
  */
-function handleCheckFailed(message: string, targetTag: string = 'latest'): void {
+function handleCheckFailed(
+  message: string,
+  targetTag: string = 'latest',
+  currentInstall: CurrentInstall = detectCurrentInstall()
+): void {
   console.log(fail(message));
   console.log('');
   console.log(warn('Possible causes:'));
@@ -105,27 +135,7 @@ function handleCheckFailed(message: string, targetTag: string = 'latest'): void 
   console.log('');
   console.log('Try again later or update manually:');
 
-  const packageManager = detectPackageManager();
-  let manualCommand: string;
-
-  switch (packageManager) {
-    case 'npm':
-      manualCommand = `npm install -g @kaitranntt/ccs@${targetTag}`;
-      break;
-    case 'yarn':
-      manualCommand = `yarn global add @kaitranntt/ccs@${targetTag}`;
-      break;
-    case 'pnpm':
-      manualCommand = `pnpm add -g @kaitranntt/ccs@${targetTag}`;
-      break;
-    case 'bun':
-      manualCommand = `bun add -g @kaitranntt/ccs@${targetTag}`;
-      break;
-    default:
-      manualCommand = `npm install -g @kaitranntt/ccs@${targetTag}`;
-  }
-
-  console.log(color(`  ${manualCommand}`, 'command'));
+  console.log(color(`  ${formatManualUpdateCommand(targetTag, currentInstall)}`, 'command'));
   console.log('');
   process.exit(1);
 }
@@ -157,15 +167,94 @@ function handleNoUpdate(reason: string | undefined): void {
 /**
  * Perform update via npm/yarn/pnpm/bun
  */
-async function performNpmUpdate(
-  targetTag: string = 'latest',
+function verifyCurrentInstallVersion(
+  currentInstall: CurrentInstall,
+  targetTag: string,
+  expectedVersion?: string,
+  previousState?: InstalledPackageState,
   isReinstall: boolean = false
+): void {
+  const nextState = readInstalledPackageState(currentInstall);
+  const installedVersion = nextState.version;
+  if (!installedVersion) {
+    console.log('');
+    console.log(
+      fail('Update finished, but CCS could not verify the current installation version.')
+    );
+    console.log('');
+    console.log('Current install remains ambiguous. Re-run manually:');
+    console.log(color(`  ${formatManualUpdateCommand(targetTag, currentInstall)}`, 'command'));
+    console.log('');
+    process.exit(1);
+  }
+
+  const installChanged =
+    previousState !== undefined &&
+    (previousState.version !== nextState.version ||
+      previousState.packageJsonMtimeMs !== nextState.packageJsonMtimeMs ||
+      previousState.scriptMtimeMs !== nextState.scriptMtimeMs);
+
+  if (expectedVersion && installedVersion !== expectedVersion) {
+    if (previousState?.version && installedVersion !== previousState.version) {
+      return;
+    }
+
+    const comparison = compareVersionsWithPrerelease(installedVersion, expectedVersion);
+    if (comparison < 0) {
+      console.log('');
+      console.log(
+        fail(
+          `Update completed outside the current installation. Current binary still reports ${installedVersion}; expected ${expectedVersion}.`
+        )
+      );
+      if (previousState?.version && previousState.version === installedVersion) {
+        console.log(
+          warn(
+            `The current install path did not change from ${previousState.version}; another package manager likely updated a different copy of CCS.`
+          )
+        );
+      }
+      console.log('');
+      console.log('Re-run manually against the current install:');
+      console.log(color(`  ${formatManualUpdateCommand(targetTag, currentInstall)}`, 'command'));
+      console.log('');
+      process.exit(1);
+    }
+  }
+
+  if (
+    isReinstall &&
+    previousState?.version &&
+    installedVersion === previousState.version &&
+    !installChanged
+  ) {
+    console.log('');
+    console.log(
+      fail(
+        `Reinstall completed, but CCS could not verify that the current installation changed from ${previousState.version}.`
+      )
+    );
+    console.log('');
+    console.log('Re-run manually against the current install:');
+    console.log(color(`  ${formatManualUpdateCommand(targetTag, currentInstall)}`, 'command'));
+    console.log('');
+    process.exit(1);
+  }
+}
+
+async function performNpmUpdate(
+  currentInstall: CurrentInstall,
+  targetTag: string = 'latest',
+  isReinstall: boolean = false,
+  expectedVersion?: string
 ): Promise<void> {
-  const packageManager = detectPackageManager();
+  const packageManager = currentInstall.manager;
   let updateCommand: string;
   let updateArgs: string[];
   let cacheCommand: string | null;
   let cacheArgs: string[] | null;
+  const childEnv = buildPackageManagerEnv(currentInstall);
+  const previousState = readInstalledPackageState(currentInstall);
 
   switch (packageManager) {
     case 'npm':
@@ -214,9 +303,9 @@ async function performNpmUpdate(
       ? spawn(`${updateCommand} ${updateArgs.join(' ')}`, [], {
           stdio: ['inherit', 'inherit', 'pipe'],
           shell: true,
-          env: { ...process.env, NODE_NO_WARNINGS: '1' },
+          env: { ...childEnv, NODE_NO_WARNINGS: '1' },
         })
-      : spawn(updateCommand, updateArgs, { stdio: 'inherit' });
+      : spawn(updateCommand, updateArgs, { stdio: 'inherit', env: childEnv });
 
     // On Windows, filter stderr to hide npm cleanup warnings (EPERM on bcrypt.node etc.)
     // These warnings are cosmetic - update succeeds despite file locking by antivirus/indexing
@@ -244,6 +333,15 @@ async function performNpmUpdate(
 
     child.on('exit', (code) => {
       if (code === 0) {
+        if (expectedVersion || previousState?.version) {
+          verifyCurrentInstallVersion(
+            currentInstall,
+            targetTag,
+            expectedVersion,
+            previousState,
+            isReinstall
+          );
+        }
         console.log('');
         console.log(ok(`${isReinstall ? 'Reinstall' : 'Update'} successful!`));
         console.log('');
@@ -255,7 +353,7 @@ async function performNpmUpdate(
         console.log(fail(`${isReinstall ? 'Reinstall' : 'Update'} failed`));
         console.log('');
         console.log('Try manually:');
-        console.log(color(`  ${updateCommand} ${updateArgs.join(' ')}`, 'command'));
+        console.log(color(`  ${formatManualUpdateCommand(targetTag, currentInstall)}`, 'command'));
         console.log('');
       }
       process.exit(code || 0);
@@ -266,7 +364,7 @@ async function performNpmUpdate(
       console.log(fail(`Failed to run ${packageManager} ${isReinstall ? 'reinstall' : 'update'}`));
       console.log('');
       console.log('Try manually:');
-      console.log(color(`  ${updateCommand} ${updateArgs.join(' ')}`, 'command'));
+      console.log(color(`  ${formatManualUpdateCommand(targetTag, currentInstall)}`, 'command'));
       console.log('');
       process.exit(1);
     });
@@ -288,9 +386,9 @@ async function performNpmUpdate(
       ? spawn(`${cacheCommand} ${cacheArgs.join(' ')}`, [], {
           stdio: 'inherit',
           shell: true,
-          env: { ...process.env, NODE_NO_WARNINGS: '1' },
+          env: { ...childEnv, NODE_NO_WARNINGS: '1' },
         })
-      : spawn(cacheCommand, cacheArgs, { stdio: 'inherit' });
+      : spawn(cacheCommand, cacheArgs, { stdio: 'inherit', env: childEnv });
 
     cacheChild.on('exit', (code) => {
       if (code !== 0) {
