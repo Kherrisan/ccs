@@ -37,8 +37,9 @@ export type WebSearchReadiness = 'ready' | 'needs_setup' | 'unavailable';
 export type WebSearchProviderId =
   | 'exa'
   | 'tavily'
-  | 'duckduckgo'
   | 'brave'
+  | 'searxng'
+  | 'duckduckgo'
   | 'gemini'
   | 'grok'
   | 'opencode';
@@ -107,8 +108,9 @@ export interface WebSearchConfig {
   providers?: {
     exa?: WebSearchProviderConfig;
     tavily?: WebSearchProviderConfig;
-    duckduckgo?: WebSearchProviderConfig;
     brave?: WebSearchProviderConfig;
+    searxng?: WebSearchProviderConfig;
+    duckduckgo?: WebSearchProviderConfig;
     gemini?: WebSearchProviderConfig;
     opencode?: WebSearchProviderConfig;
     grok?: WebSearchProviderConfig;

@@ -317,6 +317,18 @@ export interface TavilyWebSearchConfig {
 }
 
 /**
+ * SearXNG WebSearch configuration.
+ */
+export interface SearxngWebSearchConfig {
+  /** Enable SearXNG JSON search backend (default: false) */
+  enabled?: boolean;
+  /** Base SearXNG URL, e.g. https://search.example.com (default: '') */
+  url?: string;
+  /** Number of results to fetch (default: 5) */
+  max_results?: number;
+}
+
+/**
  * Gemini CLI WebSearch configuration.
  */
 export interface GeminiWebSearchConfig {
@@ -359,10 +371,12 @@ export interface WebSearchProvidersConfig {
   exa?: ExaWebSearchConfig;
   /** Tavily Search API - API-backed search optimized for agent/tool usage */
   tavily?: TavilyWebSearchConfig;
-  /** DuckDuckGo HTML search - zero setup default backend */
-  duckduckgo?: DuckDuckGoWebSearchConfig;
   /** Brave Search API - higher quality results when BRAVE_API_KEY is set */
   brave?: BraveWebSearchConfig;
+  /** SearXNG JSON search - self-hosted or public instance backend */
+  searxng?: SearxngWebSearchConfig;
+  /** DuckDuckGo HTML search - zero setup default backend */
+  duckduckgo?: DuckDuckGoWebSearchConfig;
   /** Gemini CLI - optional legacy LLM fallback */
   gemini?: GeminiWebSearchConfig;
   /** Grok CLI - optional legacy LLM fallback */
@@ -961,12 +975,17 @@ export function createEmptyUnifiedConfig(): UnifiedConfig {
           enabled: false,
           max_results: 5,
         },
-        duckduckgo: {
-          enabled: true,
-          max_results: 5,
-        },
         brave: {
           enabled: false,
+          max_results: 5,
+        },
+        searxng: {
+          enabled: false,
+          url: '',
+          max_results: 5,
+        },
+        duckduckgo: {
+          enabled: true,
           max_results: 5,
         },
         gemini: {

@@ -56,6 +56,12 @@ const hook = require('../../../lib/hooks/websearch-transformer.cjs') as {
     results: Array<{ title: string; url: string; description: string }>
   ) => string;
   parseRetryAfterSeconds: (rawValue: string) => number | null;
+  trySearxngSearch: (query: string, timeoutSec?: number) => Promise<{
+    content?: string;
+    error?: string;
+    statusCode?: number;
+    success: boolean;
+  }>;
 };
 
 function runHookWithMockedFetch(mode: 'success' | 'empty' | 'non-result' | 'failure') {
@@ -152,6 +158,83 @@ describe('websearch-transformer hook helpers', () => {
       delayMs: 2000,
       retryAfterSec: 2,
     });
+  });
+
+  it('queries SearXNG JSON endpoint and formats structured results', async () => {
+    const originalFetch = global.fetch;
+    const originalEnv = {
+      CCS_WEBSEARCH_SEARXNG_MAX_RESULTS: process.env.CCS_WEBSEARCH_SEARXNG_MAX_RESULTS,
+      CCS_WEBSEARCH_SEARXNG_URL: process.env.CCS_WEBSEARCH_SEARXNG_URL,
+    };
+
+    process.env.CCS_WEBSEARCH_SEARXNG_URL = 'https://search.example.com/';
+    process.env.CCS_WEBSEARCH_SEARXNG_MAX_RESULTS = '3';
+    global.fetch = async () =>
+      ({
+        ok: true,
+        json: async () => ({
+          results: [
+            {
+              title: 'SearXNG Result',
+              url: 'https://example.com/searxng',
+              content: 'Result snippet',
+            },
+          ],
+        }),
+      }) as Response;
+
+    try {
+      const result = await hook.trySearxngSearch('btc price', 1);
+      expect(result.success).toBe(true);
+      expect(result.content).toContain('Provider: SearXNG');
+      expect(result.content).toContain('URL: https://example.com/searxng');
+    } finally {
+      global.fetch = originalFetch;
+      if (originalEnv.CCS_WEBSEARCH_SEARXNG_URL === undefined) {
+        delete process.env.CCS_WEBSEARCH_SEARXNG_URL;
+      } else {
+        process.env.CCS_WEBSEARCH_SEARXNG_URL = originalEnv.CCS_WEBSEARCH_SEARXNG_URL;
+      }
+
+      if (originalEnv.CCS_WEBSEARCH_SEARXNG_MAX_RESULTS === undefined) {
+        delete process.env.CCS_WEBSEARCH_SEARXNG_MAX_RESULTS;
+      } else {
+        process.env.CCS_WEBSEARCH_SEARXNG_MAX_RESULTS =
+          originalEnv.CCS_WEBSEARCH_SEARXNG_MAX_RESULTS;
+      }
+    }
+  });
+
+  it('marks SearXNG format-disabled 403 responses as non-retryable failures', async () => {
+    const originalFetch = global.fetch;
+    const originalUrl = process.env.CCS_WEBSEARCH_SEARXNG_URL;
+
+    process.env.CCS_WEBSEARCH_SEARXNG_URL = 'https://search.example.com';
+    global.fetch = async () =>
+      ({
+        ok: false,
+        status: 403,
+        headers: { get: () => null },
+        text: async () => 'format=json disabled by this instance',
+      }) as Response;
+
+    try {
+      const result = await hook.trySearxngSearch('btc price', 1);
+      expect(result.success).toBe(false);
+      expect(result.statusCode).toBe(403);
+      expect(result.error).toContain('format=json is disabled');
+      expect(hook.classifyProviderFailure(result)).toMatchObject({
+        kind: 'fail',
+        reason: 'non_retryable',
+      });
+    } finally {
+      global.fetch = originalFetch;
+      if (originalUrl === undefined) {
+        delete process.env.CCS_WEBSEARCH_SEARXNG_URL;
+      } else {
+        process.env.CCS_WEBSEARCH_SEARXNG_URL = originalUrl;
+      }
+    }
   });
 
   it('extracts DuckDuckGo results and unwraps uddg redirect URLs', () => {
@@ -279,6 +362,85 @@ describe('websearch-transformer hook helpers', () => {
       'URL: https://example.com/article'
     );
     expect(output).not.toHaveProperty('additionalContext');
+  });
+
+  it('falls back from SearXNG parse errors to DuckDuckGo in provider order', () => {
+    const tempDir = mkdtempSync(join(tmpdir(), 'websearch-hook-searxng-fallback-'));
+    const preloadPath = join(tempDir, 'mock-fetch.cjs');
+    const requestLogPath = join(tempDir, 'requests.json');
+    const html = `
+      <a class="result__a" href="/l/?uddg=https%3A%2F%2Fexample.com%2Fddg">Duck title</a>
+      <a class="result__snippet">Duck snippet</a>
+    `.trim();
+
+    writeFileSync(
+      preloadPath,
+      `
+const fs = require('fs');
+const requestLogPath = ${JSON.stringify(requestLogPath)};
+const html = ${JSON.stringify(html)};
+function record(url) {
+  const requests = fs.existsSync(requestLogPath)
+    ? JSON.parse(fs.readFileSync(requestLogPath, 'utf8'))
+    : [];
+  requests.push(String(url));
+  fs.writeFileSync(requestLogPath, JSON.stringify(requests), 'utf8');
+}
+global.fetch = async (url) => {
+  const resolved = String(url);
+  record(resolved);
+  if (resolved.includes('/search?')) {
+    return {
+      ok: true,
+      json: async () => {
+        throw new Error('invalid json');
+      },
+    };
+  }
+  return {
+    ok: true,
+    status: 200,
+    headers: { get: () => null },
+    text: async () => html,
+  };
+};
+      `.trimStart(),
+      'utf8'
+    );
+
+    try {
+      const result = spawnSync('node', ['-r', preloadPath, hookPath], {
+        encoding: 'utf8',
+        input: JSON.stringify({
+          tool_name: 'WebSearch',
+          tool_input: { query: 'btc price' },
+        }),
+        env: {
+          ...process.env,
+          CCS_WEBSEARCH_ENABLED: '1',
+          CCS_WEBSEARCH_SKIP: '0',
+          CCS_WEBSEARCH_BRAVE: '0',
+          CCS_WEBSEARCH_DUCKDUCKGO: '1',
+          CCS_WEBSEARCH_EXA: '0',
+          CCS_WEBSEARCH_GEMINI: '0',
+          CCS_WEBSEARCH_GROK: '0',
+          CCS_WEBSEARCH_OPENCODE: '0',
+          CCS_WEBSEARCH_SEARXNG: '1',
+          CCS_WEBSEARCH_SEARXNG_URL: 'https://search.example.com',
+          CCS_WEBSEARCH_TAVILY: '0',
+        },
+      });
+
+      expect(result.status).toBe(0);
+      const output = JSON.parse(result.stdout.trim()) as HookOutput;
+      expect(output.hookSpecificOutput.additionalContext).toContain('Provider: DuckDuckGo');
+
+      const requests = JSON.parse(readFileSync(requestLogPath, 'utf8')) as string[];
+      expect(requests[0]).toContain('search.example.com/search?');
+      expect(requests[1]).toContain('duckduckgo.com');
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
   });
 
   it('preserves genuine DuckDuckGo zero-result pages as successful empty searches', () => {

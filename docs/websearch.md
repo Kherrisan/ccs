@@ -1,6 +1,6 @@
 # WebSearch Configuration Guide
 
-Last Updated: 2026-04-04
+Last Updated: 2026-04-11
 
 CCS provides automatic web search for third-party profiles that cannot access Anthropic's native WebSearch API.
 
@@ -17,29 +17,30 @@ Third-party profiles cannot execute Anthropic's server-side WebSearch because th
 ## Architecture
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│                   Claude Code CLI                           │
-│                                                              │
-│  Search Request                                              │
-│       │                                                      │
-│       ├── Native Claude Account? → Anthropic WebSearch API  │
-│       │                                                      │
-│       └── Third-party Profile? → native WebSearch disabled  │
-│                                   │                          │
-│                                   ├── CCS MCP tool when ready│
-│                                   │   ccs-websearch.WebSearch│
-│                                   │             │            │
-│                                   │             ├── 1. Exa   │
-│                                   │             ├── 2. Tavily│
-│                                   │             ├── 3. Brave │
-│                                   │             ├── 4. DuckDuckGo│
-│                                   │             └── 5. Legacy CLI│
-│                                   │                fallback   │
-│                                   │                (Gemini/   │
-│                                   │                 OpenCode/ │
-│                                   │                 Grok)     │
-│                                   └── Bash/network fallback   │
-└──────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│                   Claude Code CLI                                │
+│                                                                  │
+│  Search Request                                                  │
+│       │                                                          │
+│       ├── Native Claude Account? → Anthropic WebSearch API       │
+│       │                                                          │
+│       └── Third-party Profile? → native WebSearch disabled       │
+│                                   │                              │
+│                                   ├── CCS MCP tool when ready    │
+│                                   │   ccs-websearch.WebSearch    │
+│                                   │             │                │
+│                                   │             ├── 1. Exa       │
+│                                   │             ├── 2. Tavily    │
+│                                   │             ├── 3. Brave     │
+│                                   │             ├── 4. SearXNG   │
+│                                   │             ├── 5. DuckDuckGo│
+│                                   │             └── 6. Legacy CLI│
+│                                   │                    fallback  │
+│                                   │                    (Gemini/  │
+│                                   │                     OpenCode/│
+│                                   │                     Grok)    │
+│                                   └── Bash/network fallback      │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
 ## Why This Changed
@@ -66,8 +67,9 @@ That shared launch helper applies to normal third-party settings profiles, CLIPr
 |----------|------|-------|---------|-------|
 | Exa | HTTP API | `EXA_API_KEY` | No | High-quality API search with extracted content |
 | Tavily | HTTP API | `TAVILY_API_KEY` | No | Agent-oriented search API |
-| DuckDuckGo | HTML fetch | None | Yes | Built-in zero-setup fallback |
 | Brave Search | HTTP API | `BRAVE_API_KEY` | No | Cleaner snippets and metadata |
+| SearXNG | JSON API | `providers.searxng.url` | No | Self-hosted/public SearXNG backend via `/search?format=json` |
+| DuckDuckGo | HTML fetch | None | Yes | Built-in zero-setup fallback |
 | Gemini CLI | Legacy CLI | `npm i -g @google/gemini-cli` | No | Optional compatibility fallback |
 | OpenCode | Legacy CLI | `curl -fsSL https://opencode.ai/install \| bash` | No | Optional compatibility fallback |
 | Grok CLI | Legacy CLI | `npm i -g @vibe-kit/grok-cli` + `GROK_API_KEY` | No | Optional compatibility fallback |
@@ -78,7 +80,8 @@ That shared launch helper applies to normal third-party settings profiles, CLIPr
 
 Open `ccs config` → `Settings` → `WebSearch`.
 
-- Enable Exa, Tavily, Brave, or DuckDuckGo in the backend chain
+- Enable Exa, Tavily, Brave, SearXNG, or DuckDuckGo in the backend chain
+- Configure SearXNG base URL (for example `https://search.example.com`) when SearXNG is enabled
 - Set or rotate Exa, Tavily, and Brave API keys directly inside each provider card
 - Saved keys are persisted in `global_env` and injected at runtime, so readiness updates from the same screen
 - Review whether any legacy fallback CLIs are still enabled in config
@@ -97,11 +100,15 @@ websearch:
     tavily:
       enabled: false
       max_results: 5
-    duckduckgo:
-      enabled: true
-      max_results: 5
     brave:
       enabled: false
+      max_results: 5
+    searxng:
+      enabled: false
+      url: ""
+      max_results: 5
+    duckduckgo:
+      enabled: true
       max_results: 5
     gemini:
       enabled: false
@@ -125,6 +132,8 @@ Note: `enabled: false` stops provisioning the managed local `ccs-websearch.WebSe
 | `EXA_API_KEY` | Enables Exa when `providers.exa.enabled: true` |
 | `TAVILY_API_KEY` | Enables Tavily when `providers.tavily.enabled: true` |
 | `BRAVE_API_KEY` | Enables Brave Search when `providers.brave.enabled: true` |
+| `CCS_WEBSEARCH_SEARXNG_URL` | Runtime URL used when `providers.searxng.enabled: true` |
+| `CCS_WEBSEARCH_SEARXNG_MAX_RESULTS` | Optional runtime override for SearXNG result count (clamped 1..10) |
 | `GROK_API_KEY` | Required only for legacy Grok CLI fallback |
 | `CCS_WEBSEARCH_SKIP` | Disable the CCS local WebSearch runtime for the current process; third-party launches still keep native Anthropic `WebSearch` disabled |
 | `CCS_DEBUG` | Verbose WebSearch runtime logging |
@@ -155,6 +164,12 @@ ccs config
 ```
 
 If the dashboard says the key is stored but still not ready, check whether `Settings -> Global Env` is disabled. WebSearch reuses that injection path for dashboard-managed keys.
+
+### SearXNG is enabled but not ready
+
+1. Confirm the configured base URL is valid (for example `https://search.example.com`)
+2. Confirm the instance exposes `GET /search?q=<query>&format=json`
+3. If the hook reports `SearXNG returned 403: format=json is disabled on this instance`, enable JSON format on that SearXNG deployment or switch to another backend
 
 ### I still want Gemini/OpenCode/Grok fallback
 

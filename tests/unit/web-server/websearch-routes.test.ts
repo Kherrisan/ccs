@@ -288,6 +288,33 @@ describe('websearch routes', () => {
     expect(config.global_env?.env.EXA_API_KEY).toBe('exa-secret-12345678');
   });
 
+  it('persists searxng provider settings and clamps max_results', async () => {
+    const response = await putWebsearch({
+      providers: {
+        searxng: {
+          enabled: true,
+          url: 'https://search.example.com',
+          max_results: 99,
+        },
+      },
+    });
+
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    expect(payload.websearch.providers.searxng).toEqual({
+      enabled: true,
+      url: 'https://search.example.com',
+      max_results: 10,
+    });
+
+    const config = loadOrCreateUnifiedConfig();
+    expect(config.websearch?.providers?.searxng).toEqual({
+      enabled: true,
+      url: 'https://search.example.com',
+      max_results: 10,
+    });
+  });
+
   it('rejects non-object request bodies', async () => {
     const response = await putWebsearch('[]');
 
@@ -356,5 +383,35 @@ describe('websearch routes', () => {
       expect(response.status).toBe(400);
       expect(await response.json()).toEqual({ error: invalidPayload.error });
     }
+  });
+
+  it('rejects non-string searxng url values', async () => {
+    const response = await putWebsearch({
+      providers: {
+        searxng: {
+          url: 123,
+        },
+      },
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: 'Invalid value for providers.searxng.url. Must be a string.',
+    });
+  });
+
+  it('rejects non-number searxng max_results values', async () => {
+    const response = await putWebsearch({
+      providers: {
+        searxng: {
+          max_results: '5',
+        },
+      },
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: 'Invalid value for providers.searxng.max_results. Must be a number.',
+    });
   });
 });

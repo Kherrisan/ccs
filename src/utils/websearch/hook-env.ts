@@ -61,6 +61,12 @@ export function getWebSearchHookEnv(): Record<string, string> {
     env.CCS_WEBSEARCH_BRAVE_MAX_RESULTS = String(wsConfig.providers.brave.max_results || 5);
   }
 
+  if (wsConfig.providers?.searxng?.enabled && wsConfig.providers.searxng.url?.trim()) {
+    env.CCS_WEBSEARCH_SEARXNG = '1';
+    env.CCS_WEBSEARCH_SEARXNG_URL = wsConfig.providers.searxng.url.trim();
+    env.CCS_WEBSEARCH_SEARXNG_MAX_RESULTS = String(wsConfig.providers.searxng.max_results || 5);
+  }
+
   if (wsConfig.providers?.gemini?.enabled) {
     env.CCS_WEBSEARCH_GEMINI = '1';
     if (wsConfig.providers.gemini.model) {

@@ -93,6 +93,28 @@ describe('websearch readiness', () => {
     expect(readiness.message).toContain('Exa');
   });
 
+  it('treats SearXNG as ready when enabled with a valid URL', () => {
+    const readiness = buildWebSearchReadiness(true, [
+      provider({
+        id: 'searxng',
+        name: 'SearXNG',
+        enabled: true,
+        available: true,
+        detail: 'Configured (5 results)',
+      }),
+      provider({
+        id: 'duckduckgo',
+        name: 'DuckDuckGo',
+        enabled: false,
+        available: false,
+        detail: 'Built-in (5 results)',
+      }),
+    ]);
+
+    expect(readiness.readiness).toBe('ready');
+    expect(readiness.message).toContain('SearXNG');
+  });
+
   it('treats cooled-down providers as temporarily unavailable in readiness status', () => {
     const tempHome = mkdtempSync(join(tmpdir(), 'websearch-status-cooldown-'));
     const statePath = join(tempHome, '.ccs', 'cache', 'websearch-provider-state.json');
@@ -122,8 +144,9 @@ describe('websearch readiness', () => {
       providers: {
         exa: { enabled: true, max_results: 5 },
         tavily: { enabled: false, max_results: 5 },
-        duckduckgo: { enabled: false, max_results: 5 },
         brave: { enabled: false, max_results: 5 },
+        searxng: { enabled: false, url: '', max_results: 5 },
+        duckduckgo: { enabled: false, max_results: 5 },
         gemini: { enabled: false },
         grok: { enabled: false },
         opencode: { enabled: false },

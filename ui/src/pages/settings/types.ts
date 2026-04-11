@@ -9,6 +9,7 @@ import type { CliproxyServerConfig, RemoteProxyStatus } from '@/lib/api-client';
 
 export interface ProviderConfig {
   enabled?: boolean;
+  url?: string;
   model?: string;
   timeout?: number;
   max_results?: number;
@@ -28,8 +29,9 @@ export interface WebSearchApiKeyState {
 export interface WebSearchProvidersConfig {
   exa?: ProviderConfig;
   tavily?: ProviderConfig;
-  duckduckgo?: ProviderConfig;
   brave?: ProviderConfig;
+  searxng?: ProviderConfig;
+  duckduckgo?: ProviderConfig;
   gemini?: ProviderConfig;
   grok?: ProviderConfig;
   opencode?: ProviderConfig;
@@ -48,7 +50,7 @@ export interface WebSearchSavePayload {
 }
 
 export interface CliStatus {
-  id: 'exa' | 'tavily' | 'duckduckgo' | 'brave' | 'gemini' | 'grok' | 'opencode';
+  id: 'exa' | 'tavily' | 'brave' | 'searxng' | 'duckduckgo' | 'gemini' | 'grok' | 'opencode';
   kind: 'backend' | 'legacy-cli';
   name?: string;
   enabled: boolean;

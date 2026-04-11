@@ -407,13 +407,18 @@ function mergeWithDefaults(partial: Partial<UnifiedConfig>): UnifiedConfig {
           enabled: partial.websearch?.providers?.tavily?.enabled ?? false,
           max_results: partial.websearch?.providers?.tavily?.max_results ?? 5,
         },
-        duckduckgo: {
-          enabled: partial.websearch?.providers?.duckduckgo?.enabled ?? true,
-          max_results: partial.websearch?.providers?.duckduckgo?.max_results ?? 5,
-        },
         brave: {
           enabled: partial.websearch?.providers?.brave?.enabled ?? false,
           max_results: partial.websearch?.providers?.brave?.max_results ?? 5,
+        },
+        searxng: {
+          enabled: partial.websearch?.providers?.searxng?.enabled ?? false,
+          url: partial.websearch?.providers?.searxng?.url ?? '',
+          max_results: partial.websearch?.providers?.searxng?.max_results ?? 5,
+        },
+        duckduckgo: {
+          enabled: partial.websearch?.providers?.duckduckgo?.enabled ?? true,
+          max_results: partial.websearch?.providers?.duckduckgo?.max_results ?? 5,
         },
         gemini: {
           enabled:
@@ -1093,15 +1098,16 @@ export interface GeminiWebSearchInfo {
 /**
  * Get websearch configuration.
  * Returns defaults if not configured.
- * Supports Gemini CLI, OpenCode, and Grok CLI providers.
+ * Supports deterministic providers and optional Gemini/OpenCode/Grok CLI fallbacks.
  */
 export function getWebSearchConfig(): {
   enabled: boolean;
   providers?: {
     exa?: { enabled?: boolean; max_results?: number };
     tavily?: { enabled?: boolean; max_results?: number };
-    duckduckgo?: { enabled?: boolean; max_results?: number };
     brave?: { enabled?: boolean; max_results?: number };
+    searxng?: { enabled?: boolean; url?: string; max_results?: number };
+    duckduckgo?: { enabled?: boolean; max_results?: number };
     gemini?: GeminiWebSearchInfo;
     opencode?: { enabled?: boolean; model?: string; timeout?: number };
     grok?: { enabled?: boolean; timeout?: number };
@@ -1132,6 +1138,12 @@ export function getWebSearchConfig(): {
     max_results: config.websearch?.providers?.brave?.max_results ?? 5,
   };
 
+  const searxngConfig = {
+    enabled: config.websearch?.providers?.searxng?.enabled ?? false,
+    url: config.websearch?.providers?.searxng?.url ?? '',
+    max_results: config.websearch?.providers?.searxng?.max_results ?? 5,
+  };
+
   const geminiConfig: GeminiWebSearchInfo = {
     enabled:
       config.websearch?.providers?.gemini?.enabled ?? config.websearch?.gemini?.enabled ?? false,
@@ -1155,8 +1167,9 @@ export function getWebSearchConfig(): {
   const anyProviderEnabled =
     exaConfig.enabled ||
     tavilyConfig.enabled ||
-    duckDuckGoConfig.enabled ||
     braveConfig.enabled ||
+    searxngConfig.enabled ||
+    duckDuckGoConfig.enabled ||
     geminiConfig.enabled ||
     opencodeConfig.enabled ||
     grokConfig.enabled;
@@ -1167,8 +1180,9 @@ export function getWebSearchConfig(): {
     providers: {
       exa: exaConfig,
       tavily: tavilyConfig,
-      duckduckgo: duckDuckGoConfig,
       brave: braveConfig,
+      searxng: searxngConfig,
+      duckduckgo: duckDuckGoConfig,
       gemini: geminiConfig,
       opencode: opencodeConfig,
       grok: grokConfig,

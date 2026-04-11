@@ -28,6 +28,20 @@ function hasEnvValue(name: string): boolean {
   return (process.env[name] || '').trim().length > 0;
 }
 
+function hasValidSearxngUrl(url: string | undefined): boolean {
+  const normalized = String(url || '').trim();
+  if (!normalized) {
+    return false;
+  }
+
+  try {
+    const parsed = new URL(normalized);
+    return Boolean(parsed.protocol && parsed.host);
+  } catch {
+    return false;
+  }
+}
+
 function getProviderStatePath(): string {
   return join(getCcsDir(), 'cache', PROVIDER_STATE_FILE);
 }
@@ -210,18 +224,6 @@ export function getWebSearchCliProviders(): WebSearchCliInfo[] {
           : 'Set TAVILY_API_KEY',
     },
     {
-      id: 'duckduckgo',
-      kind: 'backend',
-      name: 'DuckDuckGo',
-      enabled: wsConfig.providers?.duckduckgo?.enabled ?? true,
-      available: wsConfig.providers?.duckduckgo?.enabled ?? true,
-      version: null,
-      docsUrl: 'https://duckduckgo.com',
-      requiresApiKey: false,
-      description: 'Default built-in HTML search backend. Zero setup.',
-      detail: `Built-in (${wsConfig.providers?.duckduckgo?.max_results ?? 5} results)`,
-    },
-    {
       id: 'brave',
       kind: 'backend',
       name: 'Brave Search',
@@ -237,6 +239,34 @@ export function getWebSearchCliProviders(): WebSearchCliInfo[] {
         : apiKeyStates.brave.configured
           ? 'Stored in dashboard, but Global Env is disabled'
           : 'Set BRAVE_API_KEY',
+    },
+    {
+      id: 'searxng',
+      kind: 'backend',
+      name: 'SearXNG',
+      enabled: wsConfig.providers?.searxng?.enabled ?? false,
+      available:
+        (wsConfig.providers?.searxng?.enabled ?? false) &&
+        hasValidSearxngUrl(wsConfig.providers?.searxng?.url),
+      version: null,
+      docsUrl: 'https://docs.searxng.org/dev/search_api.html',
+      requiresApiKey: false,
+      description: 'Configurable SearXNG JSON backend for self-hosted or public instances.',
+      detail: hasValidSearxngUrl(wsConfig.providers?.searxng?.url)
+        ? `Configured (${wsConfig.providers?.searxng?.max_results ?? 5} results)`
+        : 'Set a valid SearXNG base URL',
+    },
+    {
+      id: 'duckduckgo',
+      kind: 'backend',
+      name: 'DuckDuckGo',
+      enabled: wsConfig.providers?.duckduckgo?.enabled ?? true,
+      available: wsConfig.providers?.duckduckgo?.enabled ?? true,
+      version: null,
+      docsUrl: 'https://duckduckgo.com',
+      requiresApiKey: false,
+      description: 'Default built-in HTML search backend. Zero setup.',
+      detail: `Built-in (${wsConfig.providers?.duckduckgo?.max_results ?? 5} results)`,
     },
   ];
 
@@ -263,6 +293,7 @@ export function getCliInstallHints(): string[] {
   return [
     'WebSearch: no ready providers',
     '    Enable DuckDuckGo in Settings > WebSearch for zero-setup search',
+    '    Or enable SearXNG and set a valid base URL (must support /search?format=json)',
     '    Or export EXA_API_KEY, TAVILY_API_KEY, or BRAVE_API_KEY for API-backed search',
     '    Optional legacy fallback: npm i -g @google/gemini-cli',
   ];

@@ -28,8 +28,16 @@ import type {
 } from '../../types';
 import { ProviderCard, type ProviderFieldConfig } from './provider-card';
 
-type ProviderId = 'exa' | 'tavily' | 'brave' | 'duckduckgo' | 'gemini' | 'opencode' | 'grok';
-type ProviderFieldKey = 'model' | 'timeout' | 'max_results';
+type ProviderId =
+  | 'exa'
+  | 'tavily'
+  | 'brave'
+  | 'searxng'
+  | 'duckduckgo'
+  | 'gemini'
+  | 'opencode'
+  | 'grok';
+type ProviderFieldKey = 'model' | 'timeout' | 'max_results' | 'url';
 
 interface ProviderFieldDefinition {
   key: ProviderFieldKey;
@@ -58,6 +66,7 @@ const CHAIN_STEPS = [
   { id: 'exa', title: 'Exa', defaultEnabled: false },
   { id: 'tavily', title: 'Tavily', defaultEnabled: false },
   { id: 'brave', title: 'Brave', defaultEnabled: false },
+  { id: 'searxng', title: 'SearXNG', defaultEnabled: false },
   { id: 'duckduckgo', title: 'DuckDuckGo', defaultEnabled: true },
   { id: 'legacy', title: 'Legacy CLI', defaultEnabled: false },
 ] as const;
@@ -118,6 +127,36 @@ const BACKEND_PROVIDERS: ProviderDefinition[] = [
     fallbackDetail: 'Set BRAVE_API_KEY',
     footerNote: 'Runs after Exa and Tavily, before DuckDuckGo.',
     fields: [
+      {
+        key: 'max_results',
+        label: 'Max results',
+        type: 'number',
+        placeholder: '5',
+        helpText: 'Clamp between 1 and 10 results.',
+        defaultValue: 5,
+        min: 1,
+        max: 10,
+      },
+    ],
+  },
+  {
+    id: 'searxng',
+    title: 'SearXNG',
+    description: 'Configurable JSON backend for self-hosted or public SearXNG instances.',
+    badge: 'SELF-HOSTED',
+    badgeTone: 'cyan',
+    defaultEnabled: false,
+    fallbackDetail: 'Set a valid base URL',
+    footerNote: 'Runs after Brave and before DuckDuckGo when enabled and ready.',
+    fields: [
+      {
+        key: 'url',
+        label: 'Base URL',
+        type: 'text',
+        placeholder: 'https://search.example.com',
+        helpText: 'Must expose /search with format=json enabled.',
+        defaultValue: '',
+      },
       {
         key: 'max_results',
         label: 'Max results',

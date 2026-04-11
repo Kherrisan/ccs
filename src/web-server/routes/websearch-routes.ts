@@ -17,6 +17,8 @@ import { requireLocalAccessWhenAuthDisabled } from '../middleware/auth-middlewar
 const router = Router();
 const WEBSEARCH_LOCAL_ACCESS_ERROR =
   'WebSearch endpoints require localhost access when dashboard auth is disabled.';
+const DEFAULT_WEBSEARCH_MAX_RESULTS = 5;
+const MAX_WEBSEARCH_MAX_RESULTS = 10;
 
 type WebSearchApiKeyUpdates = Partial<Record<WebSearchApiKeyProviderId, string | null>>;
 
@@ -26,6 +28,12 @@ interface WebSearchDashboardPayload extends Partial<WebSearchConfig> {
 
 function isWebSearchApiKeyProviderId(value: string): value is WebSearchApiKeyProviderId {
   return Object.prototype.hasOwnProperty.call(WEBSEARCH_API_KEY_PROVIDERS, value);
+}
+
+function clampWebSearchMaxResults(value: number | undefined, fallback: number): number {
+  const candidate = Number.isFinite(value) ? (value as number) : fallback;
+  const normalized = Number.isFinite(candidate) ? candidate : DEFAULT_WEBSEARCH_MAX_RESULTS;
+  return Math.max(1, Math.min(MAX_WEBSEARCH_MAX_RESULTS, Math.floor(normalized)));
 }
 
 router.use((req: Request, res: Response, next) => {
@@ -79,6 +87,22 @@ router.put('/', (req: Request, res: Response): void => {
     (providers === null || Array.isArray(providers) || typeof providers !== 'object')
   ) {
     res.status(400).json({ error: 'Invalid value for providers. Must be an object.' });
+    return;
+  }
+
+  if (providers?.searxng?.url !== undefined && typeof providers.searxng.url !== 'string') {
+    res.status(400).json({ error: 'Invalid value for providers.searxng.url. Must be a string.' });
+    return;
+  }
+
+  if (
+    providers?.searxng?.max_results !== undefined &&
+    (typeof providers.searxng.max_results !== 'number' ||
+      !Number.isFinite(providers.searxng.max_results))
+  ) {
+    res.status(400).json({
+      error: 'Invalid value for providers.searxng.max_results. Must be a number.',
+    });
     return;
   }
 
@@ -143,6 +167,17 @@ router.put('/', (req: Request, res: Response): void => {
                   providers.brave?.max_results ??
                   config.websearch?.providers?.brave?.max_results ??
                   5,
+              },
+              searxng: {
+                enabled:
+                  providers.searxng?.enabled ??
+                  config.websearch?.providers?.searxng?.enabled ??
+                  false,
+                url: providers.searxng?.url ?? config.websearch?.providers?.searxng?.url ?? '',
+                max_results: clampWebSearchMaxResults(
+                  providers.searxng?.max_results,
+                  config.websearch?.providers?.searxng?.max_results ?? DEFAULT_WEBSEARCH_MAX_RESULTS
+                ),
               },
               gemini: {
                 enabled:
