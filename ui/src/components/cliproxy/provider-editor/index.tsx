@@ -33,11 +33,13 @@ export function ProviderEditor({
   displayName,
   authStatus,
   catalog,
+  routing,
   logoProvider,
   baseProvider,
   isRemoteMode,
   port,
   defaultTarget,
+  topNotice,
   onAddAccount,
   onSetDefault,
   onRemoveAccount,
@@ -121,7 +123,7 @@ export function ProviderEditor({
     conflictDialog,
     handleConflictResolve,
     missingRequiredFields,
-  } = useProviderEditor(provider);
+  } = useProviderEditor(provider, catalog);
 
   // Defensive normalization: remote/legacy payloads may omit account.provider.
   // Fallback to current editor provider to avoid runtime crashes in account UI.
@@ -227,6 +229,7 @@ export function ProviderEditor({
         onRefetch={refetch}
         onSave={() => saveMutation.mutate()}
       />
+      {topNotice ? <div className="border-b bg-muted/10 px-4 py-3">{topNotice}</div> : null}
 
       {isLoading ? (
         <div className="flex-1 flex items-center justify-center">
@@ -234,8 +237,8 @@ export function ProviderEditor({
           <span className="ml-3 text-muted-foreground">Loading settings...</span>
         </div>
       ) : (
-        <div className="flex-1 grid grid-cols-[40%_60%] divide-x overflow-hidden">
-          <div className="flex flex-col overflow-hidden bg-muted/5">
+        <div className="min-h-0 flex-1 grid grid-cols-[40%_60%] divide-x overflow-hidden">
+          <div className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-muted/5">
             <Tabs defaultValue="config" className="h-full flex flex-col">
               <div className="px-4 pt-4 shrink-0">
                 <TabsList className="w-full">
@@ -261,6 +264,7 @@ export function ProviderEditor({
                     sonnetModel={sonnetModel}
                     haikuModel={haikuModel}
                     providerModels={providerModels}
+                    routing={routing}
                     extendedContextEnabled={extendedContextEnabled}
                     onExtendedContextToggle={toggleExtendedContext}
                     onApplyPreset={handleApplyPreset}
@@ -297,13 +301,14 @@ export function ProviderEditor({
                     defaultTarget={defaultTarget}
                     data={data}
                     authStatus={authStatus}
+                    supportsModelConfig={Boolean(catalog)}
                   />
                 </TabsContent>
               </div>
             </Tabs>
           </div>
 
-          <div className="flex flex-col overflow-hidden">
+          <div className="flex min-h-0 min-w-0 flex-col overflow-hidden">
             <div className="px-6 py-2 bg-muted/30 border-b flex items-center gap-2 shrink-0 h-[45px]">
               <Code2 className="w-4 h-4 text-muted-foreground" />
               <span className="text-sm font-medium text-muted-foreground">
@@ -346,6 +351,7 @@ export function ProviderEditor({
         isSaving={createPresetMutation.isPending}
         catalog={catalog}
         allModels={providerModels}
+        routing={routing}
       />
     </div>
   );

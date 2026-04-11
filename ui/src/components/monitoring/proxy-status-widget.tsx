@@ -60,6 +60,8 @@ import {
   useCliproxyVersions,
   useInstallVersion,
   useRestartProxy,
+  useCliproxyRoutingStrategy,
+  useUpdateCliproxyRoutingStrategy,
 } from '@/hooks/use-cliproxy';
 import { useSyncStatus, useExecuteSync } from '@/hooks/use-cliproxy-sync';
 import { cn } from '@/lib/utils';
@@ -67,6 +69,7 @@ import {
   isCliproxyVersionExperimental,
   isCliproxyVersionInRange,
 } from '@/lib/cliproxy-version-risk';
+import { RoutingGuidanceCard } from '@/components/cliproxy/routing-guidance-card';
 
 type PendingInstallRisk = 'faulty' | 'experimental';
 
@@ -150,6 +153,12 @@ export function ProxyStatusWidget() {
   const { data: status, isLoading } = useProxyStatus();
   const { data: updateCheck } = useCliproxyUpdateCheck();
   const { data: versionsData, isLoading: versionsLoading } = useCliproxyVersions();
+  const {
+    data: routingState,
+    isLoading: routingLoading,
+    error: routingError,
+  } = useCliproxyRoutingStrategy();
+  const updateRouting = useUpdateCliproxyRoutingStrategy();
   const startProxy = useStartProxy();
   const stopProxy = useStopProxy();
   const restartProxy = useRestartProxy();
@@ -304,6 +313,17 @@ export function ProxyStatusWidget() {
             {t('proxyStatusWidget.trafficAutoRouted')}
           </p>
         </div>
+
+        <RoutingGuidanceCard
+          key={`remote:${routingState?.strategy ?? 'round-robin'}`}
+          compact
+          className="mt-3"
+          state={routingState}
+          isLoading={routingLoading}
+          isSaving={updateRouting.isPending}
+          error={routingError instanceof Error ? routingError : null}
+          onApply={(strategy) => updateRouting.mutate(strategy)}
+        />
       </div>
     );
   }
@@ -449,6 +469,17 @@ export function ProxyStatusWidget() {
             {syncStatusText}
           </span>
         </div>
+
+        <RoutingGuidanceCard
+          key={`local:${routingState?.strategy ?? 'round-robin'}`}
+          compact
+          className="mt-3"
+          state={routingState}
+          isLoading={routingLoading}
+          isSaving={updateRouting.isPending}
+          error={routingError instanceof Error ? routingError : null}
+          onApply={(strategy) => updateRouting.mutate(strategy)}
+        />
 
         {/* Expanded section: Version Management (available even when not running) */}
         <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>

@@ -1,12 +1,23 @@
 const assert = require('assert');
+const fs = require('fs');
 const { execSync } = require('child_process');
 const path = require('path');
 const { createTestEnvironment } = require('../shared/fixtures/test-environment');
 
 describe('npm CLI', () => {
-  const ccsPath = path.join(__dirname, '..', '..', 'dist', 'ccs.js');
+  const distCcsPath = path.join(__dirname, '..', '..', 'dist', 'ccs.js');
+  const srcCcsPath = path.join(__dirname, '..', '..', 'src', 'ccs.ts');
   let testEnv;
   let testCcsHome;
+
+  function buildCliCommand(args = '') {
+    if (fs.existsSync(distCcsPath)) {
+      return `node "${distCcsPath}" ${args}`;
+    }
+
+    // Some test files rebuild or clean dist during the same Bun process.
+    return `bun "${srcCcsPath}" ${args}`;
+  }
 
   beforeAll(() => {
     // Create isolated test environment
@@ -30,7 +41,7 @@ describe('npm CLI', () => {
 
   // Helper to run CLI with test environment
   function runCli(args, options = {}) {
-    return execSync(`node "${ccsPath}" ${args}`, {
+    return execSync(buildCliCommand(args), {
       ...options,
       env: { ...process.env, CCS_HOME: testCcsHome }
     });
@@ -77,8 +88,9 @@ describe('npm CLI', () => {
   });
 
   describe('Profile handling', () => {
-    // Note: GLM/GLMT/Kimi profiles are no longer auto-created (v6.0)
-    // Users create these via UI presets or CLI: ccs api create --preset glm
+    // Note: GLM/Kimi profiles are no longer auto-created (v6.0).
+    // Legacy GLMT files may still exist, but new supported API profiles are created
+    // via UI presets or CLI: ccs api create --preset glm
 
     it('shows helpful error for non-existent profile', function() {
       try {

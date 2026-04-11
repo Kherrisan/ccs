@@ -5,15 +5,7 @@
 
 import { useMemo } from 'react';
 import { Badge } from '@/components/ui/badge';
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectLabel,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Cpu } from 'lucide-react';
 import type { CliproxyModelsResponse } from '@/lib/api-client';
@@ -94,36 +86,37 @@ export function CategorizedModelSelector({
   }
 
   return (
-    <Select value={value || ''} onValueChange={onChange} disabled={disabled}>
-      <SelectTrigger className={cn('w-[320px]', className)}>
-        <SelectValue placeholder={resolvedPlaceholder}>
-          {value && (
-            <div className="flex items-center gap-2">
-              <span className="truncate">{value}</span>
-            </div>
-          )}
-        </SelectValue>
-      </SelectTrigger>
-      <SelectContent className="max-h-[400px]">
-        {sortedCategories.map(({ category, display, models }) => (
-          <SelectGroup key={category}>
-            <SelectLabel className="flex items-center justify-between px-2 py-1.5">
-              <span className={cn('font-semibold', display.color)}>
-                {t(`cliproxyModelCategory.${display.key}`)}
-              </span>
-              <Badge variant="secondary" className="text-[10px] h-4 px-1.5 ml-2">
-                {models.length}
-              </Badge>
-            </SelectLabel>
-            {models.map((model) => (
-              <SelectItem key={model.id} value={model.id} className="pl-4">
-                <span className="truncate">{model.id}</span>
-              </SelectItem>
-            ))}
-          </SelectGroup>
-        ))}
-      </SelectContent>
-    </Select>
+    <SearchableSelect
+      value={value || undefined}
+      onChange={onChange}
+      disabled={disabled}
+      placeholder={resolvedPlaceholder}
+      searchPlaceholder={t('searchableSelect.searchModels')}
+      emptyText={t('searchableSelect.noResults')}
+      className={cn('w-[320px]', className)}
+      groups={sortedCategories.map(({ category, display, models }) => ({
+        key: category,
+        label: (
+          <div className="flex items-center justify-between">
+            <span className={cn('font-semibold', display.color)}>
+              {t(`cliproxyModelCategory.${display.key}`)}
+            </span>
+            <Badge variant="secondary" className="text-[10px] h-4 px-1.5 ml-2">
+              {models.length}
+            </Badge>
+          </div>
+        ),
+      }))}
+      options={sortedCategories.flatMap(({ category, models }) =>
+        models.map((model) => ({
+          value: model.id,
+          groupKey: category,
+          searchText: model.id,
+          keywords: [category],
+          itemContent: <span className="truncate">{model.id}</span>,
+        }))
+      )}
+    />
   );
 }
 

@@ -6,7 +6,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import session from 'express-session';
 import rateLimit from 'express-rate-limit';
-import { getDashboardAuthConfig } from '../../config/unified-config-loader';
+import { getDashboardAuthConfig, isDashboardAuthEnabled } from '../../config/unified-config-loader';
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
@@ -78,7 +78,7 @@ export const loginRateLimiter = rateLimit({
   message: { error: 'Too many login attempts. Please try again later.' },
   standardHeaders: true,
   legacyHeaders: false,
-  skip: () => !getDashboardAuthConfig().enabled,
+  skip: () => !isDashboardAuthEnabled(),
 });
 
 /**
@@ -106,10 +106,8 @@ export function createSessionMiddleware() {
  * Only active when dashboard_auth.enabled = true.
  */
 export function authMiddleware(req: Request, res: Response, next: NextFunction): void {
-  const authConfig = getDashboardAuthConfig();
-
   // Skip auth if disabled
-  if (!authConfig.enabled) {
+  if (!isDashboardAuthEnabled()) {
     return next();
   }
 
@@ -131,4 +129,33 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction):
 
   // Unauthorized
   res.status(401).json({ error: 'Authentication required' });
+}
+
+export function isLoopbackRemoteAddress(value: string | undefined): boolean {
+  if (!value) return false;
+  const normalized = value.trim().replace(/^\[|\]$/g, '');
+  return (
+    normalized === '::1' ||
+    normalized === '127.0.0.1' ||
+    normalized.startsWith('127.') ||
+    normalized === '::ffff:127.0.0.1' ||
+    normalized.startsWith('::ffff:127.')
+  );
+}
+
+export function requireLocalAccessWhenAuthDisabled(
+  req: Request,
+  res: Response,
+  error = 'This endpoint requires localhost access when dashboard auth is disabled.'
+): boolean {
+  if (isDashboardAuthEnabled()) {
+    return true;
+  }
+
+  if (isLoopbackRemoteAddress(req.socket.remoteAddress)) {
+    return true;
+  }
+
+  res.status(403).json({ error });
+  return false;
 }

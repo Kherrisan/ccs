@@ -5,7 +5,11 @@
  */
 
 import { describe, it, expect } from 'bun:test';
-import { sanitizeEmail, isTokenExpired } from '../../../src/cliproxy/auth-utils';
+import {
+  getTokenExpiryTimestamp,
+  isTokenExpired,
+  sanitizeEmail,
+} from '../../../src/cliproxy/auth-utils';
 
 describe('Auth Utilities', () => {
   describe('sanitizeEmail', () => {
@@ -75,14 +79,30 @@ describe('Auth Utilities', () => {
       expect(isTokenExpired(futureISO)).toBe(false);
     });
 
-    it('should handle Unix timestamp strings', () => {
-      // JavaScript Date can parse numeric strings as timestamps
+    it('should handle Unix timestamp strings deterministically', () => {
       const pastTimestamp = String(Date.now() - 86400000); // Yesterday
-      // Note: Date parsing of pure numbers as strings is inconsistent
-      // This test documents the actual behavior
-      const result = isTokenExpired(pastTimestamp);
-      // The behavior depends on how Date parses the string
-      expect(typeof result).toBe('boolean');
+      expect(isTokenExpired(pastTimestamp)).toBe(true);
+    });
+
+    it('should handle Unix timestamps provided as numbers', () => {
+      const futureTimestamp = Date.now() + 86400000;
+      expect(isTokenExpired(futureTimestamp)).toBe(false);
+    });
+
+    it('should treat Unix-seconds values as seconds, not milliseconds', () => {
+      const futureUnixSeconds = Math.floor((Date.now() + 60000) / 1000);
+      expect(isTokenExpired(futureUnixSeconds)).toBe(false);
+      expect(isTokenExpired(String(futureUnixSeconds))).toBe(false);
+    });
+
+    it('should expose normalized expiry timestamps for string and numeric inputs', () => {
+      const futureTimestamp = Date.now() + 60000;
+      expect(getTokenExpiryTimestamp(futureTimestamp)).toBe(futureTimestamp);
+      expect(getTokenExpiryTimestamp(String(futureTimestamp))).toBe(futureTimestamp);
+      const futureUnixSeconds = Math.floor((Date.now() + 60000) / 1000);
+      expect(getTokenExpiryTimestamp(futureUnixSeconds)).toBe(futureUnixSeconds * 1000);
+      expect(getTokenExpiryTimestamp(String(futureUnixSeconds))).toBe(futureUnixSeconds * 1000);
+      expect(getTokenExpiryTimestamp('not-a-date')).toBeNull();
     });
   });
 });

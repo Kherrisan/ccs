@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'bun:test';
 import { findModel, supportsThinking } from '../../../src/cliproxy/model-catalog';
+import {
+  PROVIDER_TO_CHANNEL,
+  SYNCABLE_PROVIDERS,
+  mergeCatalog,
+} from '../../../src/cliproxy/catalog-cache';
 
 describe('model-catalog compatibility lookups', () => {
   it('finds agy Claude models using dotted major.minor IDs', () => {
@@ -33,5 +38,24 @@ describe('model-catalog compatibility lookups', () => {
 
     expect(dottedLegacy?.id).toBe('claude-sonnet-4-6');
     expect(hyphenLegacy?.id).toBe('claude-sonnet-4-6');
+  });
+
+  it('maps all dashboard providers to upstream catalog channels', () => {
+    expect(SYNCABLE_PROVIDERS).toContain('qwen');
+    expect(SYNCABLE_PROVIDERS).toContain('iflow');
+    expect(SYNCABLE_PROVIDERS).toContain('kiro');
+    expect(SYNCABLE_PROVIDERS).toContain('ghcp');
+    expect(PROVIDER_TO_CHANNEL.ghcp).toBe('github-copilot');
+  });
+
+  it('does not re-add stale static-only models when live catalog data is present', () => {
+    const catalog = mergeCatalog('gemini', [
+      {
+        id: 'gemini-2.5-pro',
+        display_name: 'Gemini 2.5 Pro',
+      },
+    ]);
+
+    expect(catalog?.models.map((model) => model.id)).toEqual(['gemini-2.5-pro']);
   });
 });

@@ -26,6 +26,7 @@ import {
 } from './model-id-normalizer';
 import { getModelMaxLevel } from './model-catalog';
 import { getCcsDir } from '../utils/config-manager';
+import { createLogger } from '../services/logging';
 
 export interface ToolSanitizationProxyConfig {
   /** Upstream CLIProxy URL */
@@ -153,6 +154,7 @@ export class ToolSanitizationProxy {
   private readonly config: Required<ToolSanitizationProxyConfig>;
   private readonly logFilePath: string;
   private readonly debugMode: boolean;
+  private readonly logger = createLogger('cliproxy:tool-sanitization-proxy');
 
   constructor(config: ToolSanitizationProxyConfig) {
     this.config = {
@@ -207,6 +209,11 @@ export class ToolSanitizationProxy {
     if (this.debugMode) {
       console.error(`${prefix} ${message}`);
     }
+
+    this.logger[level](level, message, {
+      debugMode: this.debugMode,
+      logFilePath: this.logFilePath,
+    });
   }
 
   private log(message: string): void {

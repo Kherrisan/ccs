@@ -21,7 +21,7 @@ interface UpdateCache {
   dismissed_version: string | null;
 }
 
-interface UpdateResult {
+export interface UpdateResult {
   status: 'update_available' | 'no_update' | 'check_failed';
   reason?: string;
   latest?: string;

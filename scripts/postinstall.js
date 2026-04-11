@@ -150,7 +150,7 @@ function createConfigFiles() {
     // Create config.yaml if missing (primary format)
     // NOTE: gemini/codex profiles NOT included - they are added on-demand when user
     // runs `ccs gemini` or `ccs codex` for first time (requires OAuth auth first)
-    // NOTE: GLM/GLMT/Kimi profiles are now created via UI/CLI presets, not auto-created
+    // NOTE: GLM/Kimi profiles are now created via UI/CLI presets, not auto-created
     const configYamlPath = path.join(ccsDir, 'config.yaml');
     const legacyConfigPath = path.join(ccsDir, 'config.json');
 
@@ -250,10 +250,10 @@ function createConfigFiles() {
       console.log('    config.json will be ignored - consider removing it');
     }
 
-    // NOTE: GLM, GLMT, and Kimi profiles are NO LONGER auto-created during install
+    // NOTE: GLM and Kimi profiles are NO LONGER auto-created during install
     // Users can create these via:
     //   - UI: Profile Create Dialog → Provider Presets
-    //   - CLI: ccs api create --preset glm|glmt|kimi
+    //   - CLI: ccs api create --preset glm|km
     // This gives users control over which providers they want to use
     // Existing profiles are preserved for backward compatibility
 

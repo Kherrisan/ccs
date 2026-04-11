@@ -8,6 +8,7 @@ import {
   getProviderFallbackVisual,
   getProviderLogoAsset,
   providerNeedsDarkLogoBackground,
+  providerUsesSelfContainedLogo,
 } from '@/lib/provider-config';
 
 interface ProviderLogoProps {
@@ -27,12 +28,14 @@ export function ProviderLogo({ provider, className, size = 'md' }: ProviderLogoP
   const fallback = getProviderFallbackVisual(provider);
   const sizeConfig = SIZE_CONFIG[size];
   const imageSrc = getProviderLogoAsset(provider);
+  const usesSelfContainedLogo = providerUsesSelfContainedLogo(provider);
 
   return (
     <div
       className={cn(
         'flex items-center justify-center rounded-md',
         imageSrc &&
+          !usesSelfContainedLogo &&
           (providerNeedsDarkLogoBackground(provider) ? 'bg-gray-900 p-1' : 'bg-white p-1'),
         sizeConfig.container,
         className
@@ -42,7 +45,10 @@ export function ProviderLogo({ provider, className, size = 'md' }: ProviderLogoP
         <img
           src={imageSrc}
           alt={`${provider} logo`}
-          className={cn(sizeConfig.icon, 'object-contain')}
+          className={cn(
+            usesSelfContainedLogo ? sizeConfig.container : sizeConfig.icon,
+            'object-contain'
+          )}
         />
       ) : (
         <span className={cn('font-semibold', fallback.textClass, sizeConfig.text)}>

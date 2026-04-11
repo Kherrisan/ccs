@@ -142,6 +142,11 @@ export type CLIProxyProvider =
 export type CLIProxyBackend = 'original' | 'plus';
 
 /**
+ * Credential routing strategy for matching CLIProxy accounts.
+ */
+export type CliproxyRoutingStrategy = 'round-robin' | 'fill-first';
+
+/**
  * Providers that require CLIProxyAPIPlus backend
  */
 export const PLUS_ONLY_PROVIDERS: CLIProxyProvider[] = ['kiro', 'ghcp'];
@@ -154,6 +159,9 @@ export interface CLIProxyConfig {
   'api-keys': string[];
   'auth-dir': string;
   debug: boolean;
+  routing?: {
+    strategy?: CliproxyRoutingStrategy;
+  };
   'gemini-api-key'?: Array<{
     'api-key': string;
     'base-url'?: string;
@@ -162,11 +170,33 @@ export interface CLIProxyConfig {
     'api-key': string;
     'base-url'?: string;
   }>;
+  'claude-api-key'?: Array<{
+    'api-key': string;
+    'base-url'?: string;
+    'proxy-url'?: string;
+    prefix?: string;
+    headers?: Record<string, string>;
+    'excluded-models'?: string[];
+    models?: Array<{
+      name: string;
+      alias: string;
+    }>;
+  }>;
+  'vertex-api-key'?: Array<{
+    'api-key': string;
+    'base-url'?: string;
+  }>;
   'openai-compatibility'?: Array<{
     name: string;
     'base-url': string;
+    headers?: Record<string, string>;
     'api-key-entries': Array<{
       'api-key': string;
+      'proxy-url'?: string;
+    }>;
+    models?: Array<{
+      name: string;
+      alias: string;
     }>;
   }>;
 }
@@ -246,6 +276,8 @@ export interface ResolvedProxyConfig {
   protocol: 'http' | 'https';
   /** Auth token for remote proxy authentication */
   authToken?: string;
+  /** Management key for remote management endpoints */
+  managementKey?: string;
   /** Enable fallback to local when remote unreachable (default: true) */
   fallbackEnabled: boolean;
   /** Auto-start local proxy if not running (default: true) */

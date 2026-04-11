@@ -6,22 +6,20 @@
  */
 
 import { initUI, header, dim, color, subheader, fail, warn } from '../utils/ui';
-import { CLIProxyProvider } from '../cliproxy/types';
-import { CLIPROXY_PROFILES, loadSettingsFromFile } from '../auth/profile-detector';
-import { getEffectiveEnvVars } from '../cliproxy/config/env-builder';
-import { CLIPROXY_DEFAULT_PORT } from '../cliproxy/config/port-manager';
-import { isUnifiedMode, loadUnifiedConfig } from '../config/unified-config-loader';
-import { expandPath } from '../utils/helpers';
 import { getCcsDir } from '../utils/config-manager';
-import { ProfileRegistry } from '../auth/profile-registry';
-import { getProfileLookupCandidates } from '../utils/profile-compat';
+import { CLAUDE_EXTENSION_HOSTS, type ClaudeExtensionHost } from '../shared/claude-extension-hosts';
+import {
+  renderClaudeExtensionSettingsJson,
+  resolveClaudeExtensionSetup,
+} from '../shared/claude-extension-setup';
 
 type ShellType = 'bash' | 'fish' | 'powershell';
-type OutputFormat = 'openai' | 'anthropic' | 'raw';
+type OutputFormat = 'openai' | 'anthropic' | 'raw' | 'claude-extension';
 
-const VALID_FORMATS: OutputFormat[] = ['openai', 'anthropic', 'raw'];
+const VALID_FORMATS: OutputFormat[] = ['openai', 'anthropic', 'raw', 'claude-extension'];
 const VALID_SHELLS: ShellType[] = ['bash', 'fish', 'powershell'];
 const VALID_SHELL_INPUTS = ['auto', 'bash', 'zsh', 'fish', 'powershell'] as const;
+const VALID_EXTENSION_HOSTS = CLAUDE_EXTENSION_HOSTS.map((host) => host.id);
 const VALID_ENV_KEY = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 /** Auto-detect shell from environment */
@@ -97,46 +95,6 @@ export function findProfile(args: string[], flagsWithValues: string[]): string |
   return undefined;
 }
 
-/** Check if a profile is a CLIProxy profile */
-function isCLIProxyProfile(name: string): boolean {
-  return (CLIPROXY_PROFILES as readonly string[]).includes(name);
-}
-
-/** Resolve env vars for settings-based profiles (glm, km, custom API profiles) */
-function resolveSettingsProfile(profileName: string): Record<string, string> | null {
-  if (!isUnifiedMode()) return null;
-
-  const config = loadUnifiedConfig();
-  if (!config) return null;
-
-  // Check unified config profiles section (supports compatibility aliases, e.g. km -> kimi)
-  let profileConfig: { type?: string; settings?: string } | undefined;
-  for (const candidate of getProfileLookupCandidates(profileName)) {
-    const candidateConfig = config.profiles?.[candidate];
-    if (candidateConfig) {
-      profileConfig = candidateConfig;
-      break;
-    }
-  }
-  if (!profileConfig) return null;
-
-  if (profileConfig.type !== 'api') {
-    console.error(
-      fail(
-        `Profile '${profileName}' is type '${profileConfig.type}', not a settings-based API profile.`
-      )
-    );
-    process.exit(1);
-  }
-
-  if (profileConfig.settings) {
-    const settingsPath = expandPath(profileConfig.settings);
-    return loadSettingsFromFile(settingsPath);
-  }
-
-  return {};
-}
-
 /** Show help for env command */
 function showHelp(): void {
   console.log('');
@@ -151,10 +109,13 @@ function showHelp(): void {
 
   console.log(subheader('Options:'));
   console.log(
-    `  ${color('--format', 'command')} <fmt>    Output format: openai, anthropic, raw ${dim('(default: anthropic)')}`
+    `  ${color('--format', 'command')} <fmt>    Output format: openai, anthropic, raw, claude-extension ${dim('(default: anthropic)')}`
   );
   console.log(
     `  ${color('--shell', 'command')} <sh>      Shell syntax: auto, bash/zsh, fish, powershell ${dim('(default: auto)')}`
+  );
+  console.log(
+    `  ${color('--ide', 'command')} <host>      Claude extension host: ${VALID_EXTENSION_HOSTS.join(', ')} ${dim('(default: vscode)')}`
   );
   console.log(`  ${color('--help, -h', 'command')}        Show this help message`);
   console.log('');
@@ -167,6 +128,9 @@ function showHelp(): void {
     `  ${color('anthropic', 'command')}   ANTHROPIC_BASE_URL, ANTHROPIC_AUTH_TOKEN, ANTHROPIC_MODEL`
   );
   console.log(`  ${color('raw', 'command')}         All effective env vars as-is`);
+  console.log(
+    `  ${color('claude-extension', 'command')}  Settings JSON snippet for the Claude IDE extension`
+  );
   console.log('');
 
   console.log(subheader('Examples:'));
@@ -181,6 +145,20 @@ function showHelp(): void {
   );
   console.log(
     `  $ ${color('ccs env agy --format openai --shell fish', 'command')}  ${dim('# Fish shell syntax')}`
+  );
+  console.log(
+    `  $ ${color('ccs env work --format claude-extension --ide vscode', 'command')}  ${dim('# VS Code/Cursor snippet')}`
+  );
+  console.log(
+    `  $ ${color('ccs env default --format claude-extension --ide windsurf', 'command')}  ${dim('# Clear/replace Windsurf env overrides')}`
+  );
+  console.log('');
+  console.log(subheader('Notes:'));
+  console.log(
+    `  ${dim('- Use ccs persist <profile> for shared ~/.claude/settings.json setup when possible.')}`
+  );
+  console.log(
+    `  ${dim('- claude-extension output prints JSON only; replace the full environmentVariables setting.')}`
   );
   console.log('');
 }
@@ -198,10 +176,12 @@ export async function handleEnvCommand(args: string[]): Promise<void> {
   }
 
   // Parse profile (first positional argument, skipping flag values)
-  const flagsWithValues = ['format', 'shell'];
+  const flagsWithValues = ['format', 'shell', 'ide'];
   const profile = findProfile(args, flagsWithValues);
   if (!profile) {
-    console.error(fail('Usage: ccs env <profile> [--format openai|anthropic|raw]'));
+    console.error(
+      fail('Usage: ccs env <profile> [--format openai|anthropic|raw|claude-extension]')
+    );
     process.exit(1);
   }
 
@@ -220,47 +200,29 @@ export async function handleEnvCommand(args: string[]): Promise<void> {
   }
   // zsh uses the same syntax as bash
   const shell = detectShell(shellStr === 'zsh' ? 'bash' : shellStr);
+  const ide = (parseFlag(args, 'ide') || 'vscode') as ClaudeExtensionHost;
+  if (!VALID_EXTENSION_HOSTS.includes(ide)) {
+    console.error(fail(`Invalid IDE host: ${ide}. Use: ${VALID_EXTENSION_HOSTS.join(', ')}`));
+    process.exit(1);
+  }
 
-  // Resolve env vars based on profile type
-  let envVars: Record<string, string> = {};
-
-  if (isCLIProxyProfile(profile)) {
-    // CLIProxy profile (gemini, codex, agy, etc.)
-    const provider = profile as CLIProxyProvider;
-    const resolved = getEffectiveEnvVars(provider, CLIPROXY_DEFAULT_PORT);
-    // Convert NodeJS.ProcessEnv to Record<string, string>
-    for (const [k, v] of Object.entries(resolved)) {
-      if (v !== undefined) envVars[k] = v;
-    }
-  } else {
-    // Settings-based profile (glm, km, custom API)
-    const resolved = resolveSettingsProfile(profile);
-    if (!resolved) {
-      // Check if it's an account-based profile
-      const registry = new ProfileRegistry();
-      const allProfiles = registry.getAllProfiles();
-      if (allProfiles[profile]) {
-        console.error(
-          fail(
-            `'${profile}' is an account-based profile. ` +
-              '`ccs env` only supports CLIProxy and settings profiles.'
-          )
-        );
-        process.exit(1);
+  let envVars: Record<string, string>;
+  try {
+    const resolved = await resolveClaudeExtensionSetup(profile);
+    if (resolved.warnings.length > 0) {
+      for (const message of resolved.warnings) {
+        console.error(warn(message));
       }
-
-      console.error(fail(`Profile '${profile}' not found.`));
-      console.error(dim('  Available CLIProxy profiles: ' + CLIPROXY_PROFILES.join(', ')));
-      if (!isUnifiedMode()) {
-        console.error(
-          dim('  Settings profiles require unified config. Run `ccs migrate` to upgrade.')
-        );
-      } else {
-        console.error(dim(`  Check ${getCcsDir()}/config.yaml for custom profiles.`));
-      }
-      process.exit(1);
     }
-    envVars = resolved;
+    envVars = resolved.extensionEnv;
+    if (format === 'claude-extension') {
+      console.log(renderClaudeExtensionSettingsJson(resolved, ide));
+      return;
+    }
+  } catch (error) {
+    console.error(fail((error as Error).message));
+    console.error(dim(`  Check ${getCcsDir()}/config.yaml or run ccs config for profile setup.`));
+    process.exit(1);
   }
 
   if (Object.keys(envVars).length === 0) {

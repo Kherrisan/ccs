@@ -8,16 +8,16 @@ import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import {
-  buildCodexQuotaWindows,
-  buildCodexCoreUsageSummary,
-  fetchCodexQuota,
-  getUnknownCodexWindowLabels,
-} from '../../../src/cliproxy/quota-fetcher-codex';
 
 let tmpDir: string;
 let originalCcsHome: string | undefined;
 let originalFetch: typeof fetch;
+let moduleVersion = 0;
+let buildCodexQuotaWindows: typeof import('../../../src/cliproxy/quota-fetcher-codex').buildCodexQuotaWindows;
+let buildCodexCoreUsageSummary: typeof import('../../../src/cliproxy/quota-fetcher-codex').buildCodexCoreUsageSummary;
+let fetchCodexQuota: typeof import('../../../src/cliproxy/quota-fetcher-codex').fetchCodexQuota;
+let getUnknownCodexWindowLabels: typeof import('../../../src/cliproxy/quota-fetcher-codex').getUnknownCodexWindowLabels;
+let registerAccount: typeof import('../../../src/cliproxy/account-manager').registerAccount;
 
 function createCodexAccount(
   accountId: string,
@@ -29,7 +29,27 @@ function createCodexAccount(
   fs.writeFileSync(path.join(authDir, tokenFile), JSON.stringify(tokenPayload));
 }
 
-beforeEach(() => {
+beforeEach(async () => {
+  moduleVersion += 1;
+  mock.restore();
+
+  const configGenerator = await import(
+    `../../../src/cliproxy/config-generator?codex-config-generator=${moduleVersion}`
+  );
+  const accountManager = await import(
+    `../../../src/cliproxy/account-manager?codex-account-manager=${moduleVersion}`
+  );
+  mock.module('../../../src/cliproxy/config-generator', () => configGenerator);
+  mock.module('../../../src/cliproxy/account-manager', () => accountManager);
+  ({ registerAccount } = accountManager);
+
+  ({
+    buildCodexQuotaWindows,
+    buildCodexCoreUsageSummary,
+    fetchCodexQuota,
+    getUnknownCodexWindowLabels,
+  } = await import(`../../../src/cliproxy/quota-fetcher-codex?codex-fetcher=${moduleVersion}`));
+
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ccs-codex-quota-test-'));
   originalCcsHome = process.env.CCS_HOME;
   process.env.CCS_HOME = tmpDir;
@@ -37,6 +57,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  mock.restore();
   global.fetch = originalFetch;
   if (originalCcsHome !== undefined) {
     process.env.CCS_HOME = originalCcsHome;
@@ -344,14 +365,18 @@ describe('Codex Quota Fetcher', () => {
   });
 
   describe('fetchCodexQuota failure mapping', () => {
-    function createValidCodexAccount(email: string, accountId = `workspace-${email}`): void {
+    function createValidCodexAccount(
+      email: string,
+      accountId = `workspace-${email}`,
+      tokenFile?: string
+    ): void {
       createCodexAccount(email, {
         access_token: 'test-token',
         account_id: accountId,
         expired: '2099-01-01T00:00:00.000Z',
         email,
         type: 'codex',
-      });
+      }, tokenFile);
     }
 
     it('maps deactivated workspace 402 responses to structured metadata', async () => {
@@ -388,6 +413,92 @@ describe('Codex Quota Fetcher', () => {
       expect(result.errorCode).toBe('reauth_required');
       expect(result.needsReauth).toBe(true);
       expect(result.actionHint).toContain('ccs cliproxy auth codex');
+    });
+
+    it('uses the registry token file for duplicate-email Codex accounts', async () => {
+      createValidCodexAccount(
+        'kaidu.kd@gmail.com',
+        'workspace-team',
+        'codex-04a0f049-kaidu.kd@gmail.com-team.json'
+      );
+      createValidCodexAccount(
+        'kaidu.kd@gmail.com',
+        'workspace-free',
+        'codex-kaidu.kd@gmail.com-free.json'
+      );
+
+      registerAccount(
+        'codex',
+        'codex-04a0f049-kaidu.kd@gmail.com-team.json',
+        'kaidu.kd@gmail.com'
+      );
+      const freeAccount = registerAccount(
+        'codex',
+        'codex-kaidu.kd@gmail.com-free.json',
+        'kaidu.kd@gmail.com'
+      );
+
+      const fetchSpy = mock((input: RequestInfo | URL, init?: RequestInit) =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({
+              plan_type: 'free',
+              rate_limit: {
+                primary_window: { used_percent: 10, reset_after_seconds: 3600 },
+              },
+            }),
+            {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            }
+          )
+        )
+      ) as typeof fetch;
+      global.fetch = fetchSpy;
+
+      const result = await fetchCodexQuota(freeAccount.id);
+      const requestInit = fetchSpy.mock.calls[0]?.[1] as RequestInit | undefined;
+      const headers = new Headers(requestInit?.headers);
+
+      expect(result.success).toBe(true);
+      expect(headers.get('ChatGPT-Account-Id')).toBe('workspace-free');
+    });
+
+    it('does not guess a duplicate-email Codex auth file when the registry entry is missing', async () => {
+      createValidCodexAccount(
+        'kaidu.kd@gmail.com',
+        'workspace-team',
+        'codex-legacy-slot-a.json'
+      );
+      createValidCodexAccount(
+        'kaidu.kd@gmail.com',
+        'workspace-free',
+        'codex-legacy-slot-b.json'
+      );
+
+      const fetchSpy = mock(() =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({
+              plan_type: 'free',
+              rate_limit: {
+                primary_window: { used_percent: 10, reset_after_seconds: 3600 },
+              },
+            }),
+            {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            }
+          )
+        )
+      ) as typeof fetch;
+      global.fetch = fetchSpy;
+
+      const result = await fetchCodexQuota('kaidu.kd@gmail.com#04a0f049-team');
+
+      expect(result.success).toBe(false);
+      expect(result.errorCode).toBe('auth_file_missing');
+      expect(fetchSpy).not.toHaveBeenCalled();
     });
 
     it('maps 403 responses to forbidden metadata', async () => {

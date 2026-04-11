@@ -15,9 +15,38 @@ import { ui, warn, info } from '../utils/ui';
 import { type ExecutionOptions, type ExecutionResult, type StreamMessage } from './executor/types';
 import { StreamBuffer, formatToolVerbose } from './executor/stream-parser';
 import { buildExecutionResult } from './executor/result-aggregator';
-import { getCcsDir, getModelDisplayName } from '../utils/config-manager';
+import { getCcsDir, getModelDisplayName, loadSettings } from '../utils/config-manager';
 import { getProfileLookupCandidates } from '../utils/profile-compat';
 import { getClaudeLaunchEnvOverrides, stripClaudeCodeEnv } from '../utils/shell-executor';
+import { resolveProfileContinuityInheritance } from '../auth/profile-continuity-inheritance';
+import {
+  appendThirdPartyImageAnalysisToolArgs,
+  ensureImageAnalysisMcpOrThrow,
+  syncImageAnalysisMcpToConfigDir,
+} from '../utils/image-analysis';
+import {
+  applyImageAnalysisRuntimeOverrides,
+  getImageAnalysisHookEnv,
+  prepareImageAnalysisFallbackHook,
+  resolveImageAnalysisRuntimeConnection,
+  resolveImageAnalysisRuntimeStatus,
+} from '../utils/hooks';
+import {
+  ensureProfileHooks as ensureImageAnalyzerHooks,
+  removeImageAnalysisProfileHook,
+} from '../utils/hooks/image-analyzer-profile-hook-injector';
+import { resolveCliproxyBridgeMetadata } from '../api/services';
+import { ensureCliproxyService } from '../cliproxy';
+import { CLIPROXY_DEFAULT_PORT } from '../cliproxy/config/port-manager';
+import {
+  appendThirdPartyWebSearchToolArgs,
+  appendWebSearchTrace,
+  createWebSearchTraceContext,
+  ensureWebSearchMcpOrThrow,
+  getWebSearchHookEnv,
+  readWebSearchTraceRecords,
+  syncWebSearchMcpToConfigDir,
+} from '../utils/websearch-manager';
 
 // Re-export types for consumers
 export type { ExecutionOptions, ExecutionResult, StreamMessage } from './executor/types';
@@ -80,6 +109,104 @@ export class HeadlessExecutor {
       );
     }
 
+    const continuityInheritance = await resolveProfileContinuityInheritance({
+      profileName: profile,
+      profileType: 'settings',
+      target: 'claude',
+    });
+    const inheritedClaudeConfigDir = continuityInheritance.claudeConfigDir;
+    if (continuityInheritance.sourceAccount && process.env.CCS_DEBUG) {
+      console.error(
+        info(
+          `Continuity inheritance active: profile "${profile}" -> account "${continuityInheritance.sourceAccount}"`
+        )
+      );
+    }
+
+    ensureWebSearchMcpOrThrow();
+    const imageAnalysisMcpReady = ensureImageAnalysisMcpOrThrow();
+    syncWebSearchMcpToConfigDir(inheritedClaudeConfigDir);
+    syncImageAnalysisMcpToConfigDir(inheritedClaudeConfigDir);
+
+    const settings = loadSettings(settingsPath);
+    const cliproxyBridge = resolveCliproxyBridgeMetadata(settings);
+    let imageAnalysisFallbackHookReady: boolean | undefined;
+    if (imageAnalysisMcpReady) {
+      removeImageAnalysisProfileHook(profile, settingsPath);
+    } else {
+      imageAnalysisFallbackHookReady = prepareImageAnalysisFallbackHook();
+      ensureImageAnalyzerHooks({
+        profileName: profile,
+        profileType: 'settings',
+        settingsPath,
+        settings,
+        cliproxyBridge,
+        sharedHookInstalled: imageAnalysisFallbackHookReady,
+      });
+    }
+    const imageAnalysisStatus = await resolveImageAnalysisRuntimeStatus({
+      profileName: profile,
+      profileType: 'settings',
+      settings,
+      cliproxyBridge,
+      sharedHookInstalled: imageAnalysisFallbackHookReady,
+    });
+    const runtimeConnection = resolveImageAnalysisRuntimeConnection();
+    let imageAnalysisEnv = getImageAnalysisHookEnv({
+      profileName: profile,
+      profileType: 'settings',
+      settings,
+      cliproxyBridge,
+    });
+    imageAnalysisEnv = applyImageAnalysisRuntimeOverrides(imageAnalysisEnv, {
+      backendId: imageAnalysisStatus.backendId,
+      model: imageAnalysisStatus.model,
+      runtimePath: imageAnalysisStatus.runtimePath,
+      baseUrl: runtimeConnection.baseUrl,
+      apiKey: runtimeConnection.apiKey,
+      allowSelfSigned: runtimeConnection.allowSelfSigned,
+    });
+    imageAnalysisEnv = {
+      ...imageAnalysisEnv,
+      CCS_IMAGE_ANALYSIS_SKIP_HOOK: imageAnalysisMcpReady ? '1' : '0',
+    };
+
+    const imageAnalysisProvider = imageAnalysisEnv['CCS_CURRENT_PROVIDER'];
+    if (
+      imageAnalysisEnv['CCS_IMAGE_ANALYSIS_SKIP'] !== '1' &&
+      imageAnalysisProvider &&
+      imageAnalysisStatus.effectiveRuntimeMode === 'native-read'
+    ) {
+      console.error(
+        info(
+          `${imageAnalysisStatus.effectiveRuntimeReason || `Image analysis via ${imageAnalysisProvider} is unavailable.`} This delegation will use native Read.`
+        )
+      );
+      imageAnalysisEnv = {
+        ...imageAnalysisEnv,
+        CCS_CURRENT_PROVIDER: '',
+        CCS_IMAGE_ANALYSIS_SKIP: '1',
+      };
+    } else if (
+      imageAnalysisEnv['CCS_IMAGE_ANALYSIS_SKIP'] !== '1' &&
+      imageAnalysisProvider &&
+      imageAnalysisStatus.proxyReadiness === 'stopped'
+    ) {
+      const ensureServiceResult = await ensureCliproxyService(CLIPROXY_DEFAULT_PORT, false);
+      if (!ensureServiceResult.started) {
+        console.error(
+          warn(
+            `Image analysis via ${imageAnalysisProvider} is unavailable because CCS could not start the local CLIProxy service. This delegation will use native Read.`
+          )
+        );
+        imageAnalysisEnv = {
+          ...imageAnalysisEnv,
+          CCS_CURRENT_PROVIDER: '',
+          CCS_IMAGE_ANALYSIS_SKIP: '1',
+        };
+      }
+    }
+
     // Smart slash command detection and preservation
     const processedPrompt = this._processSlashCommand(enhancedPrompt);
 
@@ -125,7 +252,7 @@ export class HeadlessExecutor {
       args.push('--allowedTools', ...toolRestrictions.allowedTools);
     }
     if (toolRestrictions.disallowedTools.length > 0) {
-      args.push('--disallowedTools', ...toolRestrictions.disallowedTools);
+      args.push('--disallowedTools', toolRestrictions.disallowedTools.join(','));
     }
 
     // Claude Code CLI passthrough flags (explicit, validated)
@@ -163,21 +290,38 @@ export class HeadlessExecutor {
       }
     }
 
+    const imageAnalysisArgs = imageAnalysisMcpReady
+      ? appendThirdPartyImageAnalysisToolArgs(args)
+      : args;
+    const launchArgs = appendThirdPartyWebSearchToolArgs(imageAnalysisArgs);
+    const traceEnv = createWebSearchTraceContext({
+      launcher: 'delegation.headless-executor',
+      args: launchArgs,
+      cwd,
+      profile,
+      profileType: 'settings',
+      settingsPath,
+      claudeConfigDir: inheritedClaudeConfigDir,
+    });
+
     if (process.env.CCS_DEBUG) {
-      console.error(info(`Claude CLI args: ${args.join(' ')}`));
+      console.error(info(`Claude CLI args: ${launchArgs.join(' ')}`));
     }
 
     // Initialize UI before spawning
     await ui.init();
 
     // Execute with spawn
-    return this._spawnAndExecute(claudeCli, args, {
+    return this._spawnAndExecute(claudeCli, launchArgs, {
       cwd,
       profile,
       timeout,
       resumeSession,
       sessionId,
       sessionMgr,
+      claudeConfigDir: inheritedClaudeConfigDir,
+      imageAnalysisEnv,
+      traceEnv,
     });
   }
 
@@ -194,9 +338,22 @@ export class HeadlessExecutor {
       resumeSession: boolean;
       sessionId: string | null;
       sessionMgr: SessionManager;
+      claudeConfigDir?: string;
+      imageAnalysisEnv?: Record<string, string>;
+      traceEnv?: Record<string, string>;
     }
   ): Promise<ExecutionResult> {
-    const { cwd, profile, timeout, resumeSession, sessionId, sessionMgr } = ctx;
+    const {
+      cwd,
+      profile,
+      timeout,
+      resumeSession,
+      sessionId,
+      sessionMgr,
+      claudeConfigDir,
+      imageAnalysisEnv = {},
+      traceEnv = {},
+    } = ctx;
 
     return new Promise((resolve, reject) => {
       const startTime = Date.now();
@@ -213,6 +370,11 @@ export class HeadlessExecutor {
       const cleanEnv = stripClaudeCodeEnv({
         ...process.env,
         ...getClaudeLaunchEnvOverrides(),
+        ...getWebSearchHookEnv(),
+        ...imageAnalysisEnv,
+        ...traceEnv,
+        ...(claudeConfigDir ? { CLAUDE_CONFIG_DIR: claudeConfigDir } : {}),
+        CCS_PROFILE_TYPE: 'settings',
       });
 
       const proc = spawn(claudeCli, args, {
@@ -312,6 +474,51 @@ export class HeadlessExecutor {
           timedOut,
           messages,
         });
+
+        const launchId = traceEnv.CCS_WEBSEARCH_TRACE_LAUNCH_ID;
+        if (launchId) {
+          const launchTraceRecords = readWebSearchTraceRecords(launchId, {
+            ...process.env,
+            ...traceEnv,
+            CCS_PROFILE_TYPE: 'settings',
+          });
+          const mcpSessionSummary = [...launchTraceRecords]
+            .reverse()
+            .find((record) => record.event === 'mcp_session_summary');
+          const providerSuccess = [...launchTraceRecords]
+            .reverse()
+            .find((record) => record.event === 'websearch_provider_success');
+
+          const exposed = mcpSessionSummary?.exposed === true;
+          const calledWebSearch = result.toolUsageSummary?.calledWebSearch === true;
+          const fallbackToolsUsed = result.toolUsageSummary?.fallbackToolsUsed || [];
+
+          appendWebSearchTrace(
+            'headless_websearch_summary',
+            {
+              profile,
+              sessionId: result.sessionId || null,
+              calledWebSearch,
+              fallbackToolsUsed,
+              providerUsed:
+                typeof providerSuccess?.providerName === 'string'
+                  ? providerSuccess.providerName
+                  : null,
+              exposed,
+              likelyBypassed:
+                exposed && !calledWebSearch
+                  ? fallbackToolsUsed.length > 0
+                    ? true
+                    : 'unknown'
+                  : false,
+            },
+            {
+              ...process.env,
+              ...traceEnv,
+              CCS_PROFILE_TYPE: 'settings',
+            }
+          );
+        }
 
         // Store session
         if (result.sessionId) {

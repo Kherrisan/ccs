@@ -10,13 +10,19 @@ import { STATUS_COLORS } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/skeleton';
 import { AccountFlowViz } from '@/components/account-flow-viz';
 import { usePrivacy } from '@/contexts/privacy-context';
-import { usePauseAccount, useResumeAccount } from '@/hooks/use-cliproxy';
+import {
+  useBulkPauseAccounts,
+  useBulkResumeAccounts,
+  usePauseAccount,
+  useResumeAccount,
+} from '@/hooks/use-cliproxy';
 import { Activity, CheckCircle2, XCircle, Radio } from 'lucide-react';
 
 import { useAuthMonitorData } from './hooks';
 import { LivePulse } from './components/live-pulse';
 import { ProviderCard } from './components/provider-card';
 import { SummaryCard } from './components/summary-card';
+import { getSuccessRate } from './utils';
 
 const STORAGE_KEY = 'auth-monitor-selected-provider';
 
@@ -66,14 +72,44 @@ export function AuthMonitor() {
   // Account control mutations for flow viz
   const pauseMutation = usePauseAccount();
   const resumeMutation = useResumeAccount();
+  const bulkPauseMutation = useBulkPauseAccounts();
+  const bulkResumeMutation = useBulkResumeAccounts();
 
   // Get selected provider data for detail view
   const selectedProviderData = effectiveProvider
     ? providerStats.find((ps) => ps.provider === effectiveProvider)
     : null;
+  const displayedAccountCount = selectedProviderData?.accountCount ?? accounts.length;
+  const displayedSuccess = selectedProviderData?.successCount ?? totalSuccess;
+  const displayedFailure = selectedProviderData?.failureCount ?? totalFailure;
+  const displayedTotalRequests = selectedProviderData?.totalRequests ?? totalRequests;
+  const displayedSuccessRate = selectedProviderData
+    ? getSuccessRate(selectedProviderData.successCount, selectedProviderData.failureCount)
+    : overallSuccessRate;
 
-  const handlePauseToggle = (accountId: string, paused: boolean) => {
-    if (!effectiveProvider || pauseMutation.isPending || resumeMutation.isPending) return;
+  const handlePauseToggle = (accountIds: string[], paused: boolean) => {
+    if (
+      !effectiveProvider ||
+      pauseMutation.isPending ||
+      resumeMutation.isPending ||
+      bulkPauseMutation.isPending ||
+      bulkResumeMutation.isPending
+    ) {
+      return;
+    }
+
+    if (accountIds.length > 1) {
+      if (paused) {
+        bulkPauseMutation.mutate({ provider: effectiveProvider, accountIds });
+      } else {
+        bulkResumeMutation.mutate({ provider: effectiveProvider, accountIds });
+      }
+      return;
+    }
+
+    const [accountId] = accountIds;
+    if (!accountId) return;
+
     if (paused) {
       pauseMutation.mutate({ provider: effectiveProvider, accountId });
     } else {
@@ -119,8 +155,8 @@ export function AuthMonitor() {
             <span>Updated {timeSinceUpdate || 'now'}</span>
           </div>
           <span className="text-muted-foreground/50">|</span>
-          <span>{t('authMonitor.accountsCount', { count: accounts.length })}</span>
-          <span className="font-mono">{totalRequests.toLocaleString()} req</span>
+          <span>{t('authMonitor.accountsCount', { count: displayedAccountCount })}</span>
+          <span className="font-mono">{displayedTotalRequests.toLocaleString()} req</span>
         </div>
       </div>
 
@@ -129,29 +165,29 @@ export function AuthMonitor() {
         <SummaryCard
           icon={<Activity className="w-4 h-4" />}
           label={t('authMonitor.accounts')}
-          value={accounts.length}
+          value={displayedAccountCount}
           color="var(--accent)"
         />
         <SummaryCard
           icon={<CheckCircle2 className="w-4 h-4" />}
           label={t('authMonitor.success')}
-          value={totalSuccess.toLocaleString()}
+          value={displayedSuccess.toLocaleString()}
           color={STATUS_COLORS.success}
         />
         <SummaryCard
           icon={<XCircle className="w-4 h-4" />}
           label={t('authMonitor.failed')}
-          value={totalFailure.toLocaleString()}
-          color={totalFailure > 0 ? STATUS_COLORS.failed : undefined}
+          value={displayedFailure.toLocaleString()}
+          color={displayedFailure > 0 ? STATUS_COLORS.failed : undefined}
         />
         <SummaryCard
           icon={<Activity className="w-4 h-4" />}
           label={t('authMonitor.successRate')}
-          value={`${overallSuccessRate}%`}
+          value={`${displayedSuccessRate}%`}
           color={
-            overallSuccessRate === 100
+            displayedSuccessRate === 100
               ? STATUS_COLORS.success
-              : overallSuccessRate >= 95
+              : displayedSuccessRate >= 95
                 ? STATUS_COLORS.degraded
                 : STATUS_COLORS.failed
           }
@@ -165,7 +201,12 @@ export function AuthMonitor() {
             providerData={selectedProviderData}
             onBack={() => setSelectedProvider(null)}
             onPauseToggle={handlePauseToggle}
-            isPausingAccount={pauseMutation.isPending || resumeMutation.isPending}
+            isPausingAccount={
+              pauseMutation.isPending ||
+              resumeMutation.isPending ||
+              bulkPauseMutation.isPending ||
+              bulkResumeMutation.isPending
+            }
           />
         ) : (
           <div className="p-6">

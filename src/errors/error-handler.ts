@@ -11,6 +11,9 @@
 import { ExitCode, EXIT_CODE_DESCRIPTIONS } from './exit-codes';
 import { isCCSError } from './error-types';
 import { runCleanup } from './cleanup-registry';
+import { createLogger } from '../services/logging';
+
+const logger = createLogger('cli:error-handler');
 
 /**
  * Debug mode flag - set via CCS_DEBUG environment variable
@@ -91,6 +94,10 @@ export function handleError(error: unknown): never {
 
   const code = getExitCode(error);
   const message = formatErrorMessage(error);
+  logger.error('command.unhandled_error', 'Unhandled CLI error', {
+    exitCode: code,
+    error,
+  });
 
   // Output error message to stderr
   console.error(message);
@@ -112,6 +119,10 @@ export function handleError(error: unknown): never {
  */
 export function exitWithError(message: string, code: ExitCode = ExitCode.GENERAL_ERROR): never {
   runCleanup();
+  logger.error('command.exit_error', 'CLI exited with error', {
+    exitCode: code,
+    message,
+  });
   console.error(`[X] ${message}`);
 
   if (isDebugMode()) {
@@ -131,6 +142,9 @@ export function exitWithError(message: string, code: ExitCode = ExitCode.GENERAL
  */
 export function exitWithSuccess(message?: string): never {
   runCleanup();
+  logger.info('command.exit_success', 'CLI exited successfully', {
+    message: message || null,
+  });
   if (message) {
     console.log(`[OK] ${message}`);
   }

@@ -1,7 +1,7 @@
 {
   "name": "@kaitranntt/ccs",
-  "version": "7.53.0",
-  "description": "Claude Code Switch - Instant profile switching between Claude Sonnet 4.5 and GLM 4.6",
+  "version": "7.68.0",
+  "description": "Claude Code Switch - Instant profile switching between Claude, GLM, Kimi, and more",
   "keywords": [
     "cli",
     "claude",
@@ -27,7 +27,11 @@
   "types": "dist/ccs.d.ts",
   "bin": {
     "ccs": "dist/ccs.js",
-    "ccsd": "dist/ccs.js"
+    "ccs-droid": "dist/bin/droid-runtime.js",
+    "ccsd": "dist/bin/droid-runtime.js",
+    "ccs-codex": "dist/bin/codex-runtime.js",
+    "ccsx": "dist/bin/codex-runtime.js",
+    "ccsxp": "dist/bin/ccsxp-runtime.js"
   },
   "files": [
     "dist/",
@@ -58,6 +62,7 @@
     "build:server": "tsc && node scripts/add-shebang.js",
     "build:all": "bun run ui:build && bun run build:server",
     "prebuild": "node scripts/clean-dist.js",
+    "prebuild:server": "node scripts/clean-dist.js",
     "prebuild:all": "rm -rf dist tsconfig.tsbuildinfo",
     "postbuild:all": "node scripts/verify-bundle.js",
     "typecheck": "tsc --noEmit",
@@ -71,17 +76,18 @@
     "test": "bun run build && bun run test:all",
     "test:ci": "bun run test:all",
     "test:all": "bun test tests/unit tests/integration tests/npm",
-    "test:unit": "bun test tests/unit/",
+    "test:unit": "bun test tests/unit",
     "test:npm": "bun test tests/npm/",
     "test:native": "bash tests/native/unix/edge-cases.sh",
     "test:e2e": "bun test tests/e2e/ --bail --timeout 60000",
     "report:hardening": "node scripts/hardening-inventory.js",
-    "dev": "bun run build:server && bun dist/ccs.js config --dev",
+    "dev": "bun run build:server && node dist/ccs.js config --dev",
     "dev:symlink": "bash scripts/dev-symlink.sh",
     "dev:unlink": "bash scripts/dev-symlink.sh --restore",
     "ui:build": "cd ui && bun run build",
     "ui:preview": "cd ui && bun run preview",
     "ui:validate": "cd ui && bun run validate",
+    "prepack": "bun run build:all",
     "prepare": "husky",
     "postinstall": "node scripts/postinstall.js"
   },
@@ -103,6 +109,7 @@
     "open": "^8.4.2",
     "ora": "^5.4.1",
     "proper-lockfile": "^4.1.2",
+    "smol-toml": "^1.6.1",
     "undici": "^5.29.0",
     "ws": "^8.16.0"
   },
@@ -132,6 +139,7 @@
     "eslint": "^9.39.1",
     "eslint-config-prettier": "^10.1.8",
     "husky": "^9.1.7",
+    "marked": "^15.0.12",
     "mocha": "^11.7.5",
     "prettier": "^3.6.2",
     "semantic-release": "^25.0.2",

@@ -4,11 +4,17 @@ import { getCcsDir } from '../utils/config-manager';
 import type { CLIProxyProvider } from './types';
 import type { ModelEntry, ProviderCatalog, ThinkingSupport } from './model-catalog';
 import { MODEL_CATALOG } from './model-catalog';
-import type { RemoteModelInfo, RemoteThinkingSupport } from './management-api-types';
+import type {
+  GetModelDefinitionsResponse,
+  RemoteModelInfo,
+  RemoteThinkingSupport,
+} from './management-api-types';
 import { getDeniedModelIdReasonForProvider } from './model-id-normalizer';
+import { buildManagementHeaders, buildProxyUrl, getProxyTarget } from './proxy-target-resolver';
 
 const CACHE_FILE_NAME = 'model-catalog-cache.json';
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+const LIVE_FETCH_TIMEOUT_MS = 3000;
 
 /** Cache structure stored on disk */
 interface CatalogCacheData {
@@ -25,6 +31,8 @@ const CHANNEL_TO_PROVIDER: Record<string, CLIProxyProvider> = {
   qwen: 'qwen',
   iflow: 'iflow',
   kimi: 'kimi',
+  kiro: 'kiro',
+  'github-copilot': 'ghcp',
 };
 
 /** CCS provider → channel name mapping (reverse) */
@@ -33,7 +41,17 @@ export const PROVIDER_TO_CHANNEL: Record<string, string> = Object.fromEntries(
 );
 
 /** Providers to sync from CLIProxyAPI */
-export const SYNCABLE_PROVIDERS: CLIProxyProvider[] = ['agy', 'gemini', 'codex', 'claude', 'kimi'];
+export const SYNCABLE_PROVIDERS: CLIProxyProvider[] = [
+  ...new Set(Object.values(CHANNEL_TO_PROVIDER)),
+] as CLIProxyProvider[];
+
+export type CatalogSource = 'live' | 'cache' | 'static';
+
+export interface ResolvedCatalogSnapshot {
+  catalogs: Partial<Record<CLIProxyProvider, ProviderCatalog>>;
+  source: CatalogSource;
+  cacheAge: string | null;
+}
 
 function getCacheFilePath(): string {
   return path.join(getCcsDir(), CACHE_FILE_NAME);
@@ -94,6 +112,77 @@ export function getCacheAge(): string | null {
   }
 }
 
+async function fetchProviderCatalog(
+  provider: CLIProxyProvider
+): Promise<[CLIProxyProvider, RemoteModelInfo[] | null]> {
+  const channel = PROVIDER_TO_CHANNEL[provider];
+  if (!channel) {
+    return [provider, null];
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), LIVE_FETCH_TIMEOUT_MS);
+
+  try {
+    const target = getProxyTarget();
+    const response = await fetch(
+      buildProxyUrl(target, `/v0/management/model-definitions/${channel}`),
+      {
+        signal: controller.signal,
+        headers: buildManagementHeaders(target),
+      }
+    );
+
+    if (!response.ok) {
+      return [provider, null];
+    }
+
+    const data = (await response.json()) as GetModelDefinitionsResponse;
+    return [provider, Array.isArray(data.models) ? data.models : null];
+  } catch {
+    return [provider, null];
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+async function isProxyCatalogReachable(): Promise<boolean> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 1000);
+
+  try {
+    const target = getProxyTarget();
+    const response = await fetch(buildProxyUrl(target, '/'), {
+      signal: controller.signal,
+    });
+    return response.ok;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+export async function refreshCatalogFromProxy(): Promise<Record<string, RemoteModelInfo[]> | null> {
+  if (!(await isProxyCatalogReachable())) {
+    return null;
+  }
+
+  const settled = await Promise.all(
+    SYNCABLE_PROVIDERS.map((provider) => fetchProviderCatalog(provider))
+  );
+  const providers = Object.fromEntries(
+    settled.filter(([, models]) => Array.isArray(models) && models.length > 0)
+  ) as Record<string, RemoteModelInfo[]>;
+
+  if (Object.keys(providers).length === 0) {
+    return null;
+  }
+
+  setCachedCatalog(providers);
+  return providers;
+}
+
 /** Map remote thinking support to CCS ThinkingSupport */
 function mapThinking(remote?: RemoteThinkingSupport): ThinkingSupport | undefined {
   if (!remote) return undefined;
@@ -137,8 +226,8 @@ function mapRemoteToModelEntry(remote: RemoteModelInfo): ModelEntry {
  * Merge remote models with static catalog for a provider.
  * Remote fields override static where present.
  * Static-only fields preserved: broken, deprecated, deprecationReason, issueUrl, tier.
- * Models in static but not in remote → kept.
  * Models in remote but not in static → added.
+ * Models removed upstream stay hidden; UI falls back to static only when live data is unavailable.
  */
 export function mergeCatalog(
   provider: CLIProxyProvider,
@@ -190,24 +279,48 @@ export function mergeCatalog(
     }
   }
 
-  // Add static-only models not in remote
-  if (staticCatalog) {
-    for (const model of staticCatalog.models) {
-      if (getDeniedModelIdReasonForProvider(model.id, provider)) {
-        continue;
-      }
-      if (!mergedIds.has(model.id.toLowerCase())) {
-        mergedModels.push(model);
-      }
-    }
-  }
-
   return {
     provider,
     displayName,
     defaultModel,
     models: mergedModels,
   };
+}
+
+function getResolvedCatalogFromProviders(
+  provider: CLIProxyProvider,
+  providers?: Record<string, RemoteModelInfo[]>
+): ProviderCatalog | undefined {
+  if (providers?.[provider]) {
+    return mergeCatalog(provider, providers[provider]);
+  }
+  return MODEL_CATALOG[provider];
+}
+
+function getAllResolvedCatalogsFromProviders(
+  providers?: Record<string, RemoteModelInfo[]>
+): Partial<Record<CLIProxyProvider, ProviderCatalog>> {
+  const result: Partial<Record<CLIProxyProvider, ProviderCatalog>> = {};
+  const providerIds = new Set<CLIProxyProvider>();
+
+  for (const provider of Object.keys(MODEL_CATALOG) as CLIProxyProvider[]) {
+    providerIds.add(provider);
+  }
+
+  if (providers) {
+    for (const provider of Object.keys(providers) as CLIProxyProvider[]) {
+      providerIds.add(provider);
+    }
+  }
+
+  for (const provider of providerIds) {
+    const catalog = getResolvedCatalogFromProviders(provider, providers);
+    if (catalog) {
+      result[provider] = catalog;
+    }
+  }
+
+  return result;
 }
 
 /**
@@ -226,20 +339,32 @@ export function getResolvedCatalog(provider: CLIProxyProvider): ProviderCatalog 
  * Get all resolved catalogs (for Dashboard).
  */
 export function getAllResolvedCatalogs(): Partial<Record<CLIProxyProvider, ProviderCatalog>> {
-  const result: Partial<Record<CLIProxyProvider, ProviderCatalog>> = {};
   const cached = getCachedCatalog();
+  return getAllResolvedCatalogsFromProviders(cached?.providers);
+}
 
-  // Get all known providers from both static and cache
-  const providers = new Set<CLIProxyProvider>();
-  for (const p of Object.keys(MODEL_CATALOG) as CLIProxyProvider[]) providers.add(p);
-  if (cached) {
-    for (const p of Object.keys(cached.providers) as CLIProxyProvider[]) providers.add(p);
+export async function getResolvedCatalogSnapshot(): Promise<ResolvedCatalogSnapshot> {
+  const liveProviders = await refreshCatalogFromProxy();
+  if (liveProviders) {
+    return {
+      catalogs: getAllResolvedCatalogsFromProviders(liveProviders),
+      source: 'live',
+      cacheAge: getCacheAge(),
+    };
   }
 
-  for (const provider of providers) {
-    const catalog = getResolvedCatalog(provider);
-    if (catalog) result[provider] = catalog;
+  const cached = getCachedCatalog();
+  if (cached?.providers) {
+    return {
+      catalogs: getAllResolvedCatalogsFromProviders(cached.providers),
+      source: 'cache',
+      cacheAge: getCacheAge(),
+    };
   }
 
-  return result;
+  return {
+    catalogs: getAllResolvedCatalogsFromProviders(),
+    source: 'static',
+    cacheAge: null,
+  };
 }

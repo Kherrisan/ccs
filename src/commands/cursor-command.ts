@@ -1,7 +1,7 @@
 /**
  * Cursor CLI Command
  *
- * Handles `ccs cursor <subcommand>` commands.
+ * Handles `ccs cursor [subcommand]` commands.
  */
 
 import {
@@ -15,28 +15,10 @@ import {
   getAvailableModels,
   getDefaultModel,
 } from '../cursor';
-import {
-  getCursorConfig,
-  loadOrCreateUnifiedConfig,
-  saveUnifiedConfig,
-} from '../config/unified-config-loader';
+import { getCursorConfig, mutateUnifiedConfig } from '../config/unified-config-loader';
 import { DEFAULT_CURSOR_CONFIG } from '../config/unified-config-types';
 import { renderCursorHelp, renderCursorModels, renderCursorStatus } from './cursor-command-display';
 import { ok, fail, info } from '../utils/ui';
-
-/** Valid cursor subcommands — imported by ccs.ts for routing */
-export const CURSOR_SUBCOMMANDS = [
-  'auth',
-  'status',
-  'models',
-  'start',
-  'stop',
-  'enable',
-  'disable',
-  'help',
-  '--help',
-  '-h',
-] as const;
 
 /**
  * Handle cursor subcommand.
@@ -60,6 +42,7 @@ export async function handleCursorCommand(args: string[]): Promise<number> {
     case 'disable':
       return handleDisable();
     case undefined:
+      return handleHelp();
     case 'help':
     case '--help':
     case '-h':
@@ -239,14 +222,13 @@ async function handleStop(): Promise<number> {
  * Handle enable subcommand.
  */
 async function handleEnable(): Promise<number> {
-  const config = loadOrCreateUnifiedConfig();
+  mutateUnifiedConfig((config) => {
+    if (!config.cursor) {
+      config.cursor = { ...DEFAULT_CURSOR_CONFIG };
+    }
 
-  if (!config.cursor) {
-    config.cursor = { ...DEFAULT_CURSOR_CONFIG };
-  }
-
-  config.cursor.enabled = true;
-  saveUnifiedConfig(config);
+    config.cursor.enabled = true;
+  });
 
   console.log(ok('Cursor integration enabled'));
   console.log('');
@@ -262,12 +244,11 @@ async function handleEnable(): Promise<number> {
  * Handle disable subcommand.
  */
 async function handleDisable(): Promise<number> {
-  const config = loadOrCreateUnifiedConfig();
-
-  if (config.cursor) {
-    config.cursor.enabled = false;
-    saveUnifiedConfig(config);
-  }
+  mutateUnifiedConfig((config) => {
+    if (config.cursor) {
+      config.cursor.enabled = false;
+    }
+  });
 
   console.log(ok('Cursor integration disabled'));
   return 0;

@@ -1,14 +1,9 @@
+import { AsyncLocalStorage } from 'async_hooks';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import {
-  Config,
-  isConfig,
-  Settings,
-  isSettings,
-  CLIProxyVariantsConfig,
-  CLIProxyVariantConfig,
-} from '../types';
+import { isConfig, isSettings } from '../types';
+import type { Config, Settings, CLIProxyVariantsConfig, CLIProxyVariantConfig } from '../types';
 import { expandPath, error } from './helpers';
 import { info } from './ui';
 import { isUnifiedMode, loadOrCreateUnifiedConfig } from '../config/unified-config-loader';
@@ -19,6 +14,38 @@ import { isUnifiedMode, loadOrCreateUnifiedConfig } from '../config/unified-conf
 
 // Module-level state for --config-dir CLI flag override
 let _globalConfigDir: string | undefined;
+const configScopeStorage = new AsyncLocalStorage<{ ccsHome?: string; ccsDir?: string }>();
+
+function normalizeScopedPath(dir: string | undefined): string | undefined {
+  return dir ? path.resolve(dir) : undefined;
+}
+
+export async function runWithScopedConfig<T>(
+  scope: { ccsHome?: string; ccsDir?: string },
+  fn: () => Promise<T> | T
+): Promise<T> {
+  return await configScopeStorage.run(
+    {
+      ccsHome: normalizeScopedPath(scope.ccsHome),
+      ccsDir: normalizeScopedPath(scope.ccsDir),
+    },
+    fn
+  );
+}
+
+export async function runWithScopedCcsHome<T>(
+  ccsHome: string,
+  fn: () => Promise<T> | T
+): Promise<T> {
+  return await runWithScopedConfig({ ccsHome }, fn);
+}
+
+export async function runWithScopedConfigDir<T>(
+  ccsDir: string,
+  fn: () => Promise<T> | T
+): Promise<T> {
+  return await runWithScopedConfig({ ccsDir }, fn);
+}
 
 /**
  * Set global config directory from --config-dir CLI flag.
@@ -34,6 +61,10 @@ export function setGlobalConfigDir(dir: string | undefined): void {
  * @returns Home directory path
  */
 export function getCcsHome(): string {
+  const scopedHome = configScopeStorage.getStore()?.ccsHome;
+  if (scopedHome) {
+    return scopedHome;
+  }
   return process.env.CCS_HOME || os.homedir();
 }
 
@@ -42,6 +73,10 @@ export function getCcsHome(): string {
  * Single source of truth for precedence logic.
  */
 function _resolveCcsDir(): { source: string; dir: string } {
+  const scopedConfig = configScopeStorage.getStore();
+  if (scopedConfig?.ccsDir) return { source: 'scoped:CCS_DIR', dir: scopedConfig.ccsDir };
+  if (scopedConfig?.ccsHome)
+    return { source: 'scoped:CCS_HOME', dir: path.join(scopedConfig.ccsHome, '.ccs') };
   if (_globalConfigDir) return { source: '--config-dir', dir: _globalConfigDir };
   if (process.env.CCS_DIR) return { source: 'CCS_DIR', dir: path.resolve(process.env.CCS_DIR) };
   if (process.env.CCS_HOME)
@@ -65,6 +100,15 @@ export function getCcsDir(): string {
 export function getCcsDirSource(): [string, string] {
   const r = _resolveCcsDir();
   return [r.source, r.dir];
+}
+
+/**
+ * Get the CCS directory as a user-facing display path.
+ * Keeps the default path concise while preserving explicit overrides.
+ */
+export function getCcsDirDisplay(): string {
+  const [source, dir] = getCcsDirSource();
+  return source === 'default' ? '~/.ccs' : dir;
 }
 
 /**
@@ -337,7 +381,7 @@ export function getSettingsPath(profile: string): string {
 
 /**
  * Get display name for a profile by reading ANTHROPIC_MODEL from settings
- * @param profile - Profile name (glm, glmt, kimi, custom, etc.)
+ * @param profile - Profile name (glm, km, glmt compatibility, custom, etc.)
  * @returns Formatted display name (e.g., 'GLM-4.7', 'Kimi', 'Custom-Model')
  */
 export function getModelDisplayName(profile: string): string {

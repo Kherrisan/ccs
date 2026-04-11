@@ -23,14 +23,6 @@ export const FREE_PRESETS: ModelPreset[] = [
     sonnet: 'gpt-5-mini',
     haiku: 'gpt-5-mini',
   },
-  {
-    name: 'Raptor Mini (Free)',
-    description: 'Free tier - fine-tuned for coding',
-    default: 'raptor-mini',
-    opus: 'raptor-mini',
-    sonnet: 'raptor-mini',
-    haiku: 'raptor-mini',
-  },
 ];
 
 export const PAID_PRESETS: ModelPreset[] = [

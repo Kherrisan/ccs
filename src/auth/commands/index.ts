@@ -16,6 +16,7 @@ export {
 
 // Command handlers
 export { handleCreate } from './create-command';
+export { handleBackup } from './backup-command';
 export { handleList } from './list-command';
 export { handleShow } from './show-command';
 export { handleRemove } from './remove-command';

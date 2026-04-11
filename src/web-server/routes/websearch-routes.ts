@@ -3,29 +3,48 @@
  */
 
 import { Router, Request, Response } from 'express';
-import {
-  loadUnifiedConfig,
-  saveUnifiedConfig,
-  getWebSearchConfig,
-} from '../../config/unified-config-loader';
+import { mutateUnifiedConfig, getWebSearchConfig } from '../../config/unified-config-loader';
 import type { WebSearchConfig } from '../../config/unified-config-types';
+import { getWebSearchReadiness, getWebSearchCliProviders } from '../../utils/websearch-manager';
 import {
-  getWebSearchReadiness,
-  getGeminiCliStatus,
-  getGrokCliStatus,
-  getOpenCodeCliStatus,
-} from '../../utils/websearch-manager';
+  applyWebSearchApiKeyUpdates,
+  getWebSearchApiKeyStates,
+  WEBSEARCH_API_KEY_PROVIDERS,
+  type WebSearchApiKeyProviderId,
+} from '../../utils/websearch/provider-secrets';
+import { requireLocalAccessWhenAuthDisabled } from '../middleware/auth-middleware';
 
 const router = Router();
+const WEBSEARCH_LOCAL_ACCESS_ERROR =
+  'WebSearch endpoints require localhost access when dashboard auth is disabled.';
+
+type WebSearchApiKeyUpdates = Partial<Record<WebSearchApiKeyProviderId, string | null>>;
+
+interface WebSearchDashboardPayload extends Partial<WebSearchConfig> {
+  apiKeys?: WebSearchApiKeyUpdates;
+}
+
+function isWebSearchApiKeyProviderId(value: string): value is WebSearchApiKeyProviderId {
+  return Object.prototype.hasOwnProperty.call(WEBSEARCH_API_KEY_PROVIDERS, value);
+}
+
+router.use((req: Request, res: Response, next) => {
+  if (requireLocalAccessWhenAuthDisabled(req, res, WEBSEARCH_LOCAL_ACCESS_ERROR)) {
+    next();
+  }
+});
 
 /**
  * GET /api/websearch - Get WebSearch configuration
- * Returns: WebSearchConfig with enabled, provider, fallback
+ * Returns: normalized WebSearch configuration
  */
 router.get('/', (_req: Request, res: Response): void => {
   try {
     const config = getWebSearchConfig();
-    res.json(config);
+    res.json({
+      ...config,
+      apiKeys: getWebSearchApiKeyStates(),
+    });
   } catch (error) {
     res.status(500).json({ error: (error as Error).message });
   }
@@ -34,10 +53,19 @@ router.get('/', (_req: Request, res: Response): void => {
 /**
  * PUT /api/websearch - Update WebSearch configuration
  * Body: WebSearchConfig fields (enabled, providers)
- * Dashboard is the source of truth for provider selection.
  */
 router.put('/', (req: Request, res: Response): void => {
-  const { enabled, providers } = req.body as Partial<WebSearchConfig>;
+  if (
+    req.body === null ||
+    req.body === undefined ||
+    typeof req.body !== 'object' ||
+    Array.isArray(req.body)
+  ) {
+    res.status(400).json({ error: 'Invalid request body. Must be an object.' });
+    return;
+  }
+
+  const { enabled, providers, apiKeys } = req.body as WebSearchDashboardPayload;
 
   // Validate enabled
   if (enabled !== undefined && typeof enabled !== 'boolean') {
@@ -46,69 +74,126 @@ router.put('/', (req: Request, res: Response): void => {
   }
 
   // Validate providers if specified
-  if (providers !== undefined && typeof providers !== 'object') {
+  if (
+    providers !== undefined &&
+    (providers === null || Array.isArray(providers) || typeof providers !== 'object')
+  ) {
     res.status(400).json({ error: 'Invalid value for providers. Must be an object.' });
     return;
   }
 
-  try {
-    // Load existing config and update websearch section
-    const existingConfig = loadUnifiedConfig();
-    if (!existingConfig) {
-      res.status(500).json({ error: 'Failed to load config' });
-      return;
+  if (
+    apiKeys !== undefined &&
+    (apiKeys === null || Array.isArray(apiKeys) || typeof apiKeys !== 'object')
+  ) {
+    res.status(400).json({ error: 'Invalid value for apiKeys. Must be an object.' });
+    return;
+  }
+
+  if (apiKeys) {
+    for (const [providerId, value] of Object.entries(apiKeys)) {
+      if (!isWebSearchApiKeyProviderId(providerId)) {
+        res.status(400).json({ error: `Unsupported WebSearch provider: ${providerId}` });
+        return;
+      }
+
+      if (value !== null && value !== undefined && typeof value !== 'string') {
+        res.status(400).json({ error: `Invalid value for ${providerId} API key` });
+        return;
+      }
     }
+  }
 
-    // Merge updates - supports Gemini CLI and Grok CLI
-    existingConfig.websearch = {
-      enabled: enabled ?? existingConfig.websearch?.enabled ?? true,
-      providers: providers
-        ? {
-            gemini: {
-              enabled:
-                providers.gemini?.enabled ??
-                existingConfig.websearch?.providers?.gemini?.enabled ??
-                true,
-              model:
-                providers.gemini?.model ??
-                existingConfig.websearch?.providers?.gemini?.model ??
-                'gemini-2.5-flash',
-              timeout:
-                providers.gemini?.timeout ??
-                existingConfig.websearch?.providers?.gemini?.timeout ??
-                55,
-            },
-            grok: {
-              enabled:
-                providers.grok?.enabled ??
-                existingConfig.websearch?.providers?.grok?.enabled ??
-                false,
-              timeout:
-                providers.grok?.timeout ?? existingConfig.websearch?.providers?.grok?.timeout ?? 55,
-            },
-            opencode: {
-              enabled:
-                providers.opencode?.enabled ??
-                existingConfig.websearch?.providers?.opencode?.enabled ??
-                false,
-              model:
-                providers.opencode?.model ??
-                existingConfig.websearch?.providers?.opencode?.model ??
-                'opencode/grok-code',
-              timeout:
-                providers.opencode?.timeout ??
-                existingConfig.websearch?.providers?.opencode?.timeout ??
-                60,
-            },
-          }
-        : existingConfig.websearch?.providers,
-    };
+  try {
+    mutateUnifiedConfig((config) => {
+      config.websearch = {
+        enabled: enabled ?? config.websearch?.enabled ?? true,
+        providers: providers
+          ? {
+              exa: {
+                enabled:
+                  providers.exa?.enabled ?? config.websearch?.providers?.exa?.enabled ?? false,
+                max_results:
+                  providers.exa?.max_results ?? config.websearch?.providers?.exa?.max_results ?? 5,
+              },
+              tavily: {
+                enabled:
+                  providers.tavily?.enabled ??
+                  config.websearch?.providers?.tavily?.enabled ??
+                  false,
+                max_results:
+                  providers.tavily?.max_results ??
+                  config.websearch?.providers?.tavily?.max_results ??
+                  5,
+              },
+              duckduckgo: {
+                enabled:
+                  providers.duckduckgo?.enabled ??
+                  config.websearch?.providers?.duckduckgo?.enabled ??
+                  true,
+                max_results:
+                  providers.duckduckgo?.max_results ??
+                  config.websearch?.providers?.duckduckgo?.max_results ??
+                  5,
+              },
+              brave: {
+                enabled:
+                  providers.brave?.enabled ?? config.websearch?.providers?.brave?.enabled ?? false,
+                max_results:
+                  providers.brave?.max_results ??
+                  config.websearch?.providers?.brave?.max_results ??
+                  5,
+              },
+              gemini: {
+                enabled:
+                  providers.gemini?.enabled ??
+                  config.websearch?.providers?.gemini?.enabled ??
+                  false,
+                model:
+                  providers.gemini?.model ??
+                  config.websearch?.providers?.gemini?.model ??
+                  'gemini-2.5-flash',
+                timeout:
+                  providers.gemini?.timeout ?? config.websearch?.providers?.gemini?.timeout ?? 55,
+              },
+              grok: {
+                enabled:
+                  providers.grok?.enabled ?? config.websearch?.providers?.grok?.enabled ?? false,
+                timeout:
+                  providers.grok?.timeout ?? config.websearch?.providers?.grok?.timeout ?? 55,
+              },
+              opencode: {
+                enabled:
+                  providers.opencode?.enabled ??
+                  config.websearch?.providers?.opencode?.enabled ??
+                  false,
+                model:
+                  providers.opencode?.model ??
+                  config.websearch?.providers?.opencode?.model ??
+                  'opencode/grok-code',
+                timeout:
+                  providers.opencode?.timeout ??
+                  config.websearch?.providers?.opencode?.timeout ??
+                  60,
+              },
+            }
+          : config.websearch?.providers,
+      };
 
-    saveUnifiedConfig(existingConfig);
+      if (apiKeys) {
+        config.global_env = {
+          enabled: config.global_env?.enabled ?? true,
+          env: applyWebSearchApiKeyUpdates(config.global_env?.env ?? {}, apiKeys),
+        };
+      }
+    });
 
     res.json({
       success: true,
-      websearch: existingConfig.websearch,
+      websearch: {
+        ...getWebSearchConfig(),
+        apiKeys: getWebSearchApiKeyStates(),
+      },
     });
   } catch (error) {
     res.status(500).json({ error: (error as Error).message });
@@ -117,31 +202,15 @@ router.put('/', (req: Request, res: Response): void => {
 
 /**
  * GET /api/websearch/status - Get WebSearch status
- * Returns: { geminiCli, grokCli, opencodeCli, readiness }
+ * Returns: provider readiness + normalized provider status list
  */
 router.get('/status', (_req: Request, res: Response): void => {
   try {
-    const geminiCli = getGeminiCliStatus();
-    const grokCli = getGrokCliStatus();
-    const opencodeCli = getOpenCodeCliStatus();
     const readiness = getWebSearchReadiness();
+    const providers = getWebSearchCliProviders();
 
     res.json({
-      geminiCli: {
-        installed: geminiCli.installed,
-        path: geminiCli.path,
-        version: geminiCli.version,
-      },
-      grokCli: {
-        installed: grokCli.installed,
-        path: grokCli.path,
-        version: grokCli.version,
-      },
-      opencodeCli: {
-        installed: opencodeCli.installed,
-        path: opencodeCli.path,
-        version: opencodeCli.version,
-      },
+      providers,
       readiness: {
         status: readiness.readiness,
         message: readiness.message,

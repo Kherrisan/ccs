@@ -6,6 +6,7 @@
  */
 
 import { Router } from 'express';
+import { requireLocalAccessWhenAuthDisabled } from '../middleware/auth-middleware';
 
 // Import domain routers
 import profileRoutes from './profile-routes';
@@ -15,26 +16,58 @@ import healthRoutes from './health-routes';
 import providerRoutes from './provider-routes';
 import variantRoutes from './variant-routes';
 import settingsRoutes from './settings-routes';
+import channelsRoutes from './channels-routes';
 import websearchRoutes from './websearch-routes';
+import imageAnalysisRoutes from './image-analysis-routes';
 import cliproxyAuthRoutes from './cliproxy-auth-routes';
 import cliproxyStatsRoutes from './cliproxy-stats-routes';
+import cliproxyRoutingRoutes from './cliproxy-routing-routes';
 import cliproxySyncRoutes from './cliproxy-sync-routes';
+import aiProviderRoutes from './ai-provider-routes';
 import copilotRoutes from './copilot-routes';
 import cursorRoutes from './cursor-routes';
 import droidRoutes from './droid-routes';
+import codexRoutes from './codex-routes';
 import miscRoutes from './misc-routes';
 import cliproxyServerRoutes from './proxy-routes';
 import authRoutes from './auth-routes';
 import persistRoutes from './persist-routes';
 import catalogRoutes from './catalog-routes';
+import claudeExtensionRoutes from './claude-extension-routes';
+import logsRoutes from './logs-routes';
 
 // Create the main API router
 export const apiRoutes = Router();
+
+const REMOTE_WRITE_ACCESS_ERROR =
+  'Remote dashboard writes require localhost access when dashboard auth is disabled.';
+
+function isMutationMethod(method: string): boolean {
+  const normalized = method.toUpperCase();
+  return (
+    normalized === 'POST' ||
+    normalized === 'PUT' ||
+    normalized === 'PATCH' ||
+    normalized === 'DELETE'
+  );
+}
+
+apiRoutes.use((req, res, next) => {
+  if (!isMutationMethod(req.method)) {
+    next();
+    return;
+  }
+
+  if (requireLocalAccessWhenAuthDisabled(req, res, REMOTE_WRITE_ACCESS_ERROR)) {
+    next();
+  }
+});
 
 // ==================== Profile & Settings ====================
 // Profile CRUD, settings management, presets, accounts
 apiRoutes.use('/profiles', profileRoutes);
 apiRoutes.use('/settings', settingsRoutes);
+apiRoutes.use('/channels', channelsRoutes);
 apiRoutes.use('/accounts', accountRoutes);
 
 // ==================== Unified Config ====================
@@ -49,18 +82,22 @@ apiRoutes.use('/auth', authRoutes);
 
 // ==================== Persist (Backup Management) ====================
 apiRoutes.use('/persist', persistRoutes);
+apiRoutes.use('/claude-extension', claudeExtensionRoutes);
 
 // ==================== CLIProxy ====================
 // Variants, auth, accounts, stats, status, models, error logs
+apiRoutes.use('/cliproxy', cliproxyRoutingRoutes);
 apiRoutes.use('/cliproxy', variantRoutes);
 apiRoutes.use('/cliproxy/auth', cliproxyAuthRoutes);
 apiRoutes.use('/cliproxy', cliproxyStatsRoutes);
 apiRoutes.use('/cliproxy/sync', cliproxySyncRoutes);
 apiRoutes.use('/cliproxy/catalog', catalogRoutes);
+apiRoutes.use('/cliproxy/ai-providers', aiProviderRoutes);
 apiRoutes.use('/cliproxy/openai-compat', providerRoutes);
 
 // ==================== WebSearch ====================
 apiRoutes.use('/websearch', websearchRoutes);
+apiRoutes.use('/image-analysis', imageAnalysisRoutes);
 
 // ==================== Copilot ====================
 apiRoutes.use('/copilot', copilotRoutes);
@@ -71,8 +108,12 @@ apiRoutes.use('/cursor', cursorRoutes);
 // ==================== Droid ====================
 apiRoutes.use('/droid', droidRoutes);
 
+// ==================== Codex ====================
+apiRoutes.use('/codex', codexRoutes);
+
 // ==================== CLIProxy Server Settings ====================
 apiRoutes.use('/cliproxy-server', cliproxyServerRoutes);
 
 // ==================== Misc (File API, Global Env) ====================
 apiRoutes.use('/', miscRoutes);
+apiRoutes.use('/logs', logsRoutes);

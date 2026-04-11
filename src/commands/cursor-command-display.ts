@@ -1,5 +1,6 @@
 import type { CursorAuthStatus, CursorDaemonStatus, CursorModel } from '../cursor/types';
 import type { CursorConfig } from '../config/unified-config-types';
+import { getCcsDirDisplay } from '../utils/config-manager';
 import { color } from '../utils/ui';
 
 function printLines(lines: string[]): void {
@@ -12,7 +13,7 @@ export function renderCursorHelp(): number {
   printLines([
     'Cursor IDE Integration',
     '',
-    'Usage: ccs cursor <subcommand> [options]',
+    'Usage: ccs cursor <subcommand>',
     '',
     'Subcommands:',
     '  auth      Import Cursor IDE authentication token',
@@ -24,6 +25,9 @@ export function renderCursorHelp(): number {
     '  disable   Disable cursor integration in unified config',
     '  help      Show this help message',
     '',
+    'Runtime entry:',
+    '  ccs cursor [claude args]                          # Run Claude via the local Cursor proxy',
+    '',
     'Auth options:',
     '  ccs cursor auth                                    # Auto-detect from Cursor SQLite',
     '  ccs cursor auth --manual --token <t> --machine-id <id>',
@@ -32,6 +36,8 @@ export function renderCursorHelp(): number {
     '  1. ccs cursor enable   # Enable integration',
     '  2. ccs cursor auth     # Import Cursor IDE token',
     '  3. ccs cursor start    # Start daemon',
+    '  4. ccs cursor "task"   # Run Claude through Cursor',
+    '  5. ccs cursor status   # Inspect auth/daemon wiring',
     '',
     'Or use the web UI: ccs config -> Cursor page',
     '',
@@ -45,6 +51,11 @@ export function renderCursorStatus(
   authStatus: CursorAuthStatus,
   daemonStatus: CursorDaemonStatus
 ): void {
+  const localBaseUrl = `http://127.0.0.1:${cursorConfig.port}`;
+  const dirDisplay = getCcsDirDisplay();
+  const isReady =
+    cursorConfig.enabled && authStatus.authenticated && !authStatus.expired && daemonStatus.running;
+
   console.log('Cursor IDE Status');
   console.log('─────────────────');
   console.log('');
@@ -77,14 +88,24 @@ export function renderCursorStatus(
   console.log(`  Ghost mode:   ${cursorConfig.ghost_mode ? 'On' : 'Off'}`);
   console.log('');
 
-  if (
-    cursorConfig.enabled &&
-    authStatus.authenticated &&
-    !authStatus.expired &&
-    daemonStatus.running
-  ) {
+  console.log('Runtime:');
+  console.log(`  OpenAI base:     ${localBaseUrl}/v1`);
+  console.log(`  Anthropic base:  ${localBaseUrl}`);
+  console.log(`  Chat route:      ${localBaseUrl}/v1/chat/completions`);
+  console.log(`  Messages route:  ${localBaseUrl}/v1/messages`);
+  console.log(`  Models route:    ${localBaseUrl}/v1/models`);
+  console.log('');
+  console.log('Client setup:');
+  console.log(`  Raw settings:    ${dirDisplay}/cursor.settings.json`);
+  console.log('  Runtime entry:   ccs cursor [claude args]');
+  console.log('  Status command:  ccs cursor status');
+  console.log('  Help command:    ccs cursor help');
+
+  if (isReady) {
     return;
   }
+
+  console.log('');
 
   console.log('Next steps:');
   if (!cursorConfig.enabled) {
@@ -96,6 +117,7 @@ export function renderCursorStatus(
   if (!daemonStatus.running) {
     console.log('  - Start:       ccs cursor start');
   }
+  console.log('  - Help:        ccs cursor help');
 }
 
 export function renderCursorModels(models: CursorModel[], defaultModel: string): void {

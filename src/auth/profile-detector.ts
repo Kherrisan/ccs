@@ -16,15 +16,17 @@ import { Config, Settings, ProfileMetadata } from '../types';
 import {
   UnifiedConfig,
   CopilotConfig,
+  CursorConfig,
   CLIProxyVariantConfig,
   CompositeVariantConfig,
   CompositeTierConfig,
 } from '../config/unified-config-types';
-import { loadUnifiedConfig, isUnifiedMode } from '../config/unified-config-loader';
+import { loadUnifiedConfig, isUnifiedMode, getCursorConfig } from '../config/unified-config-loader';
 import { getCcsDir } from '../utils/config-manager';
 import { getProfileLookupCandidates, isLegacyProfileAlias } from '../utils/profile-compat';
 import type { CLIProxyProvider } from '../cliproxy/types';
 import { CLIPROXY_PROVIDER_IDS, isCLIProxyProvider } from '../cliproxy/provider-capabilities';
+import { normalizeCopilotModelId } from '../copilot/copilot-model-normalizer';
 import type { TargetType } from '../targets/target-adapter';
 import type { ProfileType } from '../types/profile';
 export type { ProfileType } from '../types/profile';
@@ -48,6 +50,8 @@ export interface ProfileDetectionResult {
   env?: Record<string, string>;
   /** For copilot profile: the copilot config */
   copilotConfig?: CopilotConfig;
+  /** For cursor profile: the cursor config */
+  cursorConfig?: CursorConfig;
   /** For composite variants: true when variant mixes providers per tier */
   isComposite?: boolean;
   /** For composite variants: which tier is the default */
@@ -251,6 +255,7 @@ class ProfileDetector {
    * Priority order:
    * 0. Hardcoded CLIProxy profiles (gemini, codex, agy, qwen)
    * 0.5. Copilot profile (if enabled in config)
+   * 0.75. Cursor profile (if enabled in config)
    * 1. Unified config profiles (if config.yaml exists or CCS_UNIFIED_CONFIG=1)
    * 2. User-defined CLIProxy variants (config.cliproxy section) [legacy]
    * 3. Settings-based profiles (config.profiles section) [legacy]
@@ -298,6 +303,34 @@ class ProfileDetector {
         type: 'copilot',
         name: 'copilot',
         copilotConfig,
+      };
+    }
+
+    // Priority 0.75: Check Cursor profile - local Cursor daemon runtime
+    if (profileName === 'cursor') {
+      const cursorConfig = getCursorConfig();
+
+      if (!cursorConfig?.enabled) {
+        const error = new Error(
+          'Cursor profile is not enabled.\n\n' +
+            'To enable Cursor integration:\n' +
+            '  1. Run: ccs cursor enable\n' +
+            '  2. Import auth: ccs cursor auth\n' +
+            '  3. Start daemon: ccs cursor start\n\n' +
+            'Or manually edit ~/.ccs/config.yaml:\n' +
+            '  cursor:\n' +
+            '    enabled: true'
+        ) as ProfileNotFoundError;
+        error.profileName = profileName;
+        error.suggestions = [];
+        error.availableProfiles = this.listAvailableProfiles();
+        throw error;
+      }
+
+      return {
+        type: 'cursor',
+        name: 'cursor',
+        cursorConfig,
       };
     }
 
@@ -430,6 +463,14 @@ class ProfileDetector {
   }
 
   /**
+   * Public wrapper for diagnostics and tooling that need to inspect how
+   * plain `ccs` resolves without duplicating the default-profile logic.
+   */
+  resolveDefaultProfileResult(): ProfileDetectionResult {
+    return this.resolveDefaultProfile();
+  }
+
+  /**
    * List available profiles (for error messages)
    */
   private listAvailableProfiles(): string {
@@ -446,8 +487,14 @@ class ProfileDetector {
     if (unifiedConfig) {
       // Copilot profile (if enabled)
       if (unifiedConfig.copilot?.enabled) {
+        const currentCopilotModel = normalizeCopilotModelId(unifiedConfig.copilot.model);
         lines.push('GitHub Copilot (via copilot-api):');
-        lines.push(`  - copilot (model: ${unifiedConfig.copilot.model})`);
+        lines.push(`  - copilot (model: ${currentCopilotModel})`);
+      }
+
+      if (unifiedConfig.cursor?.enabled) {
+        lines.push('Cursor local proxy:');
+        lines.push(`  - cursor (model: ${unifiedConfig.cursor.model})`);
       }
 
       // CLIProxy variants from unified config

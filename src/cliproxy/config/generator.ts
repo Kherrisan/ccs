@@ -5,7 +5,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { CLIProxyProvider, ProviderConfig } from '../types';
+import type { CLIProxyProvider, ProviderConfig } from '../types';
 import { getProviderDisplayName } from '../provider-capabilities';
 import { getModelMappingFromConfig } from '../base-config-loader';
 import { loadOrCreateUnifiedConfig } from '../../config/unified-config-loader';
@@ -35,13 +35,22 @@ export const CCS_CONTROL_PANEL_SECRET = 'ccs';
  * v11: Migrated deprecated claude-sonnet-4-6-thinking aliases to claude-sonnet-4-6
  * v12: Removed denylisted Antigravity Claude 4.5 aliases
  * v13: Removed aggressive Gemini alias expansion to reduce model list noise in Control Panel
+ * v14: Added Gemini 3.1 Flash Antigravity aliases for upcoming rollout compatibility
+ * v15: Prune stale generated Antigravity Gemini preview aliases during regeneration
+ * v16: Narrow stale Gemini alias cleanup to broad multi-version guessed ranges
+ * v17: Persist routing.strategy from CCS unified config
  */
-export const CLIPROXY_CONFIG_VERSION = 13;
+export const CLIPROXY_CONFIG_VERSION = 17;
 
 interface OAuthModelAliasEntry {
   name: string;
   alias: string;
   fork?: boolean;
+}
+
+interface PreservedAntigravityAliasesResult {
+  yaml: string;
+  prunedLegacyAliasCount: number;
 }
 
 const DEPRECATED_ANTIGRAVITY_ALIAS_PREFIX = 'gemini-claude-';
@@ -61,11 +70,23 @@ const DEFAULT_ANTIGRAVITY_ALIASES: OAuthModelAliasEntry[] = [
   { name: 'gemini-3-pro-high', alias: 'gemini-3.1-pro-preview' },
   { name: 'gemini-3-pro-high', alias: 'gemini-3.1-pro-preview-customtools' },
   { name: 'gemini-3-flash', alias: 'gemini-3-flash-preview' },
+  { name: 'gemini-3-flash', alias: 'gemini-3.1-flash-preview' },
   { name: 'claude-sonnet-4-6', alias: 'claude-sonnet-4-6', fork: true },
   // Backward compatibility: legacy sonnet thinking alias now routes to canonical model ID.
   { name: 'claude-sonnet-4-6-thinking', alias: 'claude-sonnet-4-6', fork: true },
   { name: 'claude-opus-4-6-thinking', alias: 'claude-opus-4-6-thinking', fork: true },
 ];
+
+const BUILT_IN_GEMINI_ALIAS_NAMES = new Set(
+  DEFAULT_ANTIGRAVITY_ALIASES.filter((entry) => entry.alias.startsWith('gemini-3')).map(
+    (entry) => entry.name
+  )
+);
+const MIN_STALE_GUESSED_GEMINI_MINOR_VERSIONS = 2;
+const MIN_STALE_HIGH_ONLY_GEMINI_MINOR_VERSIONS = 3;
+const MIN_STALE_GUESSED_GEMINI_AVERAGE_VARIANTS_PER_MINOR = 2;
+const LEGACY_GEMINI_STALE_ALIAS_MIGRATION_VERSION = 16;
+const MAX_LEGACY_MANUAL_GEMINI_MINOR_VERSION = 2;
 
 /**
  * Get provider configuration
@@ -93,6 +114,11 @@ function getLoggingSettings(): { loggingToFile: boolean; requestLog: boolean } {
     loggingToFile: config.cliproxy.logging?.enabled ?? false,
     requestLog: config.cliproxy.logging?.request_log ?? false,
   };
+}
+
+function getRoutingStrategy(): 'round-robin' | 'fill-first' {
+  const config = loadOrCreateUnifiedConfig();
+  return config.cliproxy?.routing?.strategy === 'fill-first' ? 'fill-first' : 'round-robin';
 }
 
 function sanitizeYamlScalar(rawValue: string): string {
@@ -144,6 +170,10 @@ function addAliasEntry(
 
   indexByKey.set(key, entries.length);
   entries.push(normalized);
+}
+
+function buildAntigravityAliasKey(entry: Pick<OAuthModelAliasEntry, 'name' | 'alias'>): string {
+  return `${sanitizeYamlScalar(entry.name)}\u0000${normalizeAntigravityAlias(entry.alias)}`;
 }
 
 function parseExistingAntigravityAliases(existingAliases: string): OAuthModelAliasEntry[] {
@@ -200,6 +230,16 @@ function parseExistingAntigravityAliases(existingAliases: string): OAuthModelAli
 
   flushCurrent();
   return entries;
+}
+
+function getConfigVersionFromContent(content: string): number | null {
+  const versionMatch = content.match(/CCS v(\d+)/);
+  if (!versionMatch) {
+    return null;
+  }
+
+  const parsedVersion = Number.parseInt(versionMatch[1], 10);
+  return Number.isNaN(parsedVersion) ? null : parsedVersion;
 }
 
 function toDottedGeminiVersionAlias(alias: string): string | null {
@@ -265,6 +305,184 @@ function getCompatibilityAliases(entries: OAuthModelAliasEntry[]): OAuthModelAli
   return compatibilityAliases;
 }
 
+function buildGeneratedAntigravityAliases(): OAuthModelAliasEntry[] {
+  const generatedAliases: OAuthModelAliasEntry[] = [];
+  const generatedAliasIndex = new Map<string, number>();
+
+  for (const alias of DEFAULT_ANTIGRAVITY_ALIASES) {
+    addAliasEntry(generatedAliases, generatedAliasIndex, alias);
+  }
+
+  for (const alias of getCompatibilityAliases(generatedAliases)) {
+    addAliasEntry(generatedAliases, generatedAliasIndex, alias);
+  }
+
+  return generatedAliases;
+}
+
+const GENERATED_ANTIGRAVITY_ALIASES = buildGeneratedAntigravityAliases();
+const GENERATED_ANTIGRAVITY_ALIAS_MAP = new Map(
+  GENERATED_ANTIGRAVITY_ALIASES.map((entry) => [buildAntigravityAliasKey(entry), entry] as const)
+);
+
+function serializeAntigravityAliases(entries: OAuthModelAliasEntry[]): string {
+  if (entries.length === 0) {
+    return '';
+  }
+
+  const lines = ['  antigravity:'];
+  for (const entry of entries) {
+    lines.push(`    - name: ${entry.name}`);
+    lines.push(`      alias: ${entry.alias}`);
+    if (entry.fork) {
+      lines.push('      fork: true');
+    }
+  }
+
+  return lines.join('\n');
+}
+
+function getLegacyGeneratedGeminiPreviewInfo(
+  entry: OAuthModelAliasEntry
+): { nameKey: string; minorVersion: string } | null {
+  if (!BUILT_IN_GEMINI_ALIAS_NAMES.has(entry.name)) {
+    return null;
+  }
+
+  const normalizedAlias = normalizeAntigravityAlias(entry.alias).toLowerCase();
+  if (!normalizedAlias.startsWith('gemini-3') || !normalizedAlias.includes('-preview')) {
+    return null;
+  }
+
+  const aliasWithoutCustomtools = normalizedAlias.endsWith('-customtools')
+    ? normalizedAlias.slice(0, -'-customtools'.length)
+    : normalizedAlias;
+  const canonicalAlias =
+    toDottedGeminiVersionAlias(aliasWithoutCustomtools) ?? aliasWithoutCustomtools;
+  const minorVersionMatch = canonicalAlias.match(/^gemini-3\.(\d+)(-.+-preview)$/);
+  if (!minorVersionMatch) {
+    return null;
+  }
+
+  return {
+    nameKey: sanitizeYamlScalar(entry.name),
+    minorVersion: minorVersionMatch[1],
+  };
+}
+
+function buildLegacyGeneratedGeminiAliasPruneSet(
+  parsedEntries: OAuthModelAliasEntry[]
+): Set<string> {
+  const aliasKeysByNameAndMinor = new Map<string, Map<string, string[]>>();
+
+  for (const entry of parsedEntries) {
+    if (entry.fork) {
+      continue;
+    }
+
+    const aliasKey = buildAntigravityAliasKey(entry);
+    if (GENERATED_ANTIGRAVITY_ALIAS_MAP.has(aliasKey)) {
+      continue;
+    }
+
+    const previewInfo = getLegacyGeneratedGeminiPreviewInfo(entry);
+    if (!previewInfo) {
+      continue;
+    }
+
+    const aliasKeysByMinor = aliasKeysByNameAndMinor.get(previewInfo.nameKey) ?? new Map();
+    const aliasKeys = aliasKeysByMinor.get(previewInfo.minorVersion) ?? [];
+    aliasKeys.push(aliasKey);
+    aliasKeysByMinor.set(previewInfo.minorVersion, aliasKeys);
+    aliasKeysByNameAndMinor.set(previewInfo.nameKey, aliasKeysByMinor);
+  }
+
+  const staleAliasKeys = new Set<string>();
+
+  for (const aliasKeysByMinor of aliasKeysByNameAndMinor.values()) {
+    const sortedMinorVersions = [...aliasKeysByMinor.keys()].sort((left, right) => {
+      return Number(left) - Number(right);
+    });
+    const totalAliasCount = sortedMinorVersions.reduce((total, minorVersion) => {
+      return total + (aliasKeysByMinor.get(minorVersion)?.length ?? 0);
+    }, 0);
+    const preservedMinorVersion =
+      Number(sortedMinorVersions[0]) <= MAX_LEGACY_MANUAL_GEMINI_MINOR_VERSION
+        ? sortedMinorVersions[0]
+        : null;
+    const minimumMinorVersionsToPrune = preservedMinorVersion
+      ? MIN_STALE_GUESSED_GEMINI_MINOR_VERSIONS
+      : MIN_STALE_HIGH_ONLY_GEMINI_MINOR_VERSIONS;
+    if (sortedMinorVersions.length < minimumMinorVersionsToPrune) {
+      continue;
+    }
+    if (
+      totalAliasCount <
+      sortedMinorVersions.length * MIN_STALE_GUESSED_GEMINI_AVERAGE_VARIANTS_PER_MINOR
+    ) {
+      continue;
+    }
+
+    for (const minorVersion of sortedMinorVersions) {
+      if (minorVersion === preservedMinorVersion) {
+        continue;
+      }
+
+      const aliasKeys = aliasKeysByMinor.get(minorVersion) ?? [];
+      for (const aliasKey of aliasKeys) {
+        staleAliasKeys.add(aliasKey);
+      }
+    }
+  }
+
+  return staleAliasKeys;
+}
+
+function extractPreservedAntigravityAliases(
+  existingAliases: string,
+  options?: { enableLegacyGeminiStaleCleanup?: boolean }
+): PreservedAntigravityAliasesResult {
+  if (!existingAliases.trim()) {
+    return { yaml: '', prunedLegacyAliasCount: 0 };
+  }
+
+  const parsedEntries = parseExistingAntigravityAliases(existingAliases);
+  const staleAliasKeys = options?.enableLegacyGeminiStaleCleanup
+    ? buildLegacyGeneratedGeminiAliasPruneSet(parsedEntries)
+    : new Set<string>();
+
+  const preservedEntries = parsedEntries.filter((entry) => {
+    const aliasKey = buildAntigravityAliasKey(entry);
+    const generatedEntry = GENERATED_ANTIGRAVITY_ALIAS_MAP.get(aliasKey);
+
+    if (generatedEntry) {
+      return Boolean(entry.fork) && !generatedEntry.fork;
+    }
+
+    if (entry.fork) {
+      return true;
+    }
+
+    return !staleAliasKeys.has(aliasKey);
+  });
+
+  return {
+    yaml: serializeAntigravityAliases(preservedEntries),
+    prunedLegacyAliasCount: parsedEntries.filter((entry) =>
+      staleAliasKeys.has(buildAntigravityAliasKey(entry))
+    ).length,
+  };
+}
+
+function writeLegacyGeminiAliasCleanupBackup(configPath: string, existingContent: string): void {
+  const backupPath = `${configPath}.pre-v16-gemini-alias-cleanup.bak`;
+  if (fs.existsSync(backupPath)) {
+    return;
+  }
+
+  fs.writeFileSync(backupPath, existingContent, { mode: 0o600 });
+}
+
 /**
  * Generate oauth-model-alias YAML section.
  * Merges default Antigravity aliases with any user-added custom aliases.
@@ -322,6 +540,7 @@ function generateUnifiedConfigContent(
 
   // Get logging settings from user config (disabled by default)
   const { loggingToFile, requestLog } = getLoggingSettings();
+  const routingStrategy = getRoutingStrategy();
 
   // Get effective auth tokens (respects user customization)
   const effectiveApiKey = getEffectiveApiKey();
@@ -393,6 +612,10 @@ max-retry-interval: 0
 quota-exceeded:
   switch-project: true
   switch-preview-model: true
+
+# Credential selection strategy when multiple matching accounts are available
+routing:
+  strategy: ${routingStrategy}
 
 # =============================================================================
 # Authentication
@@ -541,8 +764,20 @@ export function regenerateConfig(port: number = CLIPROXY_DEFAULT_PORT): string {
       // Preserve claude-api-key section (managed via dashboard/API)
       claudeApiKeySection = extractYamlSection(content, 'claude-api-key');
 
-      // Preserve existing oauth-model-alias user customizations
-      existingAliases = extractYamlSection(content, 'oauth-model-alias');
+      // Preserve user customizations while pruning legacy generated Gemini preview noise.
+      const existingConfigVersion = getConfigVersionFromContent(content);
+      const preservedAliases = extractPreservedAntigravityAliases(
+        extractYamlSection(content, 'oauth-model-alias'),
+        {
+          enableLegacyGeminiStaleCleanup:
+            existingConfigVersion === null ||
+            existingConfigVersion < LEGACY_GEMINI_STALE_ALIAS_MIGRATION_VERSION,
+        }
+      );
+      existingAliases = preservedAliases.yaml;
+      if (preservedAliases.prunedLegacyAliasCount > 0) {
+        writeLegacyGeminiAliasCleanupBackup(configPath, content);
+      }
     } catch {
       // Use defaults if reading fails
     }
@@ -581,12 +816,10 @@ export function configNeedsRegeneration(): boolean {
     const content = fs.readFileSync(configPath, 'utf-8');
 
     // Check for version marker
-    const versionMatch = content.match(/CCS v(\d+)/);
-    if (!versionMatch) {
+    const configVersion = getConfigVersionFromContent(content);
+    if (configVersion === null) {
       return true; // No version marker = old config
     }
-
-    const configVersion = parseInt(versionMatch[1], 10);
     return configVersion < CLIPROXY_CONFIG_VERSION;
   } catch {
     return true; // Error reading = regenerate

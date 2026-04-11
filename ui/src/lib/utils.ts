@@ -771,6 +771,25 @@ export function getQuotaFailureInfo(
   const technicalDetail = buildQuotaTechnicalDetail(quota);
   const rawDetail = buildQuotaRawDetail(quota, summary, technicalDetail);
   const lowerSummary = summary.toLowerCase();
+  const entitlement = 'entitlement' in quota ? quota.entitlement : undefined;
+
+  if (
+    quota.errorCode === 'capacity_exhausted' ||
+    entitlement?.capacityState === 'capacity_exhausted' ||
+    lowerSummary.includes('no capacity available') ||
+    lowerSummary.includes('capacity exhausted')
+  ) {
+    return {
+      label: 'Capacity',
+      summary,
+      actionHint:
+        actionHint ||
+        'Retry later or switch to another model. This is a temporary provider capacity issue.',
+      technicalDetail,
+      rawDetail,
+      tone: 'warning',
+    };
+  }
 
   if (
     quota.needsReauth ||
@@ -808,6 +827,7 @@ export function getQuotaFailureInfo(
   }
 
   if (
+    entitlement?.accessState === 'not_entitled' ||
     quota.isForbidden ||
     quota.httpStatus === 403 ||
     errorCode === 'quota_api_forbidden' ||

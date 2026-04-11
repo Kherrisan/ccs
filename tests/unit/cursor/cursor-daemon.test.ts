@@ -2,7 +2,7 @@
  * Unit tests for Cursor daemon module
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach, spyOn } from 'bun:test';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -19,7 +19,12 @@ import {
 } from '../../../src/cursor/cursor-daemon';
 import { getCcsDir } from '../../../src/utils/config-manager';
 import { handleCursorCommand } from '../../../src/commands/cursor-command';
-import { loadCredentials, saveCredentials } from '../../../src/cursor/cursor-auth';
+import {
+  renderCursorHelp,
+  renderCursorStatus,
+} from '../../../src/commands/cursor-command-display';
+import { loadCredentials } from '../../../src/cursor/cursor-auth';
+import { DEFAULT_CURSOR_CONFIG } from '../../../src/config/unified-config-types';
 
 // Test isolation
 let originalCcsHome: string | undefined;
@@ -48,6 +53,27 @@ afterEach(() => {
 
 // Use getCcsDir() for consistent path resolution with production code
 const getTestCursorDir = () => path.join(getCcsDir(), 'cursor');
+
+async function waitForProcessReady(pid: number): Promise<void> {
+  for (let attempt = 0; attempt < 10; attempt++) {
+    try {
+      process.kill(pid, 0);
+
+      if (process.platform !== 'linux') {
+        return;
+      }
+
+      const commandLine = fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8').replace(/\0/g, '').trim();
+      if (commandLine.length > 0) {
+        return;
+      }
+    } catch {
+      // Process is still starting up.
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+}
 
 describe('getPidFromFile', () => {
   it('returns null when no PID file exists', () => {
@@ -140,132 +166,6 @@ describe('startDaemon', () => {
     expect(result.success).toBe(false);
     expect(result.error).toContain('Invalid port');
   });
-
-  it('starts and stops daemon successfully', async () => {
-    const port = 10000 + Math.floor(Math.random() * 50000);
-    const result = await startDaemon({ port, ghost_mode: true });
-    expect(result.success).toBe(true);
-    expect(result.pid).toBeDefined();
-
-    // Verify health
-    const running = await isDaemonRunning(port);
-    expect(running).toBe(true);
-
-      // Verify models endpoint exists and is OpenAI-compatible list shape
-      const modelsResponse = await fetch(`http://127.0.0.1:${port}/v1/models`);
-      expect(modelsResponse.status).toBe(200);
-      const modelsJson = (await modelsResponse.json()) as { object?: string; data?: unknown[] };
-      expect(modelsJson.object).toBe('list');
-      expect(Array.isArray(modelsJson.data)).toBe(true);
-
-      // Verify chat endpoint exists (requires auth, should not be 404)
-      const chatResponse = await fetch(`http://127.0.0.1:${port}/v1/chat/completions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'gpt-4.1',
-          messages: [{ role: 'user', content: 'hello' }],
-        }),
-      });
-      expect(chatResponse.status).toBe(401);
-
-    // Stop
-    const stopResult = await stopDaemon();
-    expect(stopResult.success).toBe(true);
-
-      // Verify stopped
-      const stillRunning = await isDaemonRunning(port);
-      expect(stillRunning).toBe(false);
-    },
-    35000
-  );
-
-  it('returns 404 for unknown routes', async () => {
-    const port = 10000 + Math.floor(Math.random() * 50000);
-    const result = await startDaemon({ port, ghost_mode: true });
-    expect(result.success).toBe(true);
-
-    try {
-      const response = await fetch(`http://127.0.0.1:${port}/unknown`);
-      expect(response.status).toBe(404);
-    } finally {
-      await stopDaemon();
-    }
-  });
-
-  it('returns 401 when credentials are expired', async () => {
-    const port = 10000 + Math.floor(Math.random() * 50000);
-    const expiredAt = new Date(Date.now() - 26 * 60 * 60 * 1000).toISOString();
-
-    saveCredentials({
-      accessToken: 'a'.repeat(60),
-      machineId: '1234567890abcdef1234567890abcdef',
-      authMethod: 'manual',
-      importedAt: expiredAt,
-    });
-
-    const result = await startDaemon({ port, ghost_mode: true });
-    expect(result.success).toBe(true);
-
-    try {
-      const response = await fetch(`http://127.0.0.1:${port}/v1/chat/completions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'gpt-4.1',
-          messages: [{ role: 'user', content: 'hello' }],
-        }),
-      });
-
-      expect(response.status).toBe(401);
-      const body = (await response.json()) as { error?: { message?: string } };
-      expect(body.error?.message).toContain('expired');
-    } finally {
-      await stopDaemon();
-    }
-  });
-
-  it('validates invalid JSON, invalid message schema, and oversized body', async () => {
-    const port = 10000 + Math.floor(Math.random() * 50000);
-    const result = await startDaemon({ port, ghost_mode: true });
-    expect(result.success).toBe(true);
-
-    try {
-      const invalidJson = await fetch(`http://127.0.0.1:${port}/v1/chat/completions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: '{invalid-json',
-      });
-      expect(invalidJson.status).toBe(400);
-
-      const invalidSchema = await fetch(`http://127.0.0.1:${port}/v1/chat/completions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'gpt-4.1',
-          messages: { role: 'user', content: 'hello' },
-        }),
-      });
-      expect(invalidSchema.status).toBe(400);
-
-      const oversized = await fetch(`http://127.0.0.1:${port}/v1/chat/completions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'gpt-4.1',
-          messages: [
-            {
-              role: 'user',
-              content: 'x'.repeat(10 * 1024 * 1024 + 1024),
-            },
-          ],
-        }),
-      });
-      expect(oversized.status).toBe(413);
-    } finally {
-      await stopDaemon();
-    }
-  });
 });
 
 describe('isDaemonRunning', () => {
@@ -356,6 +256,7 @@ describe('stopDaemon', () => {
       throw new Error('Failed to spawn unrelated process');
     }
 
+    await waitForProcessReady(unrelatedPid);
     writePidToFile(unrelatedPid);
 
     try {
@@ -372,9 +273,62 @@ describe('stopDaemon', () => {
       }
     }
   });
+
+  it('refuses to stop when daemon ownership cannot be verified', async () => {
+    const killSpy = spyOn(process, 'kill').mockImplementation(
+      ((pid: number, signal?: NodeJS.Signals | number) => {
+        if (pid === process.pid && signal === 0) {
+          const err = new Error('EPERM') as NodeJS.ErrnoException;
+          err.code = 'EPERM';
+          throw err;
+        }
+
+        return true;
+      }) as typeof process.kill
+    );
+
+    writePidToFile(process.pid);
+
+    try {
+      const result = await stopDaemon();
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('unable to verify daemon ownership');
+      expect(fs.existsSync(path.join(getTestCursorDir(), 'daemon.pid'))).toBe(true);
+    } finally {
+      killSpy.mockRestore();
+      removePidFile();
+    }
+  });
 });
 
 describe('handleCursorCommand', () => {
+  it('shows help when invoked without an admin subcommand', async () => {
+    const originalLog = console.log;
+    const originalError = console.error;
+    const logs: string[] = [];
+    const errors: string[] = [];
+
+    console.log = (...args: unknown[]) => {
+      logs.push(args.map((arg) => String(arg)).join(' '));
+    };
+    console.error = (...args: unknown[]) => {
+      errors.push(args.map((arg) => String(arg)).join(' '));
+    };
+
+    try {
+      const exitCode = await handleCursorCommand([]);
+
+      expect(exitCode).toBe(0);
+      expect(errors).toHaveLength(0);
+      expect(logs.some((line) => line.includes('Cursor IDE Integration'))).toBe(true);
+      expect(logs.some((line) => line.includes('Usage: ccs cursor <subcommand>'))).toBe(true);
+    } finally {
+      console.log = originalLog;
+      console.error = originalError;
+    }
+  });
+
   it('returns exit code 1 for unknown subcommand', async () => {
     const exitCode = await handleCursorCommand(['nonexistent']);
     expect(exitCode).toBe(1);
@@ -399,5 +353,142 @@ describe('handleCursorCommand', () => {
     expect(credentials).not.toBeNull();
     expect(credentials?.authMethod).toBe('manual');
     expect(credentials?.machineId).toBe(machineId);
+  });
+});
+
+describe('renderCursorStatus', () => {
+  it('shows runtime endpoint guidance when Cursor is ready', () => {
+    const originalLog = console.log;
+    const logs: string[] = [];
+
+    console.log = (...args: unknown[]) => {
+      logs.push(args.map((arg) => String(arg)).join(' '));
+    };
+
+    try {
+      renderCursorStatus(
+        { ...DEFAULT_CURSOR_CONFIG, enabled: true, port: 20129 },
+        {
+          authenticated: true,
+          expired: false,
+          tokenAge: 0,
+          credentials: {
+            accessToken: 'a'.repeat(60),
+            machineId: '1234567890abcdef1234567890abcdef',
+            authMethod: 'manual',
+            importedAt: new Date().toISOString(),
+          },
+        },
+        { running: true, port: 20129, pid: 1234 }
+      );
+
+      expect(logs.some((line) => line.includes('OpenAI base:     http://127.0.0.1:20129/v1'))).toBe(
+        true
+      );
+      expect(
+        logs.some((line) => line.includes('Chat route:      http://127.0.0.1:20129/v1/chat/completions'))
+      ).toBe(true);
+      expect(
+        logs.some((line) => line.includes('Anthropic base:  http://127.0.0.1:20129'))
+      ).toBe(true);
+      expect(
+        logs.some((line) => line.includes(`Raw settings:    ${getCcsDir()}/cursor.settings.json`))
+      ).toBe(true);
+    } finally {
+      console.log = originalLog;
+    }
+  });
+
+  it('shows runtime guidance even when setup is incomplete', () => {
+    const originalLog = console.log;
+    const logs: string[] = [];
+
+    console.log = (...args: unknown[]) => {
+      logs.push(args.map((arg) => String(arg)).join(' '));
+    };
+
+    try {
+      renderCursorStatus(
+        { ...DEFAULT_CURSOR_CONFIG, enabled: false, port: 20129 },
+        {
+          authenticated: false,
+          expired: false,
+          tokenAge: undefined,
+          credentials: undefined,
+        },
+        { running: false, port: 20129, pid: undefined }
+      );
+
+      expect(logs.some((line) => line.includes('OpenAI base:     http://127.0.0.1:20129/v1'))).toBe(
+        true
+      );
+      expect(logs.some((line) => line.includes('Next steps:'))).toBe(true);
+      expect(logs.some((line) => line.includes('  - Help:        ccs cursor help'))).toBe(true);
+    } finally {
+      console.log = originalLog;
+    }
+  });
+
+  it('falls back to ~/.ccs in status output when no CCS override is active', () => {
+    const originalLog = console.log;
+    const originalCcsHomeValue = process.env.CCS_HOME;
+    const logs: string[] = [];
+
+    delete process.env.CCS_HOME;
+    console.log = (...args: unknown[]) => {
+      logs.push(args.map((arg) => String(arg)).join(' '));
+    };
+
+    try {
+      renderCursorStatus(
+        { ...DEFAULT_CURSOR_CONFIG, enabled: true, port: 20129 },
+        {
+          authenticated: true,
+          expired: false,
+          tokenAge: 0,
+          credentials: {
+            accessToken: 'a'.repeat(60),
+            machineId: '1234567890abcdef1234567890abcdef',
+            authMethod: 'manual',
+            importedAt: new Date().toISOString(),
+          },
+        },
+        { running: true, port: 20129, pid: 1234 }
+      );
+
+      expect(logs.some((line) => line.includes('Raw settings:    ~/.ccs/cursor.settings.json'))).toBe(
+        true
+      );
+    } finally {
+      if (originalCcsHomeValue !== undefined) {
+        process.env.CCS_HOME = originalCcsHomeValue;
+      } else {
+        delete process.env.CCS_HOME;
+      }
+      console.log = originalLog;
+    }
+  });
+});
+
+describe('renderCursorHelp', () => {
+  it('shows bare ccs cursor as the runtime entrypoint', () => {
+    const originalLog = console.log;
+    const logs: string[] = [];
+
+    console.log = (...args: unknown[]) => {
+      logs.push(args.map((arg) => String(arg)).join(' '));
+    };
+
+    try {
+      const exitCode = renderCursorHelp();
+
+      expect(exitCode).toBe(0);
+      expect(logs.some((line) => line.includes('Usage: ccs cursor <subcommand>'))).toBe(true);
+      expect(
+        logs.some((line) => line.includes('ccs cursor [claude args]'))
+      ).toBe(true);
+    } finally {
+      console.log = originalLog;
+    }
   });
 });

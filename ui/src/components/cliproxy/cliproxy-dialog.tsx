@@ -18,6 +18,7 @@ import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { useCreateVariant, useCliproxyAuth } from '@/hooks/use-cliproxy';
 import { usePrivacy } from '@/contexts/privacy-context';
+import { formatAccountDisplayName } from '@/lib/account-identity';
 import { CLIPROXY_PROVIDERS, getProviderDisplayName } from '@/lib/provider-config';
 import { isDeniedAgyModelId } from '@/lib/utils';
 
@@ -29,7 +30,7 @@ const singleProviderSchema = z.object({
   provider: z.enum(CLIPROXY_PROVIDERS, { message: 'Provider is required' }),
   model: z.string().optional(),
   account: z.string().optional(),
-  target: z.enum(['claude', 'droid']),
+  target: z.enum(['claude', 'droid', 'codex']),
 });
 
 const compositeSchema = z.object({
@@ -38,7 +39,7 @@ const compositeSchema = z.object({
     .min(1, 'Name is required')
     .regex(/^[a-zA-Z][a-zA-Z0-9._-]*$/, 'Invalid variant name'),
   default_tier: z.enum(['opus', 'sonnet', 'haiku'], { message: 'Default tier is required' }),
-  target: z.enum(['claude', 'droid']),
+  target: z.enum(['claude', 'droid', 'codex']),
   tiers: z.object({
     opus: z.object({
       provider: z.enum(CLIPROXY_PROVIDERS, { message: 'Provider is required' }),
@@ -220,7 +221,9 @@ export function CliproxyDialog({ open, onClose }: CliproxyDialogProps) {
                     <option value="">{t('cliproxyDialog.useDefaultAccount')}</option>
                     {providerAccounts.map((acc) => (
                       <option key={acc.id} value={acc.id}>
-                        {privacyMode ? '••••••' : acc.email || acc.id}
+                        {privacyMode
+                          ? '••••••'
+                          : formatAccountDisplayName(acc.id, acc.email, acc.tokenFile)}
                         {acc.isDefault ? ` ${t('cliproxyDialog.defaultSuffix')}` : ''}
                       </option>
                     ))}
@@ -246,6 +249,7 @@ export function CliproxyDialog({ open, onClose }: CliproxyDialogProps) {
                 >
                   <option value="claude">{t('cliproxyDialog.claudeCode')}</option>
                   <option value="droid">{t('cliproxyDialog.factoryDroid')}</option>
+                  <option value="codex">Codex CLI</option>
                 </select>
               </div>
 
@@ -350,6 +354,7 @@ export function CliproxyDialog({ open, onClose }: CliproxyDialogProps) {
                 >
                   <option value="claude">{t('cliproxyDialog.claudeCode')}</option>
                   <option value="droid">{t('cliproxyDialog.factoryDroid')}</option>
+                  <option value="codex">Codex CLI</option>
                 </select>
               </div>
 

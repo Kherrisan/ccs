@@ -17,7 +17,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
-import { spawnSync } from 'child_process';
+import { spawn, spawnSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as http from 'http';
@@ -33,7 +33,7 @@ const CLIPROXY_API_KEY = 'test-api-key-12345';
 
 // Default provider models for testing (matches DEFAULT_IMAGE_ANALYSIS_CONFIG)
 const DEFAULT_PROVIDER_MODELS =
-  'agy:gemini-2.5-flash,gemini:gemini-2.5-flash,codex:gpt-5.1-codex-mini,kiro:kiro-claude-haiku-4-5,ghcp:claude-haiku-4.5,claude:claude-haiku-4-5-20251001';
+  'agy:gemini-3-1-flash-preview,gemini:gemini-3-flash-preview,codex:gpt-5.1-codex-mini,kiro:kiro-claude-haiku-4-5,ghcp:claude-haiku-4.5,claude:claude-haiku-4-5-20251001';
 const DEFAULT_PROVIDER = 'agy'; // Default test provider
 
 // ============================================================================
@@ -163,6 +163,56 @@ function invokeHook(
   };
 }
 
+function invokeHookAsync(
+  input: object,
+  env: Record<string, string> = {}
+): Promise<{ code: number; stdout: string; stderr: string }> {
+  return new Promise((resolve, reject) => {
+    const child = spawn('node', [HOOK_PATH], {
+      env: {
+        ...process.env,
+        CCS_CLIPROXY_API_KEY: CLIPROXY_API_KEY,
+        CCS_CLIPROXY_PORT: String(MOCK_PORT),
+        CCS_IMAGE_ANALYSIS_PROVIDER_MODELS: DEFAULT_PROVIDER_MODELS,
+        CCS_CURRENT_PROVIDER: DEFAULT_PROVIDER,
+        ...env,
+      },
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+
+    let stdout = '';
+    let stderr = '';
+    const timer = setTimeout(() => {
+      child.kill('SIGKILL');
+      reject(new Error('Hook timed out'));
+    }, 10000);
+
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk.toString();
+    });
+
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk.toString();
+    });
+
+    child.on('error', (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      resolve({
+        code: code ?? -1,
+        stdout,
+        stderr,
+      });
+    });
+
+    child.stdin.end(JSON.stringify(input));
+  });
+}
+
 /**
  * Create a minimal valid PNG file (1x1 red pixel)
  */
@@ -272,15 +322,8 @@ function createTestTextFile(filepath: string, content: string): void {
  * Create a large file exceeding 10MB
  */
 function createLargeFile(filepath: string, sizeMB: number): void {
-  const bufferSize = 1024 * 1024; // 1MB
-  const totalBuffers = sizeMB;
-  const buffer = Buffer.alloc(bufferSize, 'A');
-  const stream = fs.createWriteStream(filepath);
-
-  for (let i = 0; i < totalBuffers; i++) {
-    stream.write(buffer);
-  }
-  stream.end();
+  const totalBytes = sizeMB * 1024 * 1024;
+  fs.writeFileSync(filepath, Buffer.alloc(totalBytes, 'A'));
 }
 
 // ============================================================================
@@ -498,12 +541,12 @@ describe('Image Analyzer Hook', () => {
   // ==========================================================================
 
   describe('File Size Limits', () => {
-    it('should reject files larger than 10MB', () => {
+    it('should reject files larger than 10MB', async () => {
       // Create 11MB file
       const largePath = path.join(TEST_DIR, 'large-test.png');
       createLargeFile(largePath, 11);
 
-      const result = invokeHook(
+      const result = await invokeHookAsync(
         {
           tool_name: 'Read',
           tool_input: { file_path: largePath },
@@ -533,7 +576,7 @@ describe('Image Analyzer Hook', () => {
 
     it('should block when CLIProxy is unavailable to prevent context overflow', async () => {
       // Force hook to use a port that's definitely not running
-      const result = invokeHook(
+      const result = await invokeHookAsync(
         {
           tool_name: 'Read',
           tool_input: { file_path: testPngPath },
@@ -553,7 +596,7 @@ describe('Image Analyzer Hook', () => {
       expect(output.hookSpecificOutput.permissionDecisionReason).toContain('CLIProxy unavailable');
     });
 
-    it('should analyze PNG via mock CLIProxy and return analysis', () => {
+    it('should analyze PNG via mock CLIProxy and return analysis', async () => {
       resetMockState();
       mockResponse = {
         content:
@@ -561,7 +604,7 @@ describe('Image Analyzer Hook', () => {
         statusCode: 200,
       };
 
-      const result = invokeHook(
+      const result = await invokeHookAsync(
         {
           tool_name: 'Read',
           tool_input: { file_path: testPngPath },
@@ -577,14 +620,14 @@ describe('Image Analyzer Hook', () => {
       expect(output.hookSpecificOutput.permissionDecisionReason).toContain('red square');
     });
 
-    it('should analyze JPEG via mock CLIProxy', () => {
+    it('should analyze JPEG via mock CLIProxy', async () => {
       resetMockState();
       mockResponse = {
         content: 'A minimalist white image, possibly a blank canvas or placeholder.',
         statusCode: 200,
       };
 
-      const result = invokeHook(
+      const result = await invokeHookAsync(
         {
           tool_name: 'Read',
           tool_input: { file_path: testJpegPath },
@@ -598,10 +641,10 @@ describe('Image Analyzer Hook', () => {
       expect(output.hookSpecificOutput.permissionDecisionReason).toContain('white image');
     });
 
-    it('should include API key in request header', () => {
+    it('should include API key in request header', async () => {
       resetMockState();
 
-      invokeHook(
+      await invokeHookAsync(
         {
           tool_name: 'Read',
           tool_input: { file_path: testPngPath },
@@ -614,10 +657,10 @@ describe('Image Analyzer Hook', () => {
       expect(lastRequest?.headers['x-api-key']).toBe(CLIPROXY_API_KEY);
     });
 
-    it('should send correct request format to CLIProxy', () => {
+    it('should send correct request format to CLIProxy', async () => {
       resetMockState();
 
-      invokeHook(
+      await invokeHookAsync(
         {
           tool_name: 'Read',
           tool_input: { file_path: testPngPath },
@@ -626,14 +669,15 @@ describe('Image Analyzer Hook', () => {
           CCS_IMAGE_ANALYSIS_ENABLED: '1',
           CCS_PROFILE_TYPE: 'cliproxy',
           CCS_CURRENT_PROVIDER: 'agy',
-          CCS_IMAGE_ANALYSIS_PROVIDER_MODELS: 'agy:gemini-2.5-flash',
+          CCS_IMAGE_ANALYSIS_PROVIDER_MODELS: 'agy:gemini-3-1-flash-preview',
+          CCS_IMAGE_ANALYSIS_RUNTIME_PATH: '/api/provider/agy',
         }
       );
 
       // Verify request format
       expect(lastRequest).not.toBeNull();
       expect(lastRequest?.method).toBe('POST');
-      expect(lastRequest?.path).toBe('/v1/messages');
+      expect(lastRequest?.path).toBe('/api/provider/agy/v1/messages');
 
       const body = lastRequest?.body as {
         model: string;
@@ -647,7 +691,7 @@ describe('Image Analyzer Hook', () => {
           }>;
         }>;
       };
-      expect(body.model).toBe('gemini-2.5-flash');
+      expect(body.model).toBe('gemini-3-1-flash-preview');
       expect(body.max_tokens).toBe(4096);
       expect(body.messages).toHaveLength(1);
       expect(body.messages[0].role).toBe('user');
@@ -664,10 +708,10 @@ describe('Image Analyzer Hook', () => {
       expect(imageContent?.source?.data).toBeDefined();
     });
 
-    it('should use correct media type for JPEG', () => {
+    it('should use correct media type for JPEG', async () => {
       resetMockState();
 
-      invokeHook(
+      await invokeHookAsync(
         {
           tool_name: 'Read',
           tool_input: { file_path: testJpegPath },
@@ -687,10 +731,10 @@ describe('Image Analyzer Hook', () => {
       expect(imageContent?.source?.media_type).toBe('image/jpeg');
     });
 
-    it('should respect debug mode and output debug messages', () => {
+    it('should respect debug mode and output debug messages', async () => {
       resetMockState();
 
-      const result = invokeHook(
+      const result = await invokeHookAsync(
         {
           tool_name: 'Read',
           tool_input: { file_path: testPngPath },
@@ -703,14 +747,14 @@ describe('Image Analyzer Hook', () => {
       expect(result.stderr).toContain('Starting image analysis');
     });
 
-    it('should handle API error response gracefully (pass through)', () => {
+    it('should handle API error response gracefully (pass through)', async () => {
       resetMockState();
       mockResponse = {
         content: '',
         statusCode: 500,
       };
 
-      const result = invokeHook(
+      const result = await invokeHookAsync(
         {
           tool_name: 'Read',
           tool_input: { file_path: testPngPath },
@@ -726,10 +770,10 @@ describe('Image Analyzer Hook', () => {
       expect(output.hookSpecificOutput.permissionDecisionReason).toContain('Error');
     });
 
-    it('should use model from provider_models mapping', () => {
+    it('should use model from provider_models mapping', async () => {
       resetMockState();
 
-      invokeHook(
+      await invokeHookAsync(
         {
           tool_name: 'Read',
           tool_input: { file_path: testPngPath },
@@ -738,7 +782,8 @@ describe('Image Analyzer Hook', () => {
           CCS_IMAGE_ANALYSIS_ENABLED: '1',
           CCS_PROFILE_TYPE: 'cliproxy',
           CCS_CURRENT_PROVIDER: 'codex',
-          CCS_IMAGE_ANALYSIS_PROVIDER_MODELS: 'codex:gpt-5.1-codex-mini,agy:gemini-2.5-flash',
+          CCS_IMAGE_ANALYSIS_PROVIDER_MODELS:
+            'codex:gpt-5.1-codex-mini,agy:gemini-3-1-flash-preview',
         }
       );
 
@@ -746,8 +791,8 @@ describe('Image Analyzer Hook', () => {
       expect(body.model).toBe('gpt-5.1-codex-mini'); // Model from provider_models
     });
 
-    it('should skip when provider is not in provider_models', () => {
-      const result = invokeHook(
+    it('should skip when provider is not in provider_models', async () => {
+      const result = await invokeHookAsync(
         {
           tool_name: 'Read',
           tool_input: { file_path: testPngPath },
@@ -756,7 +801,7 @@ describe('Image Analyzer Hook', () => {
           CCS_IMAGE_ANALYSIS_ENABLED: '1',
           CCS_PROFILE_TYPE: 'cliproxy',
           CCS_CURRENT_PROVIDER: 'unknown-provider',
-          CCS_IMAGE_ANALYSIS_PROVIDER_MODELS: 'agy:gemini-2.5-flash',
+          CCS_IMAGE_ANALYSIS_PROVIDER_MODELS: 'agy:gemini-3-1-flash-preview',
         }
       );
 
@@ -769,10 +814,10 @@ describe('Image Analyzer Hook', () => {
   // ==========================================================================
 
   describe('Output Format Validation', () => {
-    it('should output valid JSON structure on success', () => {
+    it('should output valid JSON structure on success', async () => {
       resetMockState();
 
-      const result = invokeHook(
+      const result = await invokeHookAsync(
         {
           tool_name: 'Read',
           tool_input: { file_path: testPngPath },
@@ -793,10 +838,10 @@ describe('Image Analyzer Hook', () => {
       expect(output.hookSpecificOutput.permissionDecisionReason).toBeDefined();
     });
 
-    it('should include filename in output', () => {
+    it('should include filename in output', async () => {
       resetMockState();
 
-      const result = invokeHook(
+      const result = await invokeHookAsync(
         {
           tool_name: 'Read',
           tool_input: { file_path: testPngPath },
@@ -808,10 +853,10 @@ describe('Image Analyzer Hook', () => {
       expect(output.hookSpecificOutput.permissionDecisionReason).toContain('test-image.png');
     });
 
-    it('should include model name in output', () => {
+    it('should include model name in output', async () => {
       resetMockState();
 
-      const result = invokeHook(
+      const result = await invokeHookAsync(
         {
           tool_name: 'Read',
           tool_input: { file_path: testPngPath },
@@ -820,10 +865,12 @@ describe('Image Analyzer Hook', () => {
       );
 
       const output = JSON.parse(result.stdout);
-      expect(output.hookSpecificOutput.permissionDecisionReason).toContain('gemini-2.5-flash');
+      expect(output.hookSpecificOutput.permissionDecisionReason).toContain(
+        'gemini-3-1-flash-preview'
+      );
     });
 
-    it('should output valid JSON structure on file read error', () => {
+    it('should output valid JSON structure on file read error', async () => {
       // Create and immediately delete file to trigger error
       const errorPath = path.join(TEST_DIR, 'error-test.png');
       createTestPng(errorPath);
@@ -831,7 +878,7 @@ describe('Image Analyzer Hook', () => {
       // Make file unreadable (simulate permission error)
       fs.chmodSync(errorPath, 0o000);
 
-      const result = invokeHook(
+      const result = await invokeHookAsync(
         {
           tool_name: 'Read',
           tool_input: { file_path: errorPath },

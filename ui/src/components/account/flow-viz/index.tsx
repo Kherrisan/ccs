@@ -32,17 +32,41 @@ export function AccountFlowViz({
   const svgRef = useRef<SVGSVGElement>(null);
   const [hoveredAccount, setHoveredAccount] = useState<number | null>(null);
   const [showDetails, setShowDetails] = useState(false);
+  const [showPausedAccounts, setShowPausedAccounts] = useState(true);
   const [paths, setPaths] = useState<string[]>([]);
 
   const { privacyMode } = usePrivacy();
   const { accounts } = providerData;
-  const maxRequests = Math.max(...accounts.map((a) => a.successCount + a.failureCount), 1);
-  const totalRequests = accounts.reduce((acc, a) => acc + a.successCount + a.failureCount, 0);
+  const pausedAccountsCount = useMemo(
+    () => accounts.filter((account) => account.paused).length,
+    [accounts]
+  );
+  const visibleAccounts = useMemo(
+    () => (showPausedAccounts ? accounts : accounts.filter((account) => !account.paused)),
+    [accounts, showPausedAccounts]
+  );
+  const visibleAccountIds = useMemo(
+    () => new Set(visibleAccounts.map((account) => account.id)),
+    [visibleAccounts]
+  );
+  const maxRequests = Math.max(...visibleAccounts.map((a) => a.successCount + a.failureCount), 1);
+  const totalRequests = visibleAccounts.reduce(
+    (acc, a) => acc + a.successCount + a.failureCount,
+    0
+  );
+  const visibleProviderData = useMemo(
+    () => ({
+      ...providerData,
+      accounts: visibleAccounts,
+      totalRequests,
+    }),
+    [providerData, visibleAccounts, totalRequests]
+  );
 
   const calculatePaths = useCallback(() => {
-    const newPaths = calculateBezierPaths({ containerRef, svgRef, accounts });
-    if (newPaths.length > 0) setPaths(newPaths);
-  }, [accounts]);
+    const newPaths = calculateBezierPaths({ containerRef, svgRef, accounts: visibleAccounts });
+    setPaths(newPaths);
+  }, [visibleAccounts]);
 
   const storageKey = `ccs-flow-positions-${providerData.provider}`;
   const {
@@ -55,12 +79,20 @@ export function AccountFlowViz({
     resetPositions,
     hasCustomPositions,
   } = useDragPositions({ storageKey, onDrag: calculatePaths });
-  const containerExpansion = useContainerExpansion(dragOffsets);
-  const pulsingAccounts = usePulseAnimation(accounts);
+  const visibleDragOffsets = useMemo(
+    () =>
+      Object.fromEntries(
+        Object.entries(dragOffsets).filter(([id]) => id === 'provider' || visibleAccountIds.has(id))
+      ),
+    [dragOffsets, visibleAccountIds]
+  );
+  const containerExpansion = useContainerExpansion(visibleDragOffsets);
+  const hasVisibleCustomPositions = Object.keys(visibleDragOffsets).length > 0;
+  const pulsingAccounts = usePulseAnimation(visibleAccounts);
 
   const connectionEvents = useMemo(
-    () => generateConnectionEvents(accounts).slice(0, MAX_TIMELINE_EVENTS),
-    [accounts]
+    () => generateConnectionEvents(visibleAccounts).slice(0, MAX_TIMELINE_EVENTS),
+    [visibleAccounts]
   );
 
   useEffect(() => {
@@ -88,19 +120,22 @@ export function AccountFlowViz({
   }, [showDetails, calculatePaths]);
 
   const providerColor = PROVIDER_COLORS[providerData.provider.toLowerCase()] || '#6b7280';
-  const zones = useMemo(() => splitAccountsIntoZones(accounts), [accounts]);
+  const zones = useMemo(() => splitAccountsIntoZones(visibleAccounts), [visibleAccounts]);
   const { leftAccounts, rightAccounts, topAccounts, bottomAccounts } = zones;
   const hasRightAccounts = rightAccounts.length > 0;
   const hasTopAccounts = topAccounts.length > 0;
   const hasBottomAccounts = bottomAccounts.length > 0;
-  const providerSize = useMemo(() => getProviderSizeClass(accounts.length), [accounts.length]);
+  const providerSize = useMemo(
+    () => getProviderSizeClass(visibleAccounts.length),
+    [visibleAccounts.length]
+  );
 
   const renderAccountCards = (
-    accountList: typeof accounts,
+    accountList: typeof visibleAccounts,
     zone: 'left' | 'right' | 'top' | 'bottom'
   ) =>
     accountList.map((account) => {
-      const originalIndex = accounts.findIndex((a) => a.id === account.id);
+      const originalIndex = visibleAccounts.findIndex((a) => a.id === account.id);
       return (
         <AccountCard
           key={account.id}
@@ -129,7 +164,13 @@ export function AccountFlowViz({
         onBack={onBack}
         showDetails={showDetails}
         onToggleDetails={() => setShowDetails(!showDetails)}
-        hasCustomPositions={hasCustomPositions}
+        showPausedAccounts={showPausedAccounts}
+        pausedAccountsCount={pausedAccountsCount}
+        onTogglePausedAccounts={() => {
+          setHoveredAccount(null);
+          setShowPausedAccounts(!showPausedAccounts);
+        }}
+        hasCustomPositions={hasCustomPositions && hasVisibleCustomPositions}
         onResetPositions={resetPositions}
       />
 
@@ -148,7 +189,7 @@ export function AccountFlowViz({
           >
             <FlowPaths
               paths={paths}
-              accounts={accounts}
+              accounts={visibleAccounts}
               maxRequests={maxRequests}
               hoveredAccount={hoveredAccount}
               pulsingAccounts={pulsingAccounts}
@@ -168,10 +209,12 @@ export function AccountFlowViz({
 
             <div className={cn('z-10 flex items-center flex-shrink-0', providerSize)}>
               <ProviderCard
-                providerData={providerData}
+                providerData={visibleProviderData}
                 providerColor={providerColor}
                 totalRequests={totalRequests}
                 maxRequests={maxRequests}
+                showVisibleMetrics={!showPausedAccounts && pausedAccountsCount > 0}
+                hiddenPausedCount={showPausedAccounts ? 0 : pausedAccountsCount}
                 isDragging={draggingId === 'provider'}
                 offset={getOffset('provider')}
                 hoveredAccount={hoveredAccount}

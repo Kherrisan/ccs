@@ -10,7 +10,7 @@
  */
 
 import type { TargetType } from '../targets/target-adapter';
-import type { CLIProxyProvider } from '../cliproxy/types';
+import type { CLIProxyProvider, CliproxyRoutingStrategy } from '../cliproxy/types';
 import { CLIPROXY_PROVIDER_IDS } from '../cliproxy/provider-capabilities';
 
 /**
@@ -22,8 +22,12 @@ import { CLIPROXY_PROVIDER_IDS } from '../cliproxy/provider-capabilities';
  * Version 6 = Customizable auth tokens (API key and management secret)
  * Version 7 = Quota management for hybrid auto+manual account control
  * Version 8 = Thinking/reasoning budget configuration
+ * Version 9 = Real WebSearch backends (DuckDuckGo/Brave) with legacy CLI fallback
+ * Version 10 = Exa + Tavily WebSearch backends
+ * Version 11 = Discord Channels runtime auto-enable preferences
+ * Version 12 = Official Channels multi-provider support (Telegram, Discord, iMessage)
  */
-export const UNIFIED_CONFIG_VERSION = 8;
+export const UNIFIED_CONFIG_VERSION = 12;
 
 /**
  * Supported CLIProxy providers.
@@ -169,7 +173,7 @@ export interface CLIProxyLoggingConfig {
  * Controls high-risk flow safeguards for supported providers.
  */
 export interface CLIProxySafetyConfig {
-  /** Allow skipping AGY responsibility acknowledgement flow (default: false) */
+  /** Allow skipping AGY responsibility checks and Gemini dashboard typed acknowledgement */
   antigravity_ack_bypass?: boolean;
 }
 
@@ -197,6 +201,11 @@ export interface TokenRefreshSettings {
   verbose?: boolean;
 }
 
+export interface CLIProxyRoutingConfig {
+  /** Credential selection strategy when multiple accounts match */
+  strategy?: CliproxyRoutingStrategy;
+}
+
 /**
  * CLIProxy configuration section.
  */
@@ -221,7 +230,39 @@ export interface CLIProxyConfig {
   token_refresh?: TokenRefreshSettings;
   /** Auto-sync API profiles to local CLIProxy config on settings change (default: true) */
   auto_sync?: boolean;
+  /** Routing strategy for multi-account CLIProxy selection */
+  routing?: CLIProxyRoutingConfig;
 }
+
+export type LoggingLevel = 'error' | 'warn' | 'info' | 'debug';
+
+/**
+ * CCS-owned structured logging configuration.
+ * Separate from cliproxy.logging, which controls CLIProxy runtime files.
+ */
+export interface LoggingConfig {
+  /** Enable CCS-owned structured runtime logging */
+  enabled: boolean;
+  /** Minimum level written to disk */
+  level: LoggingLevel;
+  /** Rotate current log when it reaches this size in MB */
+  rotate_mb: number;
+  /** Keep archived segments for this many days */
+  retain_days: number;
+  /** Redact sensitive values before persistence */
+  redact: boolean;
+  /** In-memory recent event buffer size for dashboard reads */
+  live_buffer_size: number;
+}
+
+export const DEFAULT_LOGGING_CONFIG: LoggingConfig = {
+  enabled: true,
+  level: 'info',
+  rotate_mb: 10,
+  retain_days: 7,
+  redact: true,
+  live_buffer_size: 250,
+};
 
 /**
  * User preferences.
@@ -236,10 +277,50 @@ export interface PreferencesConfig {
 }
 
 /**
+ * DuckDuckGo WebSearch configuration.
+ */
+export interface DuckDuckGoWebSearchConfig {
+  /** Enable DuckDuckGo HTML search fallback (default: true) */
+  enabled?: boolean;
+  /** Number of results to fetch (default: 5) */
+  max_results?: number;
+}
+
+/**
+ * Brave WebSearch configuration.
+ */
+export interface BraveWebSearchConfig {
+  /** Enable Brave Search when BRAVE_API_KEY is available (default: false) */
+  enabled?: boolean;
+  /** Number of results to fetch (default: 5) */
+  max_results?: number;
+}
+
+/**
+ * Exa WebSearch configuration.
+ */
+export interface ExaWebSearchConfig {
+  /** Enable Exa Search when EXA_API_KEY is available (default: false) */
+  enabled?: boolean;
+  /** Number of results to fetch (default: 5) */
+  max_results?: number;
+}
+
+/**
+ * Tavily WebSearch configuration.
+ */
+export interface TavilyWebSearchConfig {
+  /** Enable Tavily Search when TAVILY_API_KEY is available (default: false) */
+  enabled?: boolean;
+  /** Number of results to fetch (default: 5) */
+  max_results?: number;
+}
+
+/**
  * Gemini CLI WebSearch configuration.
  */
 export interface GeminiWebSearchConfig {
-  /** Enable Gemini CLI for WebSearch (default: true) */
+  /** Enable Gemini CLI legacy fallback (default: false) */
   enabled?: boolean;
   /** Model to use (default: gemini-2.5-flash) */
   model?: string;
@@ -251,7 +332,7 @@ export interface GeminiWebSearchConfig {
  * Grok CLI WebSearch configuration.
  */
 export interface GrokWebSearchConfig {
-  /** Enable Grok CLI for WebSearch (default: false - requires GROK_API_KEY) */
+  /** Enable Grok CLI legacy fallback (default: false - requires GROK_API_KEY) */
   enabled?: boolean;
   /** Timeout in seconds (default: 55) */
   timeout?: number;
@@ -261,7 +342,7 @@ export interface GrokWebSearchConfig {
  * OpenCode CLI WebSearch configuration.
  */
 export interface OpenCodeWebSearchConfig {
-  /** Enable OpenCode CLI for WebSearch (default: false) */
+  /** Enable OpenCode CLI legacy fallback (default: false) */
   enabled?: boolean;
   /** Model to use (default: opencode/grok-code) */
   model?: string;
@@ -271,14 +352,22 @@ export interface OpenCodeWebSearchConfig {
 
 /**
  * WebSearch providers configuration.
- * Supports Gemini CLI, Grok CLI, and OpenCode.
+ * Uses deterministic search backends first, with optional legacy CLI fallback.
  */
 export interface WebSearchProvidersConfig {
-  /** Gemini CLI - uses google_web_search tool (FREE tier: 1000 req/day) */
+  /** Exa Search API - API-backed search with strong relevance and content extraction */
+  exa?: ExaWebSearchConfig;
+  /** Tavily Search API - API-backed search optimized for agent/tool usage */
+  tavily?: TavilyWebSearchConfig;
+  /** DuckDuckGo HTML search - zero setup default backend */
+  duckduckgo?: DuckDuckGoWebSearchConfig;
+  /** Brave Search API - higher quality results when BRAVE_API_KEY is set */
+  brave?: BraveWebSearchConfig;
+  /** Gemini CLI - optional legacy LLM fallback */
   gemini?: GeminiWebSearchConfig;
-  /** Grok CLI - xAI web search (requires GROK_API_KEY) */
+  /** Grok CLI - optional legacy LLM fallback */
   grok?: GrokWebSearchConfig;
-  /** OpenCode - built-in web search (FREE via OpenCode Zen) */
+  /** OpenCode - optional legacy LLM fallback */
   opencode?: OpenCodeWebSearchConfig;
 }
 
@@ -441,8 +530,8 @@ export const DEFAULT_GLOBAL_ENV: Record<string, string> = {
 
 /**
  * WebSearch configuration.
- * Uses CLI tools (Gemini CLI, Grok CLI, OpenCode) for third-party profiles.
- * Third-party providers don't have server-side WebSearch access.
+ * Uses deterministic local backends for third-party profiles.
+ * Legacy AI CLI fallbacks remain available for compatibility only.
  */
 export interface WebSearchConfig {
   /** Master switch - enable/disable WebSearch (default: true) */
@@ -645,6 +734,31 @@ export const DEFAULT_THINKING_CONFIG: ThinkingConfig = {
 };
 
 /**
+ * Supported Anthropic official channel IDs.
+ */
+export type OfficialChannelId = 'telegram' | 'discord' | 'imessage';
+
+/**
+ * Official Channels configuration.
+ * Controls runtime-only injection of Anthropic's official channel plugins.
+ */
+export interface OfficialChannelsConfig {
+  /** Selected official channels to auto-enable for compatible sessions */
+  selected: OfficialChannelId[];
+  /** Also add --dangerously-skip-permissions when auto-enable is active */
+  unattended: boolean;
+}
+
+/**
+ * Default Official Channels configuration.
+ * Disabled by default because the feature requires explicit user setup.
+ */
+export const DEFAULT_OFFICIAL_CHANNELS_CONFIG: OfficialChannelsConfig = {
+  selected: [],
+  unattended: false,
+};
+
+/**
  * Dashboard authentication configuration.
  * Optional login protection for CCS dashboard.
  * Disabled by default for backward compatibility.
@@ -682,6 +796,10 @@ export interface ImageAnalysisConfig {
   timeout: number;
   /** Provider-to-model mapping for vision analysis */
   provider_models: Record<string, string>;
+  /** Fallback backend used when a profile does not resolve to a provider-specific backend */
+  fallback_backend?: string;
+  /** Explicit profile-name-to-backend overrides for settings/custom aliases */
+  profile_backends?: Record<string, string>;
 }
 
 /**
@@ -692,8 +810,8 @@ export const DEFAULT_IMAGE_ANALYSIS_CONFIG: ImageAnalysisConfig = {
   enabled: true,
   timeout: 60,
   provider_models: {
-    agy: 'gemini-2.5-flash',
-    gemini: 'gemini-2.5-flash',
+    agy: 'gemini-3-1-flash-preview',
+    gemini: 'gemini-3-flash-preview',
     codex: 'gpt-5.1-codex-mini',
     kiro: 'kiro-claude-haiku-4-5',
     ghcp: 'claude-haiku-4.5',
@@ -703,6 +821,8 @@ export const DEFAULT_IMAGE_ANALYSIS_CONFIG: ImageAnalysisConfig = {
     iflow: 'qwen3-vl-plus',
     kimi: 'vision-model',
   },
+  fallback_backend: 'gemini',
+  profile_backends: {},
 };
 
 /**
@@ -722,6 +842,8 @@ export interface UnifiedConfig {
   profiles: Record<string, ProfileConfig>;
   /** CLIProxy configuration */
   cliproxy: CLIProxyConfig;
+  /** CCS-owned structured logging configuration */
+  logging?: LoggingConfig;
   /** User preferences */
   preferences: PreferencesConfig;
   /** WebSearch configuration */
@@ -740,6 +862,8 @@ export interface UnifiedConfig {
   quota_management?: QuotaManagementConfig;
   /** Thinking/reasoning budget configuration (v8+) */
   thinking?: ThinkingConfig;
+  /** Discord Channels runtime auto-enable preferences (v11+) */
+  channels?: OfficialChannelsConfig;
   /** Dashboard authentication configuration (optional) */
   dashboard_auth?: DashboardAuthConfig;
   /** Image analysis configuration (vision via CLIProxy) */
@@ -816,7 +940,11 @@ export function createEmptyUnifiedConfig(): UnifiedConfig {
       },
       safety: { ...DEFAULT_CLIPROXY_SAFETY_CONFIG },
       auto_sync: true,
+      routing: {
+        strategy: 'round-robin',
+      },
     },
+    logging: { ...DEFAULT_LOGGING_CONFIG },
     preferences: {
       theme: 'system',
       telemetry: false,
@@ -825,8 +953,24 @@ export function createEmptyUnifiedConfig(): UnifiedConfig {
     websearch: {
       enabled: true,
       providers: {
-        gemini: {
+        exa: {
+          enabled: false,
+          max_results: 5,
+        },
+        tavily: {
+          enabled: false,
+          max_results: 5,
+        },
+        duckduckgo: {
           enabled: true,
+          max_results: 5,
+        },
+        brave: {
+          enabled: false,
+          max_results: 5,
+        },
+        gemini: {
+          enabled: false,
           model: 'gemini-2.5-flash',
           timeout: 55,
         },
@@ -850,6 +994,7 @@ export function createEmptyUnifiedConfig(): UnifiedConfig {
     cliproxy_server: { ...DEFAULT_CLIPROXY_SERVER_CONFIG },
     quota_management: { ...DEFAULT_QUOTA_MANAGEMENT_CONFIG },
     thinking: { ...DEFAULT_THINKING_CONFIG },
+    channels: { ...DEFAULT_OFFICIAL_CHANNELS_CONFIG },
     dashboard_auth: { ...DEFAULT_DASHBOARD_AUTH_CONFIG },
     image_analysis: { ...DEFAULT_IMAGE_ANALYSIS_CONFIG },
   };

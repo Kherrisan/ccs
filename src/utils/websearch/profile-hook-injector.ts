@@ -1,8 +1,9 @@
 /**
  * Profile Hook Injector
  *
- * Injects WebSearch hooks into per-profile settings files.
- * This replaces the global ~/.claude/settings.json approach.
+ * Injects the legacy WebSearch compatibility hook into per-profile settings files.
+ * The first-class runtime now uses the CCS-managed MCP server; these hooks remain
+ * for compatibility and migration safety only.
  *
  * @module utils/websearch/profile-hook-injector
  */
@@ -15,15 +16,24 @@ import { getWebSearchConfig } from '../../config/unified-config-loader';
 import { removeHookConfig } from './hook-config';
 import { getCcsDir } from '../config-manager';
 import { isCcsWebSearchHook, deduplicateCcsHooks } from './hook-utils';
+import { getMigrationMarkerPath, installWebSearchHook } from './hook-installer';
 
 // Valid profile name pattern (alphanumeric, dash, underscore only)
 const VALID_PROFILE_NAME = /^[a-zA-Z0-9_-]+$/;
 
-/**
- * Get migration marker path (respects CCS_HOME for test isolation)
- */
-function getMigrationMarkerPath(): string {
-  return path.join(getCcsDir(), '.hook-migrated');
+function hasUsableHookBinary(): boolean {
+  try {
+    const hookPath = getHookPath();
+    const stat = fs.statSync(hookPath);
+    if (!stat.isFile()) {
+      return false;
+    }
+
+    fs.accessSync(hookPath, fs.constants.R_OK);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -67,7 +77,8 @@ function migrateGlobalHook(): void {
 }
 
 /**
- * Ensure WebSearch hook is configured in profile's settings file
+ * Ensure the legacy WebSearch compatibility hook is configured in a profile's
+ * settings file when that path is still needed.
  *
  * @param profileName - Name of the profile (e.g., 'agy', 'gemini', 'glm')
  * @returns true if hook is configured (existing or newly added)
@@ -89,17 +100,8 @@ export function ensureProfileHooks(profileName: string): boolean {
       return false;
     }
 
-    // One-time migration from global settings
-    migrateGlobalHook();
-
     // Get CCS directory (respects CCS_HOME for test isolation)
     const ccsDir = getCcsDir();
-
-    // Ensure CCS dir exists
-    if (!fs.existsSync(ccsDir)) {
-      fs.mkdirSync(ccsDir, { recursive: true, mode: 0o700 });
-    }
-
     const settingsPath = path.join(ccsDir, `${profileName}.settings.json`);
 
     // Read existing settings or create empty
@@ -117,6 +119,25 @@ export function ensureProfileHooks(profileName: string): boolean {
         // Never overwrite malformed settings files; avoid destructive data loss.
         return false;
       }
+    }
+
+    // Keep the injected command target valid for all profile types, not just CLIProxy.
+    // The installer already skips byte-identical copies, so we can always attempt a refresh
+    // without rewriting unchanged hooks. Re-check existence after a failed install to tolerate
+    // concurrent first-run installs that may have completed in another process.
+    if (!installWebSearchHook() && !hasUsableHookBinary()) {
+      if (process.env.CCS_DEBUG) {
+        console.error(warn('WebSearch hook binary is missing and could not be installed'));
+      }
+      return false;
+    }
+
+    // One-time migration from global settings
+    migrateGlobalHook();
+
+    // Ensure CCS dir exists before writing settings updates.
+    if (!fs.existsSync(ccsDir)) {
+      fs.mkdirSync(ccsDir, { recursive: true, mode: 0o700 });
     }
 
     // Check if CCS hook already present
@@ -171,6 +192,19 @@ export function ensureProfileHooks(profileName: string): boolean {
       console.error(warn(`Failed to inject hook: ${(error as Error).message}`));
     }
     return false;
+  }
+}
+
+export function ensureProfileHooksOrThrow(profileName: string): void {
+  const wsConfig = getWebSearchConfig();
+  if (!wsConfig.enabled) {
+    return;
+  }
+
+  if (!ensureProfileHooks(profileName)) {
+    throw new Error(
+      `WebSearch is enabled, but CCS could not prepare the profile hook for "${profileName}".`
+    );
   }
 }
 
@@ -232,21 +266,5 @@ function updateHookTimeoutIfNeeded(
       console.error(warn(`updateHookTimeoutIfNeeded failed: ${(error as Error).message}`));
     }
     return false;
-  }
-}
-
-/**
- * Remove migration marker (called during uninstall)
- */
-export function removeMigrationMarker(): void {
-  try {
-    const markerPath = getMigrationMarkerPath();
-    if (fs.existsSync(markerPath)) {
-      fs.unlinkSync(markerPath);
-    }
-  } catch (error) {
-    if (process.env.CCS_DEBUG) {
-      console.error(warn(`removeMigrationMarker failed: ${(error as Error).message}`));
-    }
   }
 }

@@ -1,4 +1,14 @@
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test';
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  mock,
+  spyOn,
+} from 'bun:test';
 import { EventEmitter } from 'events';
 import * as childProcess from 'child_process';
 import * as fs from 'fs';
@@ -11,12 +21,14 @@ type SpawnCall = {
   options: Record<string, unknown> | undefined;
 };
 
+const STEERING_PROMPT_SNIPPET = 'prefer the CCS MCP tool WebSearch instead of Bash/curl/http fetches';
 const spawnCalls: SpawnCall[] = [];
 const originalPlatform = process.platform;
 let baselineSigintListeners: Array<(...args: unknown[]) => void> = [];
 let baselineSigtermListeners: Array<(...args: unknown[]) => void> = [];
 let baselineSighupListeners: Array<(...args: unknown[]) => void> = [];
 let originalCcsHome: string | undefined;
+let originalCcsClaudePath: string | undefined;
 let originalDisableAutoUpdater: string | undefined;
 const realSpawn = childProcess.spawn.bind(childProcess);
 const realSpawnSync = childProcess.spawnSync.bind(childProcess);
@@ -115,6 +127,7 @@ preferences:
 let execClaude: typeof import('../../../src/utils/shell-executor').execClaude;
 let stripClaudeCodeEnv: typeof import('../../../src/utils/shell-executor').stripClaudeCodeEnv;
 let HeadlessExecutor: typeof import('../../../src/delegation/headless-executor').HeadlessExecutor;
+let SharedManager: typeof import('../../../src/management/shared-manager').default;
 
 beforeAll(async () => {
   registerChildProcessMock();
@@ -122,6 +135,9 @@ beforeAll(async () => {
   const shellExecutor = await import('../../../src/utils/shell-executor');
   execClaude = shellExecutor.execClaude;
   stripClaudeCodeEnv = shellExecutor.stripClaudeCodeEnv;
+
+  const sharedManagerModule = await import('../../../src/management/shared-manager');
+  SharedManager = sharedManagerModule.default;
 
   const headless = await import('../../../src/delegation/headless-executor');
   HeadlessExecutor = headless.HeadlessExecutor;
@@ -136,6 +152,7 @@ describe('CLAUDECODE environment stripping', () => {
     spawnCalls.length = 0;
     process.env.CCS_QUIET = '1';
     originalCcsHome = process.env.CCS_HOME;
+    originalCcsClaudePath = process.env.CCS_CLAUDE_PATH;
     originalDisableAutoUpdater = process.env.DISABLE_AUTOUPDATER;
     delete process.env.DISABLE_AUTOUPDATER;
     baselineSigintListeners = process.listeners('SIGINT');
@@ -148,8 +165,11 @@ describe('CLAUDECODE environment stripping', () => {
     delete process.env.CLAUDECODE;
     delete process.env.claudecode;
     delete process.env.CCS_QUIET;
+    delete process.env.CCS_WEBSEARCH_TRACE;
     if (originalCcsHome !== undefined) process.env.CCS_HOME = originalCcsHome;
     else delete process.env.CCS_HOME;
+    if (originalCcsClaudePath !== undefined) process.env.CCS_CLAUDE_PATH = originalCcsClaudePath;
+    else delete process.env.CCS_CLAUDE_PATH;
     if (originalDisableAutoUpdater !== undefined) {
       process.env.DISABLE_AUTOUPDATER = originalDisableAutoUpdater;
     } else {
@@ -242,6 +262,32 @@ describe('CLAUDECODE environment stripping', () => {
     expect(env.DISABLE_AUTOUPDATER).toBeUndefined();
   });
 
+  it('execClaude normalizes shared plugin metadata before default-profile launch', () => {
+    const normalizeSpy = spyOn(
+      SharedManager.prototype,
+      'normalizeSharedPluginMetadataPaths'
+    ).mockImplementation(() => {});
+
+    execClaude('claude', ['--help'], { CCS_PROFILE_TYPE: 'default' });
+
+    expect(normalizeSpy).toHaveBeenCalledWith(undefined);
+  });
+
+  it('execClaude normalizes shared plugin metadata using CLAUDE_CONFIG_DIR when provided', () => {
+    const normalizeSpy = spyOn(
+      SharedManager.prototype,
+      'normalizeSharedPluginMetadataPaths'
+    ).mockImplementation(() => {});
+    const instancePath = path.join(os.tmpdir(), 'ccs-shell-executor-instance');
+
+    execClaude('claude', ['--help'], {
+      CCS_PROFILE_TYPE: 'settings',
+      CLAUDE_CONFIG_DIR: instancePath,
+    });
+
+    expect(normalizeSpy).toHaveBeenCalledWith(instancePath);
+  });
+
   it('headless executor spawn path strips CLAUDECODE before spawn', async () => {
     writeConfigWithAutoUpdatePreference(false);
     process.env.CLAUDECODE = 'nested';
@@ -284,5 +330,119 @@ describe('CLAUDECODE environment stripping', () => {
     const env = spawnCalls[0].options?.env as NodeJS.ProcessEnv;
     expect(Object.keys(env).map((k) => k.toUpperCase())).not.toContain('CLAUDECODE');
     expect(env.DISABLE_AUTOUPDATER).toBe('1');
+  });
+
+  it('headless executor adds third-party WebSearch steering args and env', async () => {
+    writeConfigWithAutoUpdatePreference(false);
+    const ccsDir = path.join(process.env.CCS_HOME as string, '.ccs');
+    fs.writeFileSync(path.join(ccsDir, 'glm.settings.json'), '{}\n', 'utf8');
+    const projectDir = path.join(ccsDir, 'project');
+    fs.mkdirSync(path.join(projectDir, '.claude'), { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDir, '.claude', 'settings.local.json'),
+      JSON.stringify(
+        {
+          permissions: {
+            deny: ['Bash', 'WebFetch'],
+          },
+        },
+        null,
+        2
+      ) + '\n',
+      'utf8'
+    );
+    process.env.CCS_CLAUDE_PATH = 'claude';
+
+    const result = await HeadlessExecutor.execute('glm', 'latest AI chip news', {
+      cwd: projectDir,
+      permissionMode: 'default',
+      timeout: 1000,
+    });
+
+    expect(result.success).toBe(true);
+    expect(spawnCalls.length).toBeGreaterThan(0);
+    const launch = spawnCalls[0];
+    expect(launch.args).toContain('--disallowedTools');
+    const disallowedToolsIndex = launch.args.indexOf('--disallowedTools');
+    expect(disallowedToolsIndex).toBeGreaterThan(-1);
+    expect(launch.args[disallowedToolsIndex + 1]).toBe('Bash,WebFetch,WebSearch');
+    expect(launch.args).toContain('--append-system-prompt');
+    expect(launch.args.join(' ')).toContain(STEERING_PROMPT_SNIPPET);
+    const env = launch.options?.env as NodeJS.ProcessEnv;
+    expect(env.CCS_PROFILE_TYPE).toBe('settings');
+    expect(env.CCS_WEBSEARCH_ENABLED || env.CCS_WEBSEARCH_SKIP).toBeDefined();
+    const claudeUserConfig = JSON.parse(
+      fs.readFileSync(path.join(process.env.CCS_HOME as string, '.claude.json'), 'utf8')
+    ) as {
+      mcpServers?: Record<string, unknown>;
+    };
+    expect(claudeUserConfig.mcpServers?.['ccs-websearch']).toEqual({
+      type: 'stdio',
+      command: 'node',
+      args: [path.join(ccsDir, 'mcp', 'ccs-websearch-server.cjs')],
+      env: {},
+    });
+  });
+
+  it('headless executor prepares image-analysis MCP and suppresses the legacy hook on healthy launches', async () => {
+    writeConfigWithAutoUpdatePreference(false);
+    const ccsDir = path.join(process.env.CCS_HOME as string, '.ccs');
+    const settingsPath = path.join(ccsDir, 'glm.settings.json');
+    fs.writeFileSync(settingsPath, '{}\n', 'utf8');
+    process.env.CCS_CLAUDE_PATH = 'claude';
+
+    const result = await HeadlessExecutor.execute('glm', 'describe screenshot', {
+      permissionMode: 'default',
+      timeout: 1000,
+    });
+
+    expect(result.success).toBe(true);
+    expect(spawnCalls.length).toBeGreaterThan(0);
+    const launch = spawnCalls[0];
+    const env = launch.options?.env as NodeJS.ProcessEnv;
+
+    const persistedSettings = JSON.parse(fs.readFileSync(settingsPath, 'utf8')) as {
+      hooks?: { PreToolUse?: Array<{ matcher?: string }> };
+    };
+    expect(
+      persistedSettings.hooks?.PreToolUse?.some((hook) => hook.matcher === 'Read') ?? false
+    ).toBe(false);
+    expect(env.CCS_IMAGE_ANALYSIS_SKIP_HOOK).toBe('1');
+
+    const claudeUserConfig = JSON.parse(
+      fs.readFileSync(path.join(process.env.CCS_HOME as string, '.claude.json'), 'utf8')
+    ) as {
+      mcpServers?: Record<string, unknown>;
+    };
+    expect(claudeUserConfig.mcpServers?.['ccs-image-analysis']).toEqual({
+      type: 'stdio',
+      command: 'node',
+      args: [path.join(ccsDir, 'mcp', 'ccs-image-analysis-server.cjs')],
+      env: {},
+    });
+    expect(fs.existsSync(path.join(ccsDir, 'hooks', 'image-analyzer-transformer.cjs'))).toBe(
+      false
+    );
+    expect(fs.existsSync(path.join(ccsDir, 'hooks', 'image-analysis-runtime.cjs'))).toBe(false);
+  });
+
+  it('headless executor propagates a WebSearch trace launch id when tracing is enabled', async () => {
+    writeConfigWithAutoUpdatePreference(false);
+    const ccsDir = path.join(process.env.CCS_HOME as string, '.ccs');
+    fs.writeFileSync(path.join(ccsDir, 'glm.settings.json'), '{}\n', 'utf8');
+    process.env.CCS_CLAUDE_PATH = 'claude';
+    process.env.CCS_WEBSEARCH_TRACE = '1';
+
+    const result = await HeadlessExecutor.execute('glm', 'latest AI chip news', {
+      permissionMode: 'default',
+      timeout: 1000,
+    });
+
+    expect(result.success).toBe(true);
+    expect(spawnCalls.length).toBeGreaterThan(0);
+    const env = spawnCalls[0].options?.env as NodeJS.ProcessEnv;
+    expect(env.CCS_WEBSEARCH_TRACE).toBe('1');
+    expect(env.CCS_WEBSEARCH_TRACE_LAUNCH_ID).toBeString();
+    expect(env.CCS_WEBSEARCH_TRACE_LAUNCHER).toBe('delegation.headless-executor');
   });
 });

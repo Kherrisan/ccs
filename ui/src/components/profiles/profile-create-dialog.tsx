@@ -28,6 +28,7 @@ import {
 } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
+import { ProviderLogo } from '@/components/cliproxy/provider-logo';
 import { useCreateProfile } from '@/hooks/use-profiles';
 import { useOpenRouterCatalog } from '@/hooks/use-openrouter-models';
 import { Loader2, Plus, AlertTriangle, Info, Eye, EyeOff, Settings2, Sparkles } from 'lucide-react';
@@ -69,7 +70,7 @@ const schema = z.object({
   opusModel: z.string().optional(),
   sonnetModel: z.string().optional(),
   haikuModel: z.string().optional(),
-  target: z.enum(['claude', 'droid']),
+  target: z.enum(['claude', 'droid', 'codex']),
 });
 
 type FormData = z.infer<typeof schema>;
@@ -79,13 +80,14 @@ interface ProfileCreateDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSuccess: (name: string) => void;
-  initialMode?: 'normal' | 'openrouter' | 'alibaba-coding-plan';
+  initialMode?: ProviderPreset['id'] | 'normal';
 }
 
 // Common URL mistakes to warn about
 const PROBLEMATIC_PATHS = ['/chat/completions', '/v1/messages', '/messages', '/completions'];
 const CUSTOM_PRESET_ID = 'custom';
 const DEFAULT_PRESET_ID: ProviderPreset['id'] = 'openrouter';
+const LOCAL_PRESET_IDS = new Set<ProviderPreset['id']>(['ollama', 'llamacpp']);
 
 const EMPTY_FORM_VALUES: FormData = {
   name: '',
@@ -99,11 +101,14 @@ const EMPTY_FORM_VALUES: FormData = {
 };
 
 const RECOMMENDED_PRESETS = getPresetsByCategory('recommended');
+const FEATURED_PREMIUM_PRESETS = RECOMMENDED_PRESETS.filter(
+  (preset) => !LOCAL_PRESET_IDS.has(preset.id)
+);
+const LOCAL_RUNTIME_PRESETS = RECOMMENDED_PRESETS.filter((preset) =>
+  LOCAL_PRESET_IDS.has(preset.id)
+);
 const QUICK_TEMPLATE_PRESETS = PROVIDER_PRESETS.filter(
   (preset) => preset.category !== 'recommended'
-);
-const QUICK_TEMPLATE_PRESET_IDS = new Set<string>(
-  QUICK_TEMPLATE_PRESETS.map((preset) => preset.id)
 );
 
 export function ProfileCreateDialog({
@@ -152,6 +157,7 @@ export function ProfileCreateDialog({
         opusModel: preset.defaultModel,
         sonnetModel: preset.defaultModel,
         haikuModel: preset.defaultModel,
+        target: preset.defaultTarget ?? 'claude',
       });
     },
     [reset]
@@ -200,7 +206,7 @@ export function ProfileCreateDialog({
         applyPresetToForm(null);
       }
     }
-  }, [open, initialMode, applyPresetToForm]);
+  }, [open, initialMode, applyPresetToForm, reset]);
 
   // Handle preset selection
   const handlePresetSelect = (presetId: string) => {
@@ -230,7 +236,7 @@ export function ProfileCreateDialog({
   };
 
   // Check for common URL mistakes - only for truly custom URLs
-  // Presets (OpenRouter, GLM, GLMT, Kimi) have vetted URLs that may require full paths
+  // Presets (OpenRouter, GLM, Kimi) have vetted URLs that may require full paths
   useEffect(() => {
     // Only warn for custom URLs, not preset-selected ones
     const isCustomUrl = selectedPreset === CUSTOM_PRESET_ID;
@@ -273,9 +279,8 @@ export function ProfileCreateDialog({
   const hasBasicErrors = !!errors.name || !!errors.baseUrl || !!errors.apiKey;
   const hasModelErrors =
     !!errors.model || !!errors.opusModel || !!errors.sonnetModel || !!errors.haikuModel;
+  const isCreating = createMutation.isPending;
 
-  const isQuickTemplateSelected =
-    selectedPreset !== CUSTOM_PRESET_ID && QUICK_TEMPLATE_PRESET_IDS.has(selectedPreset);
   const isOpenRouter = currentPreset?.id === DEFAULT_PRESET_ID;
 
   return (
@@ -287,7 +292,7 @@ export function ProfileCreateDialog({
             Create API Profile
           </DialogTitle>
           <DialogDescription>
-            Choose a provider or configure a custom API endpoint.
+            Choose a provider preset or configure a custom API endpoint.
           </DialogDescription>
         </DialogHeader>
 
@@ -295,57 +300,82 @@ export function ProfileCreateDialog({
           onSubmit={handleSubmit(onSubmit)}
           className="flex flex-col flex-1 min-h-0 overflow-hidden"
         >
-          {/* Provider Preset Cards - Compact horizontal layout */}
-          <div className="px-6 py-3 border-b bg-muted/30 space-y-2">
-            {/* Main Options: OpenRouter + Custom */}
-            <div>
-              <Label className="text-xs text-muted-foreground mb-1.5 block">
-                {t('profileEditor.provider')}
-              </Label>
-              <div className="flex gap-2">
-                {RECOMMENDED_PRESETS.map((preset) => (
-                  <CompactPresetCard
-                    key={preset.id}
-                    preset={preset}
-                    isSelected={selectedPreset === preset.id}
-                    onClick={() => handlePresetSelect(preset.id)}
-                  />
-                ))}
-                {/* Custom option */}
-                <button
-                  type="button"
-                  onClick={() => handlePresetSelect(CUSTOM_PRESET_ID)}
-                  className={cn(
-                    'flex items-center gap-2 px-4 py-2 rounded-md border-2 transition-all text-sm font-medium',
-                    selectedPreset === CUSTOM_PRESET_ID || isQuickTemplateSelected
-                      ? 'border-primary bg-primary/10 text-primary dark:bg-primary/20'
-                      : 'border-dashed border-muted-foreground/40 hover:border-primary/50 hover:bg-muted/50 text-muted-foreground hover:text-foreground'
-                  )}
-                >
-                  <Settings2 className="w-4 h-4" />
-                  <span>{t('profileEditor.custom')}</span>
-                </button>
+          <div className="border-b bg-muted/10 px-6 py-3 space-y-3">
+            <div className="space-y-3">
+              <div className="flex items-start justify-between gap-4">
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">
+                    {t('profileEditor.provider')}
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    {t('profileEditor.providerChooserHint')}
+                  </p>
+                </div>
+                <span className="pt-0.5 text-[11px] text-muted-foreground">
+                  {t('profileEditor.scrollHint')}
+                </span>
               </div>
-            </div>
 
-            {/* Show quick templates when custom mode or non-recommended preset is selected */}
-            {(selectedPreset === CUSTOM_PRESET_ID || isQuickTemplateSelected) && (
-              <div className="pt-3 mt-2 border-t border-dashed border-muted-foreground/30">
-                <Label className="text-xs font-medium text-foreground/70 mb-2 block">
-                  Quick Templates
+              <div className="space-y-2">
+                <Label className="text-xs font-medium uppercase tracking-[0.12em] text-foreground/70">
+                  {t('profileEditor.featuredProviders')}
                 </Label>
-                <div className="flex gap-2 flex-wrap">
-                  {QUICK_TEMPLATE_PRESETS.map((preset) => (
+                <div className="-mx-1 overflow-x-auto pb-1">
+                  <div className="flex min-w-max items-stretch gap-2 px-1">
+                    {FEATURED_PREMIUM_PRESETS.map((preset) => (
+                      <CompactPresetCard
+                        key={preset.id}
+                        preset={preset}
+                        isSelected={selectedPreset === preset.id}
+                        onClick={() => handlePresetSelect(preset.id)}
+                        density="featured"
+                      />
+                    ))}
+                    <div className="mx-1 hidden w-px rounded-full bg-border/70 sm:block" />
+                    <CustomPresetCard
+                      isSelected={selectedPreset === CUSTOM_PRESET_ID}
+                      onClick={() => handlePresetSelect(CUSTOM_PRESET_ID)}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-xs font-medium uppercase tracking-[0.12em] text-foreground/70">
+                  {t('profileEditor.morePresets')}
+                </Label>
+                <div className="-mx-1 overflow-x-auto pb-1">
+                  <div className="flex min-w-max items-stretch gap-2 px-1">
+                    {QUICK_TEMPLATE_PRESETS.map((preset) => (
+                      <CompactPresetCard
+                        key={preset.id}
+                        preset={preset}
+                        isSelected={selectedPreset === preset.id}
+                        onClick={() => handlePresetSelect(preset.id)}
+                        density="compact"
+                      />
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-xs font-medium uppercase tracking-[0.12em] text-foreground/70">
+                  Local Runtimes
+                </Label>
+                <div className="flex flex-wrap gap-2">
+                  {LOCAL_RUNTIME_PRESETS.map((preset) => (
                     <CompactPresetCard
                       key={preset.id}
                       preset={preset}
                       isSelected={selectedPreset === preset.id}
                       onClick={() => handlePresetSelect(preset.id)}
+                      density="compact"
                     />
                   ))}
                 </div>
               </div>
-            )}
+            </div>
           </div>
 
           <Tabs
@@ -480,14 +510,40 @@ export function ProfileCreateDialog({
                     <SelectContent>
                       <SelectItem value="claude">Claude Code (default)</SelectItem>
                       <SelectItem value="droid">Factory Droid</SelectItem>
+                      <SelectItem value="codex">Codex CLI</SelectItem>
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">
-                    Run with{' '}
-                    <code className="bg-muted px-1 rounded text-[10px]">
-                      {targetValue === 'droid' ? 'ccsd' : 'ccs'}
-                    </code>{' '}
-                    by default. You can still override each run with{' '}
+                    {targetValue === 'droid' ? (
+                      <>
+                        {t('profileEditor.targetHintPreferredAlias')}{' '}
+                        <code className="bg-muted px-1 rounded text-[10px]">ccs-droid</code>.
+                      </>
+                    ) : targetValue === 'codex' ? (
+                      <>
+                        {t('profileEditor.targetHintPreferredAlias')}{' '}
+                        <code className="bg-muted px-1 rounded text-[10px]">ccsx</code>.
+                      </>
+                    ) : (
+                      <>
+                        {t('profileEditor.targetHintClaudeDefault')}{' '}
+                        <code className="bg-muted px-1 rounded text-[10px]">ccs</code>.
+                      </>
+                    )}
+                    {targetValue === 'droid' ? (
+                      <>
+                        {' '}
+                        {t('profileEditor.targetHintLegacyAlias')}{' '}
+                        <code className="bg-muted px-1 rounded text-[10px]">ccsd</code>.
+                      </>
+                    ) : targetValue === 'codex' ? (
+                      <>
+                        {' '}
+                        {t('profileEditor.targetHintLegacyAlias')}{' '}
+                        <code className="bg-muted px-1 rounded text-[10px]">ccs-codex</code>.
+                      </>
+                    ) : null}{' '}
+                    {t('profileEditor.targetHintOverride')}{' '}
                     <code className="bg-muted px-1 rounded text-[10px]">--target</code>.
                   </p>
                 </div>
@@ -622,10 +678,10 @@ export function ProfileCreateDialog({
               </Button>
               <Button
                 type="submit"
-                disabled={createMutation.isPending}
-                className={cn(createMutation.isPending && 'opacity-80')}
+                disabled={isCreating}
+                className={cn(isCreating && 'opacity-80')}
               >
-                {createMutation.isPending ? (
+                {isCreating ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                     Creating...
@@ -650,40 +706,89 @@ function CompactPresetCard({
   preset,
   isSelected,
   onClick,
+  density = 'compact',
 }: {
   preset: ProviderPreset;
   isSelected: boolean;
   onClick: () => void;
+  density?: 'featured' | 'compact';
 }) {
+  const isAnthropicDirect = preset.id === 'anthropic';
+  const isFeaturedDensity = density === 'featured';
+
   return (
     <button
       type="button"
       onClick={onClick}
       className={cn(
-        'flex items-center gap-2 px-3 py-2 rounded-md border transition-all text-sm',
+        'flex flex-none items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-all',
+        isFeaturedDensity ? 'h-[68px] w-[236px]' : 'h-[64px] w-[168px]',
         isSelected
-          ? preset.featured
-            ? 'border-accent bg-accent/10 dark:bg-accent/20 font-medium'
-            : 'border-primary bg-primary/10 dark:bg-primary/20 font-medium'
-          : 'border-muted-foreground/20 hover:border-muted-foreground/40 hover:bg-muted/50'
+          ? 'border-primary bg-primary/8 shadow-sm ring-1 ring-primary/10'
+          : 'border-border/60 bg-background hover:border-primary/40 hover:bg-accent/20'
       )}
     >
-      {preset.icon ? (
-        <img src={preset.icon} alt="" className="w-4 h-4" />
-      ) : (
-        <div className="w-4 h-4 rounded-full bg-muted-foreground/20 flex items-center justify-center text-[9px] font-bold text-foreground/70">
-          {preset.name.charAt(0)}
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-background">
+        {isAnthropicDirect ? (
+          <ProviderLogo provider="claude" size="md" className="rounded-lg" />
+        ) : preset.icon ? (
+          <img src={preset.icon} alt="" className="h-5 w-5 object-contain" />
+        ) : (
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted/70 text-xs font-semibold text-foreground/70">
+            {preset.name.charAt(0)}
+          </div>
+        )}
+      </div>
+
+      <div className="min-w-0 flex-1 space-y-1">
+        <div className="space-y-1">
+          <div className="truncate text-[13px] font-semibold leading-tight tracking-[-0.01em]">
+            {preset.name}
+          </div>
+          {preset.badge && isFeaturedDensity && (
+            <Badge
+              variant="secondary"
+              className="inline-flex bg-muted px-1.5 py-0 text-[10px] text-muted-foreground"
+            >
+              {preset.badge}
+            </Badge>
+          )}
         </div>
+        {preset.badge && !isFeaturedDensity && (
+          <Badge
+            variant="secondary"
+            className="inline-flex w-fit bg-muted px-1.5 py-0 text-[10px] text-muted-foreground"
+          >
+            {preset.badge}
+          </Badge>
+        )}
+      </div>
+    </button>
+  );
+}
+
+function CustomPresetCard({ isSelected, onClick }: { isSelected: boolean; onClick: () => void }) {
+  const { t } = useTranslation();
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'flex h-[68px] w-[236px] flex-none items-center gap-3 rounded-xl border border-dashed px-3 py-2.5 text-left transition-all',
+        isSelected
+          ? 'border-primary bg-primary/8 shadow-sm ring-1 ring-primary/10'
+          : 'border-muted-foreground/30 bg-background hover:border-primary/40 hover:bg-accent/20'
       )}
-      <span className="font-medium">{preset.name}</span>
-      {preset.badge && (
-        <Badge
-          variant="secondary"
-          className="text-[10px] px-1.5 py-0 ml-0.5 bg-muted-foreground/10 text-muted-foreground"
-        >
-          {preset.badge}
-        </Badge>
-      )}
+    >
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-dashed border-current/30 bg-muted/70">
+        <Settings2 className="h-4 w-4 text-muted-foreground" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-semibold leading-tight">
+          {t('profileEditor.customEndpoint')}
+        </div>
+      </div>
     </button>
   );
 }

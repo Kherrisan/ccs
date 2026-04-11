@@ -21,11 +21,14 @@ import {
   type ModelTier,
   type UnifiedQuotaResult,
 } from '@/lib/utils';
+import type { ProviderEntitlementEvidence } from '@/lib/api-client';
 
 interface QuotaTooltipContentProps {
   quota: UnifiedQuotaResult | null | undefined;
   resetTime: string | null;
 }
+
+const lowQuotaTextClass = 'text-red-700 dark:text-red-400';
 
 function formatPlanLabel(planType: string | null | undefined): string | null {
   if (!planType) return null;
@@ -35,6 +38,23 @@ function formatPlanLabel(planType: string | null | undefined): string | null {
     .filter((part) => part.length > 0)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1));
   return normalized.length > 0 ? normalized.join(' ') : planType;
+}
+
+function formatAbsoluteResetTime(resetTime: string | null): string | null {
+  if (!resetTime) return null;
+  try {
+    const parsed = new Date(resetTime);
+    if (Number.isNaN(parsed.getTime())) return null;
+    return parsed.toLocaleString(undefined, {
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+  } catch {
+    return null;
+  }
 }
 
 function getClaudeWindowDisplayLabel(rateLimitType: string, fallback: string): string {
@@ -58,6 +78,35 @@ function getClaudeWindowDisplayLabel(rateLimitType: string, fallback: string): s
   }
 }
 
+function renderEntitlementRows(entitlement: ProviderEntitlementEvidence | undefined) {
+  if (!entitlement) return null;
+
+  const rows: Array<{ label: string; value: string | null }> = [];
+  if (entitlement.rawTierLabel) {
+    rows.push({ label: 'Tier', value: entitlement.rawTierLabel });
+  } else if (entitlement.normalizedTier !== 'unknown') {
+    rows.push({ label: 'Tier', value: entitlement.normalizedTier });
+  }
+  if (entitlement.rawTierId) {
+    rows.push({ label: 'Tier ID', value: entitlement.rawTierId });
+  }
+  if (entitlement.accessState !== 'entitled' || entitlement.capacityState !== 'available') {
+    rows.push({
+      label: 'State',
+      value: `${entitlement.accessState.replaceAll('_', ' ')} / ${entitlement.capacityState.replaceAll('_', ' ')}`,
+    });
+  }
+
+  if (rows.length === 0) return null;
+
+  return rows.map((row) => (
+    <div key={row.label} className="flex justify-between gap-4">
+      <span className="text-muted-foreground">{row.label}</span>
+      <span className="font-mono">{row.value}</span>
+    </div>
+  ));
+}
+
 /**
  * Renders provider-specific quota tooltip content
  * Uses type guards for proper TypeScript narrowing
@@ -69,22 +118,35 @@ export function QuotaTooltipContent({ quota, resetTime }: QuotaTooltipContentPro
 
   if (!quota.success) {
     const failureInfo = getQuotaFailureInfo(quota);
+    const failureToneClass =
+      failureInfo?.tone === 'destructive'
+        ? 'text-destructive'
+        : failureInfo?.tone === 'warning'
+          ? 'text-amber-700 dark:text-amber-300'
+          : 'text-foreground';
+
     return (
-      <div className="text-xs space-y-1">
-        <p className="font-medium text-destructive">
-          {failureInfo?.label || quota.error || 'Failed to load quota'}
-        </p>
-        <p className="text-destructive/90">{failureInfo?.summary || quota.error}</p>
+      <div className="max-w-sm space-y-2 text-xs">
+        <div className="space-y-1">
+          <p className={cn('font-semibold tracking-tight', failureToneClass)}>
+            {failureInfo?.label || quota.error || 'Failed to load quota'}
+          </p>
+          <p className="leading-relaxed text-foreground/90">
+            {failureInfo?.summary || quota.error}
+          </p>
+        </div>
         {failureInfo?.actionHint && (
-          <p className="text-muted-foreground">{failureInfo.actionHint}</p>
+          <div className="rounded-md border border-border/70 bg-muted/35 px-2.5 py-2 text-foreground/80">
+            {failureInfo.actionHint}
+          </div>
         )}
         {failureInfo?.technicalDetail && (
-          <p className="font-mono text-[11px] text-muted-foreground">
+          <div className="rounded-md border border-border/60 bg-muted/25 px-2 py-1.5 font-mono text-[11px] text-foreground/75">
             {failureInfo.technicalDetail}
-          </p>
+          </div>
         )}
         {failureInfo?.rawDetail && (
-          <pre className="whitespace-pre-wrap break-all rounded bg-muted/40 px-2 py-1 font-mono text-[10px] text-muted-foreground">
+          <pre className="max-h-56 overflow-auto whitespace-pre-wrap break-words rounded-md border border-border/70 bg-muted/55 px-2.5 py-2 font-mono text-[11px] leading-relaxed text-foreground/85">
             {failureInfo.rawDetail}
           </pre>
         )}
@@ -99,7 +161,8 @@ export function QuotaTooltipContent({ quota, resetTime }: QuotaTooltipContentPro
     const tierOrder: ModelTier[] = ['primary', 'gemini-3', 'gemini-2', 'other'];
 
     return (
-      <div className="text-xs space-y-1">
+      <div className="text-xs space-y-1.5">
+        {renderEntitlementRows(quota.entitlement)}
         <p className="font-medium">Model Quotas:</p>
         {tierOrder.map((tier, idx) => {
           const models = groups.get(tier);
@@ -107,13 +170,13 @@ export function QuotaTooltipContent({ quota, resetTime }: QuotaTooltipContentPro
           const isFirst = tierOrder.slice(0, idx).every((t) => !groups.get(t)?.length);
           return (
             <div key={tier}>
-              {!isFirst && <div className="border-t border-border/40 my-1" />}
+              {!isFirst && <div className="my-1 border-t border-border/40" />}
               {models.map((m) => (
                 <div key={m.name} className="flex justify-between gap-4">
-                  <span className={cn('truncate', m.exhausted && 'text-red-500')}>
+                  <span className={cn('truncate', m.exhausted && lowQuotaTextClass)}>
                     {m.displayName}
                   </span>
-                  <span className={cn('font-mono', m.exhausted && 'text-red-500')}>
+                  <span className={cn('font-mono', m.exhausted && lowQuotaTextClass)}>
                     {m.percentage}%
                   </span>
                 </div>
@@ -142,7 +205,7 @@ export function QuotaTooltipContent({ quota, resetTime }: QuotaTooltipContentPro
       );
 
     return (
-      <div className="text-xs space-y-1">
+      <div className="text-xs space-y-1.5">
         <p className="font-medium">Rate Limits:</p>
         {quota.planType && <p className="text-muted-foreground">Plan: {quota.planType}</p>}
         {orderedWindows.map((w, index) => (
@@ -150,7 +213,7 @@ export function QuotaTooltipContent({ quota, resetTime }: QuotaTooltipContentPro
             key={`${w.label}-${w.resetAt ?? 'no-reset'}-${index}`}
             className="flex justify-between gap-4"
           >
-            <span className={cn(w.remainingPercent < 20 && 'text-red-500')}>
+            <span className={cn(w.remainingPercent < 20 && lowQuotaTextClass)}>
               {getCodexWindowDisplayLabel(w, orderedWindows)}
             </span>
             <span className="font-mono">{w.remainingPercent}%</span>
@@ -211,14 +274,14 @@ export function QuotaTooltipContent({ quota, resetTime }: QuotaTooltipContentPro
       null;
 
     return (
-      <div className="text-xs space-y-1">
+      <div className="text-xs space-y-1.5">
         <p className="font-medium">Rate Limits:</p>
         {orderedWindows.map((window, index) => (
           <div
             key={`${window.rateLimitType}-${window.resetAt ?? 'no-reset'}-${window.status}-${index}`}
             className="flex justify-between gap-4"
           >
-            <span className={cn(window.remainingPercent < 20 && 'text-red-500')}>
+            <span className={cn(window.remainingPercent < 20 && lowQuotaTextClass)}>
               {getClaudeWindowDisplayLabel(window.rateLimitType, window.label)}
             </span>
             <span className="font-mono">{window.remainingPercent}%</span>
@@ -235,19 +298,48 @@ export function QuotaTooltipContent({ quota, resetTime }: QuotaTooltipContentPro
 
   // Gemini provider tooltip
   if (isGeminiQuotaResult(quota)) {
+    const hasBucketResetTime = quota.buckets.some((bucket) => !!bucket.resetTime);
+    const hasEntitlementTier =
+      !!quota.entitlement?.rawTierLabel || quota.entitlement?.normalizedTier !== 'unknown';
+
     return (
-      <div className="text-xs space-y-1">
+      <div className="text-xs space-y-1.5">
+        {renderEntitlementRows(quota.entitlement)}
+        {!hasEntitlementTier && quota.tierLabel && (
+          <div className="flex justify-between gap-4">
+            <span className="text-muted-foreground">Tier</span>
+            <span className="font-mono">{quota.tierLabel}</span>
+          </div>
+        )}
+        {quota.creditBalance !== null && quota.creditBalance !== undefined && (
+          <div className="flex justify-between gap-4">
+            <span className="text-muted-foreground">Credits</span>
+            <span className="font-mono">{quota.creditBalance.toLocaleString()}</span>
+          </div>
+        )}
         <p className="font-medium">Buckets:</p>
         {quota.buckets.map((b) => (
-          <div key={b.id} className="flex justify-between gap-4">
-            <span className={cn(b.remainingPercent < 20 && 'text-red-500')}>
-              {b.label}
-              {b.tokenType ? ` (${b.tokenType})` : ''}
-            </span>
-            <span className="font-mono">{b.remainingPercent}%</span>
+          <div key={b.id} className="space-y-0.5">
+            <div className="flex justify-between gap-4">
+              <span className={cn(b.remainingPercent < 20 && lowQuotaTextClass)}>
+                {b.label}
+                {b.tokenType ? ` (${b.tokenType})` : ''}
+              </span>
+              <span className="font-mono">{b.remainingPercent}%</span>
+            </div>
+            {((b.remainingAmount !== null && b.remainingAmount !== undefined) || b.resetTime) && (
+              <div className="flex justify-between gap-4 text-[11px] text-muted-foreground">
+                <span>
+                  {b.remainingAmount !== null && b.remainingAmount !== undefined
+                    ? `${b.remainingAmount.toLocaleString()} remaining`
+                    : ''}
+                </span>
+                <span>{formatAbsoluteResetTime(b.resetTime) ?? ''}</span>
+              </div>
+            )}
           </div>
         ))}
-        <ResetTimeIndicator resetTime={resetTime} />
+        {!hasBucketResetTime && <ResetTimeIndicator resetTime={resetTime} />}
       </div>
     );
   }
@@ -263,7 +355,7 @@ export function QuotaTooltipContent({ quota, resetTime }: QuotaTooltipContentPro
     const planLabel = formatPlanLabel(quota.planType);
 
     return (
-      <div className="text-xs space-y-1">
+      <div className="text-xs space-y-1.5">
         <p className="font-medium">Quota Snapshots:</p>
         {planLabel && <p className="text-muted-foreground">Plan: {planLabel}</p>}
         {snapshotRows.map(({ label, snapshot }) => {
@@ -271,8 +363,8 @@ export function QuotaTooltipContent({ quota, resetTime }: QuotaTooltipContentPro
           return (
             <div key={label} className="space-y-0.5">
               <div className="flex justify-between gap-4">
-                <span className={cn(isLow && 'text-red-500')}>{label}</span>
-                <span className={cn('font-mono', isLow && 'text-red-500')}>
+                <span className={cn(isLow && lowQuotaTextClass)}>{label}</span>
+                <span className={cn('font-mono', isLow && lowQuotaTextClass)}>
                   {snapshot.unlimited
                     ? 'Unlimited'
                     : `${formatQuotaPercent(snapshot.percentRemaining)}%`}
@@ -301,9 +393,11 @@ function ResetTimeIndicator({ resetTime }: { resetTime: string | null }) {
   if (!resetTime) return null;
 
   return (
-    <div className="flex items-center gap-1.5 pt-1 border-t border-border/50">
-      <Clock className="w-3 h-3 text-blue-400" />
-      <span className="text-blue-400 font-medium">Resets {formatResetTime(resetTime)}</span>
+    <div className="flex items-center gap-1.5 border-t border-border/60 pt-1">
+      <Clock className="h-3 w-3 text-sky-600 dark:text-sky-300" />
+      <span className="font-medium text-sky-600 dark:text-sky-300">
+        Resets {formatResetTime(resetTime)}
+      </span>
     </div>
   );
 }
@@ -321,19 +415,19 @@ function CodexResetIndicators({
   if (!hasSpecificReset && !fallbackResetTime) return null;
 
   return (
-    <div className="pt-1 border-t border-border/50 space-y-1">
+    <div className="space-y-1 border-t border-border/60 pt-1">
       {fiveHourResetTime && (
         <div className="flex items-center gap-1.5">
-          <Clock className="w-3 h-3 text-blue-400" />
-          <span className="text-blue-400 font-medium">
+          <Clock className="h-3 w-3 text-sky-600 dark:text-sky-300" />
+          <span className="font-medium text-sky-600 dark:text-sky-300">
             5h resets {formatResetTime(fiveHourResetTime)}
           </span>
         </div>
       )}
       {weeklyResetTime && (
         <div className="flex items-center gap-1.5">
-          <Clock className="w-3 h-3 text-indigo-400" />
-          <span className="text-indigo-400 font-medium">
+          <Clock className="h-3 w-3 text-indigo-600 dark:text-indigo-300" />
+          <span className="font-medium text-indigo-600 dark:text-indigo-300">
             Weekly resets {formatResetTime(weeklyResetTime)}
           </span>
         </div>

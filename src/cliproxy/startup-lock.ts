@@ -25,6 +25,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { getCliproxyDir } from './config-generator';
+import { createLogger } from '../services/logging';
 
 /** Lock file structure */
 interface LockData {
@@ -51,6 +52,7 @@ type LogFn = (msg: string) => void;
 
 /** No-op logger for when verbose is disabled */
 const noopLog: LogFn = () => {};
+const logger = createLogger('cliproxy:startup-lock');
 
 /**
  * Get path to startup lock file
@@ -184,7 +186,9 @@ export async function acquireStartupLock(options?: {
 }): Promise<LockResult> {
   const retries = options?.retries ?? 20;
   const retryInterval = options?.retryInterval ?? 250;
-  const log: LogFn = options?.verbose ? (msg) => console.error(`[startup-lock] ${msg}`) : noopLog;
+  const log: LogFn = options?.verbose
+    ? (msg) => logger.debug('lock.verbose', msg, { retries, retryInterval })
+    : noopLog;
 
   log(`Attempting to acquire startup lock (max ${retries} retries, ${retryInterval}ms interval)`);
 

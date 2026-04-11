@@ -12,6 +12,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { DeltaAccumulator } from './delta-accumulator';
 import { getCcsDir } from '../utils/config-manager';
+import { createLogger } from '../services/logging';
 import {
   RequestTransformer,
   StreamParser,
@@ -36,6 +37,7 @@ export class GlmtTransformer {
   private verbose: boolean;
   private debugLog: boolean;
   debugLogDir: string;
+  private readonly logger = createLogger('glmt:transformer');
 
   private requestTransformer: RequestTransformer;
   private streamParser: StreamParser;
@@ -125,6 +127,9 @@ export class GlmtTransformer {
       return anthropicResponse;
     } catch (error) {
       const err = error as Error;
+      this.logger.error('response.transform_failed', 'GLMT response transformation failed', {
+        message: err.message,
+      });
       console.error('[glmt-transformer] Response transformation error:', err);
       return {
         id: 'msg_error_' + Date.now(),
@@ -175,12 +180,16 @@ export class GlmtTransformer {
       const redacted = this.redactSensitiveData(data);
       fs.writeFileSync(filepath, JSON.stringify(redacted, null, 2) + '\n', 'utf8');
     } catch (error) {
+      this.logger.warn('debug-log.write_failed', 'GLMT debug log write failed', {
+        message: (error as Error).message,
+      });
       console.error(`[glmt-transformer] Debug log error: ${(error as Error).message}`);
     }
   }
 
   private log(message: string): void {
     if (this.verbose) {
+      this.logger.debug('transformer.verbose', message);
       console.error(`[glmt-transformer] [${new Date().toTimeString().split(' ')[0]}] ${message}`);
     }
   }

@@ -7,6 +7,7 @@
  */
 
 import { getWebSearchConfig } from '../../config/unified-config-loader';
+import { resolveAllowedWebSearchTraceFile } from './trace';
 
 /**
  * Get environment variables for WebSearch hook configuration.
@@ -19,6 +20,14 @@ export function getWebSearchHookEnv(): Record<string, string> {
   const wsConfig = getWebSearchConfig();
   const env: Record<string, string> = {};
 
+  if (process.env.CCS_WEBSEARCH_TRACE === '1' || process.env.CCS_DEBUG === '1') {
+    env.CCS_WEBSEARCH_TRACE = '1';
+  }
+  const traceFileOverride = resolveAllowedWebSearchTraceFile(process.env);
+  if (traceFileOverride) {
+    env.CCS_WEBSEARCH_TRACE_FILE = traceFileOverride;
+  }
+
   // Skip hook entirely if disabled
   if (!wsConfig.enabled) {
     env.CCS_WEBSEARCH_SKIP = '1';
@@ -29,7 +38,29 @@ export function getWebSearchHookEnv(): Record<string, string> {
   env.CCS_WEBSEARCH_ENABLED = '1';
 
   // Pass individual provider enabled states
-  // Hook will only use providers that are BOTH enabled AND installed
+  // Hook will only use providers that are BOTH enabled AND ready.
+  if (wsConfig.providers?.exa?.enabled) {
+    env.CCS_WEBSEARCH_EXA = '1';
+    env.CCS_WEBSEARCH_EXA_MAX_RESULTS = String(wsConfig.providers.exa.max_results || 5);
+  }
+
+  if (wsConfig.providers?.tavily?.enabled) {
+    env.CCS_WEBSEARCH_TAVILY = '1';
+    env.CCS_WEBSEARCH_TAVILY_MAX_RESULTS = String(wsConfig.providers.tavily.max_results || 5);
+  }
+
+  if (wsConfig.providers?.duckduckgo?.enabled) {
+    env.CCS_WEBSEARCH_DUCKDUCKGO = '1';
+    env.CCS_WEBSEARCH_DUCKDUCKGO_MAX_RESULTS = String(
+      wsConfig.providers.duckduckgo.max_results || 5
+    );
+  }
+
+  if (wsConfig.providers?.brave?.enabled) {
+    env.CCS_WEBSEARCH_BRAVE = '1';
+    env.CCS_WEBSEARCH_BRAVE_MAX_RESULTS = String(wsConfig.providers.brave.max_results || 5);
+  }
+
   if (wsConfig.providers?.gemini?.enabled) {
     env.CCS_WEBSEARCH_GEMINI = '1';
     if (wsConfig.providers.gemini.model) {

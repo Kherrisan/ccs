@@ -12,10 +12,15 @@ import {
   buildProxyHeaders,
   buildManagementHeaders,
 } from './proxy-target-resolver';
+import { buildCliproxyStatsFromUsageResponse } from './stats-transformer';
 
 /** Per-account usage statistics */
 export interface AccountUsageStats {
-  /** Account email or identifier */
+  /** Provider-qualified lookup key (for example: "codex:user@example.com") */
+  accountKey: string;
+  /** Canonical provider name reported by CLIProxyAPI */
+  provider: string;
+  /** Raw account email or identifier */
   source: string;
   /** Number of successful requests */
   successCount: number;
@@ -59,7 +64,7 @@ export interface CliproxyStats {
 export interface CliproxyRequestDetail {
   timestamp: string;
   source: string;
-  auth_index: number;
+  auth_index: string | number;
   tokens: {
     input_tokens: number;
     output_tokens: number;
@@ -99,6 +104,14 @@ export interface CliproxyUsageApiResponse {
   };
 }
 
+/** Auth file metadata from CLIProxyAPI /v0/management/auth-files */
+export interface CliproxyManagementAuthFile {
+  auth_index?: string | number;
+  provider?: string;
+  email?: string;
+  name?: string;
+}
+
 /**
  * Fetch usage statistics from CLIProxyAPI management API
  * @param port CLIProxyAPI port (default: 8317)
@@ -106,107 +119,16 @@ export interface CliproxyUsageApiResponse {
  */
 export async function fetchCliproxyStats(port?: number): Promise<CliproxyStats | null> {
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 3000); // 3s timeout
+    const [data, authFiles] = await Promise.all([
+      fetchCliproxyUsageRaw(port),
+      fetchCliproxyAuthFiles(port),
+    ]);
 
-    // Dynamic target resolution
-    const target = getProxyTarget();
-    // Allow port override for local testing only
-    if (port !== undefined && !target.isRemote) {
-      target.port = port;
-    }
-    const url = buildProxyUrl(target, '/v0/management/usage');
-
-    // For management endpoints, use management key for remote, local management secret for local
-    const headers = target.isRemote
-      ? buildManagementHeaders(target)
-      : { Accept: 'application/json', Authorization: `Bearer ${getEffectiveManagementSecret()}` };
-
-    const response = await fetch(url, {
-      signal: controller.signal,
-      headers,
-    });
-
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
+    if (!data) {
       return null;
     }
 
-    const data = (await response.json()) as CliproxyUsageApiResponse;
-    const usage = data.usage;
-
-    // Extract models, providers, and per-account stats from the nested API structure
-    const requestsByModel: Record<string, number> = {};
-    const requestsByProvider: Record<string, number> = {};
-    const accountStats: Record<string, AccountUsageStats> = {};
-    let totalSuccessCount = 0;
-    let totalFailureCount = 0;
-    let totalInputTokens = 0;
-    let totalOutputTokens = 0;
-
-    if (usage?.apis) {
-      for (const [provider, providerData] of Object.entries(usage.apis)) {
-        requestsByProvider[provider] = providerData.total_requests ?? 0;
-        if (providerData.models) {
-          for (const [model, modelData] of Object.entries(providerData.models)) {
-            requestsByModel[model] = modelData.total_requests ?? 0;
-
-            // Aggregate per-account stats from request details
-            if (modelData.details) {
-              for (const detail of modelData.details) {
-                const source = detail.source || 'unknown';
-
-                // Initialize account stats if not exists
-                if (!accountStats[source]) {
-                  accountStats[source] = {
-                    source,
-                    successCount: 0,
-                    failureCount: 0,
-                    totalTokens: 0,
-                  };
-                }
-
-                // Update account stats
-                if (detail.failed) {
-                  accountStats[source].failureCount++;
-                  totalFailureCount++;
-                } else {
-                  accountStats[source].successCount++;
-                  totalSuccessCount++;
-                }
-
-                const tokens = detail.tokens?.total_tokens ?? 0;
-                accountStats[source].totalTokens += tokens;
-                accountStats[source].lastUsedAt = detail.timestamp;
-
-                // Aggregate token breakdowns
-                totalInputTokens += detail.tokens?.input_tokens ?? 0;
-                totalOutputTokens += detail.tokens?.output_tokens ?? 0;
-              }
-            }
-          }
-        }
-      }
-    }
-
-    // Normalize the response to our interface
-    return {
-      totalRequests: usage?.total_requests ?? 0,
-      successCount: totalSuccessCount,
-      failureCount: totalFailureCount,
-      tokens: {
-        input: totalInputTokens,
-        output: totalOutputTokens,
-        total: usage?.total_tokens ?? 0,
-      },
-      requestsByModel,
-      requestsByProvider,
-      accountStats,
-      quotaExceededCount: usage?.failure_count ?? data.failed_requests ?? 0,
-      retryCount: 0, // API doesn't track retries separately
-      collectedAt: new Date().toISOString(),
-    };
+    return buildCliproxyStatsFromUsageResponse(data, { authFiles: authFiles ?? [] });
   } catch {
     // CLIProxyAPI not running or stats endpoint not available
     return null;
@@ -246,6 +168,39 @@ export async function fetchCliproxyUsageRaw(
     }
 
     return (await response.json()) as CliproxyUsageApiResponse;
+  } catch {
+    return null;
+  }
+}
+
+async function fetchCliproxyAuthFiles(port?: number): Promise<CliproxyManagementAuthFile[] | null> {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+    const target = getProxyTarget();
+    if (port !== undefined && !target.isRemote) {
+      target.port = port;
+    }
+    const url = buildProxyUrl(target, '/v0/management/auth-files');
+
+    const headers = target.isRemote
+      ? buildManagementHeaders(target)
+      : { Accept: 'application/json', Authorization: `Bearer ${getEffectiveManagementSecret()}` };
+
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const data = (await response.json()) as { files?: CliproxyManagementAuthFile[] };
+    return Array.isArray(data.files) ? data.files : null;
   } catch {
     return null;
   }

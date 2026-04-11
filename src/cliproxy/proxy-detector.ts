@@ -19,6 +19,7 @@ import { getExistingProxy, registerSession, getRunningProxyVersion } from './ses
 import { isCliproxyRunning } from './stats-fetcher';
 import { getPortProcess, isCLIProxyProcess, PortProcess } from '../utils/port-utils';
 import { CLIPROXY_DEFAULT_PORT } from './config-generator';
+import { createLogger } from '../services/logging';
 
 /** Detection method used to find the proxy */
 export type DetectionMethod = 'http' | 'session-lock' | 'port-process' | 'http-retry';
@@ -48,6 +49,7 @@ type LogFn = (msg: string) => void;
 
 /** No-op logger for when verbose is disabled */
 const noopLog: LogFn = () => {};
+const logger = createLogger('cliproxy:proxy-detector');
 
 /**
  * Detect running CLIProxy using multiple methods with fallbacks.
@@ -65,7 +67,7 @@ export async function detectRunningProxy(
   port: number = CLIPROXY_DEFAULT_PORT,
   verbose: boolean = false
 ): Promise<ProxyStatus> {
-  const log: LogFn = verbose ? (msg) => console.error(`[proxy-detector] ${msg}`) : noopLog;
+  const log: LogFn = verbose ? (msg) => logger.debug('detect.verbose', msg, { port }) : noopLog;
 
   // Validate port - fallback to default if invalid
   const validPort =
@@ -235,7 +237,9 @@ export function reclaimOrphanedProxy(
   pid: number,
   verbose: boolean = false
 ): string | null {
-  const log: LogFn = verbose ? (msg) => console.error(`[proxy-detector] ${msg}`) : noopLog;
+  const log: LogFn = verbose
+    ? (msg) => logger.debug('reclaim.verbose', msg, { port, pid })
+    : noopLog;
 
   try {
     log(`Reclaiming orphaned proxy: port=${port}, pid=${pid}`);

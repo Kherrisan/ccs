@@ -22,6 +22,7 @@ import {
   pauseAccount as pauseAccountFn,
   resumeAccount as resumeAccountFn,
   touchAccount,
+  hasAccountNameConflict,
   PROVIDERS_WITHOUT_EMAIL,
   validateNickname,
 } from '../../cliproxy/account-manager';
@@ -31,19 +32,29 @@ import {
   buildManagementHeaders,
 } from '../../cliproxy/proxy-target-resolver';
 import { fetchRemoteAuthStatus } from '../../cliproxy/remote-auth-fetcher';
+import { ensureManagedModelPrefixes } from '../../cliproxy/managed-model-prefixes';
 import { loadOrCreateUnifiedConfig } from '../../config/unified-config-loader';
 import { tryKiroImport } from '../../cliproxy/auth/kiro-import';
-import { getProviderTokenDir } from '../../cliproxy/auth/token-manager';
+import {
+  type ProviderTokenSnapshot,
+  findNewTokenSnapshot,
+  getProviderTokenDir,
+  listProviderTokenSnapshots,
+  registerAccountFromToken,
+} from '../../cliproxy/auth/token-manager';
 import {
   CLIPROXY_CALLBACK_PROVIDER_MAP,
   CLIPROXY_AUTH_URL_PROVIDER_MAP,
   isKiroAuthMethod,
+  isKiroIDCFlow,
   isKiroDeviceCodeMethod,
+  KiroIDCFlow,
   KiroAuthMethod,
+  normalizeKiroIDCFlow,
   normalizeKiroAuthMethod,
   toKiroManagementMethod,
 } from '../../cliproxy/auth/auth-types';
-import { getOAuthFlowType } from '../../cliproxy/provider-capabilities';
+import { getOAuthFlowType, mapExternalProviderName } from '../../cliproxy/provider-capabilities';
 import type { CLIProxyProvider } from '../../cliproxy/types';
 import { CLIPROXY_PROFILES } from '../../auth/profile-detector';
 import {
@@ -51,13 +62,133 @@ import {
   isAntigravityResponsibilityBypassEnabled,
 } from '../../cliproxy/antigravity-responsibility';
 import { createRouteErrorHelpers } from './route-helpers';
+import { requireLocalAccessWhenAuthDisabled } from '../middleware/auth-middleware';
 
 const router = Router();
+const MANUAL_AUTH_STATE_TTL_MS = 10 * 60 * 1000;
+const POLLED_AUTH_LOCAL_TOKEN_GRACE_MS = 15 * 1000;
+
+const pendingManualAuthState = new Map<
+  string,
+  {
+    nickname?: string;
+    expectedAccountId?: string;
+    createdAt: number;
+    upstreamCompletedAt?: number;
+    knownTokenFiles: ProviderTokenSnapshot[];
+  }
+>();
 
 // Valid providers list - derived from canonical CLIPROXY_PROFILES
 const validProviders: CLIProxyProvider[] = [...CLIPROXY_PROFILES];
 
 const { respondInternalError } = createRouteErrorHelpers('cliproxy-auth-routes');
+
+router.use((req: Request, res: Response, next) => {
+  if (
+    requireLocalAccessWhenAuthDisabled(
+      req,
+      res,
+      'CLIProxy auth endpoints require localhost access when dashboard auth is disabled.'
+    )
+  ) {
+    next();
+  }
+});
+
+function pruneExpiredManualAuthState(now = Date.now()): void {
+  for (const [state, pending] of pendingManualAuthState.entries()) {
+    const authExpired = now - pending.createdAt > MANUAL_AUTH_STATE_TTL_MS;
+    const withinLocalTokenGrace =
+      pending.upstreamCompletedAt !== undefined &&
+      now - pending.upstreamCompletedAt < POLLED_AUTH_LOCAL_TOKEN_GRACE_MS;
+
+    if (authExpired && !withinLocalTokenGrace) {
+      pendingManualAuthState.delete(state);
+    }
+  }
+}
+
+function rememberManualAuthState(
+  state: string,
+  pending: {
+    nickname?: string;
+    expectedAccountId?: string;
+    knownTokenFiles: ProviderTokenSnapshot[];
+  }
+): void {
+  pruneExpiredManualAuthState();
+  pendingManualAuthState.set(state, {
+    ...pending,
+    createdAt: Date.now(),
+  });
+}
+
+function getManualAuthState(state: string | undefined): {
+  nickname?: string;
+  expectedAccountId?: string;
+  createdAt: number;
+  upstreamCompletedAt?: number;
+  knownTokenFiles: ProviderTokenSnapshot[];
+} | null {
+  if (!state) {
+    return null;
+  }
+
+  pruneExpiredManualAuthState();
+  const pending = pendingManualAuthState.get(state);
+  if (!pending) {
+    return null;
+  }
+
+  return {
+    nickname: pending.nickname,
+    expectedAccountId: pending.expectedAccountId,
+    createdAt: pending.createdAt,
+    upstreamCompletedAt: pending.upstreamCompletedAt,
+    knownTokenFiles: pending.knownTokenFiles,
+  };
+}
+
+function markManualAuthUpstreamCompleted(state: string, now = Date.now()): number | null {
+  pruneExpiredManualAuthState(now);
+  const pending = pendingManualAuthState.get(state);
+  if (!pending) {
+    return null;
+  }
+
+  if (pending.upstreamCompletedAt !== undefined) {
+    return pending.upstreamCompletedAt;
+  }
+
+  pending.upstreamCompletedAt = now;
+  pendingManualAuthState.set(state, pending);
+  return now;
+}
+
+function findNewTokenSnapshotForPendingAuth(
+  provider: CLIProxyProvider,
+  pending: { expectedAccountId?: string; knownTokenFiles: ProviderTokenSnapshot[] }
+): ProviderTokenSnapshot | null {
+  return findNewTokenSnapshot(
+    listProviderTokenSnapshots(provider),
+    pending.knownTokenFiles,
+    pending.expectedAccountId
+  );
+}
+
+function shouldKeepWaitingForLocalToken(
+  state: string,
+  pending: { upstreamCompletedAt?: number },
+  now = Date.now()
+): boolean {
+  const upstreamCompletedAt =
+    pending.upstreamCompletedAt ?? markManualAuthUpstreamCompleted(state, now);
+
+  return (
+    upstreamCompletedAt !== null && now - upstreamCompletedAt < POLLED_AUTH_LOCAL_TOKEN_GRACE_MS
+  );
+}
 
 function parseKiroMethod(raw: unknown): { method: KiroAuthMethod; invalid: boolean } {
   if (raw === undefined || raw === null) {
@@ -76,12 +207,52 @@ function parseKiroMethod(raw: unknown): { method: KiroAuthMethod; invalid: boole
   return { method: normalizeKiroAuthMethod(normalized), invalid: false };
 }
 
+function parseKiroIDCFlow(raw: unknown): { flow: KiroIDCFlow; invalid: boolean } {
+  if (raw === undefined || raw === null || raw === '') {
+    return { flow: normalizeKiroIDCFlow(), invalid: false };
+  }
+  if (typeof raw !== 'string') {
+    return { flow: normalizeKiroIDCFlow(), invalid: true };
+  }
+  const normalized = raw.trim().toLowerCase();
+  if (!isKiroIDCFlow(normalized)) {
+    return { flow: normalizeKiroIDCFlow(), invalid: true };
+  }
+  return { flow: normalizeKiroIDCFlow(normalized), invalid: false };
+}
+
+export function getKiroStartIDCValidationError(options: {
+  kiroMethod: KiroAuthMethod;
+  kiroIDCStartUrl?: string;
+  invalidKiroIDCFlow?: boolean;
+}): { error: string; code: string } | null {
+  if (options.kiroMethod !== 'idc') {
+    return null;
+  }
+  if (options.invalidKiroIDCFlow) {
+    return {
+      error: 'Invalid kiroIDCFlow. Supported: authcode, device',
+      code: 'INVALID_KIRO_IDC_FLOW',
+    };
+  }
+  if (!options.kiroIDCStartUrl) {
+    return {
+      error: 'Kiro IDC login requires kiroIDCStartUrl',
+      code: 'MISSING_KIRO_IDC_START_URL',
+    };
+  }
+  return null;
+}
+
 export function getStartUrlUnsupportedReason(
   provider: CLIProxyProvider,
   options?: { kiroMethod?: KiroAuthMethod }
 ): string | null {
   if (provider === 'kiro') {
     const kiroMethod = options?.kiroMethod ?? normalizeKiroAuthMethod();
+    if (kiroMethod === 'idc') {
+      return "Kiro method 'idc' uses CLI auth flow. Use /api/cliproxy/auth/kiro/start instead.";
+    }
     if (kiroMethod === 'aws-authcode') {
       return "Kiro method 'aws-authcode' uses CLI auth flow. Use /api/cliproxy/auth/kiro/start instead.";
     }
@@ -104,6 +275,41 @@ export function getStartAuthFailureMessage(provider: CLIProxyProvider): string {
   return 'Authentication failed or was cancelled';
 }
 
+function getManualCallbackRegistrationError(provider: CLIProxyProvider): string {
+  if (PROVIDERS_WITHOUT_EMAIL.includes(provider)) {
+    return 'Authenticated token could not be matched to a new account. Retry the flow and choose a different nickname if needed.';
+  }
+  return 'Authenticated token could not be registered. Retry the flow.';
+}
+
+export function getStartAuthNicknameError(
+  provider: CLIProxyProvider,
+  nickname: string | undefined,
+  existingAccounts: Array<{ id: string; nickname?: string }>,
+  allowExistingAccountId?: string
+): { error: string; code: 'INVALID_NICKNAME' | 'NICKNAME_EXISTS' } | null {
+  if (!PROVIDERS_WITHOUT_EMAIL.includes(provider) || !nickname) {
+    return null;
+  }
+
+  const validationError = validateNickname(nickname);
+  if (validationError) {
+    return {
+      error: validationError,
+      code: 'INVALID_NICKNAME',
+    };
+  }
+
+  if (hasAccountNameConflict(existingAccounts, nickname, allowExistingAccountId)) {
+    return {
+      error: `Nickname "${nickname}" is already in use. Choose a different one.`,
+      code: 'NICKNAME_EXISTS',
+    };
+  }
+
+  return null;
+}
+
 /**
  * GET /api/cliproxy/auth - Get auth status for built-in CLIProxy profiles
  * Also fetches CLIProxyAPI stats to update lastUsedAt for active providers
@@ -124,24 +330,11 @@ router.get('/', async (_req: Request, res: Response): Promise<void> => {
     // Fetch CLIProxyAPI usage stats to determine active providers
     const stats = await fetchCliproxyStats();
 
-    // Map CLIProxyAPI provider names to our internal provider names
-    const statsProviderMap: Record<string, CLIProxyProvider> = {
-      gemini: 'gemini',
-      antigravity: 'agy',
-      codex: 'codex',
-      qwen: 'qwen',
-      iflow: 'iflow',
-      kiro: 'kiro',
-      copilot: 'ghcp', // CLIProxyAPI returns 'copilot', we map to 'ghcp'
-      anthropic: 'claude', // CLIProxyAPI returns 'anthropic', we map to 'claude'
-      claude: 'claude',
-    };
-
     // Update lastUsedAt for providers with recent activity
     if (stats?.requestsByProvider) {
       for (const [statsProvider, requestCount] of Object.entries(stats.requestsByProvider)) {
         if (requestCount > 0) {
-          const provider = statsProviderMap[statsProvider.toLowerCase()];
+          const provider = mapExternalProviderName(statsProvider.toLowerCase());
           if (provider) {
             // Touch the default account for this provider (or all accounts)
             const accounts = getProviderAccounts(provider);
@@ -395,6 +588,13 @@ router.post('/:provider/start', async (req: Request, res: Response): Promise<voi
   const noIncognitoBody =
     typeof requestBody.noIncognito === 'boolean' ? requestBody.noIncognito : undefined;
   const kiroMethodRaw = requestBody.kiroMethod;
+  const kiroIDCStartUrl =
+    typeof requestBody.kiroIDCStartUrl === 'string'
+      ? requestBody.kiroIDCStartUrl.trim()
+      : undefined;
+  const kiroIDCRegion =
+    typeof requestBody.kiroIDCRegion === 'string' ? requestBody.kiroIDCRegion.trim() : undefined;
+  const kiroIDCFlowRaw = requestBody.kiroIDCFlow;
   const riskAcknowledgement = requestBody.riskAcknowledgement;
   const target = getProxyTarget();
   if (target.isRemote) {
@@ -404,6 +604,7 @@ router.post('/:provider/start', async (req: Request, res: Response): Promise<voi
   // Trim nickname for consistency with CLI (oauth-handler.ts trims input)
   const nickname = nicknameRaw?.trim();
   const { method: kiroMethod, invalid: invalidKiroMethod } = parseKiroMethod(kiroMethodRaw);
+  const { flow: kiroIDCFlow, invalid: invalidKiroIDCFlow } = parseKiroIDCFlow(kiroIDCFlowRaw);
 
   // Validate provider
   if (!validProviders.includes(provider as CLIProxyProvider)) {
@@ -413,10 +614,22 @@ router.post('/:provider/start', async (req: Request, res: Response): Promise<voi
 
   if (provider === 'kiro' && invalidKiroMethod) {
     res.status(400).json({
-      error: 'Invalid kiroMethod. Supported: aws, aws-authcode, google, github',
+      error: 'Invalid kiroMethod. Supported: aws, aws-authcode, google, github, idc',
       code: 'INVALID_KIRO_METHOD',
     });
     return;
+  }
+
+  if (provider === 'kiro') {
+    const kiroIDCValidationError = getKiroStartIDCValidationError({
+      kiroMethod,
+      kiroIDCStartUrl,
+      invalidKiroIDCFlow,
+    });
+    if (kiroIDCValidationError) {
+      res.status(400).json(kiroIDCValidationError);
+      return;
+    }
   }
 
   if (provider === 'agy' && !isAntigravityResponsibilityBypassEnabled()) {
@@ -430,37 +643,15 @@ router.post('/:provider/start', async (req: Request, res: Response): Promise<voi
     }
   }
 
-  // For kiro/ghcp: nickname is required
-  if (PROVIDERS_WITHOUT_EMAIL.includes(provider as CLIProxyProvider)) {
-    if (!nickname) {
-      res.status(400).json({
-        error: `Nickname is required for ${provider} accounts. Please provide a unique nickname.`,
-        code: 'NICKNAME_REQUIRED',
-      });
-      return;
-    }
-
-    const validationError = validateNickname(nickname);
-    if (validationError) {
-      res.status(400).json({
-        error: validationError,
-        code: 'INVALID_NICKNAME',
-      });
-      return;
-    }
-
-    // Check uniqueness
-    const existingAccounts = getProviderAccounts(provider as CLIProxyProvider);
-    const existingNicknames = existingAccounts.map(
-      (a) => a.nickname?.toLowerCase() || a.id.toLowerCase()
-    );
-    if (existingNicknames.includes(nickname.toLowerCase())) {
-      res.status(400).json({
-        error: `Nickname "${nickname}" is already in use. Choose a different one.`,
-        code: 'NICKNAME_EXISTS',
-      });
-      return;
-    }
+  const existingAccounts = getProviderAccounts(provider as CLIProxyProvider);
+  const nicknameError = getStartAuthNicknameError(
+    provider as CLIProxyProvider,
+    nickname,
+    existingAccounts
+  );
+  if (nicknameError) {
+    res.status(400).json(nicknameError);
+    return;
   }
 
   // Check Kiro no-incognito setting from config (or request body)
@@ -479,11 +670,20 @@ router.post('/:provider/start', async (req: Request, res: Response): Promise<voi
       nickname: nickname || undefined,
       acceptAgyRisk: provider === 'agy',
       kiroMethod: provider === 'kiro' ? kiroMethod : undefined,
+      kiroIDCStartUrl: provider === 'kiro' ? kiroIDCStartUrl : undefined,
+      kiroIDCRegion: provider === 'kiro' ? kiroIDCRegion : undefined,
+      kiroIDCFlow: provider === 'kiro' && kiroMethod === 'idc' ? kiroIDCFlow : undefined,
       fromUI: true, // Enable project selection prompt in UI
       noIncognito, // Kiro: use normal browser if enabled
     });
 
     if (account) {
+      try {
+        await ensureManagedModelPrefixes([account.provider]);
+      } catch {
+        // Keep OAuth success path non-fatal when prefix repair cannot run.
+      }
+
       res.json({
         success: true,
         account: {
@@ -625,7 +825,12 @@ router.post('/kiro/import', async (_req: Request, res: Response): Promise<void> 
  */
 router.post('/:provider/start-url', async (req: Request, res: Response): Promise<void> => {
   const { provider } = req.params;
-  const { kiroMethod: kiroMethodRaw, riskAcknowledgement } = req.body ?? {};
+  const requestBody =
+    req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {};
+  const nicknameRaw = typeof requestBody.nickname === 'string' ? requestBody.nickname : undefined;
+  const kiroMethodRaw = requestBody.kiroMethod;
+  const riskAcknowledgement = requestBody.riskAcknowledgement;
+  const nickname = nicknameRaw?.trim();
   const { method: kiroMethod, invalid: invalidKiroMethod } = parseKiroMethod(kiroMethodRaw);
 
   // Check remote mode
@@ -643,7 +848,7 @@ router.post('/:provider/start-url', async (req: Request, res: Response): Promise
 
   if (provider === 'kiro' && invalidKiroMethod) {
     res.status(400).json({
-      error: 'Invalid kiroMethod. Supported: aws, aws-authcode, google, github',
+      error: 'Invalid kiroMethod. Supported: aws, aws-authcode, google, github, idc',
       code: 'INVALID_KIRO_METHOD',
     });
     return;
@@ -668,12 +873,24 @@ router.post('/:provider/start-url', async (req: Request, res: Response): Promise
     return;
   }
 
+  const existingAccounts = getProviderAccounts(provider as CLIProxyProvider);
+  const nicknameError = getStartAuthNicknameError(
+    provider as CLIProxyProvider,
+    nickname,
+    existingAccounts
+  );
+  if (nicknameError) {
+    res.status(400).json(nicknameError);
+    return;
+  }
+
   try {
     const authUrlProvider =
       CLIPROXY_AUTH_URL_PROVIDER_MAP[provider as CLIProxyProvider] || provider;
+    const kiroManagementMethod = provider === 'kiro' ? toKiroManagementMethod(kiroMethod) : null;
     const kiroQuery =
-      provider === 'kiro'
-        ? `&method=${encodeURIComponent(toKiroManagementMethod(kiroMethod))}`
+      provider === 'kiro' && kiroManagementMethod
+        ? `&method=${encodeURIComponent(kiroManagementMethod)}`
         : '';
 
     // Call CLIProxyAPI to start OAuth and get auth URL
@@ -696,19 +913,27 @@ router.post('/:provider/start-url', async (req: Request, res: Response): Promise
       method?: string;
     };
     const authUrl = data.url || data.auth_url;
+    const oauthState = data.state || parseAuthUrlState(authUrl);
 
     // Some upstream flows return state first and provide auth_url in subsequent status polling.
-    if (!authUrl && !data.state) {
+    if (!authUrl && !oauthState) {
       res
         .status(500)
         .json({ error: 'No OAuth state or authorization URL received from CLIProxyAPI' });
       return;
     }
 
+    if (oauthState) {
+      rememberManualAuthState(oauthState, {
+        nickname: nickname || undefined,
+        knownTokenFiles: listProviderTokenSnapshots(provider as CLIProxyProvider),
+      });
+    }
+
     res.json({
       success: true,
       authUrl: authUrl || null,
-      state: data.state || null,
+      state: oauthState,
       method: data.method || null,
     });
   } catch (error) {
@@ -745,6 +970,72 @@ router.get('/:provider/status', async (req: Request, res: Response): Promise<voi
     );
     const data = (await response.json()) as { status?: string; error?: string };
 
+    if (data.status === 'ok') {
+      const localProvider = provider as CLIProxyProvider;
+      const pendingAuth = getManualAuthState(state);
+
+      if (!pendingAuth) {
+        res.status(409).json({
+          status: 'error',
+          error:
+            'Authentication completed upstream, but CCS could not match it to the active add-account session. Retry the flow from the dashboard.',
+        });
+        return;
+      }
+
+      const now = Date.now();
+      const tokenSnapshot = findNewTokenSnapshotForPendingAuth(localProvider, pendingAuth);
+      if (!tokenSnapshot) {
+        if (shouldKeepWaitingForLocalToken(state, pendingAuth, now)) {
+          res.json({ status: 'wait' });
+          return;
+        }
+
+        pendingManualAuthState.delete(state);
+        res.status(409).json({
+          status: 'error',
+          error:
+            'Authentication completed upstream, but no new local token was saved for this account. Update CCS/CLIProxy and retry.',
+        });
+        return;
+      }
+
+      const account = registerAccountFromToken(
+        localProvider,
+        getProviderTokenDir(localProvider),
+        pendingAuth.nickname,
+        false,
+        tokenSnapshot.file
+      );
+
+      if (!account) {
+        pendingManualAuthState.delete(state);
+        res.status(409).json({
+          status: 'error',
+          error: getManualCallbackRegistrationError(localProvider),
+        });
+        return;
+      }
+
+      try {
+        await ensureManagedModelPrefixes([account.provider]);
+      } catch {
+        // Keep manual callback success path non-fatal when prefix repair cannot run.
+      }
+      res.json({
+        status: 'ok',
+        account: {
+          id: account.id,
+          email: account.email,
+          nickname: account.nickname,
+          provider: account.provider,
+          isDefault: account.isDefault,
+        },
+      });
+      pendingManualAuthState.delete(state);
+      return;
+    }
+
     res.json(data);
   } catch {
     res.status(503).json({ status: 'error', error: 'CLIProxyAPI not reachable' });
@@ -765,6 +1056,18 @@ function parseCallbackUrl(url: string): { code?: string; state?: string } {
     };
   } catch {
     return {};
+  }
+}
+
+function parseAuthUrlState(url: string | null | undefined): string | null {
+  if (!url) {
+    return null;
+  }
+
+  try {
+    return new URL(url).searchParams.get('state');
+  } catch {
+    return null;
   }
 }
 
@@ -800,6 +1103,7 @@ router.post('/:provider/submit-callback', async (req: Request, res: Response): P
     res.status(400).json({ error: 'Invalid callback URL: missing code parameter' });
     return;
   }
+  const pendingAuth = getManualAuthState(parsed.state);
 
   try {
     const callbackProvider =
@@ -824,7 +1128,93 @@ router.post('/:provider/submit-callback', async (req: Request, res: Response): P
       return;
     }
 
-    res.json({ success: true });
+    const localProvider = provider as CLIProxyProvider;
+    const now = Date.now();
+
+    if (pendingAuth) {
+      const tokenSnapshot = findNewTokenSnapshotForPendingAuth(localProvider, pendingAuth);
+      if (!tokenSnapshot) {
+        if (parsed.state && shouldKeepWaitingForLocalToken(parsed.state, pendingAuth, now)) {
+          res.json({ status: 'wait' });
+          return;
+        }
+
+        if (parsed.state) {
+          pendingManualAuthState.delete(parsed.state);
+        }
+        res.status(409).json({
+          error: getManualCallbackRegistrationError(localProvider),
+        });
+        return;
+      }
+
+      const account = registerAccountFromToken(
+        localProvider,
+        getProviderTokenDir(localProvider),
+        pendingAuth.nickname,
+        false,
+        tokenSnapshot.file
+      );
+
+      if (!account) {
+        if (parsed.state) {
+          pendingManualAuthState.delete(parsed.state);
+        }
+        res.status(409).json({
+          error: getManualCallbackRegistrationError(localProvider),
+        });
+        return;
+      }
+
+      if (parsed.state) {
+        try {
+          await ensureManagedModelPrefixes([account.provider]);
+        } catch {
+          // Keep manual callback success path non-fatal when prefix repair cannot run.
+        }
+      }
+
+      res.json({
+        success: true,
+        account: {
+          id: account.id,
+          email: account.email,
+          nickname: account.nickname,
+          provider: account.provider,
+          isDefault: account.isDefault,
+        },
+      });
+      if (parsed.state) {
+        pendingManualAuthState.delete(parsed.state);
+      }
+      return;
+    }
+
+    const account = registerAccountFromToken(
+      localProvider,
+      getProviderTokenDir(localProvider),
+      undefined,
+      false,
+      undefined
+    );
+
+    if (!account) {
+      res.status(409).json({
+        error: getManualCallbackRegistrationError(localProvider),
+      });
+      return;
+    }
+
+    res.json({
+      success: true,
+      account: {
+        id: account.id,
+        email: account.email,
+        nickname: account.nickname,
+        provider: account.provider,
+        isDefault: account.isDefault,
+      },
+    });
   } catch (error) {
     respondInternalError(res, error, 'CLIProxyAPI not reachable.', 503);
   }

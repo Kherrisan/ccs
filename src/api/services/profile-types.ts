@@ -5,6 +5,7 @@
  */
 
 import type { TargetType } from '../../targets/target-adapter';
+import type { CLIProxyProvider } from '../../cliproxy/types';
 
 /** Model mapping for API profiles */
 export interface ModelMapping {
@@ -21,6 +22,7 @@ export interface ApiProfileInfo {
   isConfigured: boolean;
   configSource: 'unified' | 'legacy';
   target: TargetType;
+  cliproxyBridge?: CliproxyBridgeMetadata | null;
 }
 
 /** CLIProxy variant info */
@@ -42,6 +44,72 @@ export interface CreateApiProfileResult {
   success: boolean;
   settingsFile: string;
   error?: string;
+}
+
+export interface CliproxyBridgeProviderInfo {
+  provider: CLIProxyProvider;
+  displayName: string;
+  description: string;
+  defaultProfileName: string;
+  routePath: string;
+}
+
+export interface CliproxyBridgeMetadata {
+  provider: CLIProxyProvider;
+  providerDisplayName: string;
+  routePath: string;
+  currentBaseUrl: string;
+  source: 'local' | 'remote';
+  usesCurrentTarget: boolean;
+  usesCurrentAuthToken: boolean;
+}
+
+export interface ImageAnalysisProfileStatus {
+  enabled: boolean;
+  supported: boolean;
+  status: 'active' | 'mapped' | 'attention' | 'disabled' | 'skipped' | 'hook-missing';
+  backendId: string | null;
+  backendDisplayName: string | null;
+  model: string | null;
+  resolutionSource:
+    | 'cliproxy-provider'
+    | 'cliproxy-variant'
+    | 'cliproxy-composite'
+    | 'copilot-alias'
+    | 'cliproxy-bridge'
+    | 'profile-backend'
+    | 'fallback-backend'
+    | 'disabled'
+    | 'unsupported-profile'
+    | 'unresolved'
+    | 'missing-model';
+  reason: string | null;
+  shouldPersistHook: boolean;
+  persistencePath: string | null;
+  runtimePath: string | null;
+  usesCurrentTarget: boolean | null;
+  usesCurrentAuthToken: boolean | null;
+  hookInstalled: boolean | null;
+  sharedHookInstalled: boolean | null;
+}
+
+export interface ResolvedCliproxyBridgeProfile {
+  name: string;
+  provider: CLIProxyProvider;
+  providerDisplayName: string;
+  baseUrl: string;
+  apiKey: string;
+  models: ModelMapping;
+  target: TargetType;
+  routePath: string;
+  source: 'local' | 'remote';
+}
+
+export interface CreateCliproxyBridgeProfileResult extends CreateApiProfileResult {
+  name?: string;
+  provider?: CLIProxyProvider;
+  target?: TargetType;
+  cliproxyBridge?: CliproxyBridgeMetadata | null;
 }
 
 /** Result from remove operation */

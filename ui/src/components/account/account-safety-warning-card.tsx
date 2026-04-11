@@ -8,6 +8,7 @@ import { RISK_ACK_PHRASE } from '@/components/account/antigravity-responsibility
 
 interface AccountSafetyWarningCardProps {
   className?: string;
+  compact?: boolean;
   showAcknowledgement?: boolean;
   acknowledgementPhrase?: string;
   acknowledgementText?: string;
@@ -18,6 +19,7 @@ interface AccountSafetyWarningCardProps {
 
 export function AccountSafetyWarningCard({
   className,
+  compact = false,
   showAcknowledgement = false,
   acknowledgementPhrase = RISK_ACK_PHRASE,
   acknowledgementText = '',
@@ -33,6 +35,60 @@ export function AccountSafetyWarningCard({
   const issueUrl = 'https://github.com/kaitranntt/ccs/issues/509';
   const issueLabel = t('accountSafetyWarning.issueLabel');
   const proxySettingsLabel = t('accountSafetyWarning.proxySettingsLabel');
+
+  if (compact) {
+    return (
+      <section
+        role="alert"
+        className={cn('border-b border-amber-200/70 bg-amber-50/45 dark:bg-amber-950/5', className)}
+      >
+        <div className="flex flex-col gap-3 px-6 py-3 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0 flex items-start gap-3">
+            <div className="mt-0.5 inline-flex h-6 w-6 items-center justify-center rounded-md bg-amber-500/12 text-amber-700 dark:text-amber-300">
+              <AlertTriangle className="h-3.5 w-3.5" />
+            </div>
+            <div className="min-w-0 space-y-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-xs font-semibold leading-5">{title}</p>
+                <p className="text-[11px] text-muted-foreground">{subtitle}</p>
+              </div>
+              <p className="text-xs leading-5 text-muted-foreground">{firstLine}</p>
+              <p className="text-xs font-medium leading-5 text-amber-900 dark:text-amber-200">
+                {secondLine}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+            <a
+              href={issueUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 rounded-md border border-amber-500/25 bg-background/90 px-2 py-1 text-[11px] font-medium text-amber-800 transition-colors hover:bg-amber-500/10 dark:text-amber-200"
+            >
+              {issueLabel}
+              <ExternalLink className="h-3 w-3" />
+            </a>
+            {showProxySettingsLink ? (
+              <a
+                href="/settings?tab=proxy"
+                className="inline-flex items-center gap-1 rounded-md border border-amber-500/25 bg-background/90 px-2 py-1 text-[11px] font-medium text-amber-800 transition-colors hover:bg-amber-500/10 dark:text-amber-200"
+              >
+                <Settings2 className="h-3 w-3" />
+                {proxySettingsLabel}
+              </a>
+            ) : null}
+            <Badge
+              variant="outline"
+              className="border-amber-500/40 text-[10px] text-amber-700 dark:text-amber-300"
+            >
+              High Risk
+            </Badge>
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section

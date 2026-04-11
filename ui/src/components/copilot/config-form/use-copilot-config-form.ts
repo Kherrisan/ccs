@@ -5,6 +5,7 @@
 
 import { useState, useMemo, useCallback } from 'react';
 import { useCopilot } from '@/hooks/use-copilot';
+import type { CopilotNormalizationWarning } from '@/hooks/use-copilot';
 import { isApiConflictError } from '@/lib/api-client';
 import { toast } from 'sonner';
 import type { ModelPreset } from './types';
@@ -16,6 +17,17 @@ const REQUIRED_ENV_KEYS = ['ANTHROPIC_BASE_URL', 'ANTHROPIC_AUTH_TOKEN'] as cons
 function checkMissingFields(settings: { env?: Record<string, string> } | undefined): string[] {
   const env = settings?.env || {};
   return REQUIRED_ENV_KEYS.filter((key) => !env[key]?.trim());
+}
+
+function dedupeWarnings(
+  warnings: CopilotNormalizationWarning[] | undefined
+): CopilotNormalizationWarning[] {
+  if (!warnings || warnings.length === 0) return [];
+  const unique = new Map<string, CopilotNormalizationWarning>();
+  warnings.forEach((warning) => {
+    unique.set(warning.message, warning);
+  });
+  return [...unique.values()];
 }
 
 export function useCopilotConfigForm() {
@@ -128,11 +140,20 @@ export function useCopilotConfigForm() {
     [currentSettingsForValidation]
   );
 
-  const handleSave = async () => {
+  const normalizationWarnings = useMemo(
+    () => dedupeWarnings([...(config?.warnings ?? []), ...(rawSettings?.warnings ?? [])]),
+    [config?.warnings, rawSettings?.warnings]
+  );
+
+  const handleSave = async ({
+    overwriteRawSettings = false,
+  }: { overwriteRawSettings?: boolean } = {}) => {
     try {
+      const saveWarnings: CopilotNormalizationWarning[] = [];
+
       // Save config changes
       if (Object.keys(localOverrides).length > 0) {
-        await updateConfigAsync({
+        const configResult = await updateConfigAsync({
           enabled,
           auto_start: autoStart,
           port,
@@ -144,26 +165,39 @@ export function useCopilotConfigForm() {
           sonnet_model: sonnetModel || undefined,
           haiku_model: haikuModel || undefined,
         });
+        saveWarnings.push(...(configResult.warnings ?? []));
       }
 
       // Save raw JSON changes (no blocking validation - runtime uses defaults)
+      let missing: string[] = [];
       if (rawJsonEdits !== null && isRawJsonValid) {
         const settingsToSave = JSON.parse(rawJsonContent);
-        const missing = checkMissingFields(settingsToSave);
+        missing = checkMissingFields(settingsToSave);
 
-        await saveRawSettingsAsync({
+        const saveResult = await saveRawSettingsAsync({
           settings: settingsToSave,
-          expectedMtime: rawSettings?.mtime,
+          expectedMtime: overwriteRawSettings ? undefined : rawSettings?.mtime,
         });
+        saveWarnings.push(...(saveResult.warnings ?? []));
+      }
 
-        // Show warning if fields missing
-        if (missing.length > 0) {
-          toast.success('Copilot configuration saved', {
-            description: `Missing fields will use defaults: ${missing.join(', ')}`,
-          });
-        } else {
-          toast.success('Copilot configuration saved');
-        }
+      const uniqueWarnings = dedupeWarnings(saveWarnings);
+      const descriptions: string[] = [];
+      if (uniqueWarnings.length > 0) {
+        descriptions.push(uniqueWarnings.map((warning) => warning.message).join(' '));
+      }
+      if (missing.length > 0) {
+        descriptions.push(`Missing fields will use defaults: ${missing.join(', ')}`);
+      }
+
+      if (uniqueWarnings.length > 0) {
+        toast.warning('Copilot configuration saved with model adjustments', {
+          description: descriptions.join(' '),
+        });
+      } else if (descriptions.length > 0) {
+        toast.success('Copilot configuration saved', {
+          description: descriptions.join(' '),
+        });
       } else {
         toast.success('Copilot configuration saved');
       }
@@ -183,8 +217,7 @@ export function useCopilotConfigForm() {
   const handleConflictResolve = async (overwrite: boolean) => {
     setConflictDialog(false);
     if (overwrite) {
-      await refetchRawSettings();
-      handleSave();
+      await handleSave({ overwriteRawSettings: true });
     } else {
       setRawJsonEdits(null);
     }
@@ -217,6 +250,7 @@ export function useCopilotConfigForm() {
     haikuModel,
     isRawJsonValid,
     hasChanges,
+    normalizationWarnings,
 
     // Dialog state
     conflictDialog,

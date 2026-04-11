@@ -3,8 +3,9 @@ import { HeroSection } from '@/components/layout/hero-section';
 import { AuthMonitor } from '@/components/monitoring/auth-monitor';
 import { ErrorLogsMonitor } from '@/components/error-logs-monitor';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Key, Zap, Users, Activity, AlertTriangle } from 'lucide-react';
+import { Key, Zap, Users, Activity, AlertTriangle, ArrowRight, ScrollText } from 'lucide-react';
 import { useOverview } from '@/hooks/use-overview';
 import { useSharedSummary } from '@/hooks/use-shared';
 import { cn } from '@/lib/utils';
@@ -179,7 +180,27 @@ export function HomePage() {
       {/* Auth Monitor */}
       <AuthMonitor />
 
-      {/* Error Logs Monitor - shows only when there are errors */}
+      <div className="rounded-xl border bg-card/70 p-5">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div className="flex items-start gap-3">
+            <div className="rounded-xl bg-muted p-2.5">
+              <ScrollText className="h-5 w-5 text-muted-foreground" />
+            </div>
+            <div className="space-y-1">
+              <h2 className="text-lg font-semibold">Logs moved to a dedicated workspace</h2>
+              <p className="max-w-2xl text-sm text-muted-foreground">
+                Use the unified logs page for source-level filtering, structured entry inspection,
+                and retention policy edits without crowding the home dashboard.
+              </p>
+            </div>
+          </div>
+          <Button variant="outline" className="gap-2" onClick={() => navigate('/logs')}>
+            Open logs
+            <ArrowRight className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+
       <ErrorLogsMonitor />
     </div>
   );

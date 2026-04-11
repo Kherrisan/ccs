@@ -48,6 +48,68 @@ class RecoveryManager {
   }
 
   /**
+   * Remove a dangling symlink so recovery can recreate the directory.
+   * Mirrors scripts/postinstall.js behavior for skipped lifecycle installs.
+   */
+  private removeIfBrokenSymlink(targetPath: string): boolean {
+    try {
+      const stats = fs.lstatSync(targetPath);
+      if (!stats.isSymbolicLink()) {
+        return false;
+      }
+
+      try {
+        fs.statSync(targetPath);
+        return false;
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code;
+        if (code !== 'ENOENT' && code !== 'ENOTDIR') {
+          return false;
+        }
+
+        fs.unlinkSync(targetPath);
+        this.recovered.push(`Removed broken symlink: ${targetPath}`);
+        return true;
+      }
+    } catch {
+      return false;
+    }
+  }
+
+  private inspectDirectoryPath(
+    targetPath: string
+  ): { state: 'ready' } | { state: 'missing' } | { state: 'invalid'; reason: string } {
+    try {
+      const stats = fs.lstatSync(targetPath);
+
+      if (stats.isSymbolicLink()) {
+        try {
+          return fs.statSync(targetPath).isDirectory()
+            ? { state: 'ready' }
+            : { state: 'invalid', reason: 'symlink target is not a directory' };
+        } catch (error) {
+          const code = (error as NodeJS.ErrnoException).code;
+          return code === 'ENOENT' || code === 'ENOTDIR'
+            ? { state: 'missing' }
+            : {
+                state: 'invalid',
+                reason: `symlink target is not accessible (${code || 'unknown'})`,
+              };
+        }
+      }
+
+      return stats.isDirectory()
+        ? { state: 'ready' }
+        : { state: 'invalid', reason: 'existing path is not a directory' };
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      return code === 'ENOENT'
+        ? { state: 'missing' }
+        : { state: 'invalid', reason: `could not inspect path (${code || 'unknown'})` };
+    }
+  }
+
+  /**
    * Ensure ~/.ccs/config.yaml exists with defaults
    * This is the primary config format (YAML unified config)
    */
@@ -126,20 +188,34 @@ class RecoveryManager {
   ensureSharedDirectories(): boolean {
     let created = false;
 
+    this.removeIfBrokenSymlink(this.sharedDir);
+    const sharedState = this.inspectDirectoryPath(this.sharedDir);
+
     // Create shared directory
-    if (!fs.existsSync(this.sharedDir)) {
+    if (sharedState.state === 'missing') {
       fs.mkdirSync(this.sharedDir, { recursive: true, mode: 0o755 });
       this.recovered.push(`Created ${this.sharedDir}`);
       created = true;
+    } else if (sharedState.state === 'invalid') {
+      this.recovered.push(`Skipped ${this.sharedDir}: ${sharedState.reason}`);
+      return created;
     }
 
     // Create subdirectories
     const subdirs = ['commands', 'skills', 'agents', 'plugins'];
     for (const subdir of subdirs) {
       const subdirPath = path.join(this.sharedDir, subdir);
-      if (!fs.existsSync(subdirPath)) {
+      this.removeIfBrokenSymlink(subdirPath);
+      const subdirState = this.inspectDirectoryPath(subdirPath);
+
+      if (subdirState.state === 'missing') {
         fs.mkdirSync(subdirPath, { recursive: true, mode: 0o755 });
         created = true;
+        continue;
+      }
+
+      if (subdirState.state === 'invalid') {
+        this.recovered.push(`Skipped ${subdirPath}: ${subdirState.reason}`);
       }
     }
 
@@ -200,8 +276,8 @@ class RecoveryManager {
    * Run all recovery operations (lazy initialization)
    * Mirrors postinstall.js behavior
    *
-   * NOTE: GLM/GLMT/Kimi profiles are NOT auto-created.
-   * Users should create them via `ccs api create --preset glm` or the UI.
+   * NOTE: GLM/Kimi profiles are NOT auto-created.
+   * Users should create them via `ccs api create --preset glm|km` or the UI.
    */
   recoverAll(): boolean {
     this.recovered = [];

@@ -342,3 +342,82 @@
 .scrollbar-thin::-webkit-scrollbar-thumb:hover {
   background: var(--muted-foreground);
 }
+
+.scrollbar-editor {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+  scrollbar-gutter: stable;
+}
+
+.scrollbar-editor::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.scrollbar-editor::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-editor::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border: 2px solid transparent;
+  border-radius: 9999px;
+  background-clip: content-box;
+  min-height: 32px;
+}
+
+.scrollbar-editor::-webkit-scrollbar-thumb:hover {
+  background: var(--muted-foreground);
+  background-clip: content-box;
+}
+
+.scrollbar-editor::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+@keyframes scan {
+  0% {
+    transform: translateY(0);
+  }
+  100% {
+    transform: translateY(100%);
+  }
+}
+
+.animate-scan {
+  animation: scan 8s linear infinite;
+}
+
+@keyframes slide-in-from-right {
+  from {
+    transform: translateX(10px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slide-in-from-left {
+  from {
+    transform: translateX(-10px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.slide-in-from-right-4 {
+  animation: slide-in-from-right 0.5s ease-out;
+}
+
+.slide-in-from-left-2 {
+  animation: slide-in-from-left 0.4s ease-out;
+}
+
+.slide-in-from-bottom-2 {
+  animation: enter 0.3s ease-out;
+}

@@ -7,12 +7,14 @@
 
 import { WebSocketServer, WebSocket } from 'ws';
 import { createFileWatcher, FileChangeEvent } from './file-watcher';
-import { info, warn } from '../utils/ui';
 import {
   projectSelectionEvents,
   type ProjectSelectionPrompt,
 } from '../cliproxy/project-selection-handler';
 import { deviceCodeEvents, type DeviceCodePrompt } from '../cliproxy/device-code-handler';
+import { createLogger } from '../services/logging';
+
+const logger = createLogger('web-server:websocket');
 
 export interface WSMessage {
   type: string;
@@ -36,7 +38,7 @@ export function setupWebSocket(wss: WebSocketServer): { cleanup: () => void } {
   // Handle new connections
   wss.on('connection', (ws) => {
     clients.add(ws);
-    console.log(info(`[WS] Client connected (${clients.size} total)`));
+    logger.info('client.connected', 'WebSocket client connected', { clients: clients.size });
 
     // Send welcome message
     ws.send(JSON.stringify({ type: 'connected', timestamp: Date.now() }));
@@ -47,18 +49,20 @@ export function setupWebSocket(wss: WebSocketServer): { cleanup: () => void } {
         const message = JSON.parse(data.toString());
         handleClientMessage(ws, message);
       } catch {
-        console.log(warn('[WS] Invalid message format'));
+        logger.warn('message.invalid', 'WebSocket client sent invalid JSON');
       }
     });
 
     // Handle disconnect
     ws.on('close', () => {
       clients.delete(ws);
-      console.log(info(`[WS] Client disconnected (${clients.size} remaining)`));
+      logger.info('client.disconnected', 'WebSocket client disconnected', {
+        clients: clients.size,
+      });
     });
 
     ws.on('error', (err) => {
-      console.log(warn(`[WS] Error: ${err.message}`));
+      logger.warn('client.error', 'WebSocket client error', { message: err.message });
       clients.delete(ws);
     });
   });
@@ -73,13 +77,15 @@ export function setupWebSocket(wss: WebSocketServer): { cleanup: () => void } {
         // Future: selective subscriptions
         break;
       default:
-        console.log(warn(`[WS] Unknown message type: ${message.type}`));
+        logger.warn('message.unknown', 'WebSocket client sent unknown message type', {
+          type: String(message.type),
+        });
     }
   }
 
   // Setup file watcher
   const watcher = createFileWatcher((event: FileChangeEvent) => {
-    console.log(info(`[FS] ${event.type}: ${event.path}`));
+    logger.debug('file.changed', 'Dashboard file watcher detected a change', { ...event });
     broadcast({
       type: event.type,
       path: event.path,
@@ -89,7 +95,9 @@ export function setupWebSocket(wss: WebSocketServer): { cleanup: () => void } {
 
   // Listen for project selection events and broadcast to clients
   const handleProjectSelectionRequired = (prompt: ProjectSelectionPrompt): void => {
-    console.log(info(`[WS] Broadcasting project selection prompt (session: ${prompt.sessionId})`));
+    logger.info('project-selection.required', 'Broadcasting project selection prompt', {
+      sessionId: prompt.sessionId,
+    });
     broadcast({
       type: 'projectSelectionRequired',
       ...prompt,
@@ -98,7 +106,7 @@ export function setupWebSocket(wss: WebSocketServer): { cleanup: () => void } {
   };
 
   const handleProjectSelectionTimeout = (sessionId: string): void => {
-    console.log(info(`[WS] Project selection timed out (session: ${sessionId})`));
+    logger.info('project-selection.timeout', 'Project selection prompt timed out', { sessionId });
     broadcast({
       type: 'projectSelectionTimeout',
       sessionId,
@@ -110,7 +118,7 @@ export function setupWebSocket(wss: WebSocketServer): { cleanup: () => void } {
     sessionId: string;
     selectedId: string;
   }): void => {
-    console.log(info(`[WS] Project selection submitted (session: ${response.sessionId})`));
+    logger.info('project-selection.submitted', 'Project selection submitted', response);
     broadcast({
       type: 'projectSelectionSubmitted',
       ...response,
@@ -120,7 +128,9 @@ export function setupWebSocket(wss: WebSocketServer): { cleanup: () => void } {
 
   // Listen for device code events and broadcast to clients
   const handleDeviceCodeReceived = (prompt: DeviceCodePrompt): void => {
-    console.log(info(`[WS] Broadcasting device code (session: ${prompt.sessionId})`));
+    logger.info('device-code.received', 'Broadcasting device code prompt', {
+      sessionId: prompt.sessionId,
+    });
     broadcast({
       type: 'deviceCodeReceived',
       ...prompt,
@@ -129,7 +139,7 @@ export function setupWebSocket(wss: WebSocketServer): { cleanup: () => void } {
   };
 
   const handleDeviceCodeCompleted = (sessionId: string): void => {
-    console.log(info(`[WS] Device code auth completed (session: ${sessionId})`));
+    logger.info('device-code.completed', 'Device code auth completed', { sessionId });
     broadcast({
       type: 'deviceCodeCompleted',
       sessionId,
@@ -138,7 +148,7 @@ export function setupWebSocket(wss: WebSocketServer): { cleanup: () => void } {
   };
 
   const handleDeviceCodeFailed = (data: { sessionId: string; error?: string }): void => {
-    console.log(info(`[WS] Device code auth failed (session: ${data.sessionId})`));
+    logger.warn('device-code.failed', 'Device code auth failed', data);
     broadcast({
       type: 'deviceCodeFailed',
       ...data,
@@ -147,7 +157,7 @@ export function setupWebSocket(wss: WebSocketServer): { cleanup: () => void } {
   };
 
   const handleDeviceCodeExpired = (sessionId: string): void => {
-    console.log(info(`[WS] Device code expired (session: ${sessionId})`));
+    logger.info('device-code.expired', 'Device code expired', { sessionId });
     broadcast({
       type: 'deviceCodeExpired',
       sessionId,
