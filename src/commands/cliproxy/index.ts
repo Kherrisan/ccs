@@ -147,6 +147,8 @@ export async function handleCliproxyCommand(args: string[]): Promise<void> {
 
   // Catalog commands
   if (command === 'catalog') {
+    // --json takes priority over subcommands (refresh/reset) — it always
+    // outputs the current resolved catalog regardless of other arguments.
     if (hasAnyFlag(remainingArgs, ['--json'])) {
       handleCatalogJson();
       return;
