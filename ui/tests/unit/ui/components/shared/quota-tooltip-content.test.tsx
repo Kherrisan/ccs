@@ -12,22 +12,22 @@ function createGeminiQuotaResult(
       {
         id: 'gemini-flash-lite-series::combined',
         label: 'Gemini Flash Lite Series',
-        tokenType: null,
+        tokenType: 'requests',
         remainingFraction: 1,
         remainingPercent: 100,
         remainingAmount: 100,
         resetTime: '2026-01-30T09:00:00Z',
-        modelIds: ['gemini-2.5-flash-lite'],
+        modelIds: ['gemini-2.5-flash-lite', 'gemini-3.1-flash-lite-preview'],
       },
       {
         id: 'gemini-flash-series::combined',
         label: 'Gemini Flash Series',
-        tokenType: null,
+        tokenType: 'requests',
         remainingFraction: 0.82,
         remainingPercent: 82,
         remainingAmount: 82,
         resetTime: '2026-01-30T14:00:00Z',
-        modelIds: ['gemini-3-flash-preview'],
+        modelIds: ['gemini-3-flash-preview', 'gemini-3.1-flash-preview', 'gemini-2.5-flash'],
       },
     ],
     projectId: 'cloudaicompanion-test-123',
@@ -51,7 +51,7 @@ function createGeminiQuotaResult(
 }
 
 describe('QuotaTooltipContent', () => {
-  it('renders Gemini tier, credits, remaining amount, and bucket reset timestamps', () => {
+  it('renders Gemini tier, model coverage, and clearer bucket wording', () => {
     const quota = createGeminiQuotaResult();
     const expectedReset = new Date('2026-01-30T14:00:00Z').toLocaleString(undefined, {
       month: '2-digit',
@@ -69,9 +69,17 @@ describe('QuotaTooltipContent', () => {
     expect(screen.getByText('g1-pro-tier')).toBeInTheDocument();
     expect(screen.getByText('Credits')).toBeInTheDocument();
     expect(screen.getByText('12')).toBeInTheDocument();
-    expect(screen.getByText('Gemini Flash Lite Series')).toBeInTheDocument();
-    expect(screen.getByText('100 remaining')).toBeInTheDocument();
-    expect(screen.getByText('82 remaining')).toBeInTheDocument();
+    expect(screen.getByText('Model quotas:')).toBeInTheDocument();
+    expect(screen.getByText('All buckets report Requests')).toBeInTheDocument();
+    expect(screen.getByText('Flash Lite')).toBeInTheDocument();
+    expect(
+      screen.getByText('gemini-2.5-flash-lite, gemini-3.1-flash-lite-preview')
+    ).toBeInTheDocument();
+    expect(screen.getByText('100 requests remaining')).toBeInTheDocument();
+    expect(
+      screen.getByText('gemini-3-flash-preview, gemini-3.1-flash-preview, gemini-2.5-flash')
+    ).toBeInTheDocument();
+    expect(screen.getByText('82 requests remaining')).toBeInTheDocument();
     expect(screen.getByText(expectedReset)).toBeInTheDocument();
   });
 

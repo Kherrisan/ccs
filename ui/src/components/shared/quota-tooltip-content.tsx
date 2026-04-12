@@ -78,6 +78,63 @@ function getClaudeWindowDisplayLabel(rateLimitType: string, fallback: string): s
   }
 }
 
+function formatGeminiTokenType(tokenType: string | null | undefined): string | null {
+  if (!tokenType) return null;
+
+  switch (tokenType.trim().toLowerCase()) {
+    case 'requests':
+      return 'Requests';
+    case 'input':
+      return 'Input tokens';
+    case 'output':
+      return 'Output tokens';
+    default:
+      return tokenType
+        .split(/[\s_-]+/g)
+        .map((part) => part.trim())
+        .filter((part) => part.length > 0)
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(' ');
+  }
+}
+
+function formatGeminiBucketLabel(label: string): string {
+  switch (label) {
+    case 'Gemini Flash Lite Series':
+      return 'Flash Lite';
+    case 'Gemini Flash Series':
+      return 'Flash';
+    case 'Gemini Pro Series':
+      return 'Pro';
+    default:
+      return label;
+  }
+}
+
+function formatGeminiBucketModels(modelIds: string[] | undefined): string | null {
+  const uniqueModelIds = Array.from(new Set((modelIds || []).filter(Boolean)));
+  return uniqueModelIds.length > 0 ? uniqueModelIds.join(', ') : null;
+}
+
+function formatGeminiRemainingAmount(
+  remainingAmount: number | null | undefined,
+  tokenType: string | null | undefined
+): string | null {
+  if (remainingAmount === null || remainingAmount === undefined) return null;
+
+  const formattedAmount = remainingAmount.toLocaleString();
+  switch (tokenType?.trim().toLowerCase()) {
+    case 'requests':
+      return `${formattedAmount} requests remaining`;
+    case 'input':
+      return `${formattedAmount} input tokens remaining`;
+    case 'output':
+      return `${formattedAmount} output tokens remaining`;
+    default:
+      return `${formattedAmount} remaining`;
+  }
+}
+
 function renderEntitlementRows(entitlement: ProviderEntitlementEvidence | undefined) {
   if (!entitlement) return null;
 
@@ -301,6 +358,14 @@ export function QuotaTooltipContent({ quota, resetTime }: QuotaTooltipContentPro
     const hasBucketResetTime = quota.buckets.some((bucket) => !!bucket.resetTime);
     const hasEntitlementTier =
       !!quota.entitlement?.rawTierLabel || quota.entitlement?.normalizedTier !== 'unknown';
+    const distinctTokenTypes = Array.from(
+      new Set(
+        quota.buckets
+          .map((bucket) => formatGeminiTokenType(bucket.tokenType))
+          .filter((tokenType): tokenType is string => !!tokenType)
+      )
+    );
+    const sharedTokenType = distinctTokenTypes.length === 1 ? distinctTokenTypes[0] : null;
 
     return (
       <div className="text-xs space-y-1.5">
@@ -317,28 +382,53 @@ export function QuotaTooltipContent({ quota, resetTime }: QuotaTooltipContentPro
             <span className="font-mono">{quota.creditBalance.toLocaleString()}</span>
           </div>
         )}
-        <p className="font-medium">Buckets:</p>
-        {quota.buckets.map((b) => (
-          <div key={b.id} className="space-y-0.5">
-            <div className="flex justify-between gap-4">
-              <span className={cn(b.remainingPercent < 20 && lowQuotaTextClass)}>
-                {b.label}
-                {b.tokenType ? ` (${b.tokenType})` : ''}
-              </span>
-              <span className="font-mono">{b.remainingPercent}%</span>
-            </div>
-            {((b.remainingAmount !== null && b.remainingAmount !== undefined) || b.resetTime) && (
-              <div className="flex justify-between gap-4 text-[11px] text-muted-foreground">
-                <span>
-                  {b.remainingAmount !== null && b.remainingAmount !== undefined
-                    ? `${b.remainingAmount.toLocaleString()} remaining`
-                    : ''}
-                </span>
-                <span>{formatAbsoluteResetTime(b.resetTime) ?? ''}</span>
+        <div className="space-y-1">
+          <p className="font-medium">Model quotas:</p>
+          {sharedTokenType && (
+            <p className="text-[11px] text-muted-foreground">
+              All buckets report {sharedTokenType}
+            </p>
+          )}
+        </div>
+        {quota.buckets.map((bucket) => {
+          const bucketTokenType = sharedTokenType ? null : formatGeminiTokenType(bucket.tokenType);
+          const bucketModels = formatGeminiBucketModels(bucket.modelIds);
+          const remainingAmountLabel = formatGeminiRemainingAmount(
+            bucket.remainingAmount,
+            bucket.tokenType
+          );
+
+          return (
+            <div key={bucket.id} className="space-y-0.5">
+              <div className="flex justify-between gap-4">
+                <div className="min-w-0 space-y-0.5">
+                  <div className="flex items-center gap-2">
+                    <span className={cn(bucket.remainingPercent < 20 && lowQuotaTextClass)}>
+                      {formatGeminiBucketLabel(bucket.label)}
+                    </span>
+                    {bucketTokenType && (
+                      <span className="rounded border border-border/60 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+                        {bucketTokenType}
+                      </span>
+                    )}
+                  </div>
+                  {bucketModels && (
+                    <div className="break-words text-[11px] text-muted-foreground">
+                      {bucketModels}
+                    </div>
+                  )}
+                </div>
+                <span className="shrink-0 font-mono">{bucket.remainingPercent}%</span>
               </div>
-            )}
-          </div>
-        ))}
+              {(remainingAmountLabel || bucket.resetTime) && (
+                <div className="flex justify-between gap-4 text-[11px] text-muted-foreground">
+                  <span>{remainingAmountLabel ?? ''}</span>
+                  <span>{formatAbsoluteResetTime(bucket.resetTime) ?? ''}</span>
+                </div>
+              )}
+            </div>
+          );
+        })}
         {!hasBucketResetTime && <ResetTimeIndicator resetTime={resetTime} />}
       </div>
     );
