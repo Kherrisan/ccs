@@ -29,7 +29,8 @@ function hasEnvValue(name: string): boolean {
 }
 
 function hasValidSearxngUrl(url: string | undefined): boolean {
-  return normalizeSearxngBaseUrl(url) !== null;
+  const normalized = normalizeSearxngBaseUrl(url);
+  return normalized !== null && normalized !== '';
 }
 
 function getProviderStatePath(): string {

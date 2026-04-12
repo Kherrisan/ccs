@@ -169,6 +169,60 @@ describe('websearch readiness', () => {
     }
   });
 
+  it('marks SearXNG as unavailable when enabled with a blank URL', () => {
+    const getConfigSpy = spyOn(unifiedConfigLoader, 'getWebSearchConfig').mockReturnValue({
+      enabled: true,
+      providers: {
+        exa: { enabled: false, max_results: 5 },
+        tavily: { enabled: false, max_results: 5 },
+        brave: { enabled: false, max_results: 5 },
+        searxng: {
+          enabled: true,
+          url: '',
+          max_results: 5,
+        },
+        duckduckgo: { enabled: false, max_results: 5 },
+        gemini: { enabled: false },
+        grok: { enabled: false },
+        opencode: { enabled: false },
+      },
+    } as any);
+    const apiKeySpy = spyOn(providerSecrets, 'getWebSearchApiKeyStates').mockReturnValue({
+      exa: { envVar: 'EXA_API_KEY', configured: false, available: false, source: 'none' },
+      tavily: { envVar: 'TAVILY_API_KEY', configured: false, available: false, source: 'none' },
+      brave: { envVar: 'BRAVE_API_KEY', configured: false, available: false, source: 'none' },
+    });
+    const geminiStatusSpy = spyOn(geminiCli, 'getGeminiCliStatus').mockReturnValue({
+      installed: false,
+      version: null,
+    } as any);
+    const geminiAuthSpy = spyOn(geminiCli, 'isGeminiAuthenticated').mockReturnValue(false);
+    const grokStatusSpy = spyOn(grokCli, 'getGrokCliStatus').mockReturnValue({
+      installed: false,
+      version: null,
+    } as any);
+    const opencodeStatusSpy = spyOn(opencodeCli, 'getOpenCodeCliStatus').mockReturnValue({
+      installed: false,
+      version: null,
+    } as any);
+
+    try {
+      const providers = getWebSearchCliProviders();
+      const searxng = providers.find((entry) => entry.id === 'searxng');
+
+      expect(searxng?.enabled).toBe(true);
+      expect(searxng?.available).toBe(false);
+      expect(searxng?.detail).toContain('Set a valid SearXNG base URL');
+    } finally {
+      getConfigSpy.mockRestore();
+      apiKeySpy.mockRestore();
+      geminiStatusSpy.mockRestore();
+      geminiAuthSpy.mockRestore();
+      grokStatusSpy.mockRestore();
+      opencodeStatusSpy.mockRestore();
+    }
+  });
+
   it('treats cooled-down providers as temporarily unavailable in readiness status', () => {
     const tempHome = mkdtempSync(join(tmpdir(), 'websearch-status-cooldown-'));
     const statePath = join(tempHome, '.ccs', 'cache', 'websearch-provider-state.json');
