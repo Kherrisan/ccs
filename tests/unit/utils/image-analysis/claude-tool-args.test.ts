@@ -36,4 +36,47 @@ describe('appendThirdPartyImageAnalysisToolArgs', () => {
       'extra',
     ]);
   });
+
+  // File mode: --append-system-prompt-file when user passes --append-system-prompt-file
+
+  it('uses --append-system-prompt-file when user passes --append-system-prompt-file', () => {
+    const result = appendThirdPartyImageAnalysisToolArgs([
+      '-p',
+      'describe',
+      '--append-system-prompt-file',
+      '/tmp/user-prompt.txt',
+    ]);
+
+    expect(result).toContain('--append-system-prompt-file');
+    expect(result).not.toContain('--append-system-prompt');
+    const fileFlags = result.filter((arg) => arg === '--append-system-prompt-file');
+    expect(fileFlags.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('uses --append-system-prompt-file when user passes equals form', () => {
+    const result = appendThirdPartyImageAnalysisToolArgs([
+      '-p',
+      'describe',
+      '--append-system-prompt-file=/tmp/user-prompt.txt',
+    ]);
+
+    expect(result).not.toContain('--append-system-prompt');
+    const fileFlags = result.filter(
+      (arg) => arg === '--append-system-prompt-file' || arg.startsWith('--append-system-prompt-file=')
+    );
+    expect(fileFlags.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('does not treat unrelated user prompt files as the managed CCS steering prompt', () => {
+    const result = appendThirdPartyImageAnalysisToolArgs([
+      '-p',
+      'describe',
+      '--append-system-prompt-file',
+      '/tmp/user-ccs-prompt-image-analysis-tool-notes.txt',
+    ]);
+
+    const filePaths = result.filter((arg, index) => result[index - 1] === '--append-system-prompt-file');
+    expect(filePaths).toContain('/tmp/user-ccs-prompt-image-analysis-tool-notes.txt');
+    expect(filePaths.some((filePath) => filePath.endsWith('/ccs-prompt-image-analysis-tool.txt'))).toBe(true);
+  });
 });

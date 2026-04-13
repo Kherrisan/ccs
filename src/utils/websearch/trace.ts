@@ -11,13 +11,12 @@ import * as os from 'os';
 import * as path from 'path';
 import { getCcsDir } from '../config-manager';
 import { createLogger } from '../../services/logging';
+import { hasManagedPromptFileArg, PROMPT_FLAG_INLINE } from '../prompt-injection-strategy';
+import { THIRD_PARTY_WEBSEARCH_STEERING_PROMPT } from './claude-tool-args';
 
 const TRACE_FILE_NAME = 'websearch-trace.jsonl';
 const NATIVE_WEBSEARCH_TOOL = 'WebSearch';
 const DISALLOWED_TOOLS_FLAG = '--disallowedTools';
-const APPEND_SYSTEM_PROMPT_FLAG = '--append-system-prompt';
-const THIRD_PARTY_WEBSEARCH_STEERING_PROMPT =
-  'For web lookup or current-information requests, prefer the CCS MCP tool WebSearch instead of Bash/curl/http fetches. If the user explicitly wants shell commands, or WebSearch is unavailable or fails, you may fall back to Bash/network tools.';
 const logger = createLogger('websearch');
 
 function parseToolValue(rawValue: string): string[] {
@@ -58,14 +57,23 @@ function hasToolInFlag(args: string[], flag: string, toolName: string): boolean 
   return false;
 }
 
-function hasExactFlagValue(args: string[], flag: string, expectedValue: string): boolean {
+function hasExactFlagValue(params: {
+  args: string[];
+  flag: string;
+  expectedValue: string;
+}): boolean {
+  const { args, flag, expectedValue } = params;
+
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
 
     if (arg === flag) {
-      if (getImmediateFlagValue(args, index) === expectedValue) {
+      const immediateFlagValue = getImmediateFlagValue(args, index);
+
+      if (immediateFlagValue === expectedValue) {
         return true;
       }
+
       continue;
     }
 
@@ -179,16 +187,30 @@ function buildLaunchId(): string {
   return `websearch-${Date.now()}-${process.pid}-${random}`;
 }
 
+function hasSteeringPromptInArgs(args: string[]): boolean {
+  if (
+    hasExactFlagValue({
+      args,
+      flag: PROMPT_FLAG_INLINE,
+      expectedValue: THIRD_PARTY_WEBSEARCH_STEERING_PROMPT.content,
+    })
+  ) {
+    return true;
+  }
+
+  if (hasManagedPromptFileArg({ args, promptName: THIRD_PARTY_WEBSEARCH_STEERING_PROMPT.name })) {
+    return true;
+  }
+
+  return false;
+}
+
 function summarizeLaunchArgs(args: string[]): Record<string, unknown> {
   return {
     argCount: args.length,
     hasSettingsFlag: args.includes('--settings'),
     nativeWebSearchDisallowed: hasToolInFlag(args, DISALLOWED_TOOLS_FLAG, NATIVE_WEBSEARCH_TOOL),
-    steeringPromptApplied: hasExactFlagValue(
-      args,
-      APPEND_SYSTEM_PROMPT_FLAG,
-      THIRD_PARTY_WEBSEARCH_STEERING_PROMPT
-    ),
+    steeringPromptApplied: hasSteeringPromptInArgs(args),
   };
 }
 

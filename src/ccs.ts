@@ -1050,6 +1050,7 @@ async function main(): Promise<void> {
           : getSettingsPath(profileInfo.name));
       const settings = resolvedSettings ?? loadSettings(expandedSettingsPath);
       const cliproxyBridge = resolvedCliproxyBridge ?? resolveCliproxyBridgeMetadata(settings);
+
       let imageAnalysisFallbackHookReady: boolean | undefined;
       if (resolvedTarget === 'claude') {
         if (imageAnalysisMcpReady) {
@@ -1315,6 +1316,7 @@ async function main(): Promise<void> {
         profileType: profileInfo.type,
         settingsPath: expandedSettingsPath,
       });
+
       execClaude(claudeCli, launchArgs, { ...envVars, ...traceEnv });
     } else if (profileInfo.type === 'account') {
       // NEW FLOW: Account-based profile (work, personal)

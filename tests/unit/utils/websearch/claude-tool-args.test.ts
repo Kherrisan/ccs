@@ -5,7 +5,7 @@ const STEERING_PROMPT =
   'For web lookup or current-information requests, prefer the CCS MCP tool WebSearch instead of Bash/curl/http fetches. If the user explicitly wants shell commands, or WebSearch is unavailable or fails, you may fall back to Bash/network tools.';
 
 describe('appendThirdPartyWebSearchToolArgs', () => {
-  it('appends native WebSearch suppression and steering prompt when no tool flags are present', () => {
+  it('appends native WebSearch suppression and inline steering prompt when no prompt flags are present', () => {
     expect(appendThirdPartyWebSearchToolArgs(['smoke'])).toEqual([
       'smoke',
       '--disallowedTools',
@@ -128,5 +128,45 @@ describe('appendThirdPartyWebSearchToolArgs', () => {
       '--append-system-prompt',
       STEERING_PROMPT,
     ]);
+  });
+
+  // File mode: --append-system-prompt-file when user passes --append-system-prompt-file
+
+  it('uses --append-system-prompt-file when user passes --append-system-prompt-file', () => {
+    const result = appendThirdPartyWebSearchToolArgs([
+      'smoke',
+      '--append-system-prompt-file',
+      '/tmp/user-prompt.txt',
+    ]);
+    expect(result).toContain('--disallowedTools');
+    expect(result).toContain('WebSearch');
+    const fileFlags = result.filter((arg) => arg === '--append-system-prompt-file');
+    expect(fileFlags.length).toBeGreaterThanOrEqual(2);
+    // No inline flag should be present
+    expect(result).not.toContain('--append-system-prompt');
+  });
+
+  it('uses --append-system-prompt-file when user passes --append-system-prompt-file= form', () => {
+    const result = appendThirdPartyWebSearchToolArgs([
+      'smoke',
+      '--append-system-prompt-file=/tmp/user-prompt.txt',
+    ]);
+    const fileFlags = result.filter(
+      (arg) => arg === '--append-system-prompt-file' || arg.startsWith('--append-system-prompt-file=')
+    );
+    expect(fileFlags.length).toBeGreaterThanOrEqual(2);
+    expect(result).not.toContain('--append-system-prompt');
+  });
+
+  it('does not treat unrelated user prompt files as the managed CCS steering prompt', () => {
+    const result = appendThirdPartyWebSearchToolArgs([
+      'smoke',
+      '--append-system-prompt-file',
+      '/tmp/user-ccs-prompt-websearch-tool-notes.txt',
+    ]);
+
+    const filePaths = result.filter((arg, index) => result[index - 1] === '--append-system-prompt-file');
+    expect(filePaths).toContain('/tmp/user-ccs-prompt-websearch-tool-notes.txt');
+    expect(filePaths.some((filePath) => filePath.endsWith('/ccs-prompt-websearch-tool.txt'))).toBe(true);
   });
 });

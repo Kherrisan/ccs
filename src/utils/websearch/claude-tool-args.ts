@@ -1,5 +1,8 @@
 /**
  * Claude launch argument helpers for third-party WebSearch.
+ *
+ * Uses the same prompt injection mode as the user to avoid mixing
+ * `--append-system-prompt` and `--append-system-prompt-file` in one request.
  */
 
 import {
@@ -7,12 +10,19 @@ import {
   hasExactFlagValue as hasExactClaudeFlagValue,
   splitArgsAtTerminator as splitClaudeArgsAtTerminator,
 } from '../claude-tool-args';
+import {
+  buildSteeringArg,
+  hasManagedPromptFileArg,
+  PROMPT_FLAG_INLINE,
+} from '../prompt-injection-strategy';
 
 const NATIVE_WEBSEARCH_TOOL = 'WebSearch';
 const DISALLOWED_TOOLS_FLAG = '--disallowedTools';
-const APPEND_SYSTEM_PROMPT_FLAG = '--append-system-prompt';
-const THIRD_PARTY_WEBSEARCH_STEERING_PROMPT =
-  'For web lookup or current-information requests, prefer the CCS MCP tool WebSearch instead of Bash/curl/http fetches. If the user explicitly wants shell commands, or WebSearch is unavailable or fails, you may fall back to Bash/network tools.';
+export const THIRD_PARTY_WEBSEARCH_STEERING_PROMPT = {
+  name: 'ccs-prompt-websearch-tool',
+  content:
+    'For web lookup or current-information requests, prefer the CCS MCP tool WebSearch instead of Bash/curl/http fetches. If the user explicitly wants shell commands, or WebSearch is unavailable or fails, you may fall back to Bash/network tools.',
+};
 
 function parseToolValue(rawValue: string): string[] {
   return rawValue
@@ -99,19 +109,29 @@ function ensureWebSearchSteeringPrompt(args: string[]): string[] {
   if (
     hasExactClaudeFlagValue(
       optionArgs,
-      APPEND_SYSTEM_PROMPT_FLAG,
-      THIRD_PARTY_WEBSEARCH_STEERING_PROMPT
+      PROMPT_FLAG_INLINE,
+      THIRD_PARTY_WEBSEARCH_STEERING_PROMPT.content
     )
   ) {
     return args;
   }
 
-  return [
-    ...optionArgs,
-    APPEND_SYSTEM_PROMPT_FLAG,
-    THIRD_PARTY_WEBSEARCH_STEERING_PROMPT,
-    ...trailingArgs,
-  ];
+  if (
+    hasManagedPromptFileArg({
+      args: optionArgs,
+      promptName: THIRD_PARTY_WEBSEARCH_STEERING_PROMPT.name,
+    })
+  ) {
+    return args;
+  }
+
+  const steeringArgs = buildSteeringArg({
+    args: optionArgs,
+    promptName: THIRD_PARTY_WEBSEARCH_STEERING_PROMPT.name,
+    promptContent: THIRD_PARTY_WEBSEARCH_STEERING_PROMPT.content,
+  });
+
+  return [...optionArgs, ...steeringArgs, ...trailingArgs];
 }
 
 export function appendThirdPartyWebSearchToolArgs(args: string[]): string[] {
