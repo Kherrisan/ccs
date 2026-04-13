@@ -1,3 +1,9 @@
+## [7.69.1](https://github.com/kaitranntt/ccs/compare/v7.69.0...v7.69.1) (2026-04-13)
+
+### Hotfixes
+
+* stop auto-enabling stale Chrome DevTools reuse ([33f57d3](https://github.com/kaitranntt/ccs/commit/33f57d3cac19d9978164221f30e42ea39e4f270a))
+
 ## [7.69.0](https://github.com/kaitranntt/ccs/compare/v7.68.2...v7.69.0) (2026-04-13)
 
 ### Features
