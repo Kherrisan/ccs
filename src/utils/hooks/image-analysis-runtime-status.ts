@@ -29,11 +29,11 @@ interface ImageAnalysisRuntimeStatusDeps {
 }
 
 const defaultDeps: ImageAnalysisRuntimeStatusDeps = {
-  checkRemoteProxy,
-  fetchRemoteAuthStatus,
-  getAuthStatus,
-  getProxyTarget,
-  initializeAccounts,
+  checkRemoteProxy: (...args) => checkRemoteProxy(...args),
+  fetchRemoteAuthStatus: (...args) => fetchRemoteAuthStatus(...args),
+  getAuthStatus: (...args) => getAuthStatus(...args),
+  getProxyTarget: () => getProxyTarget(),
+  initializeAccounts: () => initializeAccounts(),
   isCliproxyRunning: () => isCliproxyRunning(),
 };
 
