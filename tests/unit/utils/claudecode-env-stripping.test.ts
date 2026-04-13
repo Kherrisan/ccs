@@ -30,6 +30,7 @@ let baselineSighupListeners: Array<(...args: unknown[]) => void> = [];
 let originalCcsHome: string | undefined;
 let originalCcsClaudePath: string | undefined;
 let originalDisableAutoUpdater: string | undefined;
+let originalClaudeConfigDir: string | undefined;
 const realSpawn = childProcess.spawn.bind(childProcess);
 const realSpawnSync = childProcess.spawnSync.bind(childProcess);
 const realExecSync = childProcess.execSync.bind(childProcess);
@@ -165,10 +166,17 @@ describe('CLAUDECODE environment stripping', () => {
   beforeEach(() => {
     spawnCalls.length = 0;
     process.env.CCS_QUIET = '1';
+
+    // Save original env values for restoration in afterEach
     originalCcsHome = process.env.CCS_HOME;
     originalCcsClaudePath = process.env.CCS_CLAUDE_PATH;
     originalDisableAutoUpdater = process.env.DISABLE_AUTOUPDATER;
+    originalClaudeConfigDir = process.env.CLAUDE_CONFIG_DIR;
+
+    // Clear CCS-managed env vars that leak from host sessions
     delete process.env.DISABLE_AUTOUPDATER;
+    delete process.env.CLAUDE_CONFIG_DIR;
+
     baselineSigintListeners = process.listeners('SIGINT');
     baselineSigtermListeners = process.listeners('SIGTERM');
     baselineSighupListeners = process.listeners('SIGHUP');
@@ -189,6 +197,8 @@ describe('CLAUDECODE environment stripping', () => {
     } else {
       delete process.env.DISABLE_AUTOUPDATER;
     }
+    if (originalClaudeConfigDir !== undefined) process.env.CLAUDE_CONFIG_DIR = originalClaudeConfigDir;
+    else delete process.env.CLAUDE_CONFIG_DIR;
 
     for (const listener of process.listeners('SIGINT')) {
       if (!baselineSigintListeners.includes(listener)) {
