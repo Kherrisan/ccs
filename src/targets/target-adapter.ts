@@ -29,8 +29,12 @@ export interface TargetCredentials {
    * Targets may ignore this when unsupported.
    */
   reasoningOverride?: string | number;
+  /** Target-native runtime config overrides (for example Codex -c key=value entries). */
+  runtimeConfigOverrides?: string[];
   /** Additional env vars from profile resolution (websearch, hooks, etc.) */
   envVars?: NodeJS.ProcessEnv;
+  /** Runtime browser reuse env passed through to Claude launches when browser MCP is active. */
+  browserRuntimeEnv?: NodeJS.ProcessEnv;
 }
 
 /**

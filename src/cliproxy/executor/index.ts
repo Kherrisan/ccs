@@ -63,6 +63,13 @@ import {
   syncImageAnalysisMcpToConfigDir,
   appendThirdPartyImageAnalysisToolArgs,
 } from '../../utils/image-analysis';
+import {
+  appendBrowserToolArgs,
+  ensureBrowserMcpOrThrow,
+  resolveBrowserRuntimeEnv,
+  resolveConfiguredBrowserProfileDir,
+  syncBrowserMcpToConfigDir,
+} from '../../utils/browser';
 import { loadOrCreateUnifiedConfig, getThinkingConfig } from '../../config/unified-config-loader';
 import { HttpsTunnelProxy } from '../https-tunnel-proxy';
 import {
@@ -245,6 +252,10 @@ export async function execClaudeWithCLIProxy(
   // Setup first-class CCS WebSearch runtime
   ensureWebSearchMcpOrThrow();
   const imageAnalysisMcpReady = ensureImageAnalysisMcpOrThrow();
+  const browserProfileDir = resolveConfiguredBrowserProfileDir(process.env.CCS_BROWSER_PROFILE_DIR);
+  if (browserProfileDir) {
+    ensureBrowserMcpOrThrow();
+  }
   displayWebSearchStatus();
 
   const providerConfig = getProviderConfig(provider);
@@ -1006,6 +1017,15 @@ export async function execClaudeWithCLIProxy(
   }
 
   syncImageAnalysisMcpToConfigDir(inheritedClaudeConfigDir);
+  if (
+    browserProfileDir &&
+    inheritedClaudeConfigDir &&
+    !syncBrowserMcpToConfigDir(inheritedClaudeConfigDir)
+  ) {
+    throw new Error(
+      'Browser MCP is enabled, but CCS could not sync the browser MCP config into the inherited Claude instance.'
+    );
+  }
 
   // Build initial env vars to get ANTHROPIC_BASE_URL
   const initialEnvVars = buildClaudeEnvironment({
@@ -1101,6 +1121,14 @@ export async function execClaudeWithCLIProxy(
   }
 
   // 11. Build final environment with all proxy chains
+  const browserRuntimeEnv = browserProfileDir
+    ? {
+        ...(await resolveBrowserRuntimeEnv({
+          profileDir: browserProfileDir,
+        })),
+      }
+    : undefined;
+
   const env = buildClaudeEnvironment({
     provider,
     useRemoteProxy,
@@ -1128,6 +1156,7 @@ export async function execClaudeWithCLIProxy(
     compositeDefaultTier: cfg.compositeDefaultTier,
     claudeConfigDir: inheritedClaudeConfigDir,
     imageAnalysisEnv,
+    browserRuntimeEnv,
   });
 
   if (cfg.isComposite && cfg.compositeTiers && cfg.compositeDefaultTier) {
@@ -1143,6 +1172,14 @@ export async function execClaudeWithCLIProxy(
   }
 
   const webSearchEnv = getWebSearchHookEnv();
+  if (process.env.CCS_DEBUG) {
+    console.error(
+      `[cliproxy-browser-debug] keys=${Object.keys(env)
+        .filter((key) => key.startsWith('CCS_BROWSER_'))
+        .sort()
+        .join(',')} ws=${env.CCS_BROWSER_DEVTOOLS_WS_URL || ''}`
+    );
+  }
   logEnvironment(env, webSearchEnv, verbose);
   if (imageAnalysisWarning) {
     console.error(info(imageAnalysisWarning));
@@ -1222,10 +1259,13 @@ export async function execClaudeWithCLIProxy(
   const imageAnalysisArgs = imageAnalysisMcpReady
     ? appendThirdPartyImageAnalysisToolArgs(claudeArgs)
     : claudeArgs;
+  const browserArgs = browserRuntimeEnv
+    ? appendBrowserToolArgs(imageAnalysisArgs)
+    : imageAnalysisArgs;
   const launchArgs = [
     '--settings',
     settingsPath,
-    ...appendThirdPartyWebSearchToolArgs(imageAnalysisArgs),
+    ...appendThirdPartyWebSearchToolArgs(browserArgs),
   ];
   const traceEnv = createWebSearchTraceContext({
     launcher: 'cliproxy.executor',

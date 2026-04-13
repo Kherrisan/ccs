@@ -483,7 +483,6 @@ export class ToolSanitizationProxy {
           port: upstreamUrl.port,
           path: upstreamUrl.pathname + upstreamUrl.search,
           method: originalReq.method,
-          timeout: this.config.timeoutMs,
           headers: this.buildForwardHeaders(originalReq.headers),
         },
         (upstreamRes) => {
@@ -520,7 +519,6 @@ export class ToolSanitizationProxy {
           port: upstreamUrl.port,
           path: upstreamUrl.pathname + upstreamUrl.search,
           method: originalReq.method,
-          timeout: this.config.timeoutMs,
           headers: this.buildForwardHeaders(originalReq.headers, bodyString),
         },
         (upstreamRes) => {
@@ -594,7 +592,6 @@ export class ToolSanitizationProxy {
           port: upstreamUrl.port,
           path: upstreamUrl.pathname + upstreamUrl.search,
           method: originalReq.method,
-          timeout: this.config.timeoutMs,
           headers: this.buildForwardHeaders(originalReq.headers, bodyString),
         },
         (upstreamRes) => {

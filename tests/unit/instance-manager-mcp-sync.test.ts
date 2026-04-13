@@ -144,7 +144,7 @@ describe('InstanceManager MCP sync', () => {
     });
   });
 
-  it('repairs managed ccs-websearch entries from global config while preserving other instance MCP overrides', () => {
+  it('repairs managed ccs-websearch and ccs-browser entries from global config while preserving other instance MCP overrides', () => {
     fs.writeFileSync(
       path.join(tempRoot, '.claude.json'),
       JSON.stringify(
@@ -154,6 +154,12 @@ describe('InstanceManager MCP sync', () => {
               type: 'stdio',
               command: 'node',
               args: ['/global/server.cjs'],
+              env: {},
+            },
+            'ccs-browser': {
+              type: 'stdio',
+              command: 'node',
+              args: ['/global/browser-server.cjs'],
               env: {},
             },
             shared: { command: 'global-shared' },
@@ -179,6 +185,12 @@ describe('InstanceManager MCP sync', () => {
               args: ['/old/server.cjs'],
               env: {},
             },
+            'ccs-browser': {
+              type: 'stdio',
+              command: 'node',
+              args: ['/old/browser-server.cjs'],
+              env: {},
+            },
             shared: { command: 'instance-shared' },
             instanceOnly: { command: 'instance-only' },
           },
@@ -201,9 +213,49 @@ describe('InstanceManager MCP sync', () => {
         args: ['/global/server.cjs'],
         env: {},
       },
+      'ccs-browser': {
+        type: 'stdio',
+        command: 'node',
+        args: ['/global/browser-server.cjs'],
+        env: {},
+      },
       shared: { command: 'instance-shared' },
       instanceOnly: { command: 'instance-only' },
     });
+  });
+
+  it('preserves existing instance .claude.json permissions when syncing managed MCP servers', () => {
+    fs.writeFileSync(
+      path.join(tempRoot, '.claude.json'),
+      JSON.stringify(
+        {
+          mcpServers: {
+            'ccs-browser': {
+              type: 'stdio',
+              command: 'node',
+              args: ['/global/browser.cjs'],
+              env: {},
+            },
+          },
+        },
+        null,
+        2
+      ),
+      'utf8'
+    );
+
+    const manager = new InstanceManager();
+    const instancePath = manager.getInstancePath('work');
+    fs.mkdirSync(instancePath, { recursive: true });
+    const instanceClaudeJson = path.join(instancePath, '.claude.json');
+    fs.writeFileSync(instanceClaudeJson, JSON.stringify({ existing: true }, null, 2) + '\n', {
+      encoding: 'utf8',
+      mode: 0o640,
+    });
+    fs.chmodSync(instanceClaudeJson, 0o640);
+
+    expect(manager.syncMcpServers(instancePath)).toBe(true);
+    expect(fs.statSync(instanceClaudeJson).mode & 0o777).toBe(0o640);
   });
 
   it('logs warning when global MCP sync fails', () => {

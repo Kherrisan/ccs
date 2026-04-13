@@ -1,6 +1,10 @@
 import { describe, expect, test } from 'bun:test';
 
 import { CodexAdapter } from '../../../src/targets/codex-adapter';
+import {
+  buildCodexBrowserMcpOverrides,
+  getCodexBrowserMcpServerName,
+} from '../../../src/utils/browser-codex-overrides';
 
 describe('CodexAdapter', () => {
   const adapter = new CodexAdapter();
@@ -21,6 +25,16 @@ describe('CodexAdapter', () => {
     ).toEqual(['--search']);
   });
 
+  test('builds browser MCP overrides with Codex-safe defaults', () => {
+    const serverName = getCodexBrowserMcpServerName();
+    expect(buildCodexBrowserMcpOverrides()).toEqual([
+      `mcp_servers.${serverName}.command=${JSON.stringify(process.platform === 'win32' ? 'npx.cmd' : 'npx')}`,
+      `mcp_servers.${serverName}.args=${JSON.stringify(['-y', '@playwright/mcp@0.0.70'])}`,
+      `mcp_servers.${serverName}.enabled=true`,
+      `mcp_servers.${serverName}.tool_timeout_sec=30`,
+    ]);
+  });
+
   test('translates default-mode reasoning overrides into transient codex config', () => {
     const args = adapter.buildArgs('default', ['--search'], {
       profileType: 'default',
@@ -38,6 +52,29 @@ describe('CodexAdapter', () => {
     });
 
     expect(args).toEqual(['-c', 'model_reasoning_effort="medium"', '--search']);
+  });
+
+  test('injects runtime config overrides for native Codex default launches', () => {
+    const runtimeConfigOverrides = buildCodexBrowserMcpOverrides();
+    const args = adapter.buildArgs('default', ['--search'], {
+      profileType: 'default',
+      creds: {
+        profile: 'default',
+        baseUrl: '',
+        apiKey: '',
+        runtimeConfigOverrides,
+      },
+      binaryInfo: {
+        path: '/tmp/codex',
+        needsShell: false,
+        features: ['config-overrides'],
+      },
+    });
+
+    expect(args).toEqual([
+      ...runtimeConfigOverrides.flatMap((override) => ['-c', override]),
+      '--search',
+    ]);
   });
 
   test('rejects default-mode reasoning overrides when codex lacks config override support', () => {
@@ -61,6 +98,7 @@ describe('CodexAdapter', () => {
   });
 
   test('injects transient config overrides for CCS-backed launches', () => {
+    const runtimeConfigOverrides = buildCodexBrowserMcpOverrides();
     const args = adapter.buildArgs('codex', ['--search'], {
       profileType: 'cliproxy',
       creds: {
@@ -69,6 +107,7 @@ describe('CodexAdapter', () => {
         apiKey: 'cliproxy-token',
         model: 'gpt-5.4',
         reasoningOverride: 'high',
+        runtimeConfigOverrides,
       },
       binaryInfo: {
         path: '/tmp/codex',
@@ -81,8 +120,9 @@ describe('CodexAdapter', () => {
     expect(args).toContain('model_provider="ccs_runtime"');
     expect(args).toContain('model_providers.ccs_runtime.env_key="CCS_CODEX_API_KEY"');
     expect(args).toContain('model="gpt-5.4"');
+    expect(args).toContain(`mcp_servers.${getCodexBrowserMcpServerName()}.command=${JSON.stringify(process.platform === 'win32' ? 'npx.cmd' : 'npx')}`);
     expect(args).toContain('model_reasoning_effort="high"');
-    expect(args.at(-1)).toBe('--search');
+    expect(args[args.length - 1]).toBe('--search');
   });
 
   test('fails fast when Codex binary lacks config override support', () => {

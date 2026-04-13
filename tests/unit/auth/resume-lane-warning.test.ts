@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'bun:test';
 import { maybeWarnAboutResumeLaneMismatch } from '../../../src/auth/resume-lane-warning';
 
+function stripAnsi(input: string): string {
+  return input.replace(/\u001b\[[0-9;]*m/g, '');
+}
+
 describe('resume lane warning', () => {
   it('prints guidance when the plain ccs lane differs from the account lane', async () => {
     const logs: string[] = [];
@@ -15,10 +19,12 @@ describe('resume lane warning', () => {
       }),
     });
 
-    expect(logs[0]).toContain('Resume for account "work" will search that account lane');
-    expect(logs).toContain('[i]   Account lane: /tmp/account-lane');
-    expect(logs).toContain('[i]   Plain ccs lane: native Claude lane (/tmp/native-lane)');
-    expect(logs).toContain('[i]   Recover the original lane first: ccs -r');
+    const plainLogs = logs.map((message) => stripAnsi(message));
+
+    expect(plainLogs[0]).toContain('Resume for account "work" will search that account lane');
+    expect(plainLogs).toContain('[i]   Account lane: /tmp/account-lane');
+    expect(plainLogs).toContain('[i]   Plain ccs lane: native Claude lane (/tmp/native-lane)');
+    expect(plainLogs).toContain('[i]   Recover the original lane first: ccs -r');
   });
 
   it('does not log anything when resume is not requested', async () => {

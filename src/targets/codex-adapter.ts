@@ -188,20 +188,23 @@ export class CodexAdapter implements TargetAdapter {
     const profileType = options?.profileType || 'default';
     const creds = options?.creds;
     const reasoningOverride = normalizeCodexReasoningOverride(creds?.reasoningOverride);
+    const runtimeConfigOverrides = creds?.runtimeConfigOverrides ?? [];
 
     if (profileType === 'default') {
+      const overrides = [...runtimeConfigOverrides];
       if (reasoningOverride) {
-        if (!codexBinarySupportsConfigOverrides(options?.binaryInfo)) {
+        overrides.push(`model_reasoning_effort=${formatTomlString(reasoningOverride)}`);
+      }
+      if (overrides.length === 0) {
+        return userArgs;
+      }
+      if (!codexBinarySupportsConfigOverrides(options?.binaryInfo)) {
+        if (reasoningOverride) {
           throw buildConfigOverrideSupportError(hydrateCodexBinaryVersion(options?.binaryInfo));
         }
-        return [
-          ...buildConfigOverrideArgs([
-            `model_reasoning_effort=${formatTomlString(reasoningOverride)}`,
-          ]),
-          ...userArgs,
-        ];
+        return userArgs;
       }
-      return userArgs;
+      return [...buildConfigOverrideArgs(overrides), ...userArgs];
     }
 
     if (!codexBinarySupportsConfigOverrides(options?.binaryInfo)) {
@@ -232,6 +235,8 @@ export class CodexAdapter implements TargetAdapter {
     if (creds.model?.trim()) {
       overrides.push(`model=${formatTomlString(creds.model)}`);
     }
+
+    overrides.push(...runtimeConfigOverrides);
 
     if (reasoningOverride) {
       overrides.push(`model_reasoning_effort=${formatTomlString(reasoningOverride)}`);

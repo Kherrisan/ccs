@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
 
+function stripAnsi(input: string): string {
+  return input.replace(/\u001b\[[0-9;]*m/g, '');
+}
+
 let calls: string[] = [];
 let logLines: string[] = [];
 let originalConsoleLog: typeof console.log;
@@ -60,7 +64,7 @@ describe('config-auth command routing', () => {
     await handleConfigAuthCommand(['--help']);
 
     expect(calls).toEqual([]);
-    expect(logLines.join('\n')).toContain('Dashboard Auth Management');
+    expect(stripAnsi(logLines.join('\n'))).toContain('Dashboard Auth Management');
   });
 
   it('rejects trailing arguments for zero-arg subcommands', async () => {

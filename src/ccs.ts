@@ -36,6 +36,13 @@ import {
   syncImageAnalysisMcpToConfigDir,
   appendThirdPartyImageAnalysisToolArgs,
 } from './utils/image-analysis';
+import {
+  appendBrowserToolArgs,
+  ensureBrowserMcpOrThrow,
+  resolveBrowserRuntimeEnv,
+  resolveConfiguredBrowserProfileDir,
+  syncBrowserMcpToConfigDir,
+} from './utils/browser';
 import { getGlobalEnvConfig, getOfficialChannelsConfig } from './config/unified-config-loader';
 import {
   ensureProfileHooks as ensureImageAnalyzerHooks,
@@ -69,6 +76,7 @@ import { execClaude } from './utils/shell-executor';
 import { isDeprecatedGlmtProfileName, normalizeDeprecatedGlmtEnv } from './utils/glmt-deprecation';
 import { maybeWarnAboutResumeLaneMismatch } from './auth/resume-lane-warning';
 import { createLogger } from './services/logging';
+import { buildCodexBrowserMcpOverrides } from './utils/browser-codex-overrides';
 
 // Import target adapter system
 import {
@@ -116,6 +124,15 @@ interface RuntimeReasoningResolution {
 
 const CODEX_RUNTIME_REASONING_LEVELS = new Set(['minimal', 'low', 'medium', 'high', 'xhigh']);
 const CODEX_NATIVE_PASSTHROUGH_FLAGS = new Set(['--help', '-h', '--version', '-v']);
+
+function resolveCodexRuntimeConfigOverrides(
+  target: ReturnType<typeof resolveTargetType>
+): string[] {
+  if (target !== 'codex') {
+    return [];
+  }
+  return buildCodexBrowserMcpOverrides();
+}
 
 /**
  * Smart profile detection
@@ -624,6 +641,7 @@ async function main(): Promise<void> {
 
     // For non-claude targets, verify target binary exists once and pass it through.
     const targetBinaryInfo = targetAdapter?.detectBinary() ?? null;
+    const codexRuntimeConfigOverrides = resolveCodexRuntimeConfigOverrides(resolvedTarget);
     if (resolvedTarget !== 'claude' && !targetBinaryInfo) {
       const displayName = targetAdapter?.displayName || resolvedTarget;
       console.error(fail(`${displayName} CLI not found.`));
@@ -867,6 +885,7 @@ async function main(): Promise<void> {
             model: envVars['ANTHROPIC_MODEL'],
           }),
           reasoningOverride: runtimeReasoningOverride,
+          runtimeConfigOverrides: codexRuntimeConfigOverrides,
           envVars,
         };
 
@@ -982,8 +1001,16 @@ async function main(): Promise<void> {
       // Settings-based profiles (glm, glmt) are third-party providers
       const imageAnalysisMcpReady =
         resolvedTarget === 'claude' ? ensureImageAnalysisMcpOrThrow() : true;
+      let browserRuntimeEnv: TargetCredentials['browserRuntimeEnv'];
+      const browserProfileDir =
+        resolvedTarget === 'claude'
+          ? resolveConfiguredBrowserProfileDir(process.env.CCS_BROWSER_PROFILE_DIR)
+          : undefined;
       if (resolvedTarget === 'claude') {
         ensureWebSearchMcpOrThrow();
+        if (browserProfileDir) {
+          ensureBrowserMcpOrThrow();
+        }
       }
 
       // Display WebSearch status (single line, equilibrium UX)
@@ -1007,6 +1034,15 @@ async function main(): Promise<void> {
       const inheritedClaudeConfigDir = continuityInheritance.claudeConfigDir;
       syncWebSearchMcpToConfigDir(inheritedClaudeConfigDir);
       syncImageAnalysisMcpToConfigDir(inheritedClaudeConfigDir);
+      if (
+        browserProfileDir &&
+        inheritedClaudeConfigDir &&
+        !syncBrowserMcpToConfigDir(inheritedClaudeConfigDir)
+      ) {
+        throw new Error(
+          'Browser MCP is enabled, but CCS could not sync the browser MCP config into the inherited Claude instance.'
+        );
+      }
       const expandedSettingsPath =
         resolvedSettingsPath ??
         (profileInfo.settingsPath
@@ -1208,12 +1244,21 @@ async function main(): Promise<void> {
 
       // Explicitly inject effective settings env vars so stale ANTHROPIC_*
       // values from prior sessions cannot leak into the active profile.
+      if (browserProfileDir) {
+        browserRuntimeEnv = {
+          ...(await resolveBrowserRuntimeEnv({
+            profileDir: browserProfileDir,
+          })),
+        };
+      }
+
       const envVars: NodeJS.ProcessEnv = {
         ...globalEnv,
         ...settingsEnv,
         ...(inheritedClaudeConfigDir ? { CLAUDE_CONFIG_DIR: inheritedClaudeConfigDir } : {}),
         ...webSearchEnv,
         ...imageAnalysisEnv,
+        ...(browserRuntimeEnv || {}),
         CCS_PROFILE_TYPE: 'settings',
       };
 
@@ -1238,6 +1283,7 @@ async function main(): Promise<void> {
             model: settingsEnv['ANTHROPIC_MODEL'],
           }),
           reasoningOverride: runtimeReasoningOverride,
+          runtimeConfigOverrides: codexRuntimeConfigOverrides,
           envVars,
         };
         await adapter.prepareCredentials(creds);
@@ -1254,10 +1300,13 @@ async function main(): Promise<void> {
       const imageAnalysisArgs = imageAnalysisMcpReady
         ? appendThirdPartyImageAnalysisToolArgs(remainingArgs)
         : remainingArgs;
+      const browserArgs = browserRuntimeEnv
+        ? appendBrowserToolArgs(imageAnalysisArgs)
+        : imageAnalysisArgs;
       const launchArgs = [
         '--settings',
         expandedSettingsPath,
-        ...appendThirdPartyWebSearchToolArgs(imageAnalysisArgs),
+        ...appendThirdPartyWebSearchToolArgs(browserArgs),
       ];
       const traceEnv = createWebSearchTraceContext({
         launcher: 'ccs.settings-profile',
@@ -1314,8 +1363,22 @@ async function main(): Promise<void> {
         CCS_WEBSEARCH_SKIP: '1',
         CCS_IMAGE_ANALYSIS_SKIP: '1',
       };
+      let browserRuntimeEnv: TargetCredentials['browserRuntimeEnv'];
+      const browserProfileDir =
+        resolvedTarget === 'claude'
+          ? resolveConfiguredBrowserProfileDir(process.env.CCS_BROWSER_PROFILE_DIR)
+          : undefined;
 
       if (resolvedTarget === 'claude') {
+        if (browserProfileDir) {
+          ensureBrowserMcpOrThrow();
+          browserRuntimeEnv = {
+            ...(await resolveBrowserRuntimeEnv({
+              profileDir: browserProfileDir,
+            })),
+          };
+          Object.assign(envVars, browserRuntimeEnv);
+        }
         const defaultContinuityInheritance = await resolveProfileContinuityInheritance({
           profileName: profileInfo.name,
           profileType: profileInfo.type,
@@ -1330,6 +1393,14 @@ async function main(): Promise<void> {
         }
         if (defaultContinuityInheritance.claudeConfigDir) {
           envVars.CLAUDE_CONFIG_DIR = defaultContinuityInheritance.claudeConfigDir;
+          if (
+            browserProfileDir &&
+            !syncBrowserMcpToConfigDir(defaultContinuityInheritance.claudeConfigDir)
+          ) {
+            throw new Error(
+              'Browser MCP is enabled, but CCS could not sync the browser MCP config into the inherited Claude instance.'
+            );
+          }
         }
       }
 
@@ -1355,6 +1426,8 @@ async function main(): Promise<void> {
             model: process.env['ANTHROPIC_MODEL'],
           }),
           reasoningOverride: runtimeReasoningOverride,
+          runtimeConfigOverrides: codexRuntimeConfigOverrides,
+          browserRuntimeEnv,
         };
         if (resolvedTarget === 'droid' && (!creds.baseUrl || !creds.apiKey)) {
           console.error(
@@ -1377,7 +1450,7 @@ async function main(): Promise<void> {
       }
 
       const launchArgs = resolveNativeClaudeLaunchArgs(
-        remainingArgs,
+        browserRuntimeEnv ? appendBrowserToolArgs(remainingArgs) : remainingArgs,
         'default',
         envVars.CLAUDE_CONFIG_DIR
       );

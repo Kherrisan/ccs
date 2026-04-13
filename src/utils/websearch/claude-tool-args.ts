@@ -2,6 +2,12 @@
  * Claude launch argument helpers for third-party WebSearch.
  */
 
+import {
+  getImmediateFlagValue,
+  hasExactFlagValue as hasExactClaudeFlagValue,
+  splitArgsAtTerminator as splitClaudeArgsAtTerminator,
+} from '../claude-tool-args';
+
 const NATIVE_WEBSEARCH_TOOL = 'WebSearch';
 const DISALLOWED_TOOLS_FLAG = '--disallowedTools';
 const APPEND_SYSTEM_PROMPT_FLAG = '--append-system-prompt';
@@ -21,26 +27,6 @@ function mergeToolValues(rawValues: string[], toolName: string): string {
     merged.push(toolName);
   }
   return merged.join(',');
-}
-
-function splitArgsAtTerminator(args: string[]): { optionArgs: string[]; trailingArgs: string[] } {
-  const terminatorIndex = args.indexOf('--');
-  if (terminatorIndex === -1) {
-    return { optionArgs: args, trailingArgs: [] };
-  }
-
-  return {
-    optionArgs: args.slice(0, terminatorIndex),
-    trailingArgs: args.slice(terminatorIndex),
-  };
-}
-
-function getImmediateFlagValue(args: string[], index: number): string | null {
-  const value = args[index + 1];
-  if (value === undefined || value === '--' || value.startsWith('--')) {
-    return null;
-  }
-  return value;
 }
 
 function hasToolInFlag(args: string[], flag: string, toolName: string): boolean {
@@ -68,32 +54,8 @@ function hasToolInFlag(args: string[], flag: string, toolName: string): boolean 
   return false;
 }
 
-function hasExactFlagValue(args: string[], flag: string, expectedValue: string): boolean {
-  for (let index = 0; index < args.length; index += 1) {
-    const arg = args[index];
-
-    if (arg === flag) {
-      const value = getImmediateFlagValue(args, index);
-      if (value === expectedValue) {
-        return true;
-      }
-      continue;
-    }
-
-    if (arg === `${flag}=${expectedValue}`) {
-      return true;
-    }
-
-    if (arg.startsWith(`${flag}=`) && arg.slice(flag.length + 1) === expectedValue) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
 function ensureDisallowedNativeWebSearchTool(args: string[]): string[] {
-  const { optionArgs, trailingArgs } = splitArgsAtTerminator(args);
+  const { optionArgs, trailingArgs } = splitClaudeArgsAtTerminator(args);
 
   if (hasToolInFlag(optionArgs, DISALLOWED_TOOLS_FLAG, NATIVE_WEBSEARCH_TOOL)) {
     return args;
@@ -132,10 +94,14 @@ function ensureDisallowedNativeWebSearchTool(args: string[]): string[] {
 }
 
 function ensureWebSearchSteeringPrompt(args: string[]): string[] {
-  const { optionArgs, trailingArgs } = splitArgsAtTerminator(args);
+  const { optionArgs, trailingArgs } = splitClaudeArgsAtTerminator(args);
 
   if (
-    hasExactFlagValue(optionArgs, APPEND_SYSTEM_PROMPT_FLAG, THIRD_PARTY_WEBSEARCH_STEERING_PROMPT)
+    hasExactClaudeFlagValue(
+      optionArgs,
+      APPEND_SYSTEM_PROMPT_FLAG,
+      THIRD_PARTY_WEBSEARCH_STEERING_PROMPT
+    )
   ) {
     return args;
   }

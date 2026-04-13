@@ -105,7 +105,27 @@ export function createCliproxyLocalProxyRouter(deps: CliproxyLocalProxyDeps = {}
         timeout: PROXY_TIMEOUT_MS,
       },
       (proxyRes) => {
-        res.writeHead(proxyRes.statusCode ?? 502, proxyRes.headers);
+        const proxyStatus = proxyRes.statusCode ?? 502;
+        const proxyContentLength = proxyRes.headers['content-length'];
+        const hasEmptyBody =
+          typeof proxyContentLength === 'string' && Number.parseInt(proxyContentLength, 10) === 0;
+        const isSyntheticUnreachableResponse =
+          proxyStatus === 502 &&
+          proxyRes.headers['content-type'] === undefined &&
+          proxyRes.headers['proxy-connection'] !== undefined &&
+          hasEmptyBody;
+
+        if (isSyntheticUnreachableResponse) {
+          const payload = JSON.stringify({ error: 'CLIProxy is not reachable' });
+          res.writeHead(502, {
+            'Content-Type': 'application/json; charset=utf-8',
+            'Content-Length': String(Buffer.byteLength(payload)),
+          });
+          res.end(payload);
+          return;
+        }
+
+        res.writeHead(proxyStatus, proxyRes.headers);
         // Manual streaming instead of pipe() for Bun runtime compatibility
         proxyRes.on('data', (chunk: Buffer) => res.write(chunk));
         proxyRes.on('end', () => res.end());
@@ -116,14 +136,18 @@ export function createCliproxyLocalProxyRouter(deps: CliproxyLocalProxyDeps = {}
 
     proxyReq.on('error', () => {
       if (!res.headersSent) {
-        res.status(502).json({ error: 'CLIProxy is not reachable' });
+        const payload = JSON.stringify({ error: 'CLIProxy is not reachable' });
+        res.statusCode = 502;
+        res.setHeader('Content-Type', 'application/json; charset=utf-8');
+        res.setHeader('Content-Length', Buffer.byteLength(payload));
+        res.end(payload);
       }
     });
 
-    // Clean up proxy connection when client disconnects.
-    // Only use res.on('close') — req.on('close') fires with req.destroyed=true
-    // in Bun after body consumption, which would prematurely kill the proxy.
-    res.on('close', () => {
+    // Clean up proxy connection only when the client aborts the request.
+    // Avoid res.on('close') here because Bun may emit it during local error
+    // responses before the JSON body is flushed, which can truncate 502 payloads.
+    req.on('aborted', () => {
       if (!res.writableEnded) {
         proxyReq.destroy();
       }

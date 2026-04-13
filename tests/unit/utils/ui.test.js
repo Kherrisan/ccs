@@ -6,6 +6,25 @@
 
 const assert = require('assert');
 
+function stripAnsi(input) {
+  return input.replace(/\u001b\[[0-9;]*m/g, '');
+}
+
+function withoutForceColor(callback) {
+  const originalForceColor = process.env.FORCE_COLOR;
+  delete process.env.FORCE_COLOR;
+
+  try {
+    callback();
+  } finally {
+    if (originalForceColor === undefined) {
+      delete process.env.FORCE_COLOR;
+    } else {
+      process.env.FORCE_COLOR = originalForceColor;
+    }
+  }
+}
+
 describe('UI Module', function () {
   let ui;
 
@@ -25,18 +44,21 @@ describe('UI Module', function () {
     });
 
     it('should return plain text when NO_COLOR is set', function () {
-      const originalNoColor = process.env.NO_COLOR;
-      process.env.NO_COLOR = '1';
+      withoutForceColor(() => {
+        const originalNoColor = process.env.NO_COLOR;
+        process.env.NO_COLOR = '1';
 
-      const result = ui.color('test', 'success');
-      assert.strictEqual(result, 'test', 'should return unmodified text');
-
-      // Restore
-      if (originalNoColor === undefined) {
-        delete process.env.NO_COLOR;
-      } else {
-        process.env.NO_COLOR = originalNoColor;
-      }
+        try {
+          const result = ui.color('test', 'success');
+          assert.strictEqual(result, 'test', 'should return unmodified text');
+        } finally {
+          if (originalNoColor === undefined) {
+            delete process.env.NO_COLOR;
+          } else {
+            process.env.NO_COLOR = originalNoColor;
+          }
+        }
+      });
     });
 
     it('should apply bold formatting', function () {
@@ -51,7 +73,7 @@ describe('UI Module', function () {
 
     it('should apply gradient to text', function () {
       const result = ui.gradientText('gradient header');
-      assert.ok(result.includes('gradient header'), 'should contain original text');
+      assert.ok(stripAnsi(result).includes('gradient header'), 'should contain original text');
     });
   });
 
@@ -129,7 +151,7 @@ describe('UI Module', function () {
   describe('Headers', function () {
     it('should format section header', function () {
       const result = ui.header('Section Title');
-      assert.ok(result.includes('Section Title'), 'should include title text');
+      assert.ok(stripAnsi(result).includes('Section Title'), 'should include title text');
     });
 
     it('should format subsection header', function () {
@@ -153,21 +175,24 @@ describe('UI Module', function () {
 
   describe('NO_COLOR Compliance', function () {
     it('should disable colors when NO_COLOR is set', function () {
-      const originalNoColor = process.env.NO_COLOR;
-      process.env.NO_COLOR = '1';
+      withoutForceColor(() => {
+        const originalNoColor = process.env.NO_COLOR;
+        process.env.NO_COLOR = '1';
 
-      // All color functions should return plain text
-      assert.strictEqual(ui.color('text', 'success'), 'text');
-      assert.strictEqual(ui.bold('text'), 'text');
-      assert.strictEqual(ui.dim('text'), 'text');
-      assert.strictEqual(ui.gradientText('text'), 'text');
-
-      // Restore
-      if (originalNoColor === undefined) {
-        delete process.env.NO_COLOR;
-      } else {
-        process.env.NO_COLOR = originalNoColor;
-      }
+        try {
+          // All color functions should return plain text
+          assert.strictEqual(ui.color('text', 'success'), 'text');
+          assert.strictEqual(ui.bold('text'), 'text');
+          assert.strictEqual(ui.dim('text'), 'text');
+          assert.strictEqual(ui.gradientText('text'), 'text');
+        } finally {
+          if (originalNoColor === undefined) {
+            delete process.env.NO_COLOR;
+          } else {
+            process.env.NO_COLOR = originalNoColor;
+          }
+        }
+      });
     });
   });
 });

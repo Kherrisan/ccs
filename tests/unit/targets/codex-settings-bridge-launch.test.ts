@@ -126,6 +126,8 @@ exit 0
     expect(argsLog).toContain('model_provider="ccs_runtime"');
     expect(argsLog).toContain('model_providers.ccs_runtime.base_url="http://127.0.0.1:8317/api/provider/codex"');
     expect(argsLog).toContain('model_reasoning_effort="high"');
+    expect(argsLog).toContain('mcp_servers.ccs_browser.command=');
+    expect(argsLog).toContain('mcp_servers.ccs_browser.args=["-y","@playwright/mcp@0.0.70"]');
     expect(argsLog).toContain('smoke');
     expect(fs.readFileSync(codexEnvLogPath, 'utf8')).toBe('bridge-token');
   });

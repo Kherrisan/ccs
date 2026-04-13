@@ -14,7 +14,7 @@ import { DEFAULT_ACCOUNT_CONTEXT_MODE } from '../auth/account-context';
 import type { AccountContextPolicy } from '../auth/account-context';
 import { getCcsDir, getCcsHome } from '../utils/config-manager';
 
-const MANAGED_MCP_SERVER_NAMES = new Set(['ccs-websearch', 'ccs-image-analysis']);
+const MANAGED_MCP_SERVER_NAMES = new Set(['ccs-websearch', 'ccs-image-analysis', 'ccs-browser']);
 
 /** Options for instance creation */
 export interface InstanceOptions {
@@ -252,9 +252,12 @@ class InstanceManager {
       }
       instanceContent.mcpServers = mergedMcpServers;
 
+      const fileMode = fs.existsSync(instanceClaudeJson)
+        ? fs.statSync(instanceClaudeJson).mode & 0o777
+        : 0o600;
       fs.writeFileSync(instanceClaudeJson, JSON.stringify(instanceContent, null, 2), {
         encoding: 'utf8',
-        mode: 0o600,
+        mode: fileMode,
       });
       return true;
     } catch (error) {

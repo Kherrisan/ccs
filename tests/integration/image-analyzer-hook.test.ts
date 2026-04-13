@@ -53,6 +53,11 @@ function invokeHook(env: Record<string, string> = {}): Promise<HookResult> {
       env: {
         ...process.env,
         CCS_IMAGE_ANALYSIS_SKIP: '', // clear any inherited skip flag
+        CCS_IMAGE_ANALYSIS_SKIP_HOOK: '', // clear any inherited MCP-ready bypass
+        CCS_IMAGE_ANALYSIS_MODEL: '', // let each test control explicit model fallback behavior
+        CCS_IMAGE_ANALYSIS_BACKEND_ID: '',
+        CCS_IMAGE_ANALYSIS_RUNTIME_PATH: '',
+        CCS_IMAGE_ANALYSIS_RUNTIME_BASE_URL: '',
         CCS_CLIPROXY_API_KEY: CLIPROXY_API_KEY,
         CCS_CLIPROXY_PORT: String(mockPort),
         CCS_IMAGE_ANALYSIS_ENABLED: '1',

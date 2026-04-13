@@ -121,9 +121,10 @@ export function loadMigrationCheckData(): MigrationCheckData {
 
   if (legacyConfig?.profiles && typeof legacyConfig.profiles === 'object' && unifiedConfig) {
     const legacyProfiles = legacyConfig.profiles as Record<string, unknown>;
+    const unifiedProfiles = unifiedConfig.profiles ?? {};
     for (const profileName of Object.keys(legacyProfiles)) {
       const targetProfileName = resolveAliasToCanonical(profileName);
-      if (!unifiedConfig.profiles[targetProfileName]) {
+      if (!unifiedProfiles[targetProfileName]) {
         needsMigration = true;
         break;
       }

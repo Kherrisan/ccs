@@ -774,6 +774,11 @@ describe('ToolSanitizationProxy Integration', () => {
     });
 
     it('handles upstream connection errors gracefully', async () => {
+      const originalNoProxy = process.env.NO_PROXY;
+      const originalNoProxyLower = process.env.no_proxy;
+      process.env.NO_PROXY = '127.0.0.1,localhost';
+      process.env.no_proxy = '127.0.0.1,localhost';
+
       const proxy = new ToolSanitizationProxy({
         upstreamBaseUrl: 'http://127.0.0.1:1', // Invalid port
         timeoutMs: 1000,
@@ -790,6 +795,16 @@ describe('ToolSanitizationProxy Integration', () => {
         expect(response.status).toBe(502);
       } finally {
         proxy.stop();
+        if (originalNoProxy === undefined) {
+          delete process.env.NO_PROXY;
+        } else {
+          process.env.NO_PROXY = originalNoProxy;
+        }
+        if (originalNoProxyLower === undefined) {
+          delete process.env.no_proxy;
+        } else {
+          process.env.no_proxy = originalNoProxyLower;
+        }
       }
     });
   });

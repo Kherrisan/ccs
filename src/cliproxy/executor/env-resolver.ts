@@ -74,6 +74,8 @@ export interface ProxyChainConfig {
   claudeConfigDir?: string;
   /** Execution-aware image analysis env prepared by the caller */
   imageAnalysisEnv?: Record<string, string>;
+  /** Optional browser runtime env for Claude browser MCP reuse. */
+  browserRuntimeEnv?: Record<string, string>;
 }
 
 interface CliproxyImageAnalysisDeps {
@@ -240,6 +242,7 @@ export function buildClaudeEnvironment(config: ProxyChainConfig): Record<string,
     compositeDefaultTier,
     claudeConfigDir,
     imageAnalysisEnv: resolvedImageAnalysisEnv,
+    browserRuntimeEnv,
   } = config;
 
   // Build base env vars - check remote mode first
@@ -394,6 +397,7 @@ export function buildClaudeEnvironment(config: ProxyChainConfig): Record<string,
     ...(claudeConfigDir ? { CLAUDE_CONFIG_DIR: claudeConfigDir } : {}),
     ...webSearchEnv,
     ...imageAnalysisEnv,
+    ...(browserRuntimeEnv || {}),
     CCS_PROFILE_TYPE: 'cliproxy', // Signal to WebSearch hook this is a third-party provider
   };
 
