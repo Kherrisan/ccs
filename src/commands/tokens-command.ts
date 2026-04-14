@@ -71,25 +71,19 @@ async function showAuthStatus(showUnmasked: boolean): Promise<void> {
 export async function handleTokensCommand(args: string[]): Promise<number> {
   await initUI();
 
-  // Parse flags
   const showFlag = args.includes('--show');
   const resetFlag = args.includes('--reset');
   const regenerateSecretFlag = args.includes('--regenerate-secret');
   const helpFlag = args.includes('--help') || args.includes('-h');
-
-  // Find --api-key value
   const apiKeyIndex = args.indexOf('--api-key');
+  const hasApiKeyFlag = apiKeyIndex !== -1;
   const apiKeyValue = apiKeyIndex !== -1 ? args[apiKeyIndex + 1] : undefined;
-
-  // Find --secret value
   const secretIndex = args.indexOf('--secret');
+  const hasSecretFlag = secretIndex !== -1;
   const secretValue = secretIndex !== -1 ? args[secretIndex + 1] : undefined;
-
-  // Find --variant value
   const variantIndex = args.indexOf('--variant');
   const variantValue = variantIndex !== -1 ? args[variantIndex + 1] : undefined;
 
-  // Help
   if (helpFlag) {
     console.log(header('CCS Tokens Management'));
     console.log('');
@@ -124,40 +118,45 @@ export async function handleTokensCommand(args: string[]): Promise<number> {
     return 0;
   }
 
-  // Reset to defaults
   if (resetFlag) {
     resetAuthToDefaults();
-    // Regenerate CLIProxy config to apply changes
     regenerateConfig();
     console.log(ok('Auth tokens reset to defaults'));
     console.log(info('CLIProxy config regenerated'));
     return 0;
   }
 
-  // Regenerate management secret
+  if (regenerateSecretFlag && hasSecretFlag) {
+    console.error(fail('Cannot combine --secret with --regenerate-secret'));
+    return 1;
+  }
+
+  if (hasApiKeyFlag && (!apiKeyValue || apiKeyValue.startsWith('-'))) {
+    console.error(fail('Missing value for --api-key'));
+    return 1;
+  }
+
+  if (hasSecretFlag && (!secretValue || secretValue.startsWith('-'))) {
+    console.error(fail('Missing value for --secret'));
+    return 1;
+  }
+
+  let updated = false;
+
   if (regenerateSecretFlag) {
     const newSecret = generateSecureToken(32);
     setGlobalManagementSecret(newSecret);
-    // Regenerate CLIProxy config to apply changes
-    regenerateConfig();
     console.log(ok('New management secret generated'));
     console.log(`  Secret: ${maskToken(newSecret)}`);
-    console.log(info('CLIProxy config regenerated'));
-    console.log(warn('Restart CLIProxy to apply: ccs cliproxy restart'));
-    return 0;
+    updated = true;
   }
 
-  // Set API key
-  if (apiKeyValue !== undefined) {
-    if (!apiKeyValue || apiKeyValue.startsWith('-')) {
-      console.error(fail('Missing value for --api-key'));
-      return 1;
-    }
+  if (hasApiKeyFlag) {
+    const resolvedApiKey = apiKeyValue;
 
     if (variantValue) {
-      // Per-variant API key
       try {
-        setVariantApiKey(variantValue, apiKeyValue);
+        setVariantApiKey(variantValue, resolvedApiKey);
         console.log(ok(`API key set for variant '${variantValue}'`));
       } catch (err) {
         const error = err instanceof Error ? err.message : 'Unknown error';
@@ -165,35 +164,25 @@ export async function handleTokensCommand(args: string[]): Promise<number> {
         return 1;
       }
     } else {
-      // Global API key
-      setGlobalApiKey(apiKeyValue);
+      setGlobalApiKey(resolvedApiKey);
       console.log(ok('Global API key updated'));
     }
-
-    // Regenerate CLIProxy config to apply changes
-    regenerateConfig();
-    console.log(info('CLIProxy config regenerated'));
-    console.log(warn('Restart CLIProxy to apply: ccs cliproxy restart'));
-    return 0;
+    updated = true;
   }
 
-  // Set management secret
-  if (secretValue !== undefined) {
-    if (!secretValue || secretValue.startsWith('-')) {
-      console.error(fail('Missing value for --secret'));
-      return 1;
-    }
-
+  if (hasSecretFlag) {
     setGlobalManagementSecret(secretValue);
-    // Regenerate CLIProxy config to apply changes
-    regenerateConfig();
     console.log(ok('Management secret updated'));
+    updated = true;
+  }
+
+  if (updated) {
+    regenerateConfig();
     console.log(info('CLIProxy config regenerated'));
     console.log(warn('Restart CLIProxy to apply: ccs cliproxy restart'));
     return 0;
   }
 
-  // Default: show status
   await showAuthStatus(showFlag);
   return 0;
 }
