@@ -84,8 +84,8 @@ CCS PR review no longer depends on `anthropics/claude-code-action`. The reposito
 - PR-Agent reviews run on the existing self-hosted `cliproxy` runner.
 - Use `/review` on the PR when you need a fresh pass after follow-up commits.
 - Only the trusted `/review` comment path is enabled on the privileged self-hosted runner.
-- Keep repository-level model choice and reviewer instructions in the root `.pr_agent.toml`.
-- Keep automation wiring in `ai-review.yml`, using the workflow env for `OPENAI.*` and `github_action_config.*` settings rather than `.pr_agent.toml`.
+- Keep repository-level reviewer instructions in the root `.pr_agent.toml`.
+- Keep runtime wiring and defaults in `ai-review.yml`, which still maps the existing `AI_REVIEW_BASE_URL`, `AI_REVIEW_MODEL`, and `AI_REVIEW_API_KEY` integrations onto PR-Agent's `OPENAI.*` and `config.*` settings.
 - If you change review defaults, update the workflow or `.pr_agent.toml` alongside the contributor or architecture docs in the same PR.
 
 Example:

@@ -75,10 +75,9 @@ jobs:
       contents: read
     env:
       GITHUB_TOKEN: ${{ github.token }}
-      OPENAI_KEY: ${{ secrets.CLIPROXY_API_KEY }}
-      "OPENAI.API_BASE": http://127.0.0.1:8317/v1
-      "config.model": "gpt-5.4-mini"
-      "config.fallback_models": '["gpt-5.4-mini"]'
+      OPENAI_KEY: ${{ secrets.AI_REVIEW_API_KEY }}
+      "OPENAI.API_BASE": ${{ vars.AI_REVIEW_BASE_URL }}
+      "config.model": ${{ vars.AI_REVIEW_MODEL }}
       "github_action_config.auto_review": "true"
       "github_action_config.auto_describe": "false"
       "github_action_config.auto_improve": "false"

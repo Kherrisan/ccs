@@ -22,16 +22,16 @@ describe('PR-Agent review lane migration', () => {
     expect(workflow).toContain('uses: qodo-ai/pr-agent');
     expect(workflow).toContain('OPENAI.API_BASE');
     expect(workflow).toContain('OPENAI_KEY');
-    expect(workflow).toContain('config.model');
+    expect(workflow).toContain('vars.AI_REVIEW_BASE_URL');
+    expect(workflow).toContain('vars.AI_REVIEW_MODEL');
+    expect(workflow).toContain('secrets.AI_REVIEW_API_KEY');
     expect(workflow).toContain('github_action_config.auto_review');
     expect(workflow).toContain("github.event.comment.body == '/review'");
     expect(workflow).toContain('github.event.comment.author_association');
     expect(workflow).not.toContain('uses: anthropics/claude-code-action@v1');
-    expect(workflow).not.toContain('AI_REVIEW_API_KEY');
 
     expect(config).toContain('[config]');
     expect(config).toContain('git_provider = "github"');
-    expect(config).toMatch(/\bmodel\s*=\s*"[^"\n]+"/);
     expect(config).toContain('[pr_reviewer]');
     expect(config).not.toContain('auto_review = true');
     expect(config).not.toContain('claude-code-action');

@@ -1,6 +1,4 @@
 [config]
-model = "gpt-5.4-mini"
-fallback_models = ["gpt-5.4-mini"]
 git_provider = "github"
 publish_output = true
 publish_output_progress = false
