@@ -1,3 +1,18 @@
+## [7.71.0](https://github.com/kaitranntt/ccs/compare/v7.70.1...v7.71.0) (2026-04-14)
+
+### Features
+
+* **accounts:** preserve codex variant detail in dashboard cards ([32c16a3](https://github.com/kaitranntt/ccs/commit/32c16a3739a6edb8f1f36b402f0776e5ae066b48))
+* **ci:** make PR-Agent reviews more verbose ([4c63f1a](https://github.com/kaitranntt/ccs/commit/4c63f1a0dbec115ce4c4ede25e6651b456032a44))
+
+### Bug Fixes
+
+* **ci:** restore PR-Agent reviewer bot identity ([4bd16b8](https://github.com/kaitranntt/ccs/commit/4bd16b89ce064b265c0a12535899cd49f13cf00d))
+
+### Tests
+
+* **accounts:** cover codex free-tier identity labels ([d5868e0](https://github.com/kaitranntt/ccs/commit/d5868e06882b302218e60496ada63ba778477434))
+
 ## [7.70.1](https://github.com/kaitranntt/ccs/compare/v7.70.0...v7.70.1) (2026-04-14)
 
 ### Bug Fixes
