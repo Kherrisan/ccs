@@ -153,6 +153,89 @@ function getConfiguredBackend() {
   }
 }
 
+function buildUpdateCheckFallback(
+  backend: ReturnType<typeof getConfiguredBackend>,
+  getInstalledVersionFn: typeof getInstalledCliproxyVersion = getInstalledCliproxyVersion
+) {
+  const currentVersion = getInstalledVersionFn(backend);
+  const isStable = !isNewerVersion(currentVersion, CLIPROXY_MAX_STABLE_VERSION);
+  const backendLabel = backend === 'plus' ? 'CLIProxy Plus' : 'CLIProxy';
+
+  return {
+    hasUpdate: false,
+    currentVersion,
+    latestVersion: currentVersion,
+    fromCache: true,
+    checkedAt: Date.now(),
+    backend,
+    backendLabel,
+    isStable,
+    maxStableVersion: CLIPROXY_MAX_STABLE_VERSION,
+    stabilityMessage: isStable
+      ? undefined
+      : `v${currentVersion} has known stability issues. Max stable: v${CLIPROXY_MAX_STABLE_VERSION}`,
+  };
+}
+
+function buildVersionsFallback(
+  backend: ReturnType<typeof getConfiguredBackend>,
+  getInstalledVersionFn: typeof getInstalledCliproxyVersion = getInstalledCliproxyVersion
+) {
+  const currentVersion = getInstalledVersionFn(backend);
+
+  return {
+    versions: currentVersion ? [currentVersion] : [],
+    latestStable: currentVersion || CLIPROXY_MAX_STABLE_VERSION,
+    latest: currentVersion || CLIPROXY_MAX_STABLE_VERSION,
+    fromCache: true,
+    checkedAt: Date.now(),
+    currentVersion,
+    maxStableVersion: CLIPROXY_MAX_STABLE_VERSION,
+    faultyRange: CLIPROXY_FAULTY_RANGE,
+  };
+}
+
+interface ResolveUpdateCheckDeps {
+  checkCliproxyUpdateFn?: typeof checkCliproxyUpdate;
+  getInstalledVersionFn?: typeof getInstalledCliproxyVersion;
+}
+
+interface ResolveVersionsDeps {
+  fetchAllVersionsFn?: typeof fetchAllVersions;
+  getInstalledVersionFn?: typeof getInstalledCliproxyVersion;
+}
+
+export async function resolveCliproxyUpdateCheckPayload(
+  backend: ReturnType<typeof getConfiguredBackend>,
+  deps: ResolveUpdateCheckDeps = {}
+) {
+  const checkCliproxyUpdateFn = deps.checkCliproxyUpdateFn ?? checkCliproxyUpdate;
+  const getInstalledVersionFn = deps.getInstalledVersionFn ?? getInstalledCliproxyVersion;
+
+  return checkCliproxyUpdateFn(backend).catch(() =>
+    buildUpdateCheckFallback(backend, getInstalledVersionFn)
+  );
+}
+
+export async function resolveCliproxyVersionsPayload(
+  backend: ReturnType<typeof getConfiguredBackend>,
+  deps: ResolveVersionsDeps = {}
+) {
+  const fetchAllVersionsFn = deps.fetchAllVersionsFn ?? fetchAllVersions;
+  const getInstalledVersionFn = deps.getInstalledVersionFn ?? getInstalledCliproxyVersion;
+  const result = await fetchAllVersionsFn(false, backend).catch(() => null);
+  if (!result) {
+    return buildVersionsFallback(backend, getInstalledVersionFn);
+  }
+
+  return {
+    ...result,
+    currentVersion: getInstalledVersionFn(backend),
+    maxStableVersion: CLIPROXY_MAX_STABLE_VERSION,
+    faultyRange: CLIPROXY_FAULTY_RANGE,
+  };
+}
+
 /**
  * Extract status code and model from error log file (lightweight parsing).
  * Reads first 4KB for model, last 2KB for status code. Async to avoid blocking event loop.
@@ -327,7 +410,8 @@ router.post('/proxy-stop', async (_req: Request, res: Response): Promise<void> =
 router.get('/update-check', async (_req: Request, res: Response): Promise<void> => {
   try {
     const backend = getConfiguredBackend();
-    const result = await checkCliproxyUpdate(backend);
+    const result = await resolveCliproxyUpdateCheckPayload(backend);
+
     res.json(result);
   } catch (error) {
     console.error(`[cliproxy-stats] ${(error as Error).message}`);
@@ -936,15 +1020,7 @@ router.get('/quota/:provider/:accountId', async (req: Request, res: Response): P
 router.get('/versions', async (_req: Request, res: Response): Promise<void> => {
   try {
     const backend = getConfiguredBackend();
-    const result = await fetchAllVersions(false, backend);
-    const currentVersion = getInstalledCliproxyVersion(backend);
-
-    res.json({
-      ...result,
-      currentVersion,
-      maxStableVersion: CLIPROXY_MAX_STABLE_VERSION,
-      faultyRange: CLIPROXY_FAULTY_RANGE,
-    });
+    res.json(await resolveCliproxyVersionsPayload(backend));
   } catch (error) {
     console.error(`[cliproxy-stats] ${(error as Error).message}`);
     res.status(500).json({ error: 'Internal server error' });

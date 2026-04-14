@@ -6,9 +6,11 @@
 import { fetchJson } from './downloader';
 import {
   readVersionCache,
+  readStaleVersionCache,
   writeVersionCache,
   readInstalledVersion,
   readVersionListCache,
+  readStaleVersionListCache,
   writeVersionListCache,
 } from './version-cache';
 import { UpdateCheckResult, VersionListResult, getGitHubApiUrls } from './types';
@@ -18,6 +20,18 @@ import {
   DEFAULT_BACKEND,
 } from '../platform-detector';
 import type { CLIProxyBackend } from '../types';
+
+interface FetchLatestVersionDeps {
+  fetchJsonFn?: typeof fetchJson;
+}
+
+interface CheckForUpdatesDeps {
+  fetchLatestVersionFn?: (verbose: boolean, backend: CLIProxyBackend) => Promise<string>;
+}
+
+interface FetchAllVersionsDeps {
+  fetchJsonFn?: typeof fetchJson;
+}
 
 /**
  * Compare semver versions (true if latest > current)
@@ -61,10 +75,11 @@ export function isVersionFaulty(version: string): boolean {
  */
 export async function fetchLatestVersion(
   verbose = false,
-  backend: CLIProxyBackend = DEFAULT_BACKEND
+  backend: CLIProxyBackend = DEFAULT_BACKEND,
+  deps: FetchLatestVersionDeps = {}
 ): Promise<string> {
   const urls = getGitHubApiUrls(backend);
-  const response = await fetchJson(urls.latestRelease, verbose);
+  const response = await (deps.fetchJsonFn ?? fetchJson)(urls.latestRelease, verbose);
 
   // Extract version from tag_name (format: "v6.5.27" or "6.5.27")
   const tagName = response.tag_name as string;
@@ -84,7 +99,8 @@ export async function checkForUpdates(
   binPath: string,
   configVersion: string,
   verbose = false,
-  backend: CLIProxyBackend = DEFAULT_BACKEND
+  backend: CLIProxyBackend = DEFAULT_BACKEND,
+  deps: CheckForUpdatesDeps = {}
 ): Promise<UpdateCheckResult> {
   const currentVersion = readInstalledVersion(binPath, configVersion);
 
@@ -103,18 +119,38 @@ export async function checkForUpdates(
     };
   }
 
-  // Fetch from GitHub API (backend-specific repo)
-  const latestVersion = await fetchLatestVersion(verbose, backend);
-  const now = Date.now();
-  writeVersionCache(latestVersion, backend);
+  try {
+    // Fetch from GitHub API (backend-specific repo)
+    const latestVersion = await (deps.fetchLatestVersionFn ?? fetchLatestVersion)(verbose, backend);
+    const now = Date.now();
+    writeVersionCache(latestVersion, backend);
 
-  return {
-    hasUpdate: isNewerVersion(latestVersion, currentVersion),
-    currentVersion,
-    latestVersion,
-    fromCache: false,
-    checkedAt: now,
-  };
+    return {
+      hasUpdate: isNewerVersion(latestVersion, currentVersion),
+      currentVersion,
+      latestVersion,
+      fromCache: false,
+      checkedAt: now,
+    };
+  } catch (error) {
+    const staleCache = readStaleVersionCache(backend);
+    if (staleCache) {
+      if (verbose) {
+        console.error(
+          `[cliproxy] GitHub latest release lookup failed, using stale cache: ${(error as Error).message}`
+        );
+      }
+      return {
+        hasUpdate: isNewerVersion(staleCache.latestVersion, currentVersion),
+        currentVersion,
+        latestVersion: staleCache.latestVersion,
+        fromCache: true,
+        checkedAt: staleCache.checkedAt,
+      };
+    }
+
+    throw error;
+  }
 }
 
 /**
@@ -125,7 +161,8 @@ export async function checkForUpdates(
  */
 export async function fetchAllVersions(
   verbose = false,
-  backend: CLIProxyBackend = DEFAULT_BACKEND
+  backend: CLIProxyBackend = DEFAULT_BACKEND,
+  deps: FetchAllVersionsDeps = {}
 ): Promise<VersionListResult> {
   // Try cache first (backend-specific)
   const cache = readVersionListCache(backend);
@@ -136,31 +173,46 @@ export async function fetchAllVersions(
     return { ...cache, fromCache: true };
   }
 
-  // Fetch from GitHub API (backend-specific repo)
-  const urls = getGitHubApiUrls(backend);
-  const response = await fetchJson(urls.allReleases, verbose);
+  try {
+    // Fetch from GitHub API (backend-specific repo)
+    const urls = getGitHubApiUrls(backend);
+    const response = await (deps.fetchJsonFn ?? fetchJson)(urls.allReleases, verbose);
 
-  // Extract and normalize versions
-  const releases = response as unknown as Array<{ tag_name: string }>;
-  const versions = releases
-    .map((r) => r.tag_name.replace(/^v/, ''))
-    .filter((v) => /^\d+\.\d+\.\d+(-\d+)?$/.test(v)); // Valid semver only
+    // Extract and normalize versions
+    const releases = response as unknown as Array<{ tag_name: string }>;
+    const versions = releases
+      .map((r) => r.tag_name.replace(/^v/, ''))
+      .filter((v) => /^\d+\.\d+\.\d+(-\d+)?$/.test(v)); // Valid semver only
 
-  const latest = versions[0] || '';
+    const latest = versions[0] || '';
 
-  // Find latest stable (not newer than max stable AND not in faulty range)
-  const latestStable =
-    versions.find((v) => !isNewerVersion(v, CLIPROXY_MAX_STABLE_VERSION) && !isVersionFaulty(v)) ||
-    CLIPROXY_MAX_STABLE_VERSION;
+    // Find latest stable (not newer than max stable AND not in faulty range)
+    const latestStable =
+      versions.find(
+        (v) => !isNewerVersion(v, CLIPROXY_MAX_STABLE_VERSION) && !isVersionFaulty(v)
+      ) || CLIPROXY_MAX_STABLE_VERSION;
 
-  const result: VersionListResult = {
-    versions,
-    latestStable,
-    latest,
-    fromCache: false,
-    checkedAt: Date.now(),
-  };
+    const result: VersionListResult = {
+      versions,
+      latestStable,
+      latest,
+      fromCache: false,
+      checkedAt: Date.now(),
+    };
 
-  writeVersionListCache(result, backend);
-  return result;
+    writeVersionListCache(result, backend);
+    return result;
+  } catch (error) {
+    const staleCache = readStaleVersionListCache(backend);
+    if (staleCache) {
+      if (verbose) {
+        console.error(
+          `[cliproxy] GitHub release list lookup failed, using stale cache: ${(error as Error).message}`
+        );
+      }
+      return { ...staleCache, fromCache: true };
+    }
+
+    throw error;
+  }
 }

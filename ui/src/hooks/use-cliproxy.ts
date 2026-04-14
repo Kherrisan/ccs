@@ -447,7 +447,8 @@ export function useCliproxyUpdateCheck() {
     queryFn: () => api.cliproxy.updateCheck(),
     staleTime: 5 * 60 * 1000, // 5 minutes (reduced from 1 hour for faster backend switch response)
     refetchInterval: 5 * 60 * 1000, // Refresh every 5 minutes
-    refetchOnWindowFocus: true, // Refetch on window focus to catch backend changes
+    refetchOnWindowFocus: false, // Avoid refetch bursts for non-critical release metadata
+    retry: false,
   });
 }
 
@@ -492,7 +493,8 @@ export function useCliproxyVersions() {
     queryKey: ['cliproxy-versions'],
     queryFn: () => api.cliproxy.versions(),
     staleTime: 5 * 60 * 1000, // 5 minutes (reduced for faster backend switch response)
-    refetchOnWindowFocus: true, // Refetch on focus to catch backend changes
+    refetchOnWindowFocus: false, // Avoid repeated release lookups while browsing the dashboard
+    retry: false,
   });
 }
 
