@@ -29,6 +29,7 @@ describe('PR-Agent review lane migration', () => {
     expect(workflow).toContain('github_action_config.auto_review');
     expect(workflow).toContain("github.event.comment.body == '/review'");
     expect(workflow).toContain('github.event.comment.author_association');
+    expect(workflow).toContain('ccs-reviewer[bot]');
     expect(workflow).toContain("format('skip-{0}', github.run_id)");
     expect(workflow).toContain("format('dispatch-{0}', github.run_id)");
     expect(workflow).toContain('CCS_REVIEWER_APP_ID');
