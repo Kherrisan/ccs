@@ -1,0 +1,46 @@
+[config]
+git_provider = "github"
+publish_output = true
+publish_output_progress = false
+response_language = "en-US"
+max_model_tokens = 32000
+large_patch_policy = "clip"
+temperature = 0.1
+
+[pr_reviewer]
+require_tests_review = true
+require_estimate_effort_to_review = false
+require_security_review = true
+require_ticket_analysis_review = false
+publish_output_no_suggestions = true
+persistent_comment = true
+num_max_findings = 6
+final_update_message = false
+enable_review_labels_security = false
+enable_review_labels_effort = false
+enable_intro_text = false
+enable_help_text = false
+extra_instructions = """\
+Focus on correctness, security, regressions, and missing verification.
+Read the full diff before reporting findings, and inspect surrounding code before claiming a bug.
+Prefer a short list of confirmed issues over speculative commentary.
+Do not pad the review with praise, scorecards, effort estimates, or generic best-practice advice.
+
+CCS-specific checks:
+- CLI output in src/ must stay ASCII-only: [OK], [!], [X], [i]
+- CCS path access must use getCcsDir(), not os.homedir() plus .ccs
+- CLI behavior changes require matching --help and docs updates
+- Terminal color output must respect TTY detection and NO_COLOR
+- Code must not modify ~/.claude/settings.json without explicit user action
+
+Treat the following as high severity:
+- security issues, data loss, broken install or release flows, or behavior likely wrong in normal use
+
+Treat the following as medium severity:
+- meaningful edge cases, missing guards, or missing tests/docs/help updates that can cause user-facing bugs
+
+Use low severity only for small, concrete follow-ups that are worth tracking.
+"""
+
+[github_action_config]
+pr_actions = ["opened", "reopened", "ready_for_review", "synchronize"]

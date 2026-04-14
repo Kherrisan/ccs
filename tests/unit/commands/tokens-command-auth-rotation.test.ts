@@ -2,9 +2,22 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { getCliproxyConfigPath } from '../../../src/cliproxy';
-import { handleTokensCommand } from '../../../src/commands/tokens-command';
-import { getConfigYamlPath, loadUnifiedConfig } from '../../../src/config/unified-config-loader';
+
+async function loadTokensCommand() {
+  return await import(
+    `../../../src/commands/tokens-command?test=${Date.now()}-${Math.random()}`
+  );
+}
+
+async function loadCliproxyModule() {
+  return await import(`../../../src/cliproxy?test=${Date.now()}-${Math.random()}`);
+}
+
+async function loadUnifiedConfigModule() {
+  return await import(
+    `../../../src/config/unified-config-loader?test=${Date.now()}-${Math.random()}`
+  );
+}
 
 describe('tokens command auth rotation', () => {
   let tempHome = '';
@@ -47,6 +60,10 @@ describe('tokens command auth rotation', () => {
   });
 
   it('applies api-key and regenerated secret in a single invocation', async () => {
+    const { handleTokensCommand } = await loadTokensCommand();
+    const { getCliproxyConfigPath } = await loadCliproxyModule();
+    const { loadUnifiedConfig } = await loadUnifiedConfigModule();
+
     const exitCode = await handleTokensCommand([
       '--api-key',
       'ccs-custom-key-123',
@@ -70,6 +87,9 @@ describe('tokens command auth rotation', () => {
   });
 
   it('rejects conflicting manual and generated secret flags', async () => {
+    const { handleTokensCommand } = await loadTokensCommand();
+    const { getConfigYamlPath } = await loadUnifiedConfigModule();
+
     const exitCode = await handleTokensCommand([
       '--secret',
       'manual-secret',

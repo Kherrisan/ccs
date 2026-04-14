@@ -1,6 +1,6 @@
 # CCS System Architecture
 
-Last Updated: 2026-04-07
+Last Updated: 2026-04-14
 
 High-level architecture overview for the CCS (Claude Code Switch) system.
 
@@ -19,6 +19,7 @@ Dashboard localization (i18n) architecture and contributor workflow are document
 
 CCS v7.34 adds Image Analysis Hook for vision model proxying through CLIProxy with automatic injection for all profile types.
 CCS v7.67 adds a native structured logging lane for CCS-owned runtime events, backed by `src/services/logging/`, bounded JSONL files under `~/.ccs/logs/`, and a dedicated dashboard `/logs` route.
+CCS PR review now uses PR-Agent in GitHub Actions, with reviews running on the self-hosted `cliproxy` runner, existing `AI_REVIEW_*` workflow variables and secrets preserved as the runtime contract, and repo-level guidance stored in `.pr_agent.toml`.
 
 ```
 +===========================================================================+
@@ -414,6 +415,30 @@ See [Provider Flows](./provider-flows.md) → Authentication Flow section.
         |
         +---> First run creates: ~/.ccs/
 ```
+
+### PR Review Lane
+
+Automated pull request review stays in `.github/workflows/ai-review.yml`, but the workflow now runs PR-Agent instead of the old Claude action. Reviews run on the existing self-hosted `cliproxy` runner, while the workflow preserves the existing `AI_REVIEW_BASE_URL`, `AI_REVIEW_MODEL`, and `AI_REVIEW_API_KEY` contract by mapping those values into PR-Agent env keys such as `OPENAI.*`, `config.*`, and `github_action_config.*`. Repo-specific reviewer guidance lives in `.pr_agent.toml`.
+
+```
+GitHub Actions `ai-review.yml`
+      |
+      v
+Self-hosted `cliproxy` runner
+      |
+      v
+PR-Agent action
+      |
+      v
+CLIProxy
+      |
+      v
+Configured model from `.pr_agent.toml`
+```
+
+- `ai-review.yml` owns automation wiring such as runner selection, PR-Agent action usage, and runtime values mapped from `AI_REVIEW_*` into `OPENAI.*`, `config.*`, and `github_action_config.*`.
+- `.pr_agent.toml` in the repo root owns review instructions for this repository.
+- Contributors should treat PR-Agent comments and trusted `/review` reruns as the primary AI review path for PRs targeting CCS.
 
 ### Runtime Dependencies
 
