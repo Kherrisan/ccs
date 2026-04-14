@@ -76,6 +76,17 @@ Rules:
 - Treat `hotfix/*` as maintainer-only emergency flow from `main`.
 - Delete your branch after merge.
 
+## AI Review Lane
+
+CCS PR review no longer depends on `anthropics/claude-code-action`. The repository review lane is self-hosted PR-Agent:
+
+- The retained `.github/workflows/ai-review.yml` runs PR-Agent in GitHub Actions.
+- PR-Agent reviews run on the existing self-hosted `cliproxy` runner.
+- Use `/review` on the PR when you need a fresh pass after follow-up commits.
+- Keep repository-level model choice and reviewer instructions in the root `.pr_agent.toml`.
+- Keep automation wiring in `ai-review.yml`, using the workflow env for `OPENAI.*` and `github_action_config.*` settings rather than `.pr_agent.toml`.
+- If you change review defaults, update the workflow or `.pr_agent.toml` alongside the contributor or architecture docs in the same PR.
+
 Example:
 
 ```bash
@@ -165,6 +176,7 @@ If you cannot run the full suite, that is still fine for early or docs-only PRs.
 
 - Update the relevant docs in `docs/`.
 - Mention migration or compatibility notes in the PR.
+- If the change affects automated PR review behavior, update the `ai-review.yml` or `.pr_agent.toml` guidance as well.
 
 ## Commit Style
 
