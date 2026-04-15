@@ -1,3 +1,5 @@
+import i18n from './i18n';
+
 const FREE_PLAN_PARTS = new Set(['free']);
 const PERSONAL_PLAN_PARTS = new Set(['plus', 'pro']);
 const BUSINESS_PLAN_PARTS = new Set(['team']);
@@ -38,13 +40,13 @@ export function formatAccountVariantPart(part: string): string {
 
   switch (normalized) {
     case 'team':
-      return 'Team'; // TODO i18n: missing key for account variant team
+      return i18n.t('accountIdentity.team');
     case 'free':
-      return 'Free'; // TODO i18n: missing key for account variant free
+      return i18n.t('accountIdentity.free');
     case 'plus':
-      return 'Plus'; // TODO i18n: missing key for account variant plus
+      return i18n.t('accountIdentity.plus');
     case 'pro':
-      return 'Pro'; // TODO i18n: missing key for account variant pro
+      return i18n.t('accountIdentity.pro');
     default:
       return /^[a-f0-9]{8}$/i.test(normalized)
         ? normalized
@@ -104,7 +106,7 @@ function formatWorkspaceLabel(parts: string[]): {
   const workspaceId = parts.find((part) => /^[a-f0-9]{8}$/i.test(part));
   if (workspaceId) {
     return {
-      detailLabel: `Workspace ${workspaceId.toLowerCase()}`, // TODO i18n: missing key for workspace label
+      detailLabel: i18n.t('accountIdentity.workspace', { id: workspaceId.toLowerCase() }),
       compactDetailLabel: workspaceId.toLowerCase(),
     };
   }
@@ -166,11 +168,13 @@ export function getAccountIdentityPresentation(
   const suffix = parts[parts.length - 1]?.toLowerCase();
   if (suffix && BUSINESS_PLAN_PARTS.has(suffix)) {
     const workspace = formatWorkspaceLabel(parts.slice(0, -1));
-    const inlineLabel = ['Business', workspace.detailLabel].filter(Boolean).join(' · '); // TODO i18n: missing keys for Business/Personal audience labels
+    const inlineLabel = [i18n.t('accountIdentity.business'), workspace.detailLabel]
+      .filter(Boolean)
+      .join(' · ');
     return {
       email: resolvedEmail,
       audience: 'business',
-      audienceLabel: 'Business',
+      audienceLabel: i18n.t('accountIdentity.business'),
       detailLabel: workspace.detailLabel,
       compactDetailLabel: workspace.compactDetailLabel,
       inlineLabel,
@@ -179,11 +183,11 @@ export function getAccountIdentityPresentation(
 
   if (suffix && FREE_PLAN_PARTS.has(suffix)) {
     const detailLabel = formatAudienceDetail(parts.slice(0, -1));
-    const inlineLabel = ['Free', detailLabel].filter(Boolean).join(' · '); // TODO i18n: missing key for Free
+    const inlineLabel = [i18n.t('accountIdentity.free'), detailLabel].filter(Boolean).join(' · ');
     return {
       email: resolvedEmail,
       audience: 'free',
-      audienceLabel: 'Free',
+      audienceLabel: i18n.t('accountIdentity.free'),
       detailLabel,
       compactDetailLabel: detailLabel,
       inlineLabel,
@@ -194,11 +198,13 @@ export function getAccountIdentityPresentation(
     const detailLabel = [formatAccountVariantPart(suffix), formatAudienceDetail(parts.slice(0, -1))]
       .filter(Boolean)
       .join(' · ');
-    const inlineLabel = ['Personal', detailLabel].filter(Boolean).join(' · '); // TODO i18n: missing key for Personal
+    const inlineLabel = [i18n.t('accountIdentity.personal'), detailLabel]
+      .filter(Boolean)
+      .join(' · ');
     return {
       email: resolvedEmail,
       audience: 'personal',
-      audienceLabel: 'Personal',
+      audienceLabel: i18n.t('accountIdentity.personal'),
       detailLabel: detailLabel || formatAccountVariantPart(suffix),
       compactDetailLabel: detailLabel || formatAccountVariantPart(suffix),
       inlineLabel,
@@ -228,17 +234,20 @@ export function getCodexIdentityBadge(
   presentation: Pick<AccountIdentityPresentation, 'audience' | 'detailLabel' | 'compactDetailLabel'>
 ): CodexIdentityBadge {
   if (presentation.audience === 'business') {
-    return { audience: 'business', label: 'Business' };
+    return { audience: 'business', label: i18n.t('accountIdentity.business') };
   }
 
   if (presentation.audience === 'free') {
-    return { audience: 'free', label: 'Free' };
+    return { audience: 'free', label: i18n.t('accountIdentity.free') };
   }
 
   if (presentation.audience === 'personal') {
     return {
       audience: 'personal',
-      label: presentation.compactDetailLabel ?? presentation.detailLabel ?? 'Personal',
+      label:
+        presentation.compactDetailLabel ??
+        presentation.detailLabel ??
+        i18n.t('accountIdentity.personal'),
     };
   }
 
