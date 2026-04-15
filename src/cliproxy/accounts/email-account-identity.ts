@@ -162,7 +162,9 @@ export function formatAccountVariantLabel(accountId: string, email?: string): st
   }
 
   if (suffix && PERSONAL_PLAN_PARTS.has(suffix)) {
-    return ['Personal', formatAudienceDetail(parts.slice(0, -1))].filter(Boolean).join(' · ');
+    return ['Personal', formatVariantPart(suffix), formatAudienceDetail(parts.slice(0, -1))]
+      .filter(Boolean)
+      .join(' · ');
   }
 
   return parts.map(formatVariantPart).filter(Boolean).join(' · ');

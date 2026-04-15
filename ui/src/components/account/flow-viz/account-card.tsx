@@ -100,24 +100,53 @@ function getCodexPlanAudience(quota: unknown): AccountAudience {
 
   if (planType === 'team') return 'business';
   if (planType === 'free') return 'free';
-  if (planType === 'plus') return 'personal';
+  if (planType === 'plus' || planType === 'pro') return 'personal';
   return 'unknown';
 }
 
-function getVariantDetailLabel(variant: {
-  audience: AccountAudience;
-  detailLabel?: string | null;
-  compactDetailLabel?: string | null;
-}) {
-  return variant.detailLabel ?? variant.compactDetailLabel ?? null;
+function getCodexPlanDetailLabel(quota: unknown): string | null {
+  if (!quota || typeof quota !== 'object' || !('planType' in quota)) {
+    return null;
+  }
+
+  const planType = (quota as { planType?: unknown }).planType;
+  if (typeof planType !== 'string' || planType.trim().length === 0) {
+    return null;
+  }
+
+  if (planType === 'free' || planType === 'team') {
+    return null;
+  }
+
+  return planType === 'plus' || planType === 'pro'
+    ? planType[0].toUpperCase() + planType.slice(1)
+    : null;
 }
 
-function getVariantCompactDetailLabel(variant: {
-  audience: AccountAudience;
-  compactDetailLabel?: string | null;
-  detailLabel?: string | null;
-}) {
-  return variant.compactDetailLabel ?? variant.detailLabel ?? null;
+function getVariantDetailLabel(
+  variant: {
+    audience: AccountAudience;
+    detailLabel?: string | null;
+    compactDetailLabel?: string | null;
+  },
+  quota?: unknown
+) {
+  return (
+    variant.detailLabel ?? variant.compactDetailLabel ?? getCodexPlanDetailLabel(quota) ?? null
+  );
+}
+
+function getVariantCompactDetailLabel(
+  variant: {
+    audience: AccountAudience;
+    compactDetailLabel?: string | null;
+    detailLabel?: string | null;
+  },
+  quota?: unknown
+) {
+  return (
+    variant.compactDetailLabel ?? variant.detailLabel ?? getCodexPlanDetailLabel(quota) ?? null
+  );
 }
 
 function getDetailedAudienceLabel(audience: AccountAudience): string | null {
@@ -146,7 +175,7 @@ function getVariantInlineLabel(
   },
   quota?: unknown
 ) {
-  const detailLabel = getVariantDetailLabel(variant);
+  const detailLabel = getVariantDetailLabel(variant, quota);
   const audienceLabel =
     variant.audienceLabel ?? getDetailedAudienceLabel(getVariantAudience(variant, quota));
   const composedLabel = [audienceLabel, detailLabel].filter(Boolean).join(' · ');
@@ -164,7 +193,7 @@ function getVariantMarkerLabel(
   quota?: unknown
 ) {
   const audience = getVariantAudience(variant, quota);
-  const compactDetailLabel = getVariantCompactDetailLabel(variant);
+  const compactDetailLabel = getVariantCompactDetailLabel(variant, quota);
   if (audience === 'business') {
     const businessVariantCount = audienceCounts.get('business') ?? 0;
     return businessVariantCount > 1 && compactDetailLabel ? compactDetailLabel : 'Biz';
@@ -197,7 +226,7 @@ function getGroupedVariantSummaryLabel(
   const audiences = new Set(variants.map((variant) => variant.audience));
   const hasDistinctDetails = variants.some((variant, index) =>
     Boolean(
-      getVariantCompactDetailLabel(variant) ||
+      getVariantCompactDetailLabel(variant, quotas[index]) ||
       getDetailedAudienceLabel(getVariantAudience(variant, quotas[index]))
     )
   );

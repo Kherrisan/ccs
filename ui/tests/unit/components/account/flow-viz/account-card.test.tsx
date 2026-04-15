@@ -20,7 +20,11 @@ vi.mock('@/hooks/use-cliproxy-stats', async () => {
 const mockedUseAccountQuota = vi.mocked(useAccountQuota);
 const mockedUseAccountQuotas = vi.mocked(useAccountQuotas);
 
-function makeCodexQuota(planType: 'free' | 'plus' | 'team', fiveHour: number, weekly: number) {
+function makeCodexQuota(
+  planType: 'free' | 'plus' | 'pro' | 'team',
+  fiveHour: number,
+  weekly: number
+) {
   return {
     success: true,
     planType,
@@ -201,5 +205,6 @@ describe('AccountCard grouped quota tooltip', () => {
     expect(screen.getByTitle('Business · Workspace 04a0f049 • Personal · Pro')).toBeInTheDocument();
     expect(screen.getByText('Personal · Pro')).toBeInTheDocument();
     expect(screen.queryByText('Free')).not.toBeInTheDocument();
+    expect(screen.getByText('Pro')).toBeInTheDocument();
   });
 });

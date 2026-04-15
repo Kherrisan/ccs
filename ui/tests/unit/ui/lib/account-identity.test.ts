@@ -58,14 +58,21 @@ describe('account identity presentation', () => {
     ).toBe('kaidu.kd@gmail.com (Free)');
   });
 
-  it('collapses paid codex personal plans into a single personal audience label', () => {
+  it('keeps plus and pro codex personal plans distinct', () => {
     expect(
       formatAccountDisplayName(
         'kaidu.kd@gmail.com',
         'kaidu.kd@gmail.com',
         'codex-kaidu.kd@gmail.com-plus.json'
       )
-    ).toBe('kaidu.kd@gmail.com (Personal)');
+    ).toBe('kaidu.kd@gmail.com (Personal · Plus)');
+    expect(
+      formatAccountDisplayName(
+        'kaidu.kd@gmail.com',
+        'kaidu.kd@gmail.com',
+        'codex-kaidu.kd@gmail.com-pro.json'
+      )
+    ).toBe('kaidu.kd@gmail.com (Personal · Pro)');
   });
 
   it('leaves plain accounts without inferred state untouched', () => {

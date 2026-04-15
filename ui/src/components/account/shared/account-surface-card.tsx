@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { PRIVACY_BLUR_CLASS } from '@/contexts/privacy-context';
 import type { UnifiedQuotaResult } from '@/hooks/use-cliproxy-stats';
-import { getAccountIdentityPresentation } from '@/lib/account-identity';
+import { formatAccountVariantPart, getAccountIdentityPresentation } from '@/lib/account-identity';
 import { cn } from '@/lib/utils';
 import { Pause, Star, User } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -109,8 +109,20 @@ function getCodexPlanAudience(quota: UnifiedQuotaResult | undefined): AccountAud
 
   if (quota.planType === 'team') return 'business';
   if (quota.planType === 'free') return 'free';
-  if (quota.planType === 'plus') return 'personal';
+  if (quota.planType === 'plus' || quota.planType === 'pro') return 'personal';
   return 'unknown';
+}
+
+function getCodexPlanDetailLabel(quota: UnifiedQuotaResult | undefined): string | null {
+  if (!quota || !('planType' in quota) || !quota.planType) {
+    return null;
+  }
+
+  if (quota.planType === 'free' || quota.planType === 'team') {
+    return null;
+  }
+
+  return formatAccountVariantPart(quota.planType);
 }
 
 export function AccountSurfaceCard({
@@ -143,11 +155,13 @@ export function AccountSurfaceCard({
   const effectiveTier = resolveEffectiveTier(tier, quota);
   const codexPlanAudience =
     normalizedProvider === 'codex' ? getCodexPlanAudience(quota) : 'unknown';
+  const codexPlanDetailLabel =
+    normalizedProvider === 'codex' ? getCodexPlanDetailLabel(quota) : null;
   const effectiveAudience = identity.audience !== 'unknown' ? identity.audience : codexPlanAudience;
   const effectiveAudienceLabel =
     identity.audienceLabel ?? getDetailedAudienceLabel(effectiveAudience);
-  const resolvedDetailLabel = identity.detailLabel;
-  const resolvedCompactDetailLabel = identity.compactDetailLabel;
+  const resolvedDetailLabel = identity.detailLabel ?? codexPlanDetailLabel;
+  const resolvedCompactDetailLabel = identity.compactDetailLabel ?? codexPlanDetailLabel;
   const showTierBadge =
     (normalizedProvider === 'agy' ||
       normalizedProvider === 'antigravity' ||

@@ -75,7 +75,7 @@ describe('AccountSurfaceCard', () => {
     expect(screen.queryByText('Pers')).not.toBeInTheDocument();
   });
 
-  it('keeps the simplified personal audience when live quota planType is coarser', () => {
+  it('keeps token-derived personal detail when live quota planType is coarser', () => {
     render(
       <AccountSurfaceCard
         mode="compact"
@@ -90,6 +90,7 @@ describe('AccountSurfaceCard', () => {
     );
 
     expect(screen.getByText('Pers')).toBeInTheDocument();
+    expect(screen.getByText('Pro')).toBeInTheDocument();
     expect(screen.queryByText('Free')).not.toBeInTheDocument();
   });
 
@@ -108,5 +109,22 @@ describe('AccountSurfaceCard', () => {
 
     expect(screen.getByText('Free')).toBeInTheDocument();
     expect(screen.queryByText('Pers')).not.toBeInTheDocument();
+  });
+
+  it('falls back to plus or pro detail when Codex quota exposes a paid plan', () => {
+    render(
+      <AccountSurfaceCard
+        mode="compact"
+        provider="codex"
+        accountId="user@example.com"
+        email="user@example.com"
+        displayEmail="user@example.com"
+        quota={createCodexQuotaResult({ planType: 'pro' })}
+        showQuota={false}
+      />
+    );
+
+    expect(screen.getByText('Pers')).toBeInTheDocument();
+    expect(screen.getByText('Pro')).toBeInTheDocument();
   });
 });

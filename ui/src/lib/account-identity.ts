@@ -186,14 +186,16 @@ export function getAccountIdentityPresentation(
   }
 
   if (suffix && PERSONAL_PLAN_PARTS.has(suffix)) {
-    const detailLabel = formatAudienceDetail(parts.slice(0, -1));
+    const detailLabel = [formatAccountVariantPart(suffix), formatAudienceDetail(parts.slice(0, -1))]
+      .filter(Boolean)
+      .join(' · ');
     const inlineLabel = ['Personal', detailLabel].filter(Boolean).join(' · '); // TODO i18n: missing key for Personal
     return {
       email: resolvedEmail,
       audience: 'personal',
       audienceLabel: 'Personal',
-      detailLabel,
-      compactDetailLabel: detailLabel,
+      detailLabel: detailLabel || formatAccountVariantPart(suffix),
+      compactDetailLabel: detailLabel || formatAccountVariantPart(suffix),
       inlineLabel,
     };
   }
