@@ -1,6 +1,9 @@
 import type { CLIProxyProvider } from '../types';
 
 const DUPLICATE_EMAIL_ACCOUNT_PROVIDERS = new Set<string>(['codex']);
+const FREE_PLAN_PARTS = new Set(['free']);
+const PERSONAL_PLAN_PARTS = new Set(['plus', 'pro']);
+const BUSINESS_PLAN_PARTS = new Set(['team']);
 
 // Keep variant parsing aligned with ui/src/lib/account-identity.ts. The UI copy is
 // separate because the browser bundle cannot import this server module directly.
@@ -47,6 +50,20 @@ function formatVariantPart(value: string): string {
             .map((part) => part[0]?.toUpperCase() + part.slice(1))
             .join(' ');
   }
+}
+
+function formatWorkspaceLabel(parts: string[]): string | null {
+  const workspaceId = parts.find((part) => /^[a-f0-9]{8}$/i.test(part));
+  if (workspaceId) {
+    return `Workspace ${workspaceId.toLowerCase()}`;
+  }
+
+  return parts.map(formatVariantPart).filter(Boolean).join(' · ') || null;
+}
+
+function formatAudienceDetail(parts: string[]): string | null {
+  const label = parts.map(formatVariantPart).filter(Boolean).join(' · ');
+  return label || null;
 }
 
 export function supportsDuplicateEmailAccounts(provider: CLIProxyProvider | string): boolean {
@@ -136,8 +153,16 @@ export function formatAccountVariantLabel(accountId: string, email?: string): st
   }
 
   const suffix = parts[parts.length - 1]?.toLowerCase();
-  if (suffix && ['team', 'free', 'plus', 'pro'].includes(suffix)) {
-    return [formatVariantPart(suffix), ...parts.slice(0, -1).map(formatVariantPart)]
+  if (suffix && BUSINESS_PLAN_PARTS.has(suffix)) {
+    return ['Business', formatWorkspaceLabel(parts.slice(0, -1))].filter(Boolean).join(' · ');
+  }
+
+  if (suffix && FREE_PLAN_PARTS.has(suffix)) {
+    return ['Free', formatAudienceDetail(parts.slice(0, -1))].filter(Boolean).join(' · ');
+  }
+
+  if (suffix && PERSONAL_PLAN_PARTS.has(suffix)) {
+    return ['Personal', formatVariantPart(suffix), formatAudienceDetail(parts.slice(0, -1))]
       .filter(Boolean)
       .join(' · ');
   }

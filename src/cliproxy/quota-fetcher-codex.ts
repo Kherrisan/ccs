@@ -624,11 +624,12 @@ export async function fetchCodexQuota(
 
       // Extract plan type
       const planTypeRaw = data.plan_type || data.planType;
-      let planType: 'free' | 'plus' | 'team' | null = null;
+      let planType: 'free' | 'plus' | 'pro' | 'team' | null = null;
       if (planTypeRaw) {
         const normalized = planTypeRaw.toLowerCase();
         if (normalized === 'free') planType = 'free';
         else if (normalized === 'plus') planType = 'plus';
+        else if (normalized === 'pro') planType = 'pro';
         else if (normalized === 'team') planType = 'team';
       }
 

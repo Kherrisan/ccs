@@ -5,7 +5,7 @@
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ChevronRight, ArrowLeft, User, ExternalLink } from 'lucide-react';
-import { getAccountIdentityPresentation } from '@/lib/account-identity';
+import { getAccountIdentityPresentation, getCodexIdentityBadge } from '@/lib/account-identity';
 import { cn } from '@/lib/utils';
 import { PRIVACY_BLUR_CLASS } from '@/contexts/privacy-context';
 import type { AccountStepProps } from '../types';
@@ -30,6 +30,8 @@ export function AccountStep({
       <div className="grid gap-2 max-h-[320px] overflow-y-auto pr-1">
         {accounts.map((acc) => {
           const identity = getAccountIdentityPresentation(acc.id, acc.email, acc.tokenFile);
+          const codexBadge =
+            acc.provider?.toLowerCase() === 'codex' ? getCodexIdentityBadge(identity) : null;
           return (
             <button
               key={acc.id}
@@ -46,20 +48,36 @@ export function AccountStep({
                     {identity.email}
                   </div>
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    {identity.audienceLabel && (
+                    {codexBadge?.label ? (
+                      <Badge
+                        variant="outline"
+                        className={cn(
+                          'text-[10px] h-4 px-1.5 border-transparent',
+                          codexBadge.audience === 'business'
+                            ? 'bg-sky-500/12 text-sky-700 dark:text-sky-300'
+                            : codexBadge.audience === 'free'
+                              ? 'bg-slate-200/70 text-slate-700 dark:bg-slate-700/40 dark:text-slate-200'
+                              : 'bg-emerald-500/12 text-emerald-700 dark:text-emerald-300'
+                        )}
+                      >
+                        {codexBadge.label}
+                      </Badge>
+                    ) : identity.audienceLabel ? (
                       <Badge
                         variant="outline"
                         className={cn(
                           'text-[10px] h-4 px-1.5 border-transparent',
                           identity.audience === 'business'
                             ? 'bg-sky-500/12 text-sky-700 dark:text-sky-300'
-                            : 'bg-emerald-500/12 text-emerald-700 dark:text-emerald-300'
+                            : identity.audience === 'free'
+                              ? 'bg-slate-200/70 text-slate-700 dark:bg-slate-700/40 dark:text-slate-200'
+                              : 'bg-emerald-500/12 text-emerald-700 dark:text-emerald-300'
                         )}
                       >
                         {identity.audienceLabel}
                       </Badge>
-                    )}
-                    {identity.detailLabel && (
+                    ) : null}
+                    {!codexBadge?.label && identity.detailLabel && (
                       <Badge variant="outline" className="text-[10px] h-4 px-1.5">
                         {identity.detailLabel}
                       </Badge>

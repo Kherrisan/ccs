@@ -6,6 +6,7 @@ import { AccountSurfaceCard } from '@/components/account/shared/account-surface-
 import { QuotaTooltipContent } from '@/components/shared/quota-tooltip-content';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { getCodexIdentityBadge, type CodexIdentityBadge } from '@/lib/account-identity';
 import {
   cn,
   formatQuotaPercent,
@@ -13,7 +14,6 @@ import {
   getProviderResetTime,
   getQuotaFailureInfo,
 } from '@/lib/utils';
-import { formatAccountVariantPart } from '@/lib/account-identity';
 import { GripVertical, Loader2, Pause, Play } from 'lucide-react';
 import {
   useAccountQuota,
@@ -28,6 +28,7 @@ import { AccountCardStats } from './account-card-stats';
 import { cleanEmail } from './utils';
 
 type Zone = 'left' | 'right' | 'top' | 'bottom';
+type AccountAudience = 'business' | 'free' | 'personal' | 'unknown';
 
 const QUOTA_PROVIDER_ALIASES = [
   'antigravity',
@@ -88,46 +89,124 @@ function getCompactQuotaColor(percentage: number) {
   return 'bg-red-500';
 }
 
-function getCodexPlanDetailLabel(quota: unknown): string | null {
+function getCodexQuotaBadge(quota: unknown): CodexIdentityBadge {
   if (!quota || typeof quota !== 'object' || !('planType' in quota)) {
-    return null;
+    return { audience: 'unknown', label: null };
   }
 
   const planType = (quota as { planType?: unknown }).planType;
   if (typeof planType !== 'string' || planType.trim().length === 0) {
-    return null;
+    return { audience: 'unknown', label: null };
   }
 
-  return formatAccountVariantPart(planType);
+  if (planType === 'team') {
+    return { audience: 'business', label: 'Business' };
+  }
+
+  if (planType === 'free') {
+    return { audience: 'free', label: 'Free' };
+  }
+
+  if (planType === 'plus') {
+    return { audience: 'personal', label: 'Plus' };
+  }
+
+  if (planType === 'pro') {
+    return { audience: 'personal', label: 'Pro' };
+  }
+
+  return { audience: 'unknown', label: null };
+}
+
+function resolveCodexBadge(
+  identityBadge: CodexIdentityBadge,
+  quotaBadge: CodexIdentityBadge
+): CodexIdentityBadge {
+  if (!quotaBadge.label) {
+    return identityBadge;
+  }
+
+  if (
+    quotaBadge.label === 'Business' ||
+    quotaBadge.label === 'Plus' ||
+    quotaBadge.label === 'Pro'
+  ) {
+    return quotaBadge;
+  }
+
+  if (quotaBadge.label === 'Free' && identityBadge.label && identityBadge.label !== 'Free') {
+    return identityBadge;
+  }
+
+  return quotaBadge;
 }
 
 function getVariantDetailLabel(
   variant: {
-    audience: string;
+    audience: AccountAudience;
     detailLabel?: string | null;
     compactDetailLabel?: string | null;
   },
   quota?: unknown
 ) {
-  const codexPlanDetail = getCodexPlanDetailLabel(quota);
-  return variant.detailLabel ?? variant.compactDetailLabel ?? codexPlanDetail;
+  return resolveCodexBadge(
+    getCodexIdentityBadge({
+      audience: variant.audience,
+      detailLabel: variant.detailLabel ?? null,
+      compactDetailLabel: variant.compactDetailLabel ?? null,
+    }),
+    getCodexQuotaBadge(quota)
+  ).label;
+}
+
+function getVariantBadgeAudience(
+  variant: {
+    audience: AccountAudience;
+    detailLabel?: string | null;
+    compactDetailLabel?: string | null;
+  },
+  quota?: unknown
+) {
+  return resolveCodexBadge(
+    getCodexIdentityBadge({
+      audience: variant.audience,
+      detailLabel: variant.detailLabel ?? null,
+      compactDetailLabel: variant.compactDetailLabel ?? null,
+    }),
+    getCodexQuotaBadge(quota)
+  ).audience;
 }
 
 function getVariantCompactDetailLabel(
   variant: {
-    audience: string;
+    audience: AccountAudience;
     compactDetailLabel?: string | null;
     detailLabel?: string | null;
   },
   quota?: unknown
 ) {
-  const codexPlanDetail = getCodexPlanDetailLabel(quota);
-  return variant.compactDetailLabel ?? variant.detailLabel ?? codexPlanDetail;
+  return getVariantDetailLabel(variant, quota);
+}
+
+function getDetailedAudienceLabel(audience: AccountAudience): string | null {
+  if (audience === 'business') return 'Business';
+  if (audience === 'free') return 'Free';
+  if (audience === 'personal') return 'Personal';
+  return null;
+}
+
+function getVariantAudience(
+  variant: {
+    audience: AccountAudience;
+  },
+  quota?: unknown
+) {
+  return getVariantBadgeAudience(variant, quota);
 }
 
 function getVariantInlineLabel(
   variant: {
-    audience: string;
+    audience: AccountAudience;
     audienceLabel?: string | null;
     detailLabel?: string | null;
     compactDetailLabel?: string | null;
@@ -135,48 +214,49 @@ function getVariantInlineLabel(
   },
   quota?: unknown
 ) {
-  const detailLabel = getVariantDetailLabel(variant, quota);
-  const composedLabel = [variant.audienceLabel, detailLabel].filter(Boolean).join(' · ');
-  return composedLabel || variant.inlineLabel || null;
+  return getVariantDetailLabel(variant, quota) || variant.inlineLabel || null;
 }
 
 function getVariantMarkerLabel(
   variant: {
-    audience: string;
+    audience: AccountAudience;
     audienceLabel?: string | null;
     detailLabel?: string | null;
     compactDetailLabel?: string | null;
   },
-  audienceCounts: Map<string, number>,
   quota?: unknown
 ) {
+  const audience = getVariantAudience(variant, quota);
   const compactDetailLabel = getVariantCompactDetailLabel(variant, quota);
-  if (variant.audience === 'business') {
-    const businessVariantCount = audienceCounts.get('business') ?? 0;
-    return businessVariantCount > 1 && compactDetailLabel ? compactDetailLabel : 'Biz';
+  if (audience === 'business') {
+    return 'Biz';
   }
-  if (variant.audience === 'personal') {
+  if (audience === 'free') {
+    return compactDetailLabel ?? 'Free';
+  }
+  if (audience === 'personal') {
     return compactDetailLabel ?? 'Pers';
   }
 
-  const normalizedFallback =
-    compactDetailLabel?.trim() || variant.audienceLabel?.trim() || variant.detailLabel?.trim();
+  const normalizedFallback = compactDetailLabel?.trim() || getDetailedAudienceLabel(audience);
   return normalizedFallback?.[0]?.toUpperCase() ?? '?';
 }
 
 function getGroupedVariantSummaryLabel(
   variants: Array<{
-    audience: string;
+    audience: AccountAudience;
     audienceLabel?: string | null;
     detailLabel?: string | null;
     compactDetailLabel?: string | null;
   }>,
-  quotas: Array<unknown>,
-  audienceCounts: Map<string, number>
+  quotas: Array<unknown>
 ) {
   const audiences = new Set(variants.map((variant) => variant.audience));
   const hasDistinctDetails = variants.some((variant, index) =>
-    Boolean(getVariantCompactDetailLabel(variant, quotas[index]))
+    Boolean(
+      getVariantCompactDetailLabel(variant, quotas[index]) ||
+      getDetailedAudienceLabel(getVariantAudience(variant, quotas[index]))
+    )
   );
 
   if (
@@ -191,7 +271,7 @@ function getGroupedVariantSummaryLabel(
 
   if (variants.length === 1) {
     const [variant] = variants;
-    return getVariantMarkerLabel(variant, audienceCounts, quotas[0]);
+    return getVariantMarkerLabel(variant, quotas[0]);
   }
 
   return null;
@@ -239,14 +319,9 @@ export function AccountCard({
   const groupedVariantQuotas = groupedHeaderVariants.map(
     (_, index) => variantQuotaQueries[index]?.data
   );
-  const groupedVariantAudienceCounts = groupedHeaderVariants.reduce((counts, variant) => {
-    counts.set(variant.audience, (counts.get(variant.audience) ?? 0) + 1);
-    return counts;
-  }, new Map<string, number>());
   const groupedVariantSummaryLabel = getGroupedVariantSummaryLabel(
     groupedHeaderVariants,
-    groupedVariantQuotas,
-    groupedVariantAudienceCounts
+    groupedVariantQuotas
   );
 
   const compactMetaBadges = hasGroupedVariants ? (
@@ -274,16 +349,14 @@ export function AccountCard({
                 index > 0 && 'border-l border-border/50',
                 variant.audience === 'business'
                   ? 'bg-sky-500/12 text-sky-700 dark:bg-sky-500/20 dark:text-sky-300'
-                  : variant.audience === 'personal'
-                    ? 'bg-emerald-500/12 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300'
-                    : 'bg-muted text-muted-foreground'
+                  : variant.audience === 'free'
+                    ? 'bg-slate-200/70 text-slate-700 dark:bg-slate-700/40 dark:text-slate-200'
+                    : variant.audience === 'personal'
+                      ? 'bg-emerald-500/12 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300'
+                      : 'bg-muted text-muted-foreground'
               )}
             >
-              {getVariantMarkerLabel(
-                variant,
-                groupedVariantAudienceCounts,
-                groupedVariantQuotas[index]
-              )}
+              {getVariantMarkerLabel(variant, groupedVariantQuotas[index])}
             </span>
           ))
         )}

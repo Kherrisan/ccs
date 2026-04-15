@@ -1701,8 +1701,18 @@ const resources = {
       },
       accountSurfaceCard: {
         business: 'Biz',
+        free: 'Free',
         personal: 'Pers',
         variant: 'Variant',
+      },
+      accountIdentity: {
+        business: 'Business',
+        personal: 'Personal',
+        free: 'Free',
+        team: 'Team',
+        plus: 'Plus',
+        pro: 'Pro',
+        workspace: 'Workspace {{id}}',
       },
       accountCardStats: {
         notUsedYet: 'Not used yet',
@@ -4049,8 +4059,18 @@ const resources = {
       },
       accountSurfaceCard: {
         business: '企业',
+        free: '免费',
         personal: '个人',
         variant: '变体',
+      },
+      accountIdentity: {
+        business: '企业',
+        personal: '个人',
+        free: '免费',
+        team: '团队',
+        plus: 'Plus',
+        pro: 'Pro',
+        workspace: '工作区 {{id}}',
       },
       accountCardStats: {
         notUsedYet: '尚未使用',
@@ -6469,8 +6489,18 @@ const resources = {
       },
       accountSurfaceCard: {
         business: 'Biz',
+        free: 'Miễn phí',
         personal: 'Cá nhân',
         variant: 'Biến thể',
+      },
+      accountIdentity: {
+        business: 'Doanh nghiệp',
+        personal: 'Cá nhân',
+        free: 'Miễn phí',
+        team: 'Nhóm',
+        plus: 'Plus',
+        pro: 'Pro',
+        workspace: 'Không gian {{id}}',
       },
       accountCardStats: {
         notUsedYet: 'Chưa sử dụng',
@@ -8671,8 +8701,18 @@ const resources = {
       },
       accountSurfaceCard: {
         business: 'ビジネス',
+        free: '無料',
         personal: '個人',
         variant: 'バリアント',
+      },
+      accountIdentity: {
+        business: 'ビジネス',
+        personal: '個人',
+        free: '無料',
+        team: 'チーム',
+        plus: 'Plus',
+        pro: 'Pro',
+        workspace: 'ワークスペース {{id}}',
       },
       aiProvidersEntryCard: {
         apiKeys: 'API Keys',

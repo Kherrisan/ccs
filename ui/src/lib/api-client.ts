@@ -610,8 +610,8 @@ export interface CodexQuotaResult {
   windows: CodexQuotaWindow[];
   /** Explicit core usage windows (5h + weekly) for easier reset display */
   coreUsage?: CodexCoreUsageSummary;
-  /** Plan type: free, plus, team, or null if unknown */
-  planType: 'free' | 'plus' | 'team' | null;
+  /** Plan type: free, plus, pro, team, or null if unknown */
+  planType: 'free' | 'plus' | 'pro' | 'team' | null;
   /** Timestamp of fetch */
   lastUpdated: number;
   /** Upstream HTTP status when available */

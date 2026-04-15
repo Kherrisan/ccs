@@ -39,7 +39,8 @@ export interface AccountVisualGroup {
 const AUDIENCE_ORDER: Record<AccountAudience, number> = {
   business: 0,
   personal: 1,
-  unknown: 2,
+  free: 2,
+  unknown: 3,
 };
 
 function getLatestTimestamp(current?: string, candidate?: string): string | undefined {
