@@ -49,7 +49,7 @@ export class SSEParser {
    * @returns Array of parsed events
    */
   parse(chunk: Buffer | string): SSEEvent[] {
-    this.buffer += chunk.toString().replace(/\r\n/g, '\n');
+    this.buffer += chunk.toString().replace(/\r\n?/g, '\n');
 
     // C-01 Fix: Prevent unbounded buffer growth (DoS protection)
     if (this.buffer.length > this.maxBufferSize) {

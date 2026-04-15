@@ -109,6 +109,61 @@ function formatTimeoutDuration(timeoutMs: number): string {
   return timeoutMs % 1000 === 0 ? `${timeoutMs / 1000} seconds` : `${timeoutMs}ms`;
 }
 
+function registerOnceListener(
+  emitter: NodeJS.EventEmitter | null | undefined,
+  event: string,
+  handler: () => void
+): () => void {
+  if (!emitter) {
+    return () => {};
+  }
+
+  emitter.once(event, handler);
+  return () => {
+    emitter.removeListener(event, handler);
+  };
+}
+
+export function attachDisconnectAbortHandlers(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  controller: AbortController,
+  onDisconnect: (source: string) => void
+): () => void {
+  const abortOnDisconnect = (source: string) => {
+    if (!controller.signal.aborted && !res.writableEnded) {
+      onDisconnect(source);
+      controller.abort();
+    }
+  };
+
+  const cleanupFns = [
+    registerOnceListener(req, 'aborted', () => abortOnDisconnect('req.aborted')),
+    registerOnceListener(req, 'close', () => abortOnDisconnect('req.close')),
+    registerOnceListener(req.socket, 'close', () => abortOnDisconnect('req.socket.close')),
+    registerOnceListener(res, 'close', () => abortOnDisconnect('res.close')),
+    registerOnceListener(res.socket, 'close', () => abortOnDisconnect('res.socket.close')),
+  ];
+
+  const disconnectPoll = setInterval(() => {
+    if (
+      req.destroyed ||
+      res.destroyed ||
+      req.socket?.destroyed === true ||
+      res.socket?.destroyed === true
+    ) {
+      abortOnDisconnect('poll.destroyed');
+    }
+  }, 50);
+
+  return () => {
+    clearInterval(disconnectPoll);
+    for (const cleanup of cleanupFns) {
+      cleanup();
+    }
+  };
+}
+
 export async function handleProxyMessagesRequest(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -145,8 +200,11 @@ export async function handleProxyMessagesRequest(
     const controller = new AbortController();
     timeoutMs = getRequestTimeoutMs();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
-    const abortOnDisconnect = (source: string) => {
-      if (!controller.signal.aborted && !res.writableEnded) {
+    const cleanupDisconnectHandlers = attachDisconnectAbortHandlers(
+      req,
+      res,
+      controller,
+      (source) => {
         logger.info(
           'request.disconnect',
           'Aborting upstream request after local client disconnect',
@@ -155,25 +213,8 @@ export async function handleProxyMessagesRequest(
             source,
           }
         );
-        controller.abort();
       }
-    };
-
-    req.on('aborted', () => abortOnDisconnect('req.aborted'));
-    req.on('close', () => abortOnDisconnect('req.close'));
-    req.socket?.on('close', () => abortOnDisconnect('req.socket.close'));
-    res.on('close', () => abortOnDisconnect('res.close'));
-    res.socket?.on('close', () => abortOnDisconnect('res.socket.close'));
-    const disconnectPoll = setInterval(() => {
-      if (
-        req.destroyed ||
-        res.destroyed ||
-        req.socket?.destroyed === true ||
-        res.socket?.destroyed === true
-      ) {
-        abortOnDisconnect('poll.destroyed');
-      }
-    }, 50);
+    );
 
     try {
       const upstreamResponse = await fetch(
@@ -181,7 +222,7 @@ export async function handleProxyMessagesRequest(
         buildFetchInit(upstream.route.profile, upstream.body, controller.signal, insecureDispatcher)
       );
       clearTimeout(timeout);
-      clearInterval(disconnectPoll);
+      cleanupDisconnectHandlers();
       logger.info('response.received', 'Received upstream response', {
         profileName: profile.profileName,
         routedProfileName: upstream.route.profile.profileName,
@@ -191,7 +232,7 @@ export async function handleProxyMessagesRequest(
       await pipeWebResponseToNode(response, res);
     } finally {
       clearTimeout(timeout);
-      clearInterval(disconnectPoll);
+      cleanupDisconnectHandlers();
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown proxy error';

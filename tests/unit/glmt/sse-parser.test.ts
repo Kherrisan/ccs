@@ -28,8 +28,22 @@ describe('SSEParser', () => {
     const events = parser.parse('\n\n');
 
     expect(events).toHaveLength(1);
-    expect((events[0]?.data as { choices?: Array<{ delta?: { content?: string } }> })?.choices?.[0]?.delta?.content).toBe(
-      'Hi'
+    expect(
+      (events[0]?.data as { choices?: Array<{ delta?: { content?: string } }> })?.choices?.[0]
+        ?.delta?.content
+    ).toBe('Hi');
+  });
+
+  it('accepts standalone carriage-return line endings', () => {
+    const parser = new SSEParser({ throwOnMalformedJson: true });
+    const events = parser.parse(
+      ['event: message', 'data: {"choices":[{"delta":{"content":"Legacy"}}]}', '', ''].join('\r')
     );
+
+    expect(events).toHaveLength(1);
+    expect(
+      (events[0]?.data as { choices?: Array<{ delta?: { content?: string } }> })?.choices?.[0]
+        ?.delta?.content
+    ).toBe('Legacy');
   });
 });
