@@ -320,7 +320,7 @@ export function AddAccountDialog({
       return;
     }
     if (isGitLab && gitlabAuthMode === 'pat' && !gitlabPersonalAccessTokenTrimmed) {
-      setLocalError('GitLab Personal Access Token is required for PAT login.');
+      setLocalError(t('addAccountDialog.gitlabPatRequired'));
       return;
     }
     wasAuthenticatingRef.current = true;
@@ -538,7 +538,7 @@ export function AddAccountDialog({
           {isGitLab && !showAuthUI && (
             <div className="space-y-4 rounded-lg border border-border/60 bg-muted/20 p-4">
               <div className="space-y-2">
-                <Label htmlFor="gitlab-auth-mode">GitLab auth method</Label>
+                <Label htmlFor="gitlab-auth-mode">{t('addAccountDialog.gitlabAuthMethod')}</Label>
                 <Select
                   value={gitlabAuthMode}
                   onValueChange={(value) => {
@@ -547,20 +547,20 @@ export function AddAccountDialog({
                   }}
                 >
                   <SelectTrigger id="gitlab-auth-mode">
-                    <SelectValue placeholder="Select GitLab auth method" />
+                    <SelectValue placeholder={t('addAccountDialog.selectGitlabAuthMethod')} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="oauth">Browser OAuth</SelectItem>
-                    <SelectItem value="pat">Personal Access Token</SelectItem>
+                    <SelectItem value="oauth">{t('addAccountDialog.gitlabAuthOAuth')}</SelectItem>
+                    <SelectItem value="pat">{t('addAccountDialog.gitlabAuthPat')}</SelectItem>
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">
-                  Use Browser OAuth for gitlab.com, or PAT for self-hosted and admin-managed setups.
+                  {t('addAccountDialog.gitlabAuthHint')}
                 </p>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="gitlab-base-url">GitLab URL</Label>
+                <Label htmlFor="gitlab-base-url">{t('addAccountDialog.gitlabUrl')}</Label>
                 <Input
                   id="gitlab-base-url"
                   value={gitlabBaseUrl}
@@ -568,17 +568,17 @@ export function AddAccountDialog({
                     setGitlabBaseUrl(e.target.value);
                     setLocalError(null);
                   }}
-                  placeholder="https://gitlab.com"
+                  placeholder={t('addAccountDialog.gitlabUrlPlaceholder')}
                   disabled={isPending}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Optional. Leave blank for gitlab.com, or set your self-hosted GitLab base URL.
+                  {t('addAccountDialog.gitlabUrlHint')}
                 </p>
               </div>
 
               {gitlabAuthMode === 'pat' && (
                 <div className="space-y-2">
-                  <Label htmlFor="gitlab-pat">Personal Access Token</Label>
+                  <Label htmlFor="gitlab-pat">{t('addAccountDialog.gitlabPat')}</Label>
                   <Input
                     id="gitlab-pat"
                     type="password"
@@ -587,11 +587,11 @@ export function AddAccountDialog({
                       setGitlabPersonalAccessToken(e.target.value);
                       setLocalError(null);
                     }}
-                    placeholder="glpat-..."
+                    placeholder={t('addAccountDialog.gitlabPatPlaceholder')}
                     disabled={isPending}
                   />
                   <p className="text-xs text-muted-foreground">
-                    Token must include at least <span className="font-mono">api</span> and{' '}
+                    {t('addAccountDialog.gitlabPatHint')} <span className="font-mono">api</span> and{' '}
                     <span className="font-mono">read_user</span> scopes.
                   </p>
                 </div>

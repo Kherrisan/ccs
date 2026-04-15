@@ -10,6 +10,7 @@ import {
   getProvidersByOAuthFlow,
 } from '../../../src/cliproxy/provider-capabilities';
 import type { AiProviderFamilyId, AiProviderModelAlias } from '../../../src/cliproxy/ai-providers';
+import i18n from './i18n';
 
 // Monorepo contract: UI consumes provider capability constants directly from backend
 // to enforce one source of truth and prevent provider drift across surfaces.
@@ -253,9 +254,9 @@ const PROVIDER_NAMES: Record<string, string> = {
 export function getProviderDisplayName(provider: unknown): string {
   const normalized = normalizeProviderInput(provider);
   if (!normalized) {
-    return 'Unknown provider'; // TODO i18n: missing key
+    return i18n.t('toasts.providerUnknown', { provider: 'unknown' });
   }
-  return PROVIDER_NAMES[normalized] || String(provider);
+  return PROVIDER_NAMES[normalized] || i18n.t('toasts.providerUnknown', { provider: normalized });
 }
 
 /** Map provider to user-facing short description */
@@ -297,12 +298,12 @@ export function isDeviceCodeProvider(provider: unknown): boolean {
 export function getDeviceCodeProviderDisplayName(provider: unknown): string {
   const normalized = normalizeProviderInput(provider);
   if (!normalized) {
-    return 'Unknown provider'; // TODO i18n: missing key
+    return i18n.t('toasts.providerUnknown', { provider: 'unknown' });
   }
   if (isValidProvider(normalized)) {
     return DEVICE_CODE_PROVIDER_DISPLAY_NAMES[normalized] || getProviderDisplayName(normalized);
   }
-  return String(provider);
+  return i18n.t('toasts.providerUnknown', { provider: normalized });
 }
 
 /** Provider-specific helper text for device-code dialog. */
@@ -310,10 +311,11 @@ export function getDeviceCodeProviderInstruction(provider: unknown): string {
   const normalized = normalizeProviderInput(provider);
   if (isValidProvider(normalized)) {
     return (
-      DEVICE_CODE_PROVIDER_INSTRUCTIONS[normalized] || 'Complete the authorization in your browser.' // TODO i18n: missing key
+      DEVICE_CODE_PROVIDER_INSTRUCTIONS[normalized] ||
+      i18n.t('providerConfig.defaultDeviceCodeInstruction')
     );
   }
-  return 'Complete the authorization in your browser.'; // TODO i18n: missing key
+  return i18n.t('providerConfig.defaultDeviceCodeInstruction');
 }
 
 /** Kiro auth methods exposed in CCS UI (aligned with CLIProxyAPIPlus support). */

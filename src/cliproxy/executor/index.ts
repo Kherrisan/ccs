@@ -152,6 +152,14 @@ export function readOptionValue(
   return { present: true, value: next.trim(), missingValue: false };
 }
 
+export function hasGitLabTokenLoginFlag(args: string[]): boolean {
+  return args.includes('--gitlab-token-login') || args.includes('--token-login');
+}
+
+function getGitLabTokenLoginFlagName(args: string[]): '--gitlab-token-login' | '--token-login' {
+  return args.includes('--gitlab-token-login') ? '--gitlab-token-login' : '--token-login';
+}
+
 /**
  * Execute Claude CLI with CLIProxy (main entry point)
  *
@@ -353,7 +361,7 @@ export async function execClaudeWithCLIProxy(
   const addAccount = argsWithoutProxy.includes('--add');
   const showAccounts = argsWithoutProxy.includes('--accounts');
   const forceImport = argsWithoutProxy.includes('--import');
-  const gitlabTokenLogin = argsWithoutProxy.includes('--token-login');
+  const gitlabTokenLogin = hasGitLabTokenLoginFlag(argsWithoutProxy);
   const acceptAgyRisk = hasAntigravityRiskAcceptanceFlag(argsWithoutProxy);
 
   const incognitoFlag = argsWithoutProxy.includes('--incognito');
@@ -503,7 +511,9 @@ export async function execClaudeWithCLIProxy(
   }
 
   if ((gitlabTokenLogin || gitlabBaseUrl) && provider !== 'gitlab') {
-    const flagName = gitlabTokenLogin ? '--token-login' : '--gitlab-url';
+    const flagName = gitlabTokenLogin
+      ? getGitLabTokenLoginFlagName(argsWithoutProxy)
+      : '--gitlab-url';
     console.error(fail(`${flagName} is only valid for ccs gitlab`));
     process.exitCode = 1;
     return;

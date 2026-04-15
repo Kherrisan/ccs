@@ -26,6 +26,15 @@ import {
 } from './cursor-command-display';
 import { ok, fail, info } from '../utils/ui';
 
+function printLegacyCursorDeprecationNotice(): void {
+  console.log(
+    info(
+      'Deprecated compatibility path. Prefer CLIProxy-backed Cursor auth via `ccs cursor --auth` or the CLIProxy dashboard.'
+    )
+  );
+  console.log('');
+}
+
 /**
  * Handle cursor subcommand.
  */
@@ -114,6 +123,7 @@ function printAutoDetectFailure(result: {
  * Handle auth subcommand.
  */
 async function handleAuth(args: string[]): Promise<number> {
+  printLegacyCursorDeprecationNotice();
   const manual = args.includes('--manual');
 
   if (manual) {
@@ -146,6 +156,7 @@ async function handleAuth(args: string[]): Promise<number> {
     console.log(ok('Cursor credentials imported (manual mode)'));
     console.log('');
     console.log('Next steps:');
+    console.log('  0. Preferred auth:     ccs cursor --auth');
     console.log('  1. Enable integration: ccs cursor enable');
     console.log('  2. Start daemon:       ccs cursor start');
     return 0;
@@ -168,6 +179,7 @@ async function handleAuth(args: string[]): Promise<number> {
     console.log(ok('Auto-detected Cursor credentials'));
     console.log('');
     console.log('Next steps:');
+    console.log('  0. Preferred auth:     ccs cursor --auth');
     console.log('  1. Enable integration: ccs cursor enable');
     console.log('  2. Start daemon:       ccs cursor start');
     console.log('  3. Check status:       ccs cursor status');
@@ -185,6 +197,7 @@ async function handleAuth(args: string[]): Promise<number> {
 }
 
 async function handleStatus(): Promise<number> {
+  printLegacyCursorDeprecationNotice();
   const cursorConfig = getCursorConfig();
   const authStatus = checkAuthStatus();
   const daemonStatus = await getDaemonStatus(cursorConfig.port);
@@ -193,6 +206,7 @@ async function handleStatus(): Promise<number> {
 }
 
 async function handleProbe(): Promise<number> {
+  printLegacyCursorDeprecationNotice();
   const cursorConfig = getCursorConfig();
   const result = await probeCursorRuntime(cursorConfig);
   renderCursorProbe(result);
@@ -200,6 +214,7 @@ async function handleProbe(): Promise<number> {
 }
 
 async function handleModels(): Promise<number> {
+  printLegacyCursorDeprecationNotice();
   const cursorConfig = getCursorConfig();
   const models = await getAvailableModels(cursorConfig.port);
   const defaultModel = getDefaultModel();
@@ -211,6 +226,7 @@ async function handleModels(): Promise<number> {
  * Handle start subcommand.
  */
 async function handleStart(): Promise<number> {
+  printLegacyCursorDeprecationNotice();
   const cursorConfig = getCursorConfig();
 
   if (!cursorConfig.enabled) {
@@ -248,6 +264,7 @@ async function handleStart(): Promise<number> {
  * Handle stop subcommand.
  */
 async function handleStop(): Promise<number> {
+  printLegacyCursorDeprecationNotice();
   console.log(info('Stopping cursor daemon...'));
 
   const result = await stopDaemon();
@@ -265,6 +282,7 @@ async function handleStop(): Promise<number> {
  * Handle enable subcommand.
  */
 async function handleEnable(): Promise<number> {
+  printLegacyCursorDeprecationNotice();
   mutateUnifiedConfig((config) => {
     if (!config.cursor) {
       config.cursor = { ...DEFAULT_CURSOR_CONFIG };
@@ -276,6 +294,7 @@ async function handleEnable(): Promise<number> {
   console.log(ok('Cursor integration enabled'));
   console.log('');
   console.log('Next steps:');
+  console.log('  0. Preferred auth: ccs cursor --auth');
   console.log('  1. Authenticate: ccs cursor auth');
   console.log('  2. Start daemon: ccs cursor start');
   console.log('  3. Check status: ccs cursor status');
@@ -287,6 +306,7 @@ async function handleEnable(): Promise<number> {
  * Handle disable subcommand.
  */
 async function handleDisable(): Promise<number> {
+  printLegacyCursorDeprecationNotice();
   mutateUnifiedConfig((config) => {
     if (config.cursor) {
       config.cursor.enabled = false;

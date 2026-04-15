@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'bun:test';
-import { readOptionValue } from '../../../src/cliproxy/executor/index';
+import {
+  hasGitLabTokenLoginFlag,
+  readOptionValue,
+} from '../../../src/cliproxy/executor/index';
 
 describe('readOptionValue', () => {
   it('parses split-token option values', () => {
@@ -29,5 +32,11 @@ describe('readOptionValue', () => {
       value: undefined,
       missingValue: true,
     });
+  });
+
+  it('treats both GitLab token-login flags as enabled', () => {
+    expect(hasGitLabTokenLoginFlag(['--gitlab-token-login'])).toBe(true);
+    expect(hasGitLabTokenLoginFlag(['--token-login'])).toBe(true);
+    expect(hasGitLabTokenLoginFlag(['--gitlab-url', 'https://gitlab.example.com'])).toBe(false);
   });
 });

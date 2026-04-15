@@ -69,6 +69,7 @@ import {
   warnPossible403Ban,
 } from '../account-safety';
 import { ensureCliAntigravityResponsibility } from '../antigravity-responsibility';
+import { InteractivePrompt } from '../../utils/prompt';
 
 interface PasteCallbackStartData {
   url?: string;
@@ -153,20 +154,21 @@ function normalizeGitLabBaseUrl(baseUrl: string | undefined): string | undefined
   return normalized ? normalized : undefined;
 }
 
-async function promptGitLabPersonalAccessToken(): Promise<string | null> {
-  const readline = await import('readline');
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  });
-
-  return new Promise<string | null>((resolve) => {
-    rl.question('GitLab Personal Access Token: ', (answer) => {
-      rl.close();
-      const token = answer.trim();
-      resolve(token.length > 0 ? token : null);
-    });
-  });
+export async function promptGitLabPersonalAccessToken(): Promise<string | null> {
+  try {
+    const token = (await InteractivePrompt.password('GitLab Personal Access Token')).trim();
+    return token.length > 0 ? token : null;
+  } catch (error) {
+    if ((error as Error).message.includes('TTY')) {
+      console.log(
+        fail(
+          'GitLab Personal Access Token prompt requires an interactive TTY. Set the token explicitly or use Browser OAuth.'
+        )
+      );
+      return null;
+    }
+    throw error;
+  }
 }
 
 export function findNewTokenSnapshotForManualAuth(

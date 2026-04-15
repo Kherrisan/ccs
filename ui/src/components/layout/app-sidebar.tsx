@@ -103,7 +103,6 @@ function buildNavGroups(t: (key: string) => string): SidebarGroupDef[] {
           ],
         },
         { path: '/copilot', icon: Github, label: t('nav.githubCopilot') },
-        { path: '/cursor', iconSrc: '/assets/sidebar/cursor.svg', label: t('nav.cursorIde') },
         {
           path: '/accounts',
           icon: Users,
@@ -122,6 +121,12 @@ function buildNavGroups(t: (key: string) => string): SidebarGroupDef[] {
         { path: '/claude-extension', icon: Puzzle, label: t('nav.claudeExtension') },
         { path: '/codex', iconSrc: '/assets/sidebar/codex.svg', label: 'Codex CLI' },
         { path: '/droid', icon: TerminalSquare, label: t('nav.factoryDroid') },
+      ],
+    },
+    {
+      title: t('nav.deprecated'),
+      items: [
+        { path: '/cursor', iconSrc: '/assets/sidebar/cursor.svg', label: t('nav.cursorIde') },
       ],
     },
     {

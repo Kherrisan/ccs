@@ -12,37 +12,46 @@ function printLines(lines: string[]): void {
 
 export function renderCursorHelp(): number {
   printLines([
-    'Cursor IDE Integration',
+    'Legacy Cursor Compatibility',
+    '',
+    'Deprecated: prefer CLIProxy-backed Cursor auth and account management.',
+    'Supported auth path: ccs cursor --auth',
+    'Supported dashboard path: ccs config -> CLIProxy -> Cursor',
     '',
     'Usage: ccs cursor <subcommand>',
     '',
-    'Subcommands:',
-    '  auth      Import Cursor IDE authentication token',
-    '  status    Show integration, authentication, and daemon status',
+    'Subcommands (deprecated compatibility for the local reverse-engineered bridge):',
+    '  auth      Import Cursor IDE authentication token (deprecated)',
+    '  status    Show legacy integration, authentication, and daemon status',
     '  probe     Run a live authenticated runtime probe',
     '  models    List available models',
-    '  start     Start cursor daemon',
-    '  stop      Stop cursor daemon',
-    '  enable    Enable cursor integration in unified config',
-    '  disable   Disable cursor integration in unified config',
+    '  start     Start local cursor daemon',
+    '  stop      Stop local cursor daemon',
+    '  enable    Enable legacy cursor integration in unified config',
+    '  disable   Disable legacy cursor integration in unified config',
     '  help      Show this help message',
     '',
-    'Runtime entry:',
-    '  ccs cursor [claude args]                          # Run Claude via the local Cursor proxy',
+    'Supported CLIProxy path:',
+    '  ccs cursor --auth                                # Authenticate Cursor via CLIProxy',
+    '  ccs cursor --accounts                            # Manage CLIProxy Cursor accounts',
+    '  ccs cursor --config                              # Open CLIProxy Cursor settings',
     '',
-    'Auth options:',
-    '  ccs cursor auth                                    # Auto-detect from Cursor SQLite',
+    'Legacy runtime entry (deprecated compatibility):',
+    '  ccs cursor [claude args]                          # Run Claude via the local Cursor bridge',
+    '',
+    'Legacy auth options:',
+    '  ccs cursor auth                                    # Auto-detect from Cursor SQLite (deprecated)',
     '  ccs cursor auth --manual --token <t> --machine-id <id>',
     '',
-    'Quick start:',
-    '  1. ccs cursor enable   # Enable integration',
-    '  2. ccs cursor auth     # Import Cursor IDE token',
-    '  3. ccs cursor start    # Start daemon',
+    'Legacy bridge quick start:',
+    '  1. ccs cursor enable   # Deprecated compatibility: enable local bridge',
+    '  2. ccs cursor auth     # Deprecated compatibility: import Cursor IDE token',
+    '  3. ccs cursor start    # Start local daemon',
     '  4. ccs cursor probe    # Verify live runtime health',
-    '  5. ccs cursor "task"   # Run Claude through Cursor',
+    '  5. ccs cursor "task"   # Run Claude through the local bridge',
     '  6. ccs cursor status   # Inspect auth/daemon wiring',
     '',
-    'Or use the web UI: ccs config -> Cursor page',
+    'Web UI: ccs config -> Deprecated -> Cursor IDE',
     '',
   ]);
 
@@ -100,7 +109,8 @@ export function renderCursorStatus(
   console.log('');
   console.log('Client setup:');
   console.log(`  Raw settings:    ${dirDisplay}/cursor.settings.json`);
-  console.log('  Runtime entry:   ccs cursor [claude args]');
+  console.log('  Runtime entry:   ccs cursor [claude args] (deprecated compatibility)');
+  console.log('  Supported auth:  ccs cursor --auth');
   console.log('  Live probe:      ccs cursor probe');
   console.log('  Status command:  ccs cursor status');
   console.log('  Help command:    ccs cursor help');
@@ -116,7 +126,8 @@ export function renderCursorStatus(
     console.log('  - Enable:      ccs cursor enable');
   }
   if (!authStatus.authenticated || authStatus.expired) {
-    console.log('  - Auth:        ccs cursor auth');
+    console.log('  - Supported:   ccs cursor --auth');
+    console.log('  - Legacy auth: ccs cursor auth');
   }
   if (!daemonStatus.running) {
     console.log('  - Start:       ccs cursor start');

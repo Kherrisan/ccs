@@ -5,6 +5,7 @@
 
 import { useMemo, useState, type ElementType } from 'react';
 import { toast } from 'sonner';
+import { useNavigate } from 'react-router-dom';
 import {
   AlertTriangle,
   CheckCircle2,
@@ -289,6 +290,7 @@ function StatusItem({
 
 export function CursorPage() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const {
     status,
     statusLoading,
@@ -733,9 +735,9 @@ export function CursorPage() {
                 <h1 className="font-semibold">{t('cursorPage.title')}</h1>
                 <Badge
                   variant="outline"
-                  className="h-5 border-amber-500/60 bg-amber-500/10 px-1.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-300"
+                  className="h-5 border-red-500/50 bg-red-500/10 px-1.5 text-[10px] font-semibold uppercase tracking-wide text-red-700 dark:text-red-300"
                 >
-                  {t('cursorPage.beta')}
+                  {t('cursorPage.deprecated')}
                 </Badge>
                 {integrationBadge}
               </div>
@@ -768,6 +770,36 @@ export function CursorPage() {
                   <li>{t('cursorPage.unofficialItem2')}</li>
                   <li>{t('cursorPage.unofficialItem3')}</li>
                 </ul>
+              </div>
+
+              <div className="rounded-md border border-border/70 bg-background/90 p-3 space-y-3">
+                <div className="space-y-1">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    {t('cursorPage.supportedPathTitle')}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {t('cursorPage.supportedPathDesc')}
+                  </p>
+                </div>
+                <div className="grid gap-2">
+                  <Button
+                    size="sm"
+                    className="w-full"
+                    onClick={() => navigate('/cliproxy?provider=cursor&action=auth')}
+                  >
+                    <Key className="w-3.5 h-3.5 mr-1.5" />
+                    {t('cursorPage.startCliproxyAuth')}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full"
+                    onClick={() => navigate('/cliproxy?provider=cursor')}
+                  >
+                    <Zap className="w-3.5 h-3.5 mr-1.5" />
+                    {t('cursorPage.openCliproxyCursor')}
+                  </Button>
+                </div>
               </div>
 
               <div className="space-y-2">

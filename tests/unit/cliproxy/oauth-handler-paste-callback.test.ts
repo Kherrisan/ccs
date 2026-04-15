@@ -1,8 +1,9 @@
-import { afterEach, describe, expect, it } from 'bun:test';
+import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import type { ProxyTarget } from '../../../src/cliproxy/proxy-target-resolver';
+import { InteractivePrompt } from '../../../src/utils/prompt';
 import { getCapturedFetchRequests, mockFetch, restoreFetch } from '../../mocks';
 
 const remoteTarget: ProxyTarget = {
@@ -231,5 +232,33 @@ describe('getCliAuthNicknameError', () => {
 
     expect(getCliAuthNicknameError('kiro', 'work', existingAccounts, 'github-ABC123')).toBeNull();
     expect(getCliAuthNicknameError('kiro', 'github-ABC123', existingAccounts, 'github-ABC123')).toBeNull();
+  });
+});
+
+describe('promptGitLabPersonalAccessToken', () => {
+  it('uses the masked password prompt and trims the token', async () => {
+    const passwordSpy = spyOn(InteractivePrompt, 'password').mockImplementation(
+      mock(async () => '  glpat-secret-token  ')
+    );
+
+    const { promptGitLabPersonalAccessToken } = await import(
+      `../../../src/cliproxy/auth/oauth-handler?gitlab-pat-prompt=${Date.now()}`
+    );
+
+    await expect(promptGitLabPersonalAccessToken()).resolves.toBe('glpat-secret-token');
+    expect(passwordSpy).toHaveBeenCalledWith('GitLab Personal Access Token');
+  });
+
+  it('returns null when the masked prompt is left blank', async () => {
+    const passwordSpy = spyOn(InteractivePrompt, 'password').mockImplementation(
+      mock(async () => '   ')
+    );
+
+    const { promptGitLabPersonalAccessToken } = await import(
+      `../../../src/cliproxy/auth/oauth-handler?gitlab-pat-prompt-blank=${Date.now()}`
+    );
+
+    await expect(promptGitLabPersonalAccessToken()).resolves.toBeNull();
+    expect(passwordSpy).toHaveBeenCalledWith('GitLab Personal Access Token');
   });
 });
