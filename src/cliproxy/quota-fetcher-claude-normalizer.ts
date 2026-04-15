@@ -1,7 +1,7 @@
 /**
  * Claude Quota Response Normalization Helpers
  *
- * Parses Anthropic policy limits payload into normalized windows and core usage summary.
+ * Parses Anthropic policy-limits or OAuth-usage payloads into normalized windows and core usage summary.
  */
 
 import type { ClaudeCoreUsageSummary, ClaudeQuotaWindow } from './quota-types';
@@ -185,8 +185,19 @@ function normalizeRestriction(
 
 /**
  * Parse raw policy limits response into normalized windows.
- * Supports both array and object-map `restrictions` shapes.
+ * Supports both policy-limits `restrictions` payloads and OAuth usage payloads
+ * keyed by window name (`five_hour`, `seven_day`, `seven_day_sonnet`, ...).
  */
+const CLAUDE_USAGE_WINDOW_KEYS = new Set([
+  'five_hour',
+  'seven_day',
+  'seven_day_opus',
+  'seven_day_sonnet',
+  'seven_day_oauth_apps',
+  'seven_day_cowork',
+  'iguana_necktie',
+]);
+
 export function buildClaudeQuotaWindows(payload: Record<string, unknown>): ClaudeQuotaWindow[] {
   const rawRestrictions = payload['restrictions'];
   const windows: ClaudeQuotaWindow[] = [];
@@ -206,9 +217,19 @@ export function buildClaudeQuotaWindows(payload: Record<string, unknown>): Claud
       if (window) windows.push(window);
     }
   } else if (toObject(payload)) {
+    for (const [key, value] of Object.entries(payload)) {
+      if (!CLAUDE_USAGE_WINDOW_KEYS.has(key)) continue;
+      const raw = toObject(value);
+      if (!raw) continue;
+      const window = normalizeRestriction(raw, key);
+      if (window) windows.push(window);
+    }
+
     // Some responses may contain a single restriction object directly.
-    const direct = normalizeRestriction(payload);
-    if (direct) windows.push(direct);
+    if (windows.length === 0) {
+      const direct = normalizeRestriction(payload);
+      if (direct) windows.push(direct);
+    }
   }
 
   const seen = new Set<string>();
