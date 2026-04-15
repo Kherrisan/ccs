@@ -1,4 +1,8 @@
-import { resolveDroidProvider, type DroidProvider } from '../targets/droid-provider';
+import {
+  inferDroidProviderFromBaseUrl,
+  resolveDroidProvider,
+  type DroidProvider,
+} from '../targets/droid-provider';
 
 export interface OpenAICompatProfileConfig {
   profileName: string;
@@ -41,11 +45,14 @@ export function resolveOpenAICompatProfileConfig(
     return null;
   }
 
-  const provider = resolveDroidProvider({
-    provider: env.CCS_DROID_PROVIDER,
-    baseUrl,
-    model: env.ANTHROPIC_MODEL,
-  });
+  const providerFromUrl = inferDroidProviderFromBaseUrl(baseUrl);
+  const provider = isOpenAICompatProvider(providerFromUrl)
+    ? providerFromUrl
+    : resolveDroidProvider({
+        provider: env.CCS_DROID_PROVIDER,
+        baseUrl,
+        model: env.ANTHROPIC_MODEL,
+      });
   if (!isOpenAICompatProvider(provider)) {
     return null;
   }

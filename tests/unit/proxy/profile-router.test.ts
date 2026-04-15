@@ -37,4 +37,17 @@ describe('resolveOpenAICompatProfileConfig', () => {
 
     expect(result).toBeNull();
   });
+
+  it('prefers OpenAI-compatible URL inference over stale anthropic provider hints', () => {
+    const result = resolveOpenAICompatProfileConfig('q', '/tmp/q.settings.json', {
+      ANTHROPIC_BASE_URL: 'https://dashscope-us.aliyuncs.com/compatible-mode/v1',
+      ANTHROPIC_AUTH_TOKEN: 'q-token',
+      ANTHROPIC_MODEL: 'qwen3.6-plus',
+      CCS_DROID_PROVIDER: 'anthropic',
+    });
+
+    expect(result).not.toBeNull();
+    expect(result?.provider).toBe('generic-chat-completion-api');
+    expect(result?.model).toBe('qwen3.6-plus');
+  });
 });

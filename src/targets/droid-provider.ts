@@ -86,8 +86,10 @@ export function inferDroidProviderFromBaseUrl(
     host.includes('api.deepinfra.com') ||
     host.includes('api.fireworks.ai') ||
     host.includes('inference.baseten.co') ||
+    host.includes('dashscope') ||
     host.includes('huggingface.co') ||
     host.includes('ollama.com') ||
+    pathname.includes('/compatible-mode') ||
     pathname.includes('/openai') ||
     pathname.includes('/chat/completions')
   ) {
