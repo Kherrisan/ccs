@@ -2433,6 +2433,8 @@ const resources = {
             'Configure Claude Browser Attach and Codex Browser Tools here, then use the guidance below to launch or verify each lane.',
           readiness: 'Readiness',
           nextStep: 'Next step',
+          technicalDetails: 'Technical Details',
+          diagnostics: 'Diagnostics',
           actions: {
             saveClaude: 'Save Claude settings',
             saveCodex: 'Save Codex settings',
@@ -4846,6 +4848,8 @@ const resources = {
             '在这里配置 Claude Browser Attach 和 Codex Browser Tools，然后按下方指引启动或验证每条路径。',
           readiness: '就绪状态',
           nextStep: '下一步',
+          technicalDetails: '技术细节',
+          diagnostics: '诊断信息',
           actions: {
             saveClaude: '保存 Claude 设置',
             saveCodex: '保存 Codex 设置',
@@ -7361,6 +7365,8 @@ const resources = {
             'Cấu hình Claude Browser Attach và Codex Browser Tools tại đây, rồi dùng hướng dẫn bên dưới để khởi chạy hoặc kiểm tra từng luồng.',
           readiness: 'Trạng thái sẵn sàng',
           nextStep: 'Bước tiếp theo',
+          technicalDetails: 'Chi tiết kỹ thuật',
+          diagnostics: 'Chẩn đoán',
           actions: {
             saveClaude: 'Lưu cấu hình Claude',
             saveCodex: 'Lưu cấu hình Codex',
@@ -9783,6 +9789,8 @@ const resources = {
             'ここで Claude Browser Attach と Codex Browser Tools を設定し、各レーンの起動や確認は下の案内を使ってください。',
           readiness: '準備状況',
           nextStep: '次の手順',
+          technicalDetails: '技術的な詳細',
+          diagnostics: '診断情報',
           actions: {
             saveClaude: 'Claude 設定を保存',
             saveCodex: 'Codex 設定を保存',
