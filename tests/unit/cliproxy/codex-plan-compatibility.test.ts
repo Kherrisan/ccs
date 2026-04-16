@@ -9,22 +9,21 @@ import {
 
 describe('codex plan compatibility', () => {
   it('uses a cross-plan safe Codex default', () => {
-    expect(getDefaultCodexModel()).toBe('gpt-5-codex');
-    expect(getProviderCatalog('codex')?.defaultModel).toBe('gpt-5-codex');
+    expect(getDefaultCodexModel()).toBe('gpt-5.4');
+    expect(getProviderCatalog('codex')?.defaultModel).toBe('gpt-5.4');
   });
 
   it('maps paid-only free-plan models to safe fallbacks', () => {
-    expect(getFreePlanFallbackCodexModel('gpt-5.3-codex')).toBe('gpt-5-codex');
-    expect(getFreePlanFallbackCodexModel('gpt-5.3-codex-xhigh')).toBe('gpt-5-codex');
-    expect(getFreePlanFallbackCodexModel('gpt-5.3-codex(high)')).toBe('gpt-5-codex');
-    expect(getFreePlanFallbackCodexModel('gpt-5.4')).toBe('gpt-5-codex');
-    expect(getFreePlanFallbackCodexModel('gpt-5.3-codex-spark')).toBe('gpt-5-codex-mini');
+    expect(getFreePlanFallbackCodexModel('gpt-5.3-codex')).toBe('gpt-5.4');
+    expect(getFreePlanFallbackCodexModel('gpt-5.3-codex-xhigh')).toBe('gpt-5.4');
+    expect(getFreePlanFallbackCodexModel('gpt-5.3-codex(high)')).toBe('gpt-5.4');
+    expect(getFreePlanFallbackCodexModel('gpt-5.3-codex-spark')).toBe('gpt-5.4-mini');
   });
 
   it('does not rewrite cross-plan or already-safe Codex models', () => {
-    expect(getFreePlanFallbackCodexModel('gpt-5-codex')).toBeNull();
-    expect(getFreePlanFallbackCodexModel('gpt-5.2-codex')).toBeNull();
-    expect(getFreePlanFallbackCodexModel('gpt-5.1-codex-mini')).toBeNull();
+    expect(getFreePlanFallbackCodexModel('gpt-5.4')).toBeNull();
+    expect(getFreePlanFallbackCodexModel('gpt-5.4-mini')).toBeNull();
+    expect(getFreePlanFallbackCodexModel('gpt-5.2')).toBeNull();
   });
 
   it('detects upstream Codex model_not_supported responses', () => {
@@ -54,25 +53,27 @@ describe('codex plan compatibility', () => {
   it('resolves runtime fallbacks without retrying the rejected model again', () => {
     expect(
       resolveRuntimeCodexFallbackModel({
-        requestedModel: 'gpt-5.4',
-        modelMap: { defaultModel: 'gpt-5-codex' },
+        requestedModel: 'gpt-5.3-codex',
+        modelMap: { defaultModel: 'gpt-5.4' },
       })
-    ).toBe('gpt-5-codex');
+    ).toBe('gpt-5.4');
 
     expect(
       resolveRuntimeCodexFallbackModel({
-        requestedModel: 'gpt-5.4',
+        requestedModel: 'gpt-5.3-codex',
         modelMap: {
           defaultModel: 'gpt-5.4',
-          haikuModel: 'gpt-5-codex-mini',
+          haikuModel: 'gpt-5.4-mini',
         },
-        excludeModels: ['gpt-5-codex'],
+        excludeModels: ['gpt-5.4'],
       })
-    ).toBe('gpt-5-codex-mini');
+    ).toBe('gpt-5.4-mini');
   });
 
-  it('tracks Codex thinking caps for current safe defaults and paid models', () => {
-    expect(getModelMaxLevel('codex', 'gpt-5-codex')).toBe('high');
+  it('tracks Codex thinking caps for current safe defaults, paid models, and legacy aliases', () => {
+    expect(getModelMaxLevel('codex', 'gpt-5.4')).toBe('xhigh');
+    expect(getModelMaxLevel('codex', 'gpt-5.4-mini')).toBe('high');
+    expect(getModelMaxLevel('codex', 'gpt-5-codex')).toBe('xhigh');
     expect(getModelMaxLevel('codex', 'gpt-5-codex-mini')).toBe('high');
     expect(getModelMaxLevel('codex', 'gpt-5.2-codex')).toBe('xhigh');
     expect(getModelMaxLevel('codex', 'gpt-5.3-codex')).toBe('xhigh');

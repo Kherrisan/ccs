@@ -27,6 +27,16 @@ const DENIED_ANTIGRAVITY_SONNET_45_REGEX =
   /claude-sonnet-4(?:[.-])5(?:-thinking)?(?=(?:$|[^a-z0-9]))/gi;
 const CANONICAL_ANTIGRAVITY_OPUS_46_MODEL = 'claude-opus-4-6-thinking';
 const CODEX_EFFORT_SUFFIX_REGEX = /-(xhigh|high|medium)$/i;
+const CODEX_LEGACY_MODEL_ALIASES: Readonly<Record<string, string>> = Object.freeze({
+  'gpt-5-codex': 'gpt-5.4',
+  'gpt-5-codex-mini': 'gpt-5.4-mini',
+  'gpt-5-mini': 'gpt-5.4-mini',
+  'gpt-5.1-codex': 'gpt-5.2',
+  'gpt-5.1-codex-mini': 'gpt-5.4-mini',
+  'gpt-5.1-codex-max': 'gpt-5.4',
+  'gpt-5.2-codex': 'gpt-5.2',
+  'gpt-5.2-codex-mini': 'gpt-5.4-mini',
+});
 const IFLOW_LEGACY_MODEL_ALIASES: Readonly<Record<string, string>> = Object.freeze({
   'iflow-default': 'qwen3-coder-plus',
   'kimi-k2.5': 'kimi-k2',
@@ -90,6 +100,17 @@ export function isIFlowProvider(provider: ProviderLike): boolean {
 /** Normalize Codex effort-suffixed IDs to canonical IDs. */
 export function stripCodexEffortSuffix(model: string): string {
   return model.replace(CODEX_EFFORT_SUFFIX_REGEX, '');
+}
+
+/** Normalize legacy Codex aliases to the current public Codex model IDs. */
+export function normalizeCodexLegacyModelAliases(model: string): string {
+  const trimmed = trimModelId(model);
+  const { baseModel, suffix } = splitBaseModelAndSuffix(trimmed);
+  const replacement = CODEX_LEGACY_MODEL_ALIASES[baseModel.trim().toLowerCase()];
+  if (!replacement) {
+    return trimmed;
+  }
+  return `${replacement}${suffix}`;
 }
 
 /**
@@ -185,6 +206,9 @@ export function normalizeModelIdForProvider(model: string, provider: ProviderLik
   const trimmedModel = trimModelId(model);
   if (isIFlowProvider(provider)) {
     return normalizeIFlowLegacyModelAliases(trimmedModel);
+  }
+  if (isCodexProvider(provider)) {
+    return normalizeCodexLegacyModelAliases(trimmedModel);
   }
   if (!isAntigravityProvider(provider)) return trimmedModel;
   const normalizedDottedVersion = normalizeClaudeDottedMajorMinor(trimmedModel);

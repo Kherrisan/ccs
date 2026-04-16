@@ -186,56 +186,12 @@ export const MODEL_CATALOG: Partial<Record<CLIProxyProvider, ProviderCatalog>> =
   codex: {
     provider: 'codex',
     displayName: 'Copilot Codex',
-    defaultModel: 'gpt-5-codex',
+    defaultModel: 'gpt-5.4',
     models: [
       {
-        id: 'gpt-5-codex',
-        name: 'GPT-5 Codex',
-        description: 'Cross-plan safe Codex default',
-        thinking: {
-          type: 'levels',
-          levels: ['low', 'medium', 'high'],
-          maxLevel: 'high',
-          dynamicAllowed: false,
-        },
-      },
-      {
-        id: 'gpt-5-codex-mini',
-        name: 'GPT-5 Codex Mini',
-        description: 'Faster and cheaper Codex option',
-        thinking: {
-          type: 'levels',
-          levels: ['low', 'medium', 'high'],
-          maxLevel: 'high',
-          dynamicAllowed: false,
-        },
-      },
-      {
-        id: 'gpt-5-mini',
-        name: 'GPT-5 Mini',
-        description: 'Legacy mini model ID kept for backwards compatibility',
-        thinking: {
-          type: 'levels',
-          levels: ['low', 'medium', 'high'],
-          maxLevel: 'high',
-          dynamicAllowed: false,
-        },
-      },
-      {
-        id: 'gpt-5.1-codex-mini',
-        name: 'GPT-5.1 Codex Mini',
-        description: 'Legacy fast Codex mini model',
-        thinking: {
-          type: 'levels',
-          levels: ['low', 'medium', 'high'],
-          maxLevel: 'high',
-          dynamicAllowed: false,
-        },
-      },
-      {
-        id: 'gpt-5.1-codex-max',
-        name: 'GPT-5.1 Codex Max',
-        description: 'Higher-effort Codex model with xhigh support',
+        id: 'gpt-5.4',
+        name: 'GPT-5.4',
+        description: 'Recommended Codex default for most coding and agentic tasks',
         thinking: {
           type: 'levels',
           levels: ['low', 'medium', 'high', 'xhigh'],
@@ -244,13 +200,13 @@ export const MODEL_CATALOG: Partial<Record<CLIProxyProvider, ProviderCatalog>> =
         },
       },
       {
-        id: 'gpt-5.2-codex',
-        name: 'GPT-5.2 Codex',
-        description: 'Cross-plan Codex model with xhigh support',
+        id: 'gpt-5.4-mini',
+        name: 'GPT-5.4 Mini',
+        description: 'Fast, lower-cost Codex option for lighter tasks and haiku-tier routing',
         thinking: {
           type: 'levels',
-          levels: ['low', 'medium', 'high', 'xhigh'],
-          maxLevel: 'xhigh',
+          levels: ['low', 'medium', 'high'],
+          maxLevel: 'high',
           dynamicAllowed: false,
         },
       },
@@ -258,7 +214,7 @@ export const MODEL_CATALOG: Partial<Record<CLIProxyProvider, ProviderCatalog>> =
         id: 'gpt-5.3-codex',
         name: 'GPT-5.3 Codex',
         tier: 'pro',
-        description: 'Paid Codex plans only',
+        description: 'Previous flagship coding model whose capabilities now power GPT-5.4',
         thinking: {
           type: 'levels',
           levels: ['low', 'medium', 'high', 'xhigh'],
@@ -270,7 +226,8 @@ export const MODEL_CATALOG: Partial<Record<CLIProxyProvider, ProviderCatalog>> =
         id: 'gpt-5.3-codex-spark',
         name: 'GPT-5.3 Codex Spark',
         tier: 'pro',
-        description: 'Paid Codex plans only, ultra-fast coding model',
+        description:
+          'Research preview model for ChatGPT Pro subscribers, optimized for near-instant coding iteration',
         thinking: {
           type: 'levels',
           levels: ['low', 'medium', 'high', 'xhigh'],
@@ -279,10 +236,9 @@ export const MODEL_CATALOG: Partial<Record<CLIProxyProvider, ProviderCatalog>> =
         },
       },
       {
-        id: 'gpt-5.4',
-        name: 'GPT-5.4',
-        tier: 'pro',
-        description: 'Paid Codex plans only, latest GPT-5 family model',
+        id: 'gpt-5.2',
+        name: 'GPT-5.2',
+        description: 'Previous general-purpose Codex model',
         thinking: {
           type: 'levels',
           levels: ['low', 'medium', 'high', 'xhigh'],

@@ -8,7 +8,7 @@ import { buildClaudeEnvironment } from '../../../src/cliproxy/executor/env-resol
 const tiers = {
   opus: { provider: 'agy' as const, model: 'claude-opus-4-6-thinking' },
   sonnet: { provider: 'gemini' as const, model: 'gemini-2.5-pro' },
-  haiku: { provider: 'codex' as const, model: 'gpt-5.1-codex-mini' },
+  haiku: { provider: 'codex' as const, model: 'gpt-5.4-mini' },
 };
 
 describe('buildClaudeEnvironment - composite remote routing', () => {
@@ -82,7 +82,7 @@ describe('buildClaudeEnvironment - composite remote routing', () => {
       compositeTiers: {
         opus: { provider: 'agy', model: 'claude-opus-4.6-thinking' },
         sonnet: { provider: 'gemini', model: 'gemini-2.5-pro' },
-        haiku: { provider: 'codex', model: 'gpt-5.1-codex-mini' },
+        haiku: { provider: 'codex', model: 'gpt-5.4-mini' },
       },
       compositeDefaultTier: 'opus',
     });
@@ -90,6 +90,6 @@ describe('buildClaudeEnvironment - composite remote routing', () => {
     expect(env.ANTHROPIC_MODEL).toMatch(/^claude-opus-4-6-thinking(\([^)]+\))?$/);
     expect(env.ANTHROPIC_DEFAULT_OPUS_MODEL).toMatch(/^claude-opus-4-6-thinking(\([^)]+\))?$/);
     expect(env.ANTHROPIC_DEFAULT_SONNET_MODEL).toMatch(/^gemini-2.5-pro(\([^)]+\))?$/);
-    expect(env.ANTHROPIC_DEFAULT_HAIKU_MODEL).toMatch(/^gpt-5.1-codex-mini(?:-medium)?$/);
+    expect(env.ANTHROPIC_DEFAULT_HAIKU_MODEL).toMatch(/^gpt-5.4-mini(?:-medium)?$/);
   });
 });

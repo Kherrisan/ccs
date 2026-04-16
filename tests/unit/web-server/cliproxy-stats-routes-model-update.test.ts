@@ -137,7 +137,7 @@ describe('cliproxy-stats-routes model update canonicalization', () => {
       ANTHROPIC_MODEL: 'gpt-5.3-codex',
       ANTHROPIC_DEFAULT_OPUS_MODEL: 'gpt-5.3-codex',
       ANTHROPIC_DEFAULT_SONNET_MODEL: 'gpt-5.3-codex',
-      ANTHROPIC_DEFAULT_HAIKU_MODEL: 'gpt-5-mini',
+      ANTHROPIC_DEFAULT_HAIKU_MODEL: 'gpt-5.4-mini',
     });
 
     const response = await fetch(`${baseUrl}/api/cliproxy/models/codex`, {
@@ -156,7 +156,7 @@ describe('cliproxy-stats-routes model update canonicalization', () => {
     expect(persisted.env.ANTHROPIC_MODEL).toBe('gpt-5.3-codex');
     expect(persisted.env.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe('gpt-5.3-codex');
     expect(persisted.env.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe('gpt-5.3-codex');
-    expect(persisted.env.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe('gpt-5-mini');
+    expect(persisted.env.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe('gpt-5.4-mini');
   });
 
   it('canonicalizes legacy iflow model IDs to supported upstream IDs', async () => {

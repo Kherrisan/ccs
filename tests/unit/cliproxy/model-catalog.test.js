@@ -186,6 +186,25 @@ describe('Model Catalog', () => {
     });
   });
 
+  describe('Codex models', () => {
+    it('has correct default model', () => {
+      const { MODEL_CATALOG } = modelCatalog;
+      assert.strictEqual(MODEL_CATALOG.codex.defaultModel, 'gpt-5.4');
+    });
+
+    it('advertises the current official Codex model set', () => {
+      const { MODEL_CATALOG } = modelCatalog;
+      const ids = MODEL_CATALOG.codex.models.map((m) => m.id);
+      assert.deepStrictEqual(ids, [
+        'gpt-5.4',
+        'gpt-5.4-mini',
+        'gpt-5.3-codex',
+        'gpt-5.3-codex-spark',
+        'gpt-5.2',
+      ]);
+    });
+  });
+
   describe('supportsModelConfig', () => {
     it('returns true for agy', () => {
       const { supportsModelConfig } = modelCatalog;
