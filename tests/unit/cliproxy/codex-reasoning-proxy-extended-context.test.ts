@@ -306,11 +306,11 @@ describe('CodexReasoningProxy extended-context compatibility', () => {
 
     expect(firstResponse.statusCode).toBe(200);
     expect(secondResponse.statusCode).toBe(200);
-    expect(firstResponse.body.model).toBe('gpt-5-codex');
+    expect(firstResponse.body.model).toBe('gpt-5.4-mini');
     expect(firstResponse.body.effort).toBe('high');
-    expect(secondResponse.body.model).toBe('gpt-5-codex');
+    expect(secondResponse.body.model).toBe('gpt-5.4-mini');
     expect(secondResponse.body.effort).toBe('high');
-    expect(capturedModels).toEqual(['gpt-5.4', 'gpt-5-codex', 'gpt-5-codex']);
+    expect(capturedModels).toEqual(['gpt-5.4', 'gpt-5.4-mini', 'gpt-5.4-mini']);
     expect(capturedEfforts).toEqual(['xhigh', 'high', 'high']);
   });
 

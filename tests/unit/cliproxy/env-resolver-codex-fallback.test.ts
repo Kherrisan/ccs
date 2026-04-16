@@ -87,7 +87,7 @@ describe('buildClaudeEnvironment codex fallback normalization', () => {
       defaultModel: 'gpt-5.3-codex-high',
       opusModel: 'gpt-5.3-codex-xhigh',
       sonnetModel: 'gpt-5.3-codex-high',
-      haikuModel: 'gpt-5-mini-medium',
+      haikuModel: 'gpt-5.4-mini-medium',
     });
 
     const env = buildClaudeEnvironment({
@@ -101,7 +101,7 @@ describe('buildClaudeEnvironment codex fallback normalization', () => {
     expect(env.ANTHROPIC_MODEL).toBe('gpt-5.3-codex(high)');
     expect(env.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe('gpt-5.3-codex(xhigh)');
     expect(env.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe('gpt-5.3-codex(high)');
-    expect(env.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe('gpt-5-mini(medium)');
+    expect(env.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe('gpt-5.4-mini(medium)');
   });
 
   it('keeps codex effort aliases when reasoning proxy is active', () => {
@@ -109,7 +109,7 @@ describe('buildClaudeEnvironment codex fallback normalization', () => {
       defaultModel: 'gpt-5.3-codex-high',
       opusModel: 'gpt-5.3-codex-xhigh',
       sonnetModel: 'gpt-5.3-codex-high',
-      haikuModel: 'gpt-5-mini-medium',
+      haikuModel: 'gpt-5.4-mini-medium',
     });
 
     const env = buildClaudeEnvironment({
@@ -124,7 +124,7 @@ describe('buildClaudeEnvironment codex fallback normalization', () => {
     expect(env.ANTHROPIC_MODEL).toBe('gpt-5.3-codex-high');
     expect(env.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe('gpt-5.3-codex-xhigh');
     expect(env.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe('gpt-5.3-codex-high');
-    expect(env.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe('gpt-5-mini-medium');
+    expect(env.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe('gpt-5.4-mini-medium');
     expect(env.ANTHROPIC_BASE_URL).toBe('http://127.0.0.1:9444/api/provider/codex');
   });
 
