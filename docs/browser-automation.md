@@ -1,6 +1,6 @@
 # Browser Automation
 
-Last Updated: 2026-04-17
+Last Updated: 2026-04-18
 
 CCS provides browser automation through two separate runtime paths:
 
@@ -23,7 +23,7 @@ enabled. A recent Chrome update alone is not sufficient.
 The managed `ccs-browser` runtime currently exposes five tool groups:
 
 - **Session inspection**: `browser_get_session_info`, `browser_get_url_and_title`, `browser_get_visible_text`, `browser_get_dom_snapshot`
-- **Navigation and interaction**: `browser_navigate`, `browser_click`, `browser_type`, `browser_take_screenshot`
+- **Navigation and interaction**: `browser_navigate`, `browser_click`, `browser_type`, `browser_press_key`, `browser_scroll`, `browser_take_screenshot`
 - **Hover diagnostics**: `browser_hover`, `browser_query`, `browser_take_element_screenshot`
 - **Readiness and page evaluation**: `browser_wait_for`, `browser_eval`
 - **Event observation**: `browser_wait_for_event`
@@ -40,6 +40,12 @@ Phase 3 capability details:
 - `browser_click`, `browser_hover`, `browser_query`, `browser_wait_for`, and `browser_take_element_screenshot` accept optional `frameSelector` to resolve targets inside a specific same-origin iframe
 - the same scoped-selector tools accept optional `pierceShadow: true` to search open shadow roots beneath the selected root
 - `browser_wait_for_event` observes typed page or browser events for dialogs, navigation, requests, and downloads
+
+Phase 4 capability details:
+
+- `browser_click` also accepts optional `offsetX`, `offsetY`, `button`, and `clickCount` for more precise element-relative click control
+- `browser_press_key` sends real browser-level key events, supports modifier combinations plus repeat counts, and covers a focused set of common special keys such as `Enter`, `Tab`, `Escape`, and arrow keys
+- `browser_scroll` supports page-level `by-offset` scrolling and element-scoped `by-offset` or `into-view` scrolling, including same-origin iframe scoping
 
 A common hover-debug workflow is:
 

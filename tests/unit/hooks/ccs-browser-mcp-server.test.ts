@@ -48,6 +48,10 @@ type MockClickState = {
   detachAfterMouseDown?: boolean;
   mouseSequenceError?: string;
   label?: string;
+  expectedOffset?: { x: number; y: number };
+  expectedButton?: 'left' | 'middle' | 'right';
+  expectedClickCount?: number;
+  requireDoubleClickEvent?: boolean;
 };
 
 type MockClickPlan = MockClickState | MockClickState[];
@@ -142,6 +146,20 @@ type MockPageState = {
       expectedValueWhenAppend?: string;
       requireFocus?: boolean;
       focused?: boolean;
+    }
+  >;
+  keyboard?: {
+    expectedKey?: string;
+    expectedModifiers?: string[];
+    expectedRepeat?: number;
+    _seenKeyDownCount?: number;
+  };
+  scroll?: Record<
+    string,
+    {
+      expectedBehavior?: 'into-view' | 'by-offset';
+      expectedDeltaX?: number;
+      expectedDeltaY?: number;
     }
   >;
 };
@@ -521,6 +539,45 @@ function createMockBrowser(pagesInput: MockPageState[]) {
           return;
         }
 
+        if (message.method === 'Input.dispatchKeyEvent') {
+          const type = typeof message.params?.type === 'string' ? message.params.type : '';
+          const key = typeof message.params?.key === 'string' ? message.params.key : '';
+          const modifiersMask = Number(message.params?.modifiers || 0);
+          const modifiers = [
+            ...(modifiersMask & 1 ? ['Alt'] : []),
+            ...(modifiersMask & 2 ? ['Control'] : []),
+            ...(modifiersMask & 4 ? ['Meta'] : []),
+            ...(modifiersMask & 8 ? ['Shift'] : []),
+          ];
+          const keyboardPlan = page.keyboard;
+          if (type === 'keyDown') {
+            if (keyboardPlan?.expectedKey && key !== keyboardPlan.expectedKey) {
+              replyError(`unexpected key: ${key}`);
+              return;
+            }
+            if (
+              keyboardPlan?.expectedModifiers &&
+              JSON.stringify(modifiers) !== JSON.stringify(keyboardPlan.expectedModifiers)
+            ) {
+              replyError(`unexpected modifiers for key: ${key}`);
+              return;
+            }
+            if (keyboardPlan) {
+              keyboardPlan._seenKeyDownCount = (keyboardPlan._seenKeyDownCount || 0) + 1;
+            }
+          }
+          if (
+            type === 'keyUp' &&
+            typeof keyboardPlan?.expectedRepeat === 'number' &&
+            (keyboardPlan._seenKeyDownCount || 0) !== keyboardPlan.expectedRepeat
+          ) {
+            replyError(`unexpected repeat for key: ${key}`);
+            return;
+          }
+          reply({});
+          return;
+        }
+
         if (message.method === 'Page.enable' || message.method === 'Network.enable') {
           reply({});
           if (message.method === 'Page.enable') {
@@ -627,7 +684,7 @@ function createMockBrowser(pagesInput: MockPageState[]) {
           return;
         }
 
-        if (expression.includes('scrollIntoView') && expression.includes('.click()')) {
+        if (expression.includes('scrollIntoView') && expression.includes('resolvedOffsetX')) {
           const selector = parseJsonArgument(expression, 'selector') || '';
           const nth = parseNumberArgument(expression, 'nth') ?? 0;
           const clickPlan = page.click?.[selector];
@@ -636,6 +693,7 @@ function createMockBrowser(pagesInput: MockPageState[]) {
           const attemptedMouseUp = expression.includes("dispatchMouseEvent('mouseup'");
           const attemptedMouseSequence = attemptedMouseDown && attemptedMouseUp;
           const attemptedClickEvent = expression.includes("dispatchMouseEvent('click'");
+          const attemptedDoubleClickEvent = expression.includes("new MouseEvent('dblclick'");
           const readsDispatchResult = expression.includes('const dispatchResult = {');
           const gatesNativeClickOnDispatchResult = expression.includes(
             'if (!dispatchResult.shouldActivate)'
@@ -662,6 +720,10 @@ function createMockBrowser(pagesInput: MockPageState[]) {
               index < catchIndex ||
               index > catchBlockEnd
           );
+          const offsetX = parseNumberArgument(expression, 'offsetX');
+          const offsetY = parseNumberArgument(expression, 'offsetY');
+          const button = parseJsonArgument(expression, 'button') || 'left';
+          const clickCount = parseNumberArgument(expression, 'clickCount') ?? 1;
           if (!resolvedClickPlan) {
             replyError(`element index ${nth} is out of range for selector: ${selector}`);
             return;
@@ -712,13 +774,49 @@ function createMockBrowser(pagesInput: MockPageState[]) {
             replyError(`native click required for selector: ${selector}`);
             return;
           }
+          if (
+            resolvedClickPlan.expectedOffset &&
+            (offsetX !== resolvedClickPlan.expectedOffset.x || offsetY !== resolvedClickPlan.expectedOffset.y)
+          ) {
+            replyError(`unexpected click offset for selector: ${selector}`);
+            return;
+          }
+          if (resolvedClickPlan.expectedButton && button !== resolvedClickPlan.expectedButton) {
+            replyError(`unexpected click button for selector: ${selector}`);
+            return;
+          }
+          if (
+            typeof resolvedClickPlan.expectedClickCount === 'number' &&
+            clickCount !== resolvedClickPlan.expectedClickCount
+          ) {
+            replyError(`unexpected click count for selector: ${selector}`);
+            return;
+          }
+          if (
+            resolvedClickPlan.requireDoubleClickEvent &&
+            clickCount === 2 &&
+            !attemptedDoubleClickEvent
+          ) {
+            replyError(`dblclick event required for selector: ${selector}`);
+            return;
+          }
           if (resolvedClickPlan.mouseSequenceError) {
             if (!attemptedMouseSequence) {
               replyError(`mousedown/mouseup required for selector: ${selector}`);
               return;
             }
             if (attemptedFallbackClick || attemptedNativeClickOutsideCatch) {
-              reply({ result: { type: 'string', value: 'ok' } });
+              reply({
+                result: {
+                  type: 'string',
+                  value: JSON.stringify({
+                    resolvedOffsetX: offsetX ?? 50,
+                    resolvedOffsetY: offsetY ?? 10,
+                    button,
+                    clickCount,
+                  }),
+                },
+              });
               return;
             }
             replyError(resolvedClickPlan.mouseSequenceError);
@@ -728,7 +826,17 @@ function createMockBrowser(pagesInput: MockPageState[]) {
             replyError(resolvedClickPlan.error);
             return;
           }
-          reply({ result: { type: 'string', value: 'ok' } });
+          reply({
+            result: {
+              type: 'string',
+              value: JSON.stringify({
+                resolvedOffsetX: offsetX ?? 50,
+                resolvedOffsetY: offsetY ?? 10,
+                button,
+                clickCount,
+              }),
+            },
+          });
           return;
         }
 
@@ -950,6 +1058,80 @@ function createMockBrowser(pagesInput: MockPageState[]) {
           });
           return;
         }
+
+        if (expression.includes('new KeyboardEvent(')) {
+          const key = parseJsonArgument(expression, 'key') || '';
+          const repeat = parseNumberArgument(expression, 'repeat') ?? 1;
+          const modifiersMatch = expression.match(/const modifiers = (\[[^\n;]*\]);/);
+          const modifiers = modifiersMatch ? (JSON.parse(modifiersMatch[1]) as string[]) : [];
+          const keyboardPlan = page.keyboard;
+          if (keyboardPlan?.expectedKey && key !== keyboardPlan.expectedKey) {
+            replyError(`unexpected key: ${key}`);
+            return;
+          }
+          if (
+            keyboardPlan?.expectedModifiers &&
+            JSON.stringify(modifiers) !== JSON.stringify(keyboardPlan.expectedModifiers)
+          ) {
+            replyError(`unexpected modifiers for key: ${key}`);
+            return;
+          }
+          if (
+            typeof keyboardPlan?.expectedRepeat === 'number' &&
+            repeat !== keyboardPlan.expectedRepeat
+          ) {
+            replyError(`unexpected repeat for key: ${key}`);
+            return;
+          }
+          reply({
+            result: {
+              type: 'string',
+              value: JSON.stringify({ key, modifiers, repeat }),
+            },
+          });
+          return;
+        }
+
+        if (expression.includes('window.scrollBy(deltaX, deltaY)') || expression.includes('element.scrollBy(deltaX, deltaY)')) {
+          const selector = parseJsonArgument(expression, 'selector');
+          const behavior = parseJsonArgument(expression, 'behavior') || '';
+          const deltaX = Number(expression.match(/const deltaX = (-?[0-9]+(?:\.[0-9]+)?);/)?.[1] || 0);
+          const deltaY = Number(expression.match(/const deltaY = (-?[0-9]+(?:\.[0-9]+)?);/)?.[1] || 0);
+          const scrollPlan = selector ? page.scroll?.[selector] : undefined;
+          if (selector && !scrollPlan) {
+            replyError(`element not found for selector: ${selector}`);
+            return;
+          }
+          if (scrollPlan?.expectedBehavior && behavior !== scrollPlan.expectedBehavior) {
+            replyError(`unexpected scroll behavior for selector: ${selector}`);
+            return;
+          }
+          if (
+            typeof scrollPlan?.expectedDeltaX === 'number' &&
+            deltaX !== scrollPlan.expectedDeltaX
+          ) {
+            replyError(`unexpected deltaX for selector: ${selector}`);
+            return;
+          }
+          if (
+            typeof scrollPlan?.expectedDeltaY === 'number' &&
+            deltaY !== scrollPlan.expectedDeltaY
+          ) {
+            replyError(`unexpected deltaY for selector: ${selector}`);
+            return;
+          }
+          reply({
+            result: {
+              type: 'string',
+              value: JSON.stringify(
+                selector
+                  ? { scope: 'element', selector, behavior, deltaX, deltaY }
+                  : { scope: 'page', behavior, deltaX, deltaY }
+              ),
+            },
+          });
+          return;
+        }
       });
     });
 
@@ -1056,6 +1238,8 @@ describe('ccs-browser MCP server', () => {
       'browser_navigate',
       'browser_click',
       'browser_type',
+      'browser_press_key',
+      'browser_scroll',
       'browser_take_screenshot',
       'browser_wait_for',
       'browser_eval',
@@ -1068,6 +1252,21 @@ describe('ccs-browser MCP server', () => {
     const clickTool = tools.find((tool) => tool.name === 'browser_click');
     expect(clickTool?.description).toContain('mouse event chain');
     expect(clickTool?.description).not.toContain('synthetic element.click()');
+    expect(clickTool?.inputSchema?.properties?.offsetX).toMatchObject({ type: 'number' });
+    expect(clickTool?.inputSchema?.properties?.offsetY).toMatchObject({ type: 'number' });
+    expect(clickTool?.inputSchema?.properties?.button).toMatchObject({ type: 'string' });
+    expect(clickTool?.inputSchema?.properties?.clickCount).toMatchObject({
+      type: 'integer',
+      minimum: 1,
+    });
+
+    const keyTool = tools.find((tool) => tool.name === 'browser_press_key');
+    expect(keyTool?.inputSchema?.properties?.key).toMatchObject({ type: 'string' });
+    expect(keyTool?.inputSchema?.properties?.modifiers).toMatchObject({ type: 'array' });
+
+    const scrollTool = tools.find((tool) => tool.name === 'browser_scroll');
+    expect(scrollTool?.inputSchema?.properties?.deltaX).toMatchObject({ type: 'number' });
+    expect(scrollTool?.inputSchema?.properties?.deltaY).toMatchObject({ type: 'number' });
 
     const queryTool = tools.find((tool) => tool.name === 'browser_query');
     expect(queryTool?.inputSchema?.properties?.fields).toMatchObject({
@@ -1636,6 +1835,250 @@ describe('ccs-browser MCP server', () => {
     expect(getResponseText(responses.find((message) => message.id === 2))).toContain(
       'selector: #fallback'
     );
+  });
+
+  it('clicks with element-relative offsets and richer click options', async () => {
+    const responses = await runMcpRequests(
+      [
+        {
+          id: 'page-1',
+          title: 'Click Page',
+          currentUrl: 'https://example.com/',
+          click: {
+            '#offset-target': {
+              requireMouseSequence: true,
+              expectedOffset: { x: 12, y: 8 },
+              expectedButton: 'right',
+              expectedClickCount: 2,
+            },
+            '#double-left': {
+              requireMouseSequence: true,
+              expectedButton: 'left',
+              expectedClickCount: 2,
+              requireDoubleClickEvent: true,
+            },
+          },
+        },
+      ],
+      [
+        {
+          jsonrpc: '2.0',
+          id: 70,
+          method: 'tools/call',
+          params: {
+            name: 'browser_click',
+            arguments: {
+              selector: '#offset-target',
+              offsetX: 12,
+              offsetY: 8,
+              button: 'right',
+              clickCount: 2,
+            },
+          },
+        },
+        {
+          jsonrpc: '2.0',
+          id: 700,
+          method: 'tools/call',
+          params: {
+            name: 'browser_click',
+            arguments: {
+              selector: '#double-left',
+              clickCount: 2,
+            },
+          },
+        },
+      ]
+    );
+
+    const text = getResponseText(responses.find((message) => message.id === 70));
+    expect(text).toContain('status: clicked');
+    expect(text).toContain('offsetX: 12');
+    expect(text).toContain('offsetY: 8');
+    expect(text).toContain('button: right');
+    expect(text).toContain('clickCount: 2');
+
+    const doubleText = getResponseText(responses.find((message) => message.id === 700));
+    expect(doubleText).toContain('status: clicked');
+    expect(doubleText).toContain('button: left');
+    expect(doubleText).toContain('clickCount: 2');
+  });
+
+  it('presses a key combination with browser_press_key', async () => {
+    const responses = await runMcpRequests(
+      [
+        {
+          id: 'page-1',
+          title: 'Keyboard Page',
+          currentUrl: 'https://example.com/',
+          keyboard: {
+            expectedKey: 'k',
+            expectedModifiers: ['Meta'],
+            expectedRepeat: 2,
+          },
+        },
+      ],
+      [
+        {
+          jsonrpc: '2.0',
+          id: 71,
+          method: 'tools/call',
+          params: {
+            name: 'browser_press_key',
+            arguments: {
+              key: 'k',
+              modifiers: ['Meta'],
+              repeat: 2,
+            },
+          },
+        },
+      ]
+    );
+
+    const text = getResponseText(responses.find((message) => message.id === 71));
+    expect(text).toContain('status: key-pressed');
+    expect(text).toContain('key: k');
+    expect(text).toContain('modifiers: Meta');
+    expect(text).toContain('repeat: 2');
+  });
+
+  it('supports common special keys with browser_press_key', async () => {
+    const responses = await runMcpRequests(
+      [
+        {
+          id: 'page-1',
+          title: 'Special Key Page',
+          currentUrl: 'https://example.com/',
+          keyboard: {
+            expectedKey: 'Enter',
+            expectedRepeat: 1,
+          },
+        },
+      ],
+      [
+        {
+          jsonrpc: '2.0',
+          id: 711,
+          method: 'tools/call',
+          params: {
+            name: 'browser_press_key',
+            arguments: {
+              key: 'Enter',
+            },
+          },
+        },
+      ]
+    );
+
+    const text = getResponseText(responses.find((message) => message.id === 711));
+    expect(text).toContain('status: key-pressed');
+    expect(text).toContain('key: Enter');
+  });
+
+  it('rejects unsupported modifiers for browser_press_key', async () => {
+    const responses = await runMcpRequests(
+      [{ id: 'page-1', title: 'Invalid Modifier Page', currentUrl: 'https://example.com/' }],
+      [
+        {
+          jsonrpc: '2.0',
+          id: 712,
+          method: 'tools/call',
+          params: {
+            name: 'browser_press_key',
+            arguments: {
+              key: 'k',
+              modifiers: ['Cmd'],
+            },
+          },
+        },
+      ]
+    );
+
+    const response = responses.find((message) => message.id === 712);
+    expect((response?.result as { isError?: boolean }).isError).toBe(true);
+    expect(getResponseText(response)).toContain(
+      'modifiers must only contain: Alt, Control, Meta, Shift'
+    );
+  });
+
+  it('scrolls an element into view with browser_scroll', async () => {
+    const responses = await runMcpRequests(
+      [
+        {
+          id: 'page-1',
+          title: 'Scroll Page',
+          currentUrl: 'https://example.com/',
+          scroll: {
+            '#results': {
+              expectedBehavior: 'into-view',
+            },
+          },
+        },
+      ],
+      [
+        {
+          jsonrpc: '2.0',
+          id: 72,
+          method: 'tools/call',
+          params: {
+            name: 'browser_scroll',
+            arguments: {
+              selector: '#results',
+              behavior: 'into-view',
+            },
+          },
+        },
+      ]
+    );
+
+    const text = getResponseText(responses.find((message) => message.id === 72));
+    expect(text).toContain('status: scrolled');
+    expect(text).toContain('selector: #results');
+    expect(text).toContain('behavior: into-view');
+  });
+
+  it('scrolls an iframe page by offset with browser_scroll', async () => {
+    const responses = await runMcpRequests(
+      [
+        {
+          id: 'page-1',
+          title: 'Iframe Scroll Page',
+          currentUrl: 'https://example.com/',
+          frames: [
+            {
+              selector: '#preview-frame',
+              query: {
+                '#preview-frame': {
+                  exists: true,
+                },
+              },
+            },
+          ],
+        },
+      ],
+      [
+        {
+          jsonrpc: '2.0',
+          id: 73,
+          method: 'tools/call',
+          params: {
+            name: 'browser_scroll',
+            arguments: {
+              frameSelector: '#preview-frame',
+              behavior: 'by-offset',
+              deltaX: 5,
+              deltaY: 40,
+            },
+          },
+        },
+      ]
+    );
+
+    const text = getResponseText(responses.find((message) => message.id === 73));
+    expect(text).toContain('status: scrolled');
+    expect(text).toContain('behavior: by-offset');
+    expect(text).toContain('deltaX: 5');
+    expect(text).toContain('deltaY: 40');
   });
 
   it('requires real mouse movement for hover-only targets and reports hover failures', async () => {
