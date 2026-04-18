@@ -20,6 +20,13 @@ describe('cliproxy routing strategy service', () => {
   beforeEach(async () => {
     tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'ccs-routing-strategy-'));
     scopedConfigDir = path.join(tempHome, '.ccs');
+    routingTarget = {
+      host: '127.0.0.1',
+      port: 8317,
+      protocol: 'http',
+      isRemote: false,
+    };
+    responseFactory = null;
     originalCcsDir = process.env.CCS_DIR;
     originalCcsHome = process.env.CCS_HOME;
     process.env.CCS_DIR = scopedConfigDir;
@@ -109,7 +116,8 @@ describe('cliproxy routing strategy service', () => {
       expect(result.applied).toBe('config-only');
       expect(result.strategy).toBe('fill-first');
 
-      const configPath = path.join(scopedConfigDir, 'cliproxy', 'config.yaml');
+      const { getConfigPathForPort } = await import('../../../src/cliproxy/config/path-resolver');
+      const configPath = getConfigPathForPort(routingTarget.port);
       const configContent = fs.readFileSync(configPath, 'utf8');
       expect(configContent).toContain('routing:');
       expect(configContent).toContain('strategy: fill-first');
