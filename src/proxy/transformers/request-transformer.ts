@@ -338,7 +338,7 @@ function mapThinkingToReasoning(
   }
 
   if (thinking.type !== 'enabled') {
-    return {};
+    throw new Error('thinking.type must be "enabled", "adaptive", or "disabled"');
   }
 
   const effort =
@@ -444,7 +444,9 @@ function transformMessages(messagesValue: unknown): OpenAIMessage[] {
         }
 
         if (isToolUseBlock(parsed)) {
-          return;
+          throw new Error(
+            `messages[${messageIndex}].content[${blockIndex}] tool_use requires assistant role`
+          );
         }
 
         throw new Error(
@@ -493,10 +495,22 @@ function transformMessages(messagesValue: unknown): OpenAIMessage[] {
         return;
       }
 
-      if (isImageBlock(parsed) || isToolResultBlock(parsed)) {
-        return;
+      if (isImageBlock(parsed)) {
+        throw new Error(
+          `messages[${messageIndex}].content[${blockIndex}] image requires user role`
+        );
+      }
+
+      if (isToolResultBlock(parsed)) {
+        throw new Error(
+          `messages[${messageIndex}].content[${blockIndex}] tool_result requires user role`
+        );
       }
     });
+
+    if (assistantTextParts.length === 0 && toolCalls.length === 0) {
+      return;
+    }
 
     translatedMessages.push({
       role: 'assistant',
