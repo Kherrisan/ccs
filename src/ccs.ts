@@ -1067,7 +1067,7 @@ async function main(): Promise<void> {
           : undefined;
       const browserRuntimeEnv = browserAttachRuntime?.runtimeEnv;
       if (browserAttachRuntime?.warning) {
-        console.error(warn(browserAttachRuntime.warning));
+        process.stderr.write(`${warn(browserAttachRuntime.warning)}\n`);
       }
       if (resolvedTarget === 'claude') {
         ensureWebSearchMcpOrThrow();
@@ -1477,7 +1477,7 @@ async function main(): Promise<void> {
           : undefined;
       const browserRuntimeEnv = browserAttachRuntime?.runtimeEnv;
       if (browserAttachRuntime?.warning) {
-        console.error(warn(browserAttachRuntime.warning));
+        process.stderr.write(`${warn(browserAttachRuntime.warning)}\n`);
       }
 
       if (resolvedTarget === 'claude') {

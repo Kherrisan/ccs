@@ -129,6 +129,10 @@ chrome.exe --remote-debugging-port=9222 --user-data-dir="%USERPROFILE%\\.ccs\\br
 Using a dedicated CCS browser data dir is recommended. It avoids profile-locking issues and keeps
 automation state separate from your daily browser profile.
 
+When Claude Browser Attach uses the recommended managed path (`~/.ccs/browser/chrome-user-data`),
+CCS now creates that directory automatically the first time it needs it. After that bootstrap step,
+the remaining requirement is a running Chrome session started with `--remote-debugging-port`.
+
 ## Troubleshooting
 
 ### Browser status says Claude Browser Attach is disabled
@@ -144,6 +148,9 @@ The configured Chrome user-data directory does not exist yet.
 2. Start Chrome in attach mode with `--remote-debugging-port`
 3. Rerun `ccs browser doctor`
 
+If you are using the CCS-managed default path, this usually means the path could not be created
+automatically and now needs manual attention.
+
 ### Browser status says no running browser session was found
 
 CCS could not find usable DevTools attach metadata for the configured user-data directory.
@@ -151,6 +158,9 @@ CCS could not find usable DevTools attach metadata for the configured user-data 
 1. Make sure Chrome was started with `--remote-debugging-port=<port>`
 2. Make sure it is using the same `user_data_dir` configured in CCS
 3. Rerun `ccs browser doctor`
+
+For the CCS-managed default path, this is the normal first-run state after CCS bootstraps the
+directory for you.
 
 ### Browser status says the DevTools endpoint is unreachable
 

@@ -28,6 +28,18 @@ function runCcs(args: string[], env: NodeJS.ProcessEnv): RunResult {
   };
 }
 
+function reserveClosedPort(): number {
+  const server = Bun.serve({
+    port: 0,
+    fetch() {
+      return new Response('ok');
+    },
+  });
+  const { port } = server;
+  server.stop(true);
+  return port;
+}
+
 describe('settings profile browser launch', () => {
   let tmpHome = '';
   let ccsDir = '';
@@ -210,7 +222,7 @@ server.listen(0, '127.0.0.1', () => {
           claude: {
             enabled: true,
             user_data_dir: '',
-            devtools_port: 9222,
+            devtools_port: 43123,
           },
           codex: {
             enabled: true,
@@ -223,8 +235,10 @@ server.listen(0, '127.0.0.1', () => {
       });
 
       expect(result.status).toBe(0);
-      expect(result.stderr).toContain('Launching without browser tools');
-      expect(result.stderr).toContain('ccs browser doctor');
+      expect(result.stderr).toContain('CCS created the managed browser profile');
+      expect(result.stderr).toContain('Start Chrome with remote debugging');
+      expect(result.stderr).toContain('continue without browser tools');
+      expect(fs.existsSync(path.join(tmpHome, '.ccs', 'browser', 'chrome-user-data'))).toBe(true);
 
       const launchedArgs = fs.readFileSync(claudeArgsLogPath, 'utf8');
       expect(launchedArgs).not.toContain(BROWSER_PROMPT_SNIPPET);
@@ -233,6 +247,48 @@ server.listen(0, '127.0.0.1', () => {
       expect(launchedEnv).toContain('userDataDir=');
       expect(launchedEnv).not.toContain('.ccs/browser/chrome-user-data');
       expect(launchedEnv).not.toContain('ws://127.0.0.1/devtools/browser/');
+    } finally {
+      if (originalCcsHome !== undefined) {
+        process.env.CCS_HOME = originalCcsHome;
+      } else {
+        delete process.env.CCS_HOME;
+      }
+    }
+  });
+
+  it('skips managed browser attach for settings-profile launches when no managed browser session is running', () => {
+    if (process.platform === 'win32') return;
+
+    const originalCcsHome = process.env.CCS_HOME;
+    process.env.CCS_HOME = tmpHome;
+
+    try {
+      const unreachablePort = reserveClosedPort();
+      fs.mkdirSync(path.join(tmpHome, '.ccs', 'browser', 'chrome-user-data'), {
+        recursive: true,
+      });
+
+      mutateUnifiedConfig((config) => {
+        config.browser = {
+          claude: {
+            enabled: true,
+            user_data_dir: '',
+            devtools_port: unreachablePort,
+          },
+          codex: {
+            enabled: true,
+          },
+        };
+      });
+
+      const result = runCcs(['glm', 'smoke'], {
+        ...baseEnv,
+      });
+
+      expect(result.status).toBe(0);
+
+      const launchedArgs = fs.readFileSync(claudeArgsLogPath, 'utf8');
+      expect(launchedArgs).not.toContain(BROWSER_PROMPT_SNIPPET);
     } finally {
       if (originalCcsHome !== undefined) {
         process.env.CCS_HOME = originalCcsHome;

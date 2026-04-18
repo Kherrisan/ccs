@@ -1,9 +1,12 @@
+import * as path from 'path';
 import { getBrowserConfig } from '../../config/unified-config-loader';
 import { getCodexBinaryInfo } from '../../targets/codex-detector';
 import { type BrowserRuntimeEnv, resolveBrowserRuntimeEnv } from './chrome-reuse';
 import { getBrowserMcpServerName, getBrowserMcpServerPath } from './mcp-installer';
 import { getNodePlatformKey } from './platform';
 import {
+  describeManagedBrowserAttachNotReady,
+  ensureManagedBrowserUserDataDir,
   getEffectiveClaudeBrowserAttachConfig,
   getRecommendedBrowserUserDataDir,
 } from './browser-settings';
@@ -61,6 +64,7 @@ async function buildClaudeBrowserStatus(
 ): Promise<ClaudeBrowserStatus> {
   const effective = getEffectiveClaudeBrowserAttachConfig(browserConfig);
   const launchCommands = buildLaunchCommands(effective.userDataDir, effective.devtoolsPort);
+  const managedBootstrap = ensureManagedBrowserUserDataDir(effective);
   const base: Omit<ClaudeBrowserStatus, 'state' | 'title' | 'detail' | 'nextStep'> = {
     enabled: effective.enabled,
     source: effective.source,
@@ -85,6 +89,26 @@ async function buildClaudeBrowserStatus(
     };
   }
 
+  if (managedBootstrap.createdProfileDir) {
+    const managedDefaultMessage = describeManagedBrowserAttachNotReady(
+      effective,
+      `Chrome reuse metadata not found: ${path.join(effective.userDataDir, 'DevToolsActivePort')}`,
+      {
+        createdProfileDir: true,
+        launchCommand: launchCommands[getNodePlatformKey()],
+      }
+    );
+    if (managedDefaultMessage) {
+      return {
+        ...base,
+        state: managedDefaultMessage.state,
+        title: managedDefaultMessage.title,
+        detail: managedDefaultMessage.detail,
+        nextStep: managedDefaultMessage.nextStep,
+      };
+    }
+  }
+
   try {
     const runtimeEnv = await resolveBrowserRuntimeEnv({
       profileDir: effective.userDataDir,
@@ -102,6 +126,20 @@ async function buildClaudeBrowserStatus(
     };
   } catch (error) {
     const message = (error as Error).message;
+    const managedDefaultMessage = describeManagedBrowserAttachNotReady(effective, message, {
+      createdProfileDir: managedBootstrap.createdProfileDir,
+      launchCommand: launchCommands[getNodePlatformKey()],
+    });
+    if (managedDefaultMessage) {
+      return {
+        ...base,
+        state: managedDefaultMessage.state,
+        title: managedDefaultMessage.title,
+        detail: managedDefaultMessage.detail,
+        nextStep: managedDefaultMessage.nextStep,
+      };
+    }
+
     if (message.includes('Chrome profile directory is invalid')) {
       return {
         ...base,

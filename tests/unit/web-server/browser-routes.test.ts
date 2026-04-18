@@ -1,6 +1,6 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test';
 import express from 'express';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import type { Server } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -184,6 +184,9 @@ describe('browser routes', () => {
       userDataDir: join(tempHome, '.ccs', 'browser', 'chrome-user-data'),
       devtoolsPort: 9333,
     });
+    expect(payload.browser.status.claude.state).toBe('browser_not_running');
+    expect(payload.browser.status.claude.detail).toContain('CCS created the managed browser profile');
+    expect(existsSync(join(tempHome, '.ccs', 'browser', 'chrome-user-data'))).toBe(true);
 
     const config = loadOrCreateUnifiedConfig();
     expect(config.browser).toMatchObject({
