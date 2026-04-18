@@ -216,6 +216,7 @@ export function sanitizeSchemaForOpenAICompat(schema: unknown): Record<string, u
 
   const schemaWithoutEnum = { ...record };
   delete schemaWithoutEnum.enum;
+  delete schemaWithoutEnum.const;
 
   if (Array.isArray(record.enum)) {
     const filteredEnum = record.enum.filter((value) => schemaAllowsValue(schemaWithoutEnum, value));
