@@ -63,9 +63,16 @@ Phase 6 capability details:
 - Phase 6 supports minimal request matching by `urlIncludes` and `method`
 - Phase 6A actions are limited to `continue` and `fail`
 - Phase 6B adds `fulfill` mock responses on top of the existing session-local interception model
-- fulfill rules can return a custom status code, optional headers, and a UTF-8 response body
+- fulfill rules can return a custom status code, optional response headers, and a UTF-8 response body
 - `browser_list_requests` returns recent request summaries, not full bodies
 - response bodies are applied only to the matched request and are not persisted beyond the current MCP session
+
+Phase 7 capability details:
+
+- `browser_add_intercept_rule` also accepts `resourceType`, `urlPattern`, `urlRegex`, `headerMatchers`, and `priority`
+- richer matching rules remain page-bound and session-local; creating a rule still binds it to the concrete page selected at creation time
+- higher `priority` rules win before lower-priority rules, while equal-priority rules continue to follow creation order
+- `headerMatchers` are request-matching conditions; `responseHeaders` on `fulfill` rules remain response headers
 
 Minimal multi-tab workflow examples:
 
@@ -91,12 +98,15 @@ Minimal multi-tab workflow examples:
 {
   "name": "browser_add_intercept_rule",
   "arguments": {
-    "urlIncludes": "/api/mock/users",
-    "method": "GET",
+    "resourceType": "XHR",
+    "headerMatchers": [
+      { "name": "x-env", "valueIncludes": "staging" }
+    ],
+    "priority": 10,
     "action": "fulfill",
     "statusCode": 200,
     "contentType": "application/json",
-    "body": "{\"users\":[1]}"
+    "body": "{\"ok\":true}"
   }
 }
 ```
@@ -113,7 +123,7 @@ Scoped selector notes:
 
 - `browser_click`, `browser_hover`, `browser_query`, `browser_wait_for`, and `browser_take_element_screenshot` accept optional `frameSelector` for same-origin iframes whose `contentDocument` is accessible
 - the same selector-based tools accept optional `pierceShadow: true` for open shadow-root traversal
-- closed shadow roots, frame-index routing, richer request matching, and download acceptance controls are still out of scope
+- closed shadow roots, frame-index routing, cross-page shared rules, request body matching, advanced boolean matcher groups, and download acceptance controls are still out of scope
 
 Example event wait:
 

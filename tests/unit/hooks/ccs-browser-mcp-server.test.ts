@@ -1810,6 +1810,53 @@ describe('ccs-browser MCP server', () => {
     expect(listText).toContain('action: fail');
   });
 
+  it('keeps richer matching rules bound to the original page after selected page changes', async () => {
+    const responses = await runMcpRequests(
+      [
+        { id: 'page-1', title: 'Home', currentUrl: 'https://example.com/' },
+        { id: 'page-2', title: 'Docs', currentUrl: 'https://example.com/docs' },
+      ],
+      [
+        {
+          jsonrpc: '2.0',
+          id: 1003,
+          method: 'tools/call',
+          params: { name: 'browser_select_page', arguments: { pageIndex: 1 } },
+        },
+        {
+          jsonrpc: '2.0',
+          id: 1004,
+          method: 'tools/call',
+          params: {
+            name: 'browser_add_intercept_rule',
+            arguments: {
+              resourceType: 'XHR',
+              priority: 7,
+              action: 'continue',
+            },
+          },
+        },
+        {
+          jsonrpc: '2.0',
+          id: 1005,
+          method: 'tools/call',
+          params: { name: 'browser_select_page', arguments: { pageIndex: 0 } },
+        },
+        {
+          jsonrpc: '2.0',
+          id: 1006,
+          method: 'tools/call',
+          params: { name: 'browser_list_intercept_rules', arguments: {} },
+        },
+      ]
+    );
+
+    const listText = getResponseText(responses.find((message) => message.id === 1006));
+    expect(listText).toContain('pageId: page-2');
+    expect(listText).toContain('resourceType: XHR');
+    expect(listText).toContain('priority: 7');
+  });
+
   it('removes an interception rule by ruleId', async () => {
     const responses = await runMcpRequests(
       [{ id: 'page-1', title: 'Home', currentUrl: 'https://example.com/' }],
@@ -2267,6 +2314,75 @@ describe('ccs-browser MCP server', () => {
     expect(listText).toContain('requestId: req-priority');
     expect(listText).toContain('matchedRuleId: rule-2');
     expect(pages[0]?.intercept?.fulfilledRequests?.[0]?.responseCode).toBe(202);
+  });
+
+  it('keeps creation order when matched rules have the same priority', async () => {
+    const pages: MockPageState[] = [
+      {
+        id: 'page-1',
+        title: 'Home',
+        currentUrl: 'https://example.com/',
+        intercept: {
+          pausedRequests: [
+            {
+              requestId: 'req-same-priority',
+              url: 'https://example.com/api/orders',
+              method: 'GET',
+              resourceType: 'XHR',
+            },
+          ],
+        },
+      },
+    ];
+    const responses = await runMcpRequests(
+      pages,
+      [
+        {
+          jsonrpc: '2.0',
+          id: 9911,
+          method: 'tools/call',
+          params: {
+            name: 'browser_add_intercept_rule',
+            arguments: {
+              urlIncludes: '/api',
+              priority: 5,
+              action: 'fulfill',
+              statusCode: 201,
+              body: 'first',
+            },
+          },
+        },
+        {
+          jsonrpc: '2.0',
+          id: 9912,
+          method: 'tools/call',
+          params: {
+            name: 'browser_add_intercept_rule',
+            arguments: {
+              resourceType: 'XHR',
+              priority: 5,
+              action: 'fulfill',
+              statusCode: 202,
+              body: 'second',
+            },
+          },
+        },
+        {
+          jsonrpc: '2.0',
+          id: 9913,
+          method: 'tools/call',
+          params: { name: 'browser_list_requests', arguments: {} },
+        },
+      ],
+      {
+        responseTimeoutMs: 12000,
+      }
+    );
+
+    const listText = getResponseText(responses.find((message) => message.id === 9913));
+    expect(listText).toContain('requestId: req-same-priority');
+    expect(listText).toContain('matchedRuleId: rule-1');
+    expect(pages[0]?.intercept?.fulfilledRequests?.[0]?.responseCode).toBe(201);
   });
 
   it('matches urlPattern rules with wildcard syntax', async () => {
@@ -2761,6 +2877,54 @@ describe('ccs-browser MCP server', () => {
     const response = responses.find((message) => message.id === 971);
     expect((response?.result as { isError?: boolean }).isError).toBe(true);
     expect(getResponseText(response)).toContain('Browser MCP failed: body must be a string');
+  });
+
+  it('rejects intercept rules when urlRegex is invalid', async () => {
+    const responses = await runMcpRequests(
+      [{ id: 'page-1', title: 'Home', currentUrl: 'https://example.com/' }],
+      [
+        {
+          jsonrpc: '2.0',
+          id: 1001,
+          method: 'tools/call',
+          params: {
+            name: 'browser_add_intercept_rule',
+            arguments: {
+              urlRegex: '[',
+              action: 'continue',
+            },
+          },
+        },
+      ]
+    );
+
+    const response = responses.find((message) => message.id === 1001);
+    expect((response?.result as { isError?: boolean }).isError).toBe(true);
+    expect(getResponseText(response)).toContain('Browser MCP failed: urlRegex must be a valid regular expression');
+  });
+
+  it('rejects intercept rules when headerMatchers.valueRegex is invalid', async () => {
+    const responses = await runMcpRequests(
+      [{ id: 'page-1', title: 'Home', currentUrl: 'https://example.com/' }],
+      [
+        {
+          jsonrpc: '2.0',
+          id: 1002,
+          method: 'tools/call',
+          params: {
+            name: 'browser_add_intercept_rule',
+            arguments: {
+              headerMatchers: [{ name: 'x-env', valueRegex: '[' }],
+              action: 'continue',
+            },
+          },
+        },
+      ]
+    );
+
+    const response = responses.find((message) => message.id === 1002);
+    expect((response?.result as { isError?: boolean }).isError).toBe(true);
+    expect(getResponseText(response)).toContain('Browser MCP failed: headerMatchers.valueRegex must be a valid regular expression');
   });
 
   it('removes fulfill rules and request summaries after the bound page is closed', async () => {
