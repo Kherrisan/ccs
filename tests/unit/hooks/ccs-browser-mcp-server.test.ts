@@ -111,17 +111,40 @@ type MockFileInputState = {
 
 type MockFileInputPlan = MockFileInputState | MockFileInputState[];
 
+type MockDropzoneState = {
+  accepted?: boolean;
+  requireFiles?: boolean;
+  receivedEventTypes?: string[];
+  receivedFiles?: Array<{ name: string; size: number; type: string }>;
+  error?: string;
+};
+
+type MockDropzonePlan = MockDropzoneState | MockDropzoneState[];
+
+type MockPointerActionRecord = {
+  type: string;
+  x?: number;
+  y?: number;
+  button?: string;
+};
+
+type MockDragPlan = {
+  recordedActions?: MockPointerActionRecord[];
+};
+
 type MockFrameState = {
   selector: string;
   query?: Record<string, MockQueryPlan>;
   visibleText?: string;
   fileInputs?: Record<string, MockFileInputPlan>;
+  dropzones?: Record<string, MockDropzonePlan>;
 };
 
 type MockShadowRootState = {
   hostSelector: string;
   query?: Record<string, MockQueryPlan>;
   fileInputs?: Record<string, MockFileInputPlan>;
+  dropzones?: Record<string, MockDropzonePlan>;
 };
 
 type MockEvalPlan = Record<
@@ -175,6 +198,8 @@ type MockPageState = {
   eval?: MockEvalPlan;
   frames?: MockFrameState[];
   shadowRoots?: MockShadowRootState[];
+  dropzones?: Record<string, MockDropzonePlan>;
+  drag?: MockDragPlan;
   events?: MockPageEventPlan;
   intercept?: MockInterceptState;
   screenshot?: {
@@ -378,6 +403,36 @@ function parseNumberArgument(expression: string, key: string): number | undefine
   return Number.parseInt(match[1], 10);
 }
 
+function parseParsedJsonArrayArgument<T>(expression: string, key: string): T[] {
+  const marker = `const ${key} = JSON.parse(`;
+  const start = expression.indexOf(marker);
+  if (start === -1) {
+    return [];
+  }
+
+  const quoteStart = start + marker.length;
+  const quote = expression[quoteStart];
+  if (quote !== '"' && quote !== "'") {
+    return [];
+  }
+
+  let index = quoteStart + 1;
+  while (index < expression.length) {
+    if (expression[index] === '\\') {
+      index += 2;
+      continue;
+    }
+    if (expression[index] === quote) {
+      const encoded = expression.slice(quoteStart, index + 1);
+      const decoded = JSON.parse(encoded) as string;
+      return JSON.parse(decoded) as T[];
+    }
+    index += 1;
+  }
+
+  return [];
+}
+
 function pickMockMatch<T>(
   plan: T | T[] | undefined,
   nth = 0
@@ -408,6 +463,41 @@ function getMockFrame(page: MockPageState, frameSelector: string): MockFrameStat
 
 function getMockShadowRoot(page: MockPageState): MockShadowRootState | undefined {
   return page.shadowRoots?.[0];
+}
+
+function getMockDropzoneState(
+  page: Pick<MockPageState, 'dropzones' | 'frames' | 'shadowRoots'>,
+  selector: string,
+  options: { nth?: number; frameSelector?: string; pierceShadow?: boolean } = {}
+): MockDropzoneState | null {
+  const nth = options.nth ?? 0;
+  if (options.frameSelector) {
+    const frame = page.frames?.find((entry) => entry.selector === options.frameSelector);
+    const plan = frame?.dropzones?.[selector];
+    if (!plan) {
+      return null;
+    }
+    return Array.isArray(plan) ? (plan[nth] ?? null) : plan;
+  }
+  if (options.pierceShadow) {
+    for (const shadowRoot of page.shadowRoots || []) {
+      const plan = shadowRoot.dropzones?.[selector];
+      if (plan) {
+        return Array.isArray(plan) ? (plan[nth] ?? null) : plan;
+      }
+    }
+  }
+  const plan = page.dropzones?.[selector];
+  if (!plan) {
+    return null;
+  }
+  return Array.isArray(plan) ? (plan[nth] ?? null) : plan;
+}
+
+function pushPointerAction(page: MockPageState, action: MockPointerActionRecord): void {
+  page.drag = page.drag || {};
+  page.drag.recordedActions = page.drag.recordedActions || [];
+  page.drag.recordedActions.push(action);
 }
 
 function shiftPageText(page: MockPageState): string {
@@ -443,11 +533,13 @@ function createMockBrowser(pagesInput: MockPageState[]) {
   let nextPageCounter = pagesInput.length + 1;
 
   for (const [index, page] of pagesInput.entries()) {
-    pageStates.set(`/devtools/page/${index + 1}`, {
-      visibleText: 'Hello from visible text',
-      domSnapshot: '<html><body>Hello from DOM snapshot</body></html>',
-      ...page,
-    });
+    if (page.visibleText === undefined) {
+      page.visibleText = 'Hello from visible text';
+    }
+    if (page.domSnapshot === undefined) {
+      page.domSnapshot = '<html><body>Hello from DOM snapshot</body></html>';
+    }
+    pageStates.set(`/devtools/page/${index + 1}`, page);
   }
 
   async function start(options: RunMcpRequestsOptions = {}) {
@@ -688,11 +780,13 @@ function createMockBrowser(pagesInput: MockPageState[]) {
           const type = typeof message.params?.type === 'string' ? message.params.type : '';
           const x = Number(message.params?.x);
           const y = Number(message.params?.y);
+          const button = typeof message.params?.button === 'string' ? message.params.button : undefined;
           for (const hoverPlan of Object.values(page.hover || {})) {
             if (type === 'mouseMoved') {
               hoverPlan.lastMouseMove = { x, y };
             }
           }
+          pushPointerAction(page, { type, x, y, button });
           reply({});
           return;
         }
@@ -867,6 +961,51 @@ function createMockBrowser(pagesInput: MockPageState[]) {
         }
 
         const expression = String(message.params?.expression || '');
+
+        if (expression.includes('new DragEvent') && expression.includes('new DataTransfer()')) {
+          const selector = parseJsonArgument(expression, 'selector') || '';
+          const nth = parseNumberArgument(expression, 'nth') ?? 0;
+          const frameSelector = parseJsonArgument(expression, 'frameSelector') || '';
+          const pierceShadow = expression.includes('const pierceShadow = true');
+          const filePayloads = parseParsedJsonArrayArgument<{
+            name: string;
+            size: number;
+            mimeType: string;
+          }>(expression, 'filePayloads');
+          const eventTypes = Array.from(
+            expression.matchAll(/new DragEvent\('(dragenter|dragover|drop)'/g)
+          ).map((match) => match[1]);
+
+          const target = getMockDropzoneState(page, selector, {
+            nth,
+            frameSelector,
+            pierceShadow,
+          });
+          if (!target) {
+            replyError(`element not found for selector: ${selector}`);
+            return;
+          }
+          if (target.error) {
+            replyError(target.error);
+            return;
+          }
+          if (eventTypes.length === 0) {
+            replyError(`drag event sequence not found for selector: ${selector}`);
+            return;
+          }
+          if (target.requireFiles && filePayloads.length === 0) {
+            reply({ result: { type: 'object', value: { accepted: false } } });
+            return;
+          }
+          target.receivedEventTypes = eventTypes;
+          target.receivedFiles = filePayloads.map((file) => ({
+            name: file.name,
+            size: file.size,
+            type: file.mimeType,
+          }));
+          reply({ result: { type: 'object', value: { accepted: target.accepted !== false } } });
+          return;
+        }
 
         if (page.eval?.[expression]) {
           const evalPlan = page.eval[expression];
@@ -1535,6 +1674,9 @@ describe('ccs-browser MCP server', () => {
       'browser_list_downloads',
       'browser_cancel_download',
       'browser_set_file_input',
+      'browser_drag_files',
+      'browser_drag_element',
+      'browser_pointer_action',
       'browser_take_screenshot',
       'browser_wait_for',
       'browser_eval',
@@ -1623,6 +1765,25 @@ describe('ccs-browser MCP server', () => {
     expect(uploadTool?.inputSchema?.properties?.nth).toMatchObject({ type: 'integer' });
     expect(uploadTool?.inputSchema?.properties?.frameSelector).toMatchObject({ type: 'string' });
     expect(uploadTool?.inputSchema?.properties?.pierceShadow).toMatchObject({ type: 'boolean' });
+
+    const dragFilesTool = tools.find((tool) => tool.name === 'browser_drag_files');
+    expect(dragFilesTool?.inputSchema?.properties?.selector).toMatchObject({ type: 'string' });
+    expect(dragFilesTool?.inputSchema?.properties?.files).toMatchObject({ type: 'array' });
+    expect(dragFilesTool?.inputSchema?.properties?.pageIndex).toMatchObject({ type: 'integer' });
+    expect(dragFilesTool?.inputSchema?.properties?.pageId).toMatchObject({ type: 'string' });
+    expect(dragFilesTool?.inputSchema?.properties?.nth).toMatchObject({ type: 'integer' });
+    expect(dragFilesTool?.inputSchema?.properties?.frameSelector).toMatchObject({ type: 'string' });
+    expect(dragFilesTool?.inputSchema?.properties?.pierceShadow).toMatchObject({ type: 'boolean' });
+
+    const dragElementTool = tools.find((tool) => tool.name === 'browser_drag_element');
+    expect(dragElementTool?.inputSchema?.properties?.selector).toMatchObject({ type: 'string' });
+    expect(dragElementTool?.inputSchema?.properties?.targetSelector).toMatchObject({ type: 'string' });
+    expect(dragElementTool?.inputSchema?.properties?.targetX).toMatchObject({ type: 'number' });
+    expect(dragElementTool?.inputSchema?.properties?.targetY).toMatchObject({ type: 'number' });
+    expect(dragElementTool?.inputSchema?.properties?.steps).toMatchObject({ type: 'integer' });
+
+    const pointerTool = tools.find((tool) => tool.name === 'browser_pointer_action');
+    expect(pointerTool?.inputSchema?.properties?.actions).toMatchObject({ type: 'array' });
 
     const queryTool = tools.find((tool) => tool.name === 'browser_query');
     expect(queryTool?.inputSchema?.properties?.fields).toMatchObject({
@@ -5273,6 +5434,568 @@ describe('ccs-browser MCP server', () => {
       `file does not exist: ${missingPath}`
     );
     expect(getResponseText(responses.find((message) => message.id === 71))).toContain(
+      'pageIndex and pageId cannot be used together'
+    );
+  });
+
+  it('drags local files onto normal, frame, and shadow dropzones', async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), 'ccs-browser-drag-files-'));
+    const invoicePath = join(tempDir, 'invoice.pdf');
+    const receiptPath = join(tempDir, 'receipt.png');
+    writeFileSync(invoicePath, 'invoice');
+    writeFileSync(receiptPath, 'receipt');
+
+    const pages: MockPageState[] = [
+      {
+        id: 'page-1',
+        title: 'Uploads',
+        currentUrl: 'https://example.com/uploads',
+        dropzones: {
+          '#dropzone': { accepted: true },
+        },
+        frames: [
+          {
+            selector: '#upload-frame',
+            dropzones: {
+              '#frame-dropzone': { accepted: true },
+            },
+          },
+        ],
+        shadowRoots: [
+          {
+            hostSelector: 'upload-panel',
+            dropzones: {
+              '#shadow-dropzone': { accepted: true },
+            },
+          },
+        ],
+      },
+    ];
+
+    const responses = await runMcpRequests(pages, [
+      {
+        jsonrpc: '2.0',
+        id: 901,
+        method: 'tools/call',
+        params: {
+          name: 'browser_drag_files',
+          arguments: { selector: '#dropzone', files: [invoicePath, receiptPath] },
+        },
+      },
+      {
+        jsonrpc: '2.0',
+        id: 902,
+        method: 'tools/call',
+        params: {
+          name: 'browser_drag_files',
+          arguments: {
+            selector: '#frame-dropzone',
+            files: [invoicePath],
+            frameSelector: '#upload-frame',
+          },
+        },
+      },
+      {
+        jsonrpc: '2.0',
+        id: 903,
+        method: 'tools/call',
+        params: {
+          name: 'browser_drag_files',
+          arguments: {
+            selector: '#shadow-dropzone',
+            files: [receiptPath],
+            pierceShadow: true,
+          },
+        },
+      },
+    ]);
+
+    expect(getResponseText(responses.find((message) => message.id === 901))).toContain('status: files-dropped');
+    expect(getMockDropzoneState(pages[0]!, '#dropzone')?.receivedEventTypes).toEqual([
+      'dragenter',
+      'dragover',
+      'drop',
+    ]);
+    expect(getMockDropzoneState(pages[0]!, '#dropzone')?.receivedFiles).toEqual([
+      { name: 'invoice.pdf', size: 7, type: 'application/pdf' },
+      { name: 'receipt.png', size: 7, type: 'image/png' },
+    ]);
+    expect(
+      getMockDropzoneState(pages[0]!, '#frame-dropzone', { frameSelector: '#upload-frame' })?.receivedFiles
+    ).toEqual([{ name: 'invoice.pdf', size: 7, type: 'application/pdf' }]);
+    expect(
+      getMockDropzoneState(pages[0]!, '#shadow-dropzone', { pierceShadow: true })?.receivedFiles
+    ).toEqual([{ name: 'receipt.png', size: 7, type: 'image/png' }]);
+  });
+
+  it('rejects browser_drag_files for missing files, page conflicts, missing targets, and rejected drops', async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), 'ccs-browser-drag-files-'));
+    const okPath = join(tempDir, 'ok.txt');
+    const missingPath = join(tempDir, 'missing.txt');
+    writeFileSync(okPath, 'ok');
+
+    const responses = await runMcpRequests(
+      [
+        {
+          id: 'page-1',
+          title: 'Uploads',
+          currentUrl: 'https://example.com/uploads',
+          dropzones: {
+            '#reject-dropzone': { accepted: false },
+          },
+        },
+      ],
+      [
+        {
+          jsonrpc: '2.0',
+          id: 904,
+          method: 'tools/call',
+          params: {
+            name: 'browser_drag_files',
+            arguments: { selector: '#reject-dropzone', files: [missingPath] },
+          },
+        },
+        {
+          jsonrpc: '2.0',
+          id: 905,
+          method: 'tools/call',
+          params: {
+            name: 'browser_drag_files',
+            arguments: { pageIndex: 0, pageId: 'page-1', selector: '#reject-dropzone', files: [okPath] },
+          },
+        },
+        {
+          jsonrpc: '2.0',
+          id: 906,
+          method: 'tools/call',
+          params: {
+            name: 'browser_drag_files',
+            arguments: { selector: '#missing-dropzone', files: [okPath] },
+          },
+        },
+        {
+          jsonrpc: '2.0',
+          id: 907,
+          method: 'tools/call',
+          params: {
+            name: 'browser_drag_files',
+            arguments: { selector: '#reject-dropzone', files: [okPath] },
+          },
+        },
+      ]
+    );
+
+    expect(getResponseText(responses.find((message) => message.id === 904))).toContain('file does not exist');
+    expect(getResponseText(responses.find((message) => message.id === 905))).toContain(
+      'pageIndex and pageId cannot be used together'
+    );
+    expect(getResponseText(responses.find((message) => message.id === 906))).toContain(
+      'element not found for selector: #missing-dropzone'
+    );
+    expect(getResponseText(responses.find((message) => message.id === 907))).toContain(
+      'drop target rejected files'
+    );
+  });
+
+  it('drags an element to another element and to explicit coordinates', async () => {
+    const pages: MockPageState[] = [
+      {
+        id: 'page-1',
+        title: 'Drag Page',
+        currentUrl: 'https://example.com/drag',
+        query: {
+          '#card-a': {
+            exists: true,
+            connected: true,
+            rect: {
+              x: 20,
+              y: 40,
+              width: 100,
+              height: 60,
+              top: 40,
+              right: 120,
+              bottom: 100,
+              left: 20,
+            },
+            display: 'block',
+            visibility: 'visible',
+            opacity: '1',
+          },
+          '#lane-b': {
+            exists: true,
+            connected: true,
+            rect: {
+              x: 240,
+              y: 60,
+              width: 120,
+              height: 80,
+              top: 60,
+              right: 360,
+              bottom: 140,
+              left: 240,
+            },
+            display: 'block',
+            visibility: 'visible',
+            opacity: '1',
+          },
+        },
+      },
+      {
+        id: 'page-2',
+        title: 'Second Drag Page',
+        currentUrl: 'https://example.com/drag-2',
+        query: {
+          '#card-a': {
+            exists: true,
+            connected: true,
+            rect: {
+              x: 10,
+              y: 20,
+              width: 40,
+              height: 20,
+              top: 20,
+              right: 50,
+              bottom: 40,
+              left: 10,
+            },
+            display: 'block',
+            visibility: 'visible',
+            opacity: '1',
+          },
+          '#lane-b': {
+            exists: true,
+            connected: true,
+            rect: {
+              x: 110,
+              y: 80,
+              width: 60,
+              height: 30,
+              top: 80,
+              right: 170,
+              bottom: 110,
+              left: 110,
+            },
+            display: 'block',
+            visibility: 'visible',
+            opacity: '1',
+          },
+        },
+      },
+    ];
+
+    const responses = await runMcpRequests(pages, [
+      {
+        jsonrpc: '2.0',
+        id: 908,
+        method: 'tools/call',
+        params: {
+          name: 'browser_drag_element',
+          arguments: { selector: '#card-a', targetSelector: '#lane-b', steps: 3 },
+        },
+      },
+      {
+        jsonrpc: '2.0',
+        id: 909,
+        method: 'tools/call',
+        params: {
+          name: 'browser_drag_element',
+          arguments: { selector: '#card-a', targetX: 420, targetY: 180, steps: 2 },
+        },
+      },
+      {
+        jsonrpc: '2.0',
+        id: 916,
+        method: 'tools/call',
+        params: {
+          name: 'browser_drag_element',
+          arguments: { pageId: 'page-2', selector: '#card-a', targetSelector: '#lane-b', steps: 1 },
+        },
+      },
+    ]);
+
+    expect(getResponseText(responses.find((message) => message.id === 908))).toContain('status: dragged');
+    expect(getResponseText(responses.find((message) => message.id === 908))).toContain('targetSelector: #lane-b');
+    expect(getResponseText(responses.find((message) => message.id === 909))).toContain('status: dragged');
+    expect(getResponseText(responses.find((message) => message.id === 909))).toContain('targetX: 420');
+    expect(getResponseText(responses.find((message) => message.id === 909))).toContain('targetY: 180');
+    expect(getResponseText(responses.find((message) => message.id === 916))).toContain('pageIndex: 1');
+    expect(getResponseText(responses.find((message) => message.id === 916))).toContain('targetSelector: #lane-b');
+    expect(pages[0]!.drag?.recordedActions).toEqual([
+      { type: 'mouseMoved', x: 70, y: 70, button: 'none' },
+      { type: 'mousePressed', x: 70, y: 70, button: 'left' },
+      { type: 'mouseMoved', x: 147, y: 80, button: 'left' },
+      { type: 'mouseMoved', x: 223, y: 90, button: 'left' },
+      { type: 'mouseMoved', x: 300, y: 100, button: 'left' },
+      { type: 'mouseReleased', x: 300, y: 100, button: 'left' },
+      { type: 'mouseMoved', x: 70, y: 70, button: 'none' },
+      { type: 'mousePressed', x: 70, y: 70, button: 'left' },
+      { type: 'mouseMoved', x: 245, y: 125, button: 'left' },
+      { type: 'mouseMoved', x: 420, y: 180, button: 'left' },
+      { type: 'mouseReleased', x: 420, y: 180, button: 'left' },
+    ]);
+    expect(pages[1]!.drag?.recordedActions).toEqual([
+      { type: 'mouseMoved', x: 30, y: 30, button: 'none' },
+      { type: 'mousePressed', x: 30, y: 30, button: 'left' },
+      { type: 'mouseMoved', x: 140, y: 95, button: 'left' },
+      { type: 'mouseReleased', x: 140, y: 95, button: 'left' },
+    ]);
+  });
+
+  it('rejects invalid browser_drag_element target combinations, page conflicts, and missing elements', async () => {
+    const responses = await runMcpRequests(
+      [
+        {
+          id: 'page-1',
+          title: 'Drag Failures',
+          currentUrl: 'https://example.com/drag',
+          query: {
+            '#card-a': {
+              exists: true,
+              connected: true,
+              rect: {
+                x: 20,
+                y: 40,
+                width: 100,
+                height: 60,
+                top: 40,
+                right: 120,
+                bottom: 100,
+                left: 20,
+              },
+              display: 'block',
+              visibility: 'visible',
+              opacity: '1',
+            },
+          },
+        },
+      ],
+      [
+        {
+          jsonrpc: '2.0',
+          id: 910,
+          method: 'tools/call',
+          params: {
+            name: 'browser_drag_element',
+            arguments: { selector: '#card-a', targetSelector: '#lane-b', targetX: 400, targetY: 200 },
+          },
+        },
+        {
+          jsonrpc: '2.0',
+          id: 911,
+          method: 'tools/call',
+          params: {
+            name: 'browser_drag_element',
+            arguments: { selector: '#missing-source', targetX: 400, targetY: 200 },
+          },
+        },
+        {
+          jsonrpc: '2.0',
+          id: 912,
+          method: 'tools/call',
+          params: {
+            name: 'browser_drag_element',
+            arguments: { selector: '#card-a', targetSelector: '#missing-target' },
+          },
+        },
+        {
+          jsonrpc: '2.0',
+          id: 917,
+          method: 'tools/call',
+          params: {
+            name: 'browser_drag_element',
+            arguments: { pageIndex: 0, pageId: 'page-1', selector: '#card-a', targetX: 400, targetY: 200 },
+          },
+        },
+      ]
+    );
+
+    expect(getResponseText(responses.find((message) => message.id === 910))).toContain(
+      'targetSelector and targetX/targetY cannot be used together'
+    );
+    expect(getResponseText(responses.find((message) => message.id === 911))).toContain(
+      'source element not found'
+    );
+    expect(getResponseText(responses.find((message) => message.id === 912))).toContain(
+      'target element not found'
+    );
+    expect(getResponseText(responses.find((message) => message.id === 917))).toContain(
+      'pageIndex and pageId cannot be used together'
+    );
+  });
+
+  it('runs minimal pointer sequences with browser_pointer_action', async () => {
+    const pages: MockPageState[] = [
+      {
+        id: 'page-1',
+        title: 'Pointer Page',
+        currentUrl: 'https://example.com/pointer',
+        query: {
+          '#handle': {
+            exists: true,
+            connected: true,
+            rect: {
+              x: 30,
+              y: 50,
+              width: 40,
+              height: 20,
+              top: 50,
+              right: 70,
+              bottom: 70,
+              left: 30,
+            },
+            display: 'block',
+            visibility: 'visible',
+            opacity: '1',
+          },
+        },
+      },
+      {
+        id: 'page-2',
+        title: 'Second Pointer Page',
+        currentUrl: 'https://example.com/pointer-2',
+        query: {
+          '#handle': {
+            exists: true,
+            connected: true,
+            rect: {
+              x: 100,
+              y: 200,
+              width: 20,
+              height: 20,
+              top: 200,
+              right: 120,
+              bottom: 220,
+              left: 100,
+            },
+            display: 'block',
+            visibility: 'visible',
+            opacity: '1',
+          },
+        },
+      },
+    ];
+
+    const responses = await runMcpRequests(pages, [
+      {
+        jsonrpc: '2.0',
+        id: 913,
+        method: 'tools/call',
+        params: {
+          name: 'browser_pointer_action',
+          arguments: {
+            actions: [
+              { type: 'move', selector: '#handle' },
+              { type: 'down' },
+              { type: 'move', x: 220, y: 160 },
+              { type: 'pause', durationMs: 5 },
+              { type: 'up' },
+            ],
+          },
+        },
+      },
+      {
+        jsonrpc: '2.0',
+        id: 918,
+        method: 'tools/call',
+        params: {
+          name: 'browser_pointer_action',
+          arguments: {
+            pageId: 'page-2',
+            actions: [
+              { type: 'move', selector: '#handle' },
+              { type: 'down' },
+              { type: 'up' },
+            ],
+          },
+        },
+      },
+    ]);
+
+    expect(getResponseText(responses.find((message) => message.id === 913))).toContain('status: pointer-actions-completed');
+    expect(getResponseText(responses.find((message) => message.id === 918))).toContain('pageIndex: 1');
+    expect(getResponseText(responses.find((message) => message.id === 918))).toContain('status: pointer-actions-completed');
+    expect(pages[0]!.drag?.recordedActions).toEqual([
+      { type: 'mouseMoved', x: 50, y: 60, button: 'none' },
+      { type: 'mousePressed', x: 50, y: 60, button: 'left' },
+      { type: 'mouseMoved', x: 220, y: 160, button: 'left' },
+      { type: 'mouseReleased', x: 220, y: 160, button: 'left' },
+    ]);
+    expect(pages[1]!.drag?.recordedActions).toEqual([
+      { type: 'mouseMoved', x: 110, y: 210, button: 'none' },
+      { type: 'mousePressed', x: 110, y: 210, button: 'left' },
+      { type: 'mouseReleased', x: 110, y: 210, button: 'left' },
+    ]);
+  });
+
+  it('rejects invalid browser_pointer_action sequences and page conflicts', async () => {
+    const pages: MockPageState[] = [
+      {
+        id: 'page-1',
+        title: 'Pointer Failures',
+        currentUrl: 'https://example.com/pointer',
+        query: {
+          '#handle': {
+            exists: true,
+            connected: true,
+            rect: {
+              x: 30,
+              y: 50,
+              width: 40,
+              height: 20,
+              top: 50,
+              right: 70,
+              bottom: 70,
+              left: 30,
+            },
+            display: 'block',
+            visibility: 'visible',
+            opacity: '1',
+          },
+        },
+      },
+    ];
+
+    const responses = await runMcpRequests(pages, [
+      {
+        jsonrpc: '2.0',
+        id: 914,
+        method: 'tools/call',
+        params: {
+          name: 'browser_pointer_action',
+          arguments: {
+            actions: [{ type: 'up' }],
+          },
+        },
+      },
+      {
+        jsonrpc: '2.0',
+        id: 915,
+        method: 'tools/call',
+        params: {
+          name: 'browser_pointer_action',
+          arguments: {
+            actions: [{ type: 'move', selector: '#missing-handle' }],
+          },
+        },
+      },
+      {
+        jsonrpc: '2.0',
+        id: 919,
+        method: 'tools/call',
+        params: {
+          name: 'browser_pointer_action',
+          arguments: {
+            pageIndex: 0,
+            pageId: 'page-1',
+            actions: [{ type: 'move', x: 10, y: 10 }],
+          },
+        },
+      },
+    ]);
+
+    expect(getResponseText(responses.find((message) => message.id === 914))).toContain('pointer state error');
+    expect(getResponseText(responses.find((message) => message.id === 915))).toContain('drag coordinates unavailable');
+    expect(getResponseText(responses.find((message) => message.id === 919))).toContain(
       'pageIndex and pageId cannot be used together'
     );
   });
