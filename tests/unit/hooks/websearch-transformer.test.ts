@@ -465,6 +465,7 @@ global.fetch = async (url) => {
         }),
         env: {
           ...process.env,
+          CCS_PROFILE_TYPE: NEUTRAL_PROFILE_TYPE,
           CCS_WEBSEARCH_ENABLED: '1',
           CCS_WEBSEARCH_SKIP: '0',
           CCS_WEBSEARCH_BRAVE: '0',
