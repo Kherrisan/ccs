@@ -147,6 +147,13 @@ Phase 11D capability details:
 - artifact files carry `kind`, `version`, `name`, and `payload`
 - cloud sync, sharing, and complex template management remain out of scope
 
+Phase 11E capability details:
+
+- `open_page_then_run`, `select_page_then_run`, and `close_page_then_continue` add explicit cross-page orchestration blocks
+- cross-page blocks reuse existing page/tab lifecycle control and existing single-page block semantics
+- `run` accepts a normal single-page block or a single-layer `sequence`
+- nested cross-page blocks, implicit page selection, and page-graph orchestration remain out of scope
+
 Minimal multi-tab workflow examples:
 
 ```json
