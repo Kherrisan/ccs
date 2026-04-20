@@ -40,6 +40,7 @@ export const CCS_CONTROL_PANEL_SECRET = 'ccs';
  * v15: Prune stale generated Antigravity Gemini preview aliases during regeneration
  * v16: Narrow stale Gemini alias cleanup to broad multi-version guessed ranges
  * v17: Persist routing.strategy from CCS unified config
+ * v18: Added Claude Opus 4.7 Thinking alias and promoted to default AGY model
  */
 export const CLIPROXY_CONFIG_VERSION = 18;
 
