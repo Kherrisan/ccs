@@ -156,6 +156,17 @@ describe('Model Catalog', () => {
       assert.strictEqual(sonnet.name, 'Claude Sonnet 4.6');
     });
 
+    it('includes Claude Opus 4.7 with provider-specific settings', () => {
+      const { MODEL_CATALOG } = modelCatalog;
+      const opus47 = MODEL_CATALOG.claude.models.find((m) => m.id === 'claude-opus-4-7');
+      assert(opus47, 'Should include Claude Opus 4.7');
+      assert.strictEqual(opus47.name, 'Claude Opus 4.7');
+      // Claude provider differs from AGY: zero thinking budget is disallowed,
+      // and extended (1M) context is available on the Anthropic API.
+      assert.strictEqual(opus47.thinking.zeroAllowed, false);
+      assert.strictEqual(opus47.extendedContext, true);
+    });
+
     it('retains previous 4.5 snapshot models for explicit selection', () => {
       const { MODEL_CATALOG } = modelCatalog;
       const ids = MODEL_CATALOG.claude.models.map((m) => m.id);
