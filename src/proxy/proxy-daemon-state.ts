@@ -108,10 +108,18 @@ export function listOpenAICompatProxyProfileNames(): string[] {
     const entries = fs.readdirSync(getOpenAICompatProxyDir(), { withFileTypes: true });
     const profileKeys = new Set<string>();
     for (const entry of entries) {
-      if (!entry.isFile() || !entry.name.endsWith('.session.json')) {
+      if (
+        !entry.isFile() ||
+        entry.name === 'session.json' ||
+        !entry.name.endsWith('.session.json')
+      ) {
         continue;
       }
-      profileKeys.add(entry.name.slice(0, -'.session.json'.length));
+      const profileKey = entry.name.slice(0, -'.session.json'.length);
+      if (!profileKey) {
+        continue;
+      }
+      profileKeys.add(profileKey);
     }
     return [...profileKeys].map((profileKey) => decodeURIComponent(profileKey));
   } catch {
