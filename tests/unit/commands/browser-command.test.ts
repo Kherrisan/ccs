@@ -182,4 +182,83 @@ describe('browser command', () => {
       statusSpy.mockRestore();
     }
   });
+
+  test('setup runs the browser setup flow and prints remediation results', async () => {
+    const setupSpy = spyOn(browserUtils, 'runBrowserSetup').mockResolvedValue({
+      configUpdated: true,
+      createdUserDataDir: true,
+      mcpReady: true,
+      overrideActive: false,
+      ready: true,
+      launchCommand: 'open -na "Google Chrome" --args --remote-debugging-port=9222',
+      status: {
+        claude: {
+          enabled: true,
+          source: 'config',
+          overrideActive: false,
+          state: 'ready',
+          title: 'Claude Browser Attach is ready.',
+          detail: 'CCS can reach the configured Chrome DevTools endpoint.',
+          nextStep: 'Launch Claude.',
+          effectiveUserDataDir: '/tmp/browser-profile',
+          recommendedUserDataDir: '/tmp/browser-profile',
+          devtoolsPort: 9222,
+          managedMcpServerName: 'ccs-browser',
+          managedMcpServerPath: '/tmp/ccs-browser-server.cjs',
+          launchCommands: {
+            darwin: 'open -na "Google Chrome" --args',
+            linux: 'google-chrome --remote-debugging-port=9222',
+            win32: 'chrome.exe --remote-debugging-port=9222',
+          },
+          runtimeEnv: {
+            CCS_BROWSER_USER_DATA_DIR: '/tmp/browser-profile',
+            CCS_BROWSER_DEVTOOLS_HOST: '127.0.0.1',
+            CCS_BROWSER_DEVTOOLS_PORT: '9222',
+            CCS_BROWSER_DEVTOOLS_HTTP_URL: 'http://127.0.0.1:9222',
+            CCS_BROWSER_DEVTOOLS_WS_URL: 'ws://127.0.0.1/devtools/browser/test',
+          },
+        },
+        codex: {
+          enabled: true,
+          state: 'enabled',
+          title: 'Codex Browser Tools are enabled.',
+          detail: 'CCS can inject the managed Playwright MCP overrides.',
+          nextStep: 'Use a Codex-target launch.',
+          serverName: 'ccs_browser',
+          supportsConfigOverrides: true,
+          binaryPath: '/usr/local/bin/codex',
+          version: 'codex-cli 0.120.0',
+        },
+      },
+      notes: [],
+    });
+
+    try {
+      const rendered = await renderLines(['setup']);
+
+      expect(rendered.includes('ccs browser setup')).toBe(true);
+      expect(rendered.includes('Result: ready')).toBe(true);
+      expect(rendered.includes('Config updated: yes')).toBe(true);
+      expect(process.exitCode).toBe(0);
+    } finally {
+      setupSpy.mockRestore();
+    }
+  });
+
+  test('doctor rejects --fix and points users to setup', async () => {
+    const rendered = await renderLines(['doctor', '--fix']);
+
+    expect(rendered.includes('`ccs browser doctor` is read-only.')).toBe(true);
+    expect(rendered.includes('Run `ccs browser setup` for the browser remediation flow.')).toBe(
+      true
+    );
+    expect(process.exitCode).toBe(1);
+  });
+
+  test('literal browser help still renders the help page', async () => {
+    const rendered = await renderLines(['help']);
+
+    expect(rendered.includes('CCS Browser Help')).toBe(true);
+    expect(rendered.includes('ccs browser setup')).toBe(true);
+  });
 });

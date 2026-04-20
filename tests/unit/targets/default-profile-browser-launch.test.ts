@@ -284,8 +284,9 @@ server.listen(0, '127.0.0.1', () => {
       });
 
       expect(result.status).toBe(0);
-      expect(result.stderr).toContain('CCS created the managed browser profile');
-      expect(result.stderr).toContain('Start Chrome with remote debugging');
+      expect(result.stderr).toContain('Claude Browser Attach is not ready yet.');
+      expect(result.stderr).toContain('ccs browser setup');
+      expect(result.stderr).toContain('Diagnose only: `ccs browser doctor`.');
       expect(result.stderr).toContain('continue without browser tools');
       expect(fs.existsSync(path.join(tmpHome, '.ccs', 'browser', 'chrome-user-data'))).toBe(true);
 

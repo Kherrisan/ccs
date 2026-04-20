@@ -1,6 +1,6 @@
 # Browser Automation
 
-Last Updated: 2026-04-16
+Last Updated: 2026-04-19
 
 CCS provides browser automation through two separate runtime paths:
 
@@ -50,12 +50,13 @@ The Browser screen exposes two sections:
 
 ```bash
 ccs help browser
+ccs browser setup
 ccs browser status
 ccs browser doctor
 ```
 
-Use `ccs browser status` for the current state and `ccs browser doctor` for actionable
-troubleshooting guidance.
+Use `ccs browser setup` for the primary one-command setup path. Use `ccs browser status` for
+the current state and `ccs browser doctor` for read-only troubleshooting guidance.
 
 ### Via Config File
 
@@ -109,6 +110,22 @@ legacy `CCS_BROWSER_PROFILE_DIR` flow when `CCS_BROWSER_DEVTOOLS_PORT` is not se
 Do not treat the generic Codex MCP editor as the primary browser setup path. CCS-managed browser
 entries should be configured from `Settings -> Browser`.
 
+## Primary Setup Flow
+
+The shortest supported setup path is:
+
+```bash
+ccs browser setup
+```
+
+That flow:
+
+1. enables Claude Browser Attach in the saved CCS browser config
+2. keeps the configured DevTools port normalized
+3. creates the configured browser user-data directory if needed
+4. prints the exact browser launch command for the current platform
+5. re-checks readiness and reports the next step if Chrome still needs manual attention
+
 ## Launching Chrome For Claude Attach
 
 Claude Browser Attach needs a browser launched with remote debugging.
@@ -137,15 +154,15 @@ the remaining requirement is a running Chrome session started with `--remote-deb
 
 ### Browser status says Claude Browser Attach is disabled
 
-Enable Claude Browser Attach in `Settings -> Browser` or via the browser config block in
-`~/.ccs/config.yaml`.
+Run `ccs browser setup`, enable Claude Browser Attach in `Settings -> Browser`, or edit the
+browser config block in `~/.ccs/config.yaml`.
 
 ### Browser status says the path is missing
 
 The configured Chrome user-data directory does not exist yet.
 
-1. Create the directory or use the generated launch command
-2. Start Chrome in attach mode with `--remote-debugging-port`
+1. Run `ccs browser setup`
+2. If Chrome still is not ready, use the generated launch command
 3. Rerun `ccs browser doctor`
 
 If you are using the CCS-managed default path, this usually means the path could not be created
@@ -155,9 +172,10 @@ automatically and now needs manual attention.
 
 CCS could not find usable DevTools attach metadata for the configured user-data directory.
 
-1. Make sure Chrome was started with `--remote-debugging-port=<port>`
-2. Make sure it is using the same `user_data_dir` configured in CCS
-3. Rerun `ccs browser doctor`
+1. Run `ccs browser setup`
+2. If needed, make sure Chrome was started with `--remote-debugging-port=<port>`
+3. Make sure it is using the same `user_data_dir` configured in CCS
+4. Rerun `ccs browser doctor`
 
 For the CCS-managed default path, this is the normal first-run state after CCS bootstraps the
 directory for you.
@@ -166,9 +184,10 @@ directory for you.
 
 CCS found attach metadata, but the endpoint did not answer successfully.
 
-1. Restart the attach browser session
-2. Confirm the expected port matches the real remote debugging port
-3. Rerun `ccs browser status`
+1. Run `ccs browser setup`
+2. If needed, restart the attach browser session
+3. Confirm the expected port matches the real remote debugging port
+4. Rerun `ccs browser status`
 
 ### Codex Browser Tools are unavailable
 

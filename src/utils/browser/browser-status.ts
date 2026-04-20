@@ -1,21 +1,19 @@
 import * as path from 'path';
 import { getBrowserConfig } from '../../config/unified-config-loader';
+import { getCcsPathDisplay } from '../config-manager';
 import { getCodexBinaryInfo } from '../../targets/codex-detector';
 import { type BrowserRuntimeEnv, resolveBrowserRuntimeEnv } from './chrome-reuse';
 import { getBrowserMcpServerName, getBrowserMcpServerPath } from './mcp-installer';
 import { getNodePlatformKey } from './platform';
 import {
+  buildBrowserLaunchCommands,
+  buildManagedBrowserAttachSetupOptions,
   describeManagedBrowserAttachNotReady,
   ensureManagedBrowserUserDataDir,
+  type BrowserLaunchCommands,
   getEffectiveClaudeBrowserAttachConfig,
   getRecommendedBrowserUserDataDir,
 } from './browser-settings';
-
-export interface BrowserLaunchCommands {
-  darwin: string;
-  linux: string;
-  win32: string;
-}
 
 export interface ClaudeBrowserStatus {
   enabled: boolean;
@@ -63,7 +61,7 @@ async function buildClaudeBrowserStatus(
   browserConfig = getBrowserConfig()
 ): Promise<ClaudeBrowserStatus> {
   const effective = getEffectiveClaudeBrowserAttachConfig(browserConfig);
-  const launchCommands = buildLaunchCommands(effective.userDataDir, effective.devtoolsPort);
+  const launchCommands = buildBrowserLaunchCommands(effective.userDataDir, effective.devtoolsPort);
   const managedBootstrap = ensureManagedBrowserUserDataDir(effective);
   const base: Omit<ClaudeBrowserStatus, 'state' | 'title' | 'detail' | 'nextStep'> = {
     enabled: effective.enabled,
@@ -84,13 +82,12 @@ async function buildClaudeBrowserStatus(
       title: 'Claude Browser Attach is disabled.',
       detail:
         'CCS will not provision the managed browser MCP runtime for Claude launches until this lane is enabled.',
-      nextStep:
-        'Enable Claude Browser Attach in Settings > Browser or in ~/.ccs/config.yaml, then rerun `ccs browser doctor`.',
+      nextStep: `Enable Claude Browser Attach in Settings > Browser or in ${getCcsPathDisplay('config.yaml')}, then run \`ccs browser setup\`.`,
     };
   }
 
   if (managedBootstrap.createdProfileDir) {
-    const managedDefaultMessage = describeManagedBrowserAttachNotReady(
+    const managedMessage = describeManagedBrowserAttachNotReady(
       effective,
       `Chrome reuse metadata not found: ${path.join(effective.userDataDir, 'DevToolsActivePort')}`,
       {
@@ -98,13 +95,13 @@ async function buildClaudeBrowserStatus(
         launchCommand: launchCommands[getNodePlatformKey()],
       }
     );
-    if (managedDefaultMessage) {
+    if (managedMessage) {
       return {
         ...base,
-        state: managedDefaultMessage.state,
-        title: managedDefaultMessage.title,
-        detail: managedDefaultMessage.detail,
-        nextStep: managedDefaultMessage.nextStep,
+        state: managedMessage.state,
+        title: managedMessage.title,
+        detail: managedMessage.detail,
+        nextStep: managedMessage.nextStep,
       };
     }
   }
@@ -126,17 +123,17 @@ async function buildClaudeBrowserStatus(
     };
   } catch (error) {
     const message = (error as Error).message;
-    const managedDefaultMessage = describeManagedBrowserAttachNotReady(effective, message, {
+    const managedMessage = describeManagedBrowserAttachNotReady(effective, message, {
       createdProfileDir: managedBootstrap.createdProfileDir,
       launchCommand: launchCommands[getNodePlatformKey()],
     });
-    if (managedDefaultMessage) {
+    if (managedMessage) {
       return {
         ...base,
-        state: managedDefaultMessage.state,
-        title: managedDefaultMessage.title,
-        detail: managedDefaultMessage.detail,
-        nextStep: managedDefaultMessage.nextStep,
+        state: managedMessage.state,
+        title: managedMessage.title,
+        detail: managedMessage.detail,
+        nextStep: managedMessage.nextStep,
       };
     }
 
@@ -216,11 +213,13 @@ function buildCodexBrowserStatus(browserConfig = getBrowserConfig()): CodexBrows
   };
 }
 
-function buildLaunchCommands(userDataDir: string, devtoolsPort: number): BrowserLaunchCommands {
-  const quotedPath = JSON.stringify(userDataDir);
-  return {
-    darwin: `open -na "Google Chrome" --args --remote-debugging-port=${devtoolsPort} --user-data-dir=${quotedPath}`,
-    linux: `google-chrome --remote-debugging-port=${devtoolsPort} --user-data-dir=${quotedPath}`,
-    win32: `chrome.exe --remote-debugging-port=${devtoolsPort} --user-data-dir=${quotedPath}`,
-  };
+export function getManagedBrowserSetupHint(): string {
+  return buildManagedBrowserAttachSetupOptions({
+    enabled: true,
+    source: 'config',
+    overrideActive: false,
+    userDataDir: getRecommendedBrowserUserDataDir(),
+    devtoolsPort: 9222,
+    hasExplicitDevtoolsPort: true,
+  }).join('\n');
 }

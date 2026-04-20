@@ -140,6 +140,16 @@ describe('completion backend', () => {
     expect(suggestionValues(['cliproxy'])).toEqual(expect.arrayContaining(['remove', '--backend']));
   });
 
+  test('suggests browser subcommands and fix/setup flags', () => {
+    expect(suggestionValues(['browser'])).toEqual(
+      expect.arrayContaining(['setup', 'status', 'doctor'])
+    );
+    expect(suggestionValues(['browser', 'setup'])).toEqual(expect.arrayContaining(['--help', '-h']));
+    expect(suggestionValues(['browser', 'doctor'])).toEqual(
+      expect.arrayContaining(['--help', '-h'])
+    );
+  });
+
   test('treats cursor as a provider shortcut in completion', () => {
     const values = suggestionValues(['cursor']);
     expect(values).toEqual(

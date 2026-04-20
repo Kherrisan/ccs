@@ -2,12 +2,16 @@ import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { mutateUnifiedConfig } from '../../../../src/config/unified-config-loader';
-import * as chromeReuse from '../../../../src/utils/browser/chrome-reuse';
 import {
-  getBrowserStatus,
-} from '../../../../src/utils/browser/browser-status';
-import { resolveOptionalBrowserAttachRuntime } from '../../../../src/utils/browser/browser-settings';
+  getBrowserConfig,
+  mutateUnifiedConfig,
+} from '../../../../src/config/unified-config-loader';
+import * as chromeReuse from '../../../../src/utils/browser/chrome-reuse';
+import { getBrowserStatus } from '../../../../src/utils/browser/browser-status';
+import {
+  getEffectiveClaudeBrowserAttachConfig,
+  resolveOptionalBrowserAttachRuntime,
+} from '../../../../src/utils/browser/browser-settings';
 import * as codexDetector from '../../../../src/targets/codex-detector';
 
 describe('browser status', () => {
@@ -119,11 +123,9 @@ describe('browser status', () => {
       const status = await getBrowserStatus();
 
       expect(status.claude.state).toBe('browser_not_running');
-      expect(status.claude.title).toBe(
-        'Claude Browser Attach is waiting for a managed Chrome session.'
-      );
-      expect(status.claude.detail).toContain('CCS created the managed browser profile');
-      expect(status.claude.nextStep).toContain('--remote-debugging-port=9222');
+      expect(status.claude.title).toBe('Claude Browser Attach is not ready yet.');
+      expect(status.claude.detail).toContain('created the managed browser profile directory');
+      expect(status.claude.nextStep).toContain('ccs browser setup');
       expect(existsSync(join(tempHome, '.ccs', 'browser', 'chrome-user-data'))).toBe(true);
     } finally {
       runtimeSpy.mockRestore();
@@ -178,7 +180,49 @@ describe('browser status', () => {
     }
   });
 
-  it('reports browser_not_running when attach metadata is missing', async () => {
+  it('returns a short managed attach warning when the managed browser dir is missing', async () => {
+    mutateUnifiedConfig((config) => {
+      config.browser = {
+        claude: {
+          enabled: true,
+          user_data_dir: '',
+          devtools_port: 9222,
+        },
+        codex: {
+          enabled: true,
+        },
+      };
+    });
+
+    const resolution = await resolveOptionalBrowserAttachRuntime(
+      getEffectiveClaudeBrowserAttachConfig(getBrowserConfig())
+    );
+
+    expect(resolution.runtimeEnv).toBeUndefined();
+    expect(resolution.warning).toContain('Claude Browser Attach is not ready yet.');
+    expect(resolution.warning).toContain('ccs browser setup');
+    expect(resolution.warning).toContain('ccs browser doctor');
+  });
+
+  it('returns the same managed attach warning when the configured DevTools port is unreachable', async () => {
+    const managedDir = join(tempHome, '.ccs', 'browser', 'chrome-user-data');
+    mkdirSync(managedDir, { recursive: true });
+
+    const resolution = await resolveOptionalBrowserAttachRuntime({
+      enabled: true,
+      source: 'config',
+      overrideActive: false,
+      userDataDir: managedDir,
+      devtoolsPort: 43123,
+      hasExplicitDevtoolsPort: true,
+    });
+
+    expect(resolution.runtimeEnv).toBeUndefined();
+    expect(resolution.warning).toContain('Claude Browser Attach is not ready yet.');
+    expect(resolution.warning).toContain('ccs browser setup');
+  });
+
+  it('reports browser_not_running when attach metadata is missing for a custom path', async () => {
     mutateUnifiedConfig((config) => {
       config.browser = {
         claude: {
@@ -212,26 +256,6 @@ describe('browser status', () => {
       runtimeSpy.mockRestore();
       codexSpy.mockRestore();
     }
-  });
-
-  it('returns a managed attach warning when the configured DevTools port is unreachable', async () => {
-    const managedDir = join(tempHome, '.ccs', 'browser', 'chrome-user-data');
-    mkdirSync(managedDir, { recursive: true });
-
-    const runtime = await resolveOptionalBrowserAttachRuntime({
-      enabled: true,
-      source: 'config',
-      overrideActive: false,
-      userDataDir: managedDir,
-      devtoolsPort: 43123,
-      hasExplicitDevtoolsPort: true,
-    });
-
-    expect(runtime.runtimeEnv).toBeUndefined();
-    expect(runtime.warning).toContain(
-      'could not reach the attach-mode DevTools endpoint for the managed browser profile'
-    );
-    expect(runtime.warning).toContain('continue without browser tools');
   });
 
   it('preserves legacy metadata-based port discovery when only CCS_BROWSER_PROFILE_DIR is set', async () => {

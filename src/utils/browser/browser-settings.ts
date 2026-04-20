@@ -1,10 +1,10 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import type { BrowserConfig } from '../../config/unified-config-types';
-import { getCcsDir } from '../config-manager';
+import { getCcsDir, getCcsPathDisplay } from '../config-manager';
 import { expandPath } from '../helpers';
-import { getNodePlatformKey } from './platform';
 import { type BrowserRuntimeEnv, resolveBrowserRuntimeEnv } from './chrome-reuse';
+import { getNodePlatformKey } from './platform';
 
 export type BrowserOverrideSource = 'CCS_BROWSER_USER_DATA_DIR' | 'CCS_BROWSER_PROFILE_DIR';
 
@@ -17,8 +17,10 @@ export interface EffectiveClaudeBrowserAttachConfig {
   hasExplicitDevtoolsPort: boolean;
 }
 
-export function getRecommendedBrowserUserDataDir(): string {
-  return path.join(getCcsDir(), 'browser', 'chrome-user-data');
+export interface BrowserLaunchCommands {
+  darwin: string;
+  linux: string;
+  win32: string;
 }
 
 export interface BrowserAttachRuntimeResolution {
@@ -39,7 +41,29 @@ export interface ManagedBrowserAttachNotReadyMessage {
   warning: string;
 }
 
-function isManagedDefaultBrowserAttach(config: EffectiveClaudeBrowserAttachConfig): boolean {
+export function getRecommendedBrowserUserDataDir(): string {
+  return path.join(getCcsDir(), 'browser', 'chrome-user-data');
+}
+
+export function resolveBrowserUserDataDir(value?: string): string | undefined {
+  return value?.trim() ? expandPath(value) : undefined;
+}
+
+export function buildBrowserLaunchCommands(
+  userDataDir: string,
+  devtoolsPort: number
+): BrowserLaunchCommands {
+  const quotedPath = JSON.stringify(userDataDir);
+  return {
+    darwin: `open -na "Google Chrome" --args --remote-debugging-port=${devtoolsPort} --user-data-dir=${quotedPath}`,
+    linux: `google-chrome --remote-debugging-port=${devtoolsPort} --user-data-dir=${quotedPath}`,
+    win32: `chrome.exe --remote-debugging-port=${devtoolsPort} --user-data-dir=${quotedPath}`,
+  };
+}
+
+export function isManagedClaudeBrowserAttachConfig(
+  config: EffectiveClaudeBrowserAttachConfig
+): boolean {
   return (
     config.source === 'config' &&
     path.resolve(config.userDataDir) === path.resolve(getRecommendedBrowserUserDataDir())
@@ -47,25 +71,36 @@ function isManagedDefaultBrowserAttach(config: EffectiveClaudeBrowserAttachConfi
 }
 
 function buildCurrentPlatformLaunchCommand(userDataDir: string, devtoolsPort: number): string {
-  const quotedPath = JSON.stringify(userDataDir);
-  switch (getNodePlatformKey()) {
-    case 'darwin':
-      return `open -na "Google Chrome" --args --remote-debugging-port=${devtoolsPort} --user-data-dir=${quotedPath}`;
-    case 'win32':
-      return `chrome.exe --remote-debugging-port=${devtoolsPort} --user-data-dir=${quotedPath}`;
-    default:
-      return `google-chrome --remote-debugging-port=${devtoolsPort} --user-data-dir=${quotedPath}`;
-  }
+  return buildBrowserLaunchCommands(userDataDir, devtoolsPort)[getNodePlatformKey()];
 }
 
-export function resolveBrowserUserDataDir(value?: string): string | undefined {
-  return value?.trim() ? expandPath(value) : undefined;
+function buildManagedBrowserActionLines(): string[] {
+  return [
+    'Run `ccs browser setup` to configure and start the managed browser session.',
+    'Diagnose only: `ccs browser doctor`.',
+  ];
+}
+
+export function buildManagedBrowserAttachSetupOptions(
+  _config: EffectiveClaudeBrowserAttachConfig
+): string[] {
+  return buildManagedBrowserActionLines();
+}
+
+function buildManagedBrowserAttachWarning(_config: EffectiveClaudeBrowserAttachConfig): string {
+  return [
+    'Claude Browser Attach is not ready yet.',
+    `  Managed user-data dir: ${getCcsPathDisplay('browser', 'chrome-user-data')}`,
+    '  CCS will continue without browser tools for this launch.',
+    '',
+    ...buildManagedBrowserActionLines().map((line) => `  ${line}`),
+  ].join('\n');
 }
 
 export function ensureManagedBrowserUserDataDir(
   config: EffectiveClaudeBrowserAttachConfig
 ): ManagedBrowserAttachBootstrap {
-  if (!isManagedDefaultBrowserAttach(config)) {
+  if (!isManagedClaudeBrowserAttachConfig(config)) {
     return {
       usesManagedDefaultDir: false,
       createdProfileDir: false,
@@ -110,51 +145,51 @@ export function describeManagedBrowserAttachNotReady(
     launchCommand?: string;
   } = {}
 ): ManagedBrowserAttachNotReadyMessage | undefined {
-  if (!isManagedDefaultBrowserAttach(config)) {
+  if (!isManagedClaudeBrowserAttachConfig(config)) {
     return undefined;
   }
 
   const launchCommand =
     options.launchCommand ??
-    buildCurrentPlatformLaunchCommand(config.userDataDir, config.devtoolsPort);
-  const continueWithoutTools =
-    'CCS will continue without browser tools until the attach session is ready.';
+    buildCurrentPlatformLaunchCommand(
+      getCcsPathDisplay('browser', 'chrome-user-data'),
+      config.devtoolsPort
+    );
+  const nextStep = [
+    ...buildManagedBrowserActionLines(),
+    `Manual launch (${getNodePlatformKey()}): ${launchCommand}`,
+  ].join('\n');
 
   if (errorMessage.includes('Chrome reuse metadata')) {
     const summary = options.createdProfileDir
-      ? `CCS created the managed browser profile at ${config.userDataDir}, but no running attach-mode Chrome session is using it yet`
-      : `No running attach-mode Chrome session is using the managed browser profile at ${config.userDataDir}`;
-    const nextStep = `Start Chrome with remote debugging and the managed user-data dir. Example: ${launchCommand}`;
+      ? 'CCS created the managed browser profile directory, but the attach session is not running yet.'
+      : 'No running attach-mode Chrome session is using the managed browser profile yet.';
     return {
       state: 'browser_not_running',
-      title: 'Claude Browser Attach is waiting for a managed Chrome session.',
-      detail: `${summary}. Diagnostic: ${errorMessage}`,
+      title: 'Claude Browser Attach is not ready yet.',
+      detail: `${summary} Diagnostic: ${errorMessage}`,
       nextStep,
-      warning: `${summary}. ${nextStep} ${continueWithoutTools}`,
+      warning: buildManagedBrowserAttachWarning(config),
     };
   }
 
   if (errorMessage.includes('Chrome DevTools endpoint')) {
-    const summary = `CCS could not reach the attach-mode DevTools endpoint for the managed browser profile at ${config.userDataDir}`;
-    const nextStep = `Restart Chrome in attach mode and retry. Example: ${launchCommand}`;
     return {
       state: 'endpoint_unreachable',
       title: 'Claude Browser Attach could not reach the managed Chrome session.',
-      detail: `${summary}. Diagnostic: ${errorMessage}`,
+      detail: `CCS found the managed browser profile, but the DevTools endpoint did not answer successfully. Diagnostic: ${errorMessage}`,
       nextStep,
-      warning: `${summary}. ${nextStep} ${continueWithoutTools}`,
+      warning: buildManagedBrowserAttachWarning(config),
     };
   }
 
   if (errorMessage.includes('Chrome profile directory is invalid')) {
-    const summary = `CCS could not initialize the managed browser profile at ${config.userDataDir}`;
-    const nextStep = `Confirm the path is writable or reset it to the CCS-managed default, then launch Chrome in attach mode. Example: ${launchCommand}`;
     return {
       state: 'path_missing',
       title: 'Claude Browser Attach could not initialize the managed profile.',
-      detail: `${summary}. Diagnostic: ${errorMessage}`,
+      detail: `CCS could not initialize the managed browser profile directory. Diagnostic: ${errorMessage}`,
       nextStep,
-      warning: `${summary}. ${nextStep} ${continueWithoutTools}`,
+      warning: buildManagedBrowserAttachWarning(config),
     };
   }
 
@@ -213,9 +248,6 @@ export function getEffectiveClaudeBrowserAttachConfig(
     overrideActive: false,
     userDataDir: configUserDataDir,
     devtoolsPort: configPort,
-    // Config-backed browser attach always keeps an explicit port so launches
-    // stay aligned with Settings > Browser, even when the effective value is
-    // the default 9222.
     hasExplicitDevtoolsPort: true,
   };
 }
@@ -230,11 +262,7 @@ export async function resolveOptionalBrowserAttachRuntime(
   const bootstrap = ensureManagedBrowserUserDataDir(config);
   if (bootstrap.createdProfileDir) {
     return {
-      warning: describeManagedBrowserAttachNotReady(
-        config,
-        `Chrome reuse metadata not found: ${path.join(config.userDataDir, 'DevToolsActivePort')}`,
-        { createdProfileDir: true }
-      )?.warning,
+      warning: buildManagedBrowserAttachWarning(config),
     };
   }
 
