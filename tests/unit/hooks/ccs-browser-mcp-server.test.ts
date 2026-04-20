@@ -7009,6 +7009,275 @@ describe('ccs-browser MCP server', () => {
     expect(getResponseText(responses.find((message) => message.id === 1306))).toContain('status: completed');
   });
 
+  it('continues to the next top-level block when continueOnError is true', async () => {
+    const pages: MockPageState[] = [
+      {
+        id: 'page-1',
+        title: 'Policy Page',
+        currentUrl: 'https://example.com/policy',
+        query: {
+          '#status': {
+            exists: true,
+            connected: true,
+            innerText: 'ready state',
+            textContent: 'ready state',
+            display: 'block',
+            visibility: 'visible',
+            opacity: '1',
+            rect: {
+              x: 20,
+              y: 80,
+              width: 100,
+              height: 40,
+              top: 80,
+              right: 120,
+              bottom: 120,
+              left: 20,
+            },
+          },
+        },
+      },
+    ];
+
+    const responses = await runMcpRequests(pages, [
+      {
+        jsonrpc: '2.0',
+        id: 1501,
+        method: 'tools/call',
+        params: {
+          name: 'browser_start_orchestration',
+          arguments: {
+            blocks: [
+              createOrchestrationBlock({
+                type: 'assert_query',
+                continueOnError: true,
+                args: {
+                  query: { selector: '#missing', fields: ['exists'] },
+                  assertions: [{ field: 'exists', op: 'equals', value: true }],
+                },
+              }),
+              createOrchestrationBlock({
+                type: 'assert_query',
+                args: {
+                  query: { selector: '#status', fields: ['innerText'] },
+                  assertions: [{ field: 'innerText', op: 'contains', value: 'ready' }],
+                },
+              }),
+            ],
+          },
+        },
+      },
+      {
+        jsonrpc: '2.0',
+        id: 1502,
+        method: 'tools/call',
+        params: { name: 'browser_get_orchestration', arguments: {} },
+      },
+    ]);
+
+    const text = getResponseText(responses.find((message) => message.id === 1502));
+    expect(text).toContain('completedBlocks: 2');
+    expect(text).toContain('failedCount: 1');
+    expect(text).toContain('failure[0].blockIndex: 0');
+  });
+
+  it('continues inside sequence when a step has continueOnError', async () => {
+    const pages: MockPageState[] = [
+      {
+        id: 'page-1',
+        title: 'Sequence Policy Page',
+        currentUrl: 'https://example.com/sequence-policy',
+        query: {
+          '#status': {
+            exists: true,
+            connected: true,
+            innerText: 'ready state',
+            textContent: 'ready state',
+            display: 'block',
+            visibility: 'visible',
+            opacity: '1',
+            rect: {
+              x: 20,
+              y: 80,
+              width: 100,
+              height: 40,
+              top: 80,
+              right: 120,
+              bottom: 120,
+              left: 20,
+            },
+          },
+        },
+      },
+    ];
+
+    const responses = await runMcpRequests(pages, [
+      {
+        jsonrpc: '2.0',
+        id: 1503,
+        method: 'tools/call',
+        params: {
+          name: 'browser_start_orchestration',
+          arguments: {
+            blocks: [
+              createOrchestrationBlock({
+                type: 'sequence',
+                args: {
+                  steps: [
+                    createOrchestrationBlock({
+                      type: 'assert_query',
+                      continueOnError: true,
+                      args: {
+                        query: { selector: '#missing', fields: ['exists'] },
+                        assertions: [{ field: 'exists', op: 'equals', value: true }],
+                      },
+                    }),
+                    createOrchestrationBlock({
+                      type: 'assert_query',
+                      args: {
+                        query: { selector: '#status', fields: ['innerText'] },
+                        assertions: [{ field: 'innerText', op: 'contains', value: 'ready' }],
+                      },
+                    }),
+                  ],
+                },
+              }),
+            ],
+          },
+        },
+      },
+      {
+        jsonrpc: '2.0',
+        id: 1504,
+        method: 'tools/call',
+        params: { name: 'browser_get_orchestration', arguments: {} },
+      },
+    ]);
+
+    const text = getResponseText(responses.find((message) => message.id === 1504));
+    expect(text).toContain('completedBlocks: 1');
+    expect(text).toContain('failedCount: 1');
+    expect(text).toContain('failure[0].sequenceStepIndex: 0');
+  });
+
+  it('still stops immediately when continueOnError is not enabled', async () => {
+    const responses = await runMcpRequests(
+      [{ id: 'page-1', title: 'Strict Stop Page', currentUrl: 'https://example.com/strict-stop' }],
+      [
+        {
+          jsonrpc: '2.0',
+          id: 1505,
+          method: 'tools/call',
+          params: {
+            name: 'browser_start_orchestration',
+            arguments: {
+              blocks: [
+                createOrchestrationBlock({
+                  type: 'assert_query',
+                  args: {
+                    query: { selector: '#missing', fields: ['exists'] },
+                    assertions: [{ field: 'exists', op: 'equals', value: true }],
+                  },
+                }),
+                createOrchestrationBlock({
+                  type: 'assert_query',
+                  continueOnError: true,
+                  args: {
+                    query: { selector: '#status', fields: ['innerText'] },
+                    assertions: [{ field: 'innerText', op: 'contains', value: 'ready' }],
+                  },
+                }),
+              ],
+            },
+          },
+        },
+      ]
+    );
+
+    const text = getResponseText(responses.find((message) => message.id === 1505));
+    expect(text).toContain('status: failed');
+    expect(text).toContain('completedBlocks: 0');
+  });
+
+  it('continues to the next top-level block when a sequence block itself allows continueOnError', async () => {
+    const pages: MockPageState[] = [
+      {
+        id: 'page-1',
+        title: 'Sequence Top-Level Policy Page',
+        currentUrl: 'https://example.com/sequence-top-policy',
+        query: {
+          '#status': {
+            exists: true,
+            connected: true,
+            innerText: 'ready state',
+            textContent: 'ready state',
+            display: 'block',
+            visibility: 'visible',
+            opacity: '1',
+            rect: {
+              x: 20,
+              y: 80,
+              width: 100,
+              height: 40,
+              top: 80,
+              right: 120,
+              bottom: 120,
+              left: 20,
+            },
+          },
+        },
+      },
+    ];
+
+    const responses = await runMcpRequests(pages, [
+      {
+        jsonrpc: '2.0',
+        id: 1506,
+        method: 'tools/call',
+        params: {
+          name: 'browser_start_orchestration',
+          arguments: {
+            blocks: [
+              createOrchestrationBlock({
+                type: 'sequence',
+                continueOnError: true,
+                args: {
+                  steps: [
+                    createOrchestrationBlock({
+                      type: 'assert_query',
+                      args: {
+                        query: { selector: '#missing', fields: ['exists'] },
+                        assertions: [{ field: 'exists', op: 'equals', value: true }],
+                      },
+                    }),
+                  ],
+                },
+              }),
+              createOrchestrationBlock({
+                type: 'assert_query',
+                args: {
+                  query: { selector: '#status', fields: ['innerText'] },
+                  assertions: [{ field: 'innerText', op: 'contains', value: 'ready' }],
+                },
+              }),
+            ],
+          },
+        },
+      },
+      {
+        jsonrpc: '2.0',
+        id: 1507,
+        method: 'tools/call',
+        params: { name: 'browser_get_orchestration', arguments: {} },
+      },
+    ]);
+
+    const text = getResponseText(responses.find((message) => message.id === 1507));
+    expect(text).toContain('completedBlocks: 2');
+    expect(text).toContain('failedCount: 1');
+    expect(text).toContain('failure[0].sequenceStepIndex: 0');
+  });
+
   it('drags local files onto normal, frame, and shadow dropzones', async () => {
     const tempDir = mkdtempSync(join(tmpdir(), 'ccs-browser-drag-files-'));
     const invoicePath = join(tempDir, 'invoice.pdf');
