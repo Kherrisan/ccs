@@ -80,7 +80,7 @@ describe('openai proxy daemon lifecycle', () => {
     expect((await getOpenAICompatProxyStatus()).running).toBe(false);
   }, 35000);
 
-  it('refuses to replace a running proxy for a different profile', async () => {
+  it('allows different profiles to run on different ports', async () => {
     const firstPort = await getPort();
     const firstSettingsPath = path.join(tempDir, 'hf.settings.json');
     fs.writeFileSync(
@@ -108,7 +108,20 @@ describe('openai proxy daemon lifecycle', () => {
     const firstStart = await startOpenAICompatProxy(firstProfile, { port: firstPort });
     expect(firstStart.success).toBe(true);
 
-    const secondProfile = resolveOpenAICompatProfileConfig('openai', path.join(tempDir, 'openai.settings.json'), {
+    const secondPort = await getPort();
+    const secondSettingsPath = path.join(tempDir, 'openai.settings.json');
+    fs.writeFileSync(
+      secondSettingsPath,
+      JSON.stringify({
+        env: {
+          ANTHROPIC_BASE_URL: 'https://api.openai.com/v1',
+          ANTHROPIC_AUTH_TOKEN: 'sk-openai',
+          ANTHROPIC_MODEL: 'gpt-4.1',
+        },
+      }),
+      'utf8'
+    );
+    const secondProfile = resolveOpenAICompatProfileConfig('openai', secondSettingsPath, {
       ANTHROPIC_BASE_URL: 'https://api.openai.com/v1',
       ANTHROPIC_AUTH_TOKEN: 'sk-openai',
       ANTHROPIC_MODEL: 'gpt-4.1',
@@ -117,11 +130,14 @@ describe('openai proxy daemon lifecycle', () => {
       throw new Error('Expected second OpenAI-compatible profile');
     }
 
-    const secondStart = await startOpenAICompatProxy(secondProfile, { port: await getPort() });
-    expect(secondStart.success).toBe(false);
-    expect(secondStart.error).toContain('Proxy already running for profile "hf"');
+    const secondStart = await startOpenAICompatProxy(secondProfile, { port: secondPort });
+    expect(secondStart.success).toBe(true);
+    expect(secondStart.port).toBe(secondPort);
 
     const health = await fetch(`http://127.0.0.1:${firstPort}/health`);
     expect(health.status).toBe(200);
+
+    const secondHealth = await fetch(`http://127.0.0.1:${secondPort}/health`);
+    expect(secondHealth.status).toBe(200);
   });
 });
