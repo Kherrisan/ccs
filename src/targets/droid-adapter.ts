@@ -54,7 +54,7 @@ export class DroidAdapter implements TargetAdapter {
       model: creds.model,
     });
     const modelRef = await upsertCcsModel(creds.profile, {
-      model: creds.model || 'claude-opus-4-6',
+      model: creds.model || 'claude-opus-4-7',
       displayName: `CCS ${creds.profile}`,
       baseUrl: creds.baseUrl,
       apiKey: creds.apiKey,

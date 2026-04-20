@@ -15,6 +15,16 @@ export const DEFAULT_CURSOR_MODEL = 'gpt-5.3-codex';
 export const DEFAULT_CURSOR_MODELS: CursorModel[] = [
   // Anthropic Models
   {
+    id: 'claude-4.7-opus',
+    name: 'Claude 4.7 Opus',
+    provider: 'anthropic',
+  },
+  {
+    id: 'claude-4.7-opus-fast-mode',
+    name: 'Claude 4.7 Opus (Fast mode)',
+    provider: 'anthropic',
+  },
+  {
     id: 'claude-4.6-opus',
     name: 'Claude 4.6 Opus',
     provider: 'anthropic',

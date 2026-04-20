@@ -66,7 +66,21 @@ describe('Model Catalog', () => {
   describe('AGY models', () => {
     it('has correct default model', () => {
       const { MODEL_CATALOG } = modelCatalog;
-      assert.strictEqual(MODEL_CATALOG.agy.defaultModel, 'claude-opus-4-6-thinking');
+      assert.strictEqual(MODEL_CATALOG.agy.defaultModel, 'claude-opus-4-7-thinking');
+    });
+
+    it('includes Claude Opus 4.7 Thinking', () => {
+      const { MODEL_CATALOG } = modelCatalog;
+      const opus = MODEL_CATALOG.agy.models.find((m) => m.id === 'claude-opus-4-7-thinking');
+      assert(opus, 'Should include Claude Opus 4.7 Thinking');
+      assert.strictEqual(opus.name, 'Claude Opus 4.7 Thinking');
+    });
+
+    it('includes Claude Opus 4.7 (non-thinking)', () => {
+      const { MODEL_CATALOG } = modelCatalog;
+      const opus = MODEL_CATALOG.agy.models.find((m) => m.id === 'claude-opus-4-7');
+      assert(opus, 'Should include Claude Opus 4.7');
+      assert.strictEqual(opus.name, 'Claude Opus 4.7');
     });
 
     it('includes Claude Opus 4.6 Thinking', () => {
@@ -117,9 +131,9 @@ describe('Model Catalog', () => {
       assert.strictEqual(flash.tier, undefined, 'AGY models should not have paid tier');
     });
 
-    it('has 5 models total', () => {
+    it('has 7 models total', () => {
       const { MODEL_CATALOG } = modelCatalog;
-      assert.strictEqual(MODEL_CATALOG.agy.models.length, 5);
+      assert.strictEqual(MODEL_CATALOG.agy.models.length, 7);
     });
   });
 
@@ -266,6 +280,13 @@ describe('Model Catalog', () => {
   });
 
   describe('findModel', () => {
+    it('finds Claude Opus 4.7 Thinking in agy', () => {
+      const { findModel } = modelCatalog;
+      const model = findModel('agy', 'claude-opus-4-7-thinking');
+      assert(model, 'Should find model');
+      assert.strictEqual(model.name, 'Claude Opus 4.7 Thinking');
+    });
+
     it('finds Claude Opus 4.6 Thinking in agy', () => {
       const { findModel } = modelCatalog;
       const model = findModel('agy', 'claude-opus-4-6-thinking');
@@ -310,10 +331,10 @@ describe('Model Catalog', () => {
     it('falls back to the next supported model when the default is excluded', () => {
       const { getSuggestedReplacementModel } = modelCatalog;
 
-      expect(getSuggestedReplacementModel('agy', 'claude-opus-4-6-thinking')).toBe(
-        'claude-sonnet-4-6'
+      expect(getSuggestedReplacementModel('agy', 'claude-opus-4-7-thinking')).toBe(
+        'claude-opus-4-7'
       );
-      expect(getSuggestedReplacementModel('agy')).toBe('claude-opus-4-6-thinking');
+      expect(getSuggestedReplacementModel('agy')).toBe('claude-opus-4-7-thinking');
     });
 
     it('returns undefined when no provider catalog exists', () => {
@@ -374,10 +395,10 @@ describe('Model Catalog', () => {
   });
 
   describe('Thinking models ordering', () => {
-    it('Claude Opus 4.6 Thinking is not deprecated', () => {
+    it('Claude Opus 4.7 Thinking is not deprecated', () => {
       const { MODEL_CATALOG } = modelCatalog;
-      const opus = MODEL_CATALOG.agy.models.find((m) => m.id === 'claude-opus-4-6-thinking');
-      assert(opus, 'Should include Claude Opus 4.6 Thinking');
+      const opus = MODEL_CATALOG.agy.models.find((m) => m.id === 'claude-opus-4-7-thinking');
+      assert(opus, 'Should include Claude Opus 4.7 Thinking');
       assert.strictEqual(opus.deprecated, undefined, 'Should not be marked as deprecated');
     });
 
@@ -397,14 +418,14 @@ describe('Model Catalog', () => {
       const models = MODEL_CATALOG.agy.models;
 
       // Find indices of thinking models
-      const opusIdx = models.findIndex((m) => m.id === 'claude-opus-4-6-thinking');
+      const opus47Idx = models.findIndex((m) => m.id === 'claude-opus-4-7-thinking');
       const sonnetThinkingIdx = models.findIndex((m) => m.id === 'claude-sonnet-4-6');
 
       // Find indices of the remaining non-Claude model
       const geminiIdx = models.findIndex((m) => m.id === 'gemini-3.1-pro-high');
 
       // Primary Claude choices should appear ahead of Gemini fallback.
-      assert(opusIdx < geminiIdx, 'Opus should be above Gemini');
+      assert(opus47Idx < geminiIdx, 'Opus 4.7 should be above Gemini');
       assert(sonnetThinkingIdx < geminiIdx, 'Sonnet should be above Gemini');
     });
   });
@@ -412,6 +433,7 @@ describe('Model Catalog', () => {
   describe('isModelDeprecated', () => {
     it('returns false for active AGY Claude models', () => {
       const { isModelDeprecated } = modelCatalog;
+      assert.strictEqual(isModelDeprecated('agy', 'claude-opus-4-7-thinking'), false);
       assert.strictEqual(isModelDeprecated('agy', 'claude-opus-4-6-thinking'), false);
       assert.strictEqual(isModelDeprecated('agy', 'claude-sonnet-4-6'), false);
     });
@@ -430,6 +452,7 @@ describe('Model Catalog', () => {
   describe('getModelDeprecationReason', () => {
     it('returns undefined for active AGY Claude models', () => {
       const { getModelDeprecationReason } = modelCatalog;
+      assert.strictEqual(getModelDeprecationReason('agy', 'claude-opus-4-7-thinking'), undefined);
       assert.strictEqual(getModelDeprecationReason('agy', 'claude-opus-4-6-thinking'), undefined);
       assert.strictEqual(getModelDeprecationReason('agy', 'claude-sonnet-4-6'), undefined);
     });
