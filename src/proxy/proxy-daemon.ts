@@ -199,7 +199,7 @@ async function getOpenAICompatProxyStatusForProfile(
   const state = getOpenAICompatProxyStateForProfile(profileName);
   const session = state.session;
   if (!session) {
-    return { running: false };
+    return { running: false, profileName };
   }
 
   const port = session.port;

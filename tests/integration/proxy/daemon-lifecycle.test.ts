@@ -464,4 +464,10 @@ describe('openai proxy daemon lifecycle', () => {
     expect(fs.existsSync(getLegacyOpenAICompatProxyPidPath())).toBe(false);
     expect(fs.existsSync(getLegacyOpenAICompatProxySessionPath())).toBe(false);
   }, 35000);
+
+  it('keeps the requested profile name in stopped status results', async () => {
+    const status = await getOpenAICompatProxyStatus('never-started');
+    expect(status.running).toBe(false);
+    expect(status.profileName).toBe('never-started');
+  });
 });
