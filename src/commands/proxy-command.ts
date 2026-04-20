@@ -22,9 +22,15 @@ function parseOptionValue(args: string[], key: string): string | undefined {
   return withEquals ? withEquals.slice(prefix.length) : undefined;
 }
 
-function findPositionalArg(args: string[], optionsWithValues: string[] = []): string | undefined {
+export function findPositionalArg(
+  args: string[],
+  optionsWithValues: string[] = []
+): string | undefined {
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i];
+    if (arg === '--') {
+      return args[i + 1];
+    }
     if (arg.startsWith('-')) {
       if (optionsWithValues.includes(arg)) {
         i += 1;
