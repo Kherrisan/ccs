@@ -117,6 +117,13 @@ Phase 10C capability details:
 - orchestration runs blocks sequentially and stops on the first failure
 - block nesting, branching, loops, and workflow-engine behaviors remain out of scope
 
+Phase 11A capability details:
+
+- `assert_query` now supports structured `assertions[]` with multiple field checks in one block
+- supported operators are `equals`, `contains`, `gt`, `gte`, `lt`, and `lte`
+- assertion failures now include clearer diagnostics such as failed assertion index, field, expected value, and actual value
+- Phase 11A continues to reuse `browser_query` as the data source rather than introducing a new diagnostics runtime
+
 Minimal multi-tab workflow examples:
 
 ```json
