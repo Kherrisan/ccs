@@ -35,6 +35,8 @@ package-lock.json
 .claude/active-plan
 .claude/agent-memory/
 .claude/plans-registry.json*
+CLAUDE.local.md
+AGENTS.override.md
 
 # Logs directory
 logs/
