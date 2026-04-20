@@ -185,7 +185,7 @@ export async function getOpenAICompatProxyStatus(
   const statuses = await listOpenAICompatProxyStatuses();
   const running = statuses.filter((status) => status.running);
   if (running.length === 1) {
-    return running[0] || { running: false };
+    return running[0];
   }
   if (running.length > 1) {
     return { running: true };

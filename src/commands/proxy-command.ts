@@ -22,6 +22,20 @@ function parseOptionValue(args: string[], key: string): string | undefined {
   return withEquals ? withEquals.slice(prefix.length) : undefined;
 }
 
+function findPositionalArg(args: string[], optionsWithValues: string[] = []): string | undefined {
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+    if (arg.startsWith('-')) {
+      if (optionsWithValues.includes(arg)) {
+        i += 1;
+      }
+      continue;
+    }
+    return arg;
+  }
+  return undefined;
+}
+
 function showHelp(): number {
   console.log('OpenAI-Compatible Proxy');
   console.log('');
@@ -63,7 +77,7 @@ function resolveProfile(profileName: string) {
 }
 
 async function handleStart(args: string[]): Promise<number> {
-  const profileName = args.find((arg) => !arg.startsWith('-'));
+  const profileName = findPositionalArg(args, ['--port', '--host']);
   if (!profileName) {
     console.error(
       fail('Usage: ccs proxy start <profile> [--port <n>] [--host <addr>] [--insecure]')
@@ -102,7 +116,7 @@ async function handleStart(args: string[]): Promise<number> {
 }
 
 async function handleStatus(args: string[] = []): Promise<number> {
-  const profileName = args.find((arg) => !arg.startsWith('-'));
+  const profileName = findPositionalArg(args);
   const running = profileName
     ? [await getOpenAICompatProxyStatus(profileName)].filter((status) => status.running)
     : (await listOpenAICompatProxyStatuses()).filter((status) => status.running);
@@ -130,12 +144,7 @@ async function handleStatus(args: string[] = []): Promise<number> {
 }
 
 async function handleActivate(args: string[]): Promise<number> {
-  const profileName = args.find((arg) => !arg.startsWith('-'));
-  const status = await getOpenAICompatProxyStatus(profileName);
-  if (!status.running || !status.profileName || !status.port || !status.authToken) {
-    console.error(fail('Proxy is not running. Start it with: ccs proxy start <profile>'));
-    return 1;
-  }
+  const profileName = findPositionalArg(args, ['--shell']);
   if (!profileName) {
     const running = (await listOpenAICompatProxyStatuses()).filter((entry) => entry.running);
     if (running.length > 1) {
@@ -144,6 +153,11 @@ async function handleActivate(args: string[]): Promise<number> {
       );
       return 1;
     }
+  }
+  const status = await getOpenAICompatProxyStatus(profileName);
+  if (!status.running || !status.profileName || !status.port || !status.authToken) {
+    console.error(fail('Proxy is not running. Start it with: ccs proxy start <profile>'));
+    return 1;
   }
 
   const shell = detectShell(args.includes('--fish') ? 'fish' : parseOptionValue(args, '--shell'));
