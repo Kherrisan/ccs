@@ -439,6 +439,10 @@ function createReplayStep(step: Record<string, unknown>): Record<string, unknown
   return step;
 }
 
+function createOrchestrationBlock(block: Record<string, unknown>): Record<string, unknown> {
+  return block;
+}
+
 function parseJsonArgument(expression: string, key: string): string | undefined {
   const marker = `const ${key} = JSON.parse(`;
   const start = expression.indexOf(marker);
@@ -1836,6 +1840,9 @@ describe('ccs-browser MCP server', () => {
       'browser_start_replay',
       'browser_get_replay',
       'browser_cancel_replay',
+      'browser_start_orchestration',
+      'browser_get_orchestration',
+      'browser_cancel_orchestration',
       'browser_take_screenshot',
       'browser_wait_for',
       'browser_eval',
@@ -1967,6 +1974,17 @@ describe('ccs-browser MCP server', () => {
 
     const cancelReplayTool = tools.find((tool) => tool.name === 'browser_cancel_replay');
     expect(cancelReplayTool?.inputSchema).toMatchObject({ type: 'object' });
+
+    const startOrchestrationTool = tools.find((tool) => tool.name === 'browser_start_orchestration');
+    expect(startOrchestrationTool?.inputSchema?.properties?.blocks).toMatchObject({ type: 'array' });
+    expect(startOrchestrationTool?.inputSchema?.properties?.pageIndex).toMatchObject({ type: 'integer' });
+    expect(startOrchestrationTool?.inputSchema?.properties?.pageId).toMatchObject({ type: 'string' });
+
+    const getOrchestrationTool = tools.find((tool) => tool.name === 'browser_get_orchestration');
+    expect(getOrchestrationTool?.inputSchema).toMatchObject({ type: 'object' });
+
+    const cancelOrchestrationTool = tools.find((tool) => tool.name === 'browser_cancel_orchestration');
+    expect(cancelOrchestrationTool?.inputSchema).toMatchObject({ type: 'object' });
 
     const queryTool = tools.find((tool) => tool.name === 'browser_query');
     expect(queryTool?.inputSchema?.properties?.fields).toMatchObject({
@@ -6098,6 +6116,298 @@ describe('ccs-browser MCP server', () => {
 
     expect(getResponseText(responses.find((message) => message.id === 1121))).toContain('status: completed');
     expect(getResponseText(responses.find((message) => message.id === 1121))).toContain('completedSteps: 2');
+  });
+
+  it('starts orchestration, reports progress, and completes a wait_then_click flow', async () => {
+    const pages: MockPageState[] = [
+      {
+        id: 'page-1',
+        title: 'Orchestration Page',
+        currentUrl: 'https://example.com/orchestration',
+        click: {
+          '#menu': {},
+        },
+        wait: {
+          selectorSnapshots: {
+            '#menu': [
+              [
+                {
+                  exists: true,
+                  rect: {
+                    x: 20,
+                    y: 30,
+                    width: 100,
+                    height: 40,
+                    top: 30,
+                    right: 120,
+                    bottom: 70,
+                    left: 20,
+                  },
+                  display: 'block',
+                  visibility: 'visible',
+                  opacity: '1',
+                },
+              ],
+            ],
+          },
+        },
+        query: {
+          '#menu': {
+            exists: true,
+            connected: true,
+            rect: {
+              x: 20,
+              y: 30,
+              width: 100,
+              height: 40,
+              top: 30,
+              right: 120,
+              bottom: 70,
+              left: 20,
+            },
+            display: 'block',
+            visibility: 'visible',
+            opacity: '1',
+          },
+        },
+      },
+    ];
+
+    const responses = await runMcpRequests(pages, [
+      {
+        jsonrpc: '2.0',
+        id: 1201,
+        method: 'tools/call',
+        params: {
+          name: 'browser_start_orchestration',
+          arguments: {
+            blocks: [
+              createOrchestrationBlock({
+                type: 'wait_for_then_click',
+                args: {
+                  wait: {
+                    selector: '#menu',
+                    condition: { kind: 'visibility' },
+                    timeoutMs: 1000,
+                  },
+                  click: {
+                    selector: '#menu',
+                  },
+                },
+              }),
+            ],
+          },
+        },
+      },
+      {
+        jsonrpc: '2.0',
+        id: 1202,
+        method: 'tools/call',
+        params: { name: 'browser_get_orchestration', arguments: {} },
+      },
+    ]);
+
+    expect(getResponseText(responses.find((message) => message.id === 1201))).toContain('status: completed');
+    expect(getResponseText(responses.find((message) => message.id === 1202))).toContain('completedBlocks: 1');
+    expect(getResponseText(responses.find((message) => message.id === 1202))).toContain('status: completed');
+  });
+
+  it('completes a wait_then_type flow', async () => {
+    const pages: MockPageState[] = [
+      {
+        id: 'page-1',
+        title: 'Type Orchestration Page',
+        currentUrl: 'https://example.com/type-orchestration',
+        wait: {
+          selectorSnapshots: {
+            '#email': [
+              [
+                {
+                  exists: true,
+                  rect: {
+                    x: 20,
+                    y: 30,
+                    width: 100,
+                    height: 40,
+                    top: 30,
+                    right: 120,
+                    bottom: 70,
+                    left: 20,
+                  },
+                  display: 'block',
+                  visibility: 'visible',
+                  opacity: '1',
+                },
+              ],
+            ],
+          },
+        },
+        type: {
+          '#email': { kind: 'input', inputType: 'email', value: '' },
+        },
+      },
+    ];
+
+    const responses = await runMcpRequests(pages, [
+      {
+        jsonrpc: '2.0',
+        id: 1203,
+        method: 'tools/call',
+        params: {
+          name: 'browser_start_orchestration',
+          arguments: {
+            blocks: [
+              createOrchestrationBlock({
+                type: 'wait_for_then_type',
+                args: {
+                  wait: { selector: '#email', condition: { kind: 'visibility' }, timeoutMs: 1000 },
+                  type: { selector: '#email', text: 'walker@example.com', clearFirst: true },
+                },
+              }),
+            ],
+          },
+        },
+      },
+    ]);
+
+    expect(getResponseText(responses.find((message) => message.id === 1203))).toContain('status: completed');
+    expect(getResponseText(responses.find((message) => message.id === 1203))).toContain('completedBlocks: 1');
+  });
+
+  it('completes a run_replay_sequence block', async () => {
+    const pages: MockPageState[] = [
+      {
+        id: 'page-1',
+        title: 'Replay Sequence Orchestration Page',
+        currentUrl: 'https://example.com/orchestration-replay',
+        click: { '#submit': {} },
+        query: {
+          '#submit': {
+            exists: true,
+            connected: true,
+            rect: {
+              x: 20,
+              y: 30,
+              width: 100,
+              height: 40,
+              top: 30,
+              right: 120,
+              bottom: 70,
+              left: 20,
+            },
+            display: 'block',
+            visibility: 'visible',
+            opacity: '1',
+          },
+        },
+      },
+    ];
+
+    const responses = await runMcpRequests(pages, [
+      {
+        jsonrpc: '2.0',
+        id: 1211,
+        method: 'tools/call',
+        params: {
+          name: 'browser_start_orchestration',
+          arguments: {
+            blocks: [
+              createOrchestrationBlock({
+                type: 'run_replay_sequence',
+                args: {
+                  steps: [createReplayStep({ type: 'click', pageId: 'page-1', selector: '#submit', args: {} })],
+                },
+              }),
+            ],
+          },
+        },
+      },
+    ]);
+
+    expect(getResponseText(responses.find((message) => message.id === 1211))).toContain('status: completed');
+  });
+
+  it('completes an assert_query block', async () => {
+    const responses = await runMcpRequests(
+      [
+        {
+          id: 'page-1',
+          title: 'Assert Query Page',
+          currentUrl: 'https://example.com/assert-query',
+          query: {
+            '#status': {
+              exists: true,
+              connected: true,
+              innerText: 'ready',
+              textContent: 'ready',
+              display: 'block',
+              visibility: 'visible',
+              opacity: '1',
+            },
+          },
+        },
+      ],
+      [
+        {
+          jsonrpc: '2.0',
+          id: 1212,
+          method: 'tools/call',
+          params: {
+            name: 'browser_start_orchestration',
+            arguments: {
+              blocks: [
+                createOrchestrationBlock({
+                  type: 'assert_query',
+                  args: {
+                    query: { selector: '#status', fields: ['innerText'] },
+                    assert: { field: 'innerText', equals: 'ready' },
+                  },
+                }),
+              ],
+            },
+          },
+        },
+      ]
+    );
+
+    expect(getResponseText(responses.find((message) => message.id === 1212))).toContain('status: completed');
+  });
+
+  it('fails orchestration on the first failing block', async () => {
+    const responses = await runMcpRequests(
+      [{ id: 'page-1', title: 'Failure Page', currentUrl: 'https://example.com/orchestration-failure' }],
+      [
+        {
+          jsonrpc: '2.0',
+          id: 1213,
+          method: 'tools/call',
+          params: {
+            name: 'browser_start_orchestration',
+            arguments: {
+              blocks: [
+                createOrchestrationBlock({
+                  type: 'assert_query',
+                  args: {
+                    query: { selector: '#missing', fields: ['exists'] },
+                    assert: { field: 'exists', equals: 'true' },
+                  },
+                }),
+              ],
+            },
+          },
+        },
+        {
+          jsonrpc: '2.0',
+          id: 1214,
+          method: 'tools/call',
+          params: { name: 'browser_get_orchestration', arguments: {} },
+        },
+      ]
+    );
+
+    const text = getResponseText(responses.find((message) => message.id === 1214));
+    expect(text).toContain('status: failed');
+    expect(text).toContain('failedBlockIndex: 0');
   });
 
   it('drags local files onto normal, frame, and shadow dropzones', async () => {
