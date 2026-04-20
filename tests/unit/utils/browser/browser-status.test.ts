@@ -88,6 +88,7 @@ describe('browser status', () => {
         serverName: 'ccs_browser',
         supportsConfigOverrides: true,
       });
+      expect(existsSync(join(tempHome, '.ccs', 'browser', 'chrome-user-data'))).toBe(false);
     } finally {
       codexSpy.mockRestore();
     }

@@ -65,6 +65,7 @@ import {
 } from '../../utils/image-analysis';
 import {
   appendBrowserToolArgs,
+  type BrowserLaunchOverride,
   ensureBrowserMcpOrThrow,
   getBlockedBrowserOverrideWarning,
   getEffectiveClaudeBrowserAttachConfig,
@@ -248,15 +249,23 @@ export async function execClaudeWithCLIProxy(
         }
       : undefined,
   });
-  const browserLaunchFlags = resolveBrowserLaunchFlagResolution(argsWithoutProxy);
-  const browserLaunchOverride = browserLaunchFlags.override;
-  const argsWithoutBrowserFlags = browserLaunchFlags.argsWithoutFlags;
+  let browserLaunchOverride: BrowserLaunchOverride | undefined;
+  let argsWithoutBrowserFlags = argsWithoutProxy;
+  try {
+    const browserLaunchFlags = resolveBrowserLaunchFlagResolution(argsWithoutProxy);
+    browserLaunchOverride = browserLaunchFlags.override;
+    argsWithoutBrowserFlags = browserLaunchFlags.argsWithoutFlags;
+  } catch (error) {
+    console.error(fail((error as Error).message));
+    process.exit(1);
+    return;
+  }
   const browserConfig = getBrowserConfig();
   const browserAttachConfig = getEffectiveClaudeBrowserAttachConfig(browserConfig);
   const claudeBrowserExposure = resolveBrowserExposure(
     {
       enabled: browserAttachConfig.enabled,
-      policy: browserAttachConfig.overrideActive ? 'auto' : browserConfig.claude.policy,
+      policy: browserConfig.claude.policy,
     },
     browserLaunchOverride
   );

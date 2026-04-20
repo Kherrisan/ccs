@@ -65,7 +65,6 @@ async function buildClaudeBrowserStatus(
 ): Promise<ClaudeBrowserStatus> {
   const effective = getEffectiveClaudeBrowserAttachConfig(browserConfig);
   const launchCommands = buildBrowserLaunchCommands(effective.userDataDir, effective.devtoolsPort);
-  const managedBootstrap = ensureManagedBrowserUserDataDir(effective);
   const base: Omit<ClaudeBrowserStatus, 'state' | 'title' | 'detail' | 'nextStep'> = {
     enabled: effective.enabled,
     policy: browserConfig.claude.policy,
@@ -89,6 +88,8 @@ async function buildClaudeBrowserStatus(
       nextStep: `Enable Claude Browser Attach in Settings > Browser or in ${getCcsPathDisplay('config.yaml')}, then run \`ccs browser setup\`.`,
     };
   }
+
+  const managedBootstrap = ensureManagedBrowserUserDataDir(effective);
 
   if (managedBootstrap.createdProfileDir) {
     const managedMessage = describeManagedBrowserAttachNotReady(

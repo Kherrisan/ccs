@@ -22,7 +22,14 @@ export function resolveBrowserLaunchFlagResolution(args: string[]): BrowserLaunc
   let override: BrowserLaunchOverride | undefined;
   const argsWithoutFlags: string[] = [];
 
-  for (const arg of args) {
+  for (let index = 0; index < args.length; index++) {
+    const arg = args[index];
+
+    if (arg === '--') {
+      argsWithoutFlags.push(...args.slice(index));
+      break;
+    }
+
     if (arg === ENABLE_BROWSER_FLAG) {
       if (override === 'force-disable') {
         throw new Error('Use either `--browser` or `--no-browser`, not both.');

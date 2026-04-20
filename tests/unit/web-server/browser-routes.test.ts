@@ -226,6 +226,38 @@ describe('browser routes', () => {
     });
   });
 
+  it('rejects null browser lane payloads instead of treating them as no-ops', async () => {
+    const response = await fetch(`${baseUrl}/api/browser`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        claude: null,
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: 'Invalid value for claude. Must be an object.',
+    });
+  });
+
+  it('rejects unknown browser config fields instead of silently ignoring them', async () => {
+    const response = await fetch(`${baseUrl}/api/browser`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        codxe: {
+          enabled: true,
+        },
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: 'Unknown browser config field(s): codxe.',
+    });
+  });
+
   it('rejects invalid browser policy values at the route boundary', async () => {
     const response = await fetch(`${baseUrl}/api/browser`, {
       method: 'PUT',
@@ -240,6 +272,23 @@ describe('browser routes', () => {
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({
       error: 'Invalid value for codex.policy. Must be auto or manual.',
+    });
+  });
+
+  it('rejects unknown nested browser lane fields instead of silently ignoring them', async () => {
+    const response = await fetch(`${baseUrl}/api/browser`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        claude: {
+          userDatDir: '/tmp/typo',
+        },
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: 'Unknown claude browser field(s): userDatDir.',
     });
   });
 });

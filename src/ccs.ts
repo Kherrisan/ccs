@@ -463,6 +463,16 @@ async function main(): Promise<void> {
   }
 
   args = normalizeLegacyCursorArgs(args);
+  let browserLaunchOverride: BrowserLaunchOverride | undefined;
+  try {
+    const browserLaunchFlags = resolveBrowserLaunchFlagResolution(args);
+    browserLaunchOverride = browserLaunchFlags.override;
+    args = browserLaunchFlags.argsWithoutFlags;
+  } catch (error) {
+    console.error(fail((error as Error).message));
+    process.exit(1);
+    return;
+  }
 
   cliLogger.info('command.start', 'CLI invocation started', {
     command: args[0] || 'default',
@@ -605,17 +615,6 @@ async function main(): Promise<void> {
   const detector = new ProfileDetector();
 
   try {
-    let browserLaunchOverride: BrowserLaunchOverride | undefined;
-    try {
-      const browserLaunchFlags = resolveBrowserLaunchFlagResolution(args);
-      browserLaunchOverride = browserLaunchFlags.override;
-      args = browserLaunchFlags.argsWithoutFlags;
-    } catch (error) {
-      console.error(fail((error as Error).message));
-      process.exit(1);
-      return;
-    }
-
     // Detect profile (strip --target flags before profile detection)
     const cleanArgs = stripTargetFlag(args);
     const { profile, remainingArgs } = detectProfile(cleanArgs);
@@ -736,7 +735,7 @@ async function main(): Promise<void> {
         ? resolveBrowserExposure(
             {
               enabled: claudeAttachConfig?.enabled ?? browserConfig.claude.enabled,
-              policy: claudeAttachConfig?.overrideActive ? 'auto' : browserConfig.claude.policy,
+              policy: browserConfig.claude.policy,
             },
             browserLaunchOverride
           )

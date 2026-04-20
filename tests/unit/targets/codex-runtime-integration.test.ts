@@ -396,6 +396,24 @@ process.exit(0);
     });
   }
 
+  it('strips browser launch flags before native codex passthrough diagnostics', () => {
+    if (process.platform === 'win32') return;
+
+    const result = runCodexAlias(['--version', '--browser'], {
+      ...process.env,
+      CI: '1',
+      NO_COLOR: '1',
+      CCS_HOME: tmpHome,
+      CCS_CODEX_PATH: fakeCodexPath,
+      CCS_TEST_CODEX_ARGS_OUT: codexArgsLogPath,
+      CCS_TEST_CODEX_VERSION: 'codex-cli 9.9.9-test',
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('codex-cli 9.9.9-test');
+    expect(readLoggedCodexCalls(codexArgsLogPath)).toEqual([['--version']]);
+  });
+
   for (const helpFlag of ['--help', '-h']) {
     it(`passes ccsx ${helpFlag} straight through to the native Codex binary`, () => {
       if (process.platform === 'win32') return;

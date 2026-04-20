@@ -126,6 +126,9 @@ CCS still supports environment-variable overrides for backward compatibility.
 If an override is active, Browser status surfaces should report that the current session is being
 managed externally by environment variables.
 
+The saved browser policy still controls default exposure. Env overrides change the effective attach
+path/port for the current shell; they do not bypass `policy: manual`.
+
 Override precedence is:
 
 1. `CCS_BROWSER_USER_DATA_DIR`

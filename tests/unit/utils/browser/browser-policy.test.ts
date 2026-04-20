@@ -22,6 +22,13 @@ describe('browser policy', () => {
     );
   });
 
+  it('stops parsing browser launch flags after the option terminator', () => {
+    expect(resolveBrowserLaunchFlagResolution(['glm', '--', '--browser', 'literal'])).toEqual({
+      override: undefined,
+      argsWithoutFlags: ['glm', '--', '--browser', 'literal'],
+    });
+  });
+
   it('resolves browser exposure from saved policy and one-run overrides', () => {
     expect(resolveBrowserExposure({ enabled: true, policy: 'auto' })).toMatchObject({
       exposeByDefault: true,

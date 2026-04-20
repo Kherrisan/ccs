@@ -148,6 +148,18 @@ describe('completion backend', () => {
     expect(suggestionValues(['browser', 'doctor'])).toEqual(
       expect.arrayContaining(['--help', '-h'])
     );
+    expect(suggestionValues(['browser', 'enable'])).toEqual(
+      expect.arrayContaining(['claude', 'codex', 'all'])
+    );
+    expect(suggestionValues(['browser', 'policy'])).toEqual(
+      expect.arrayContaining(['--all', '--claude', '--codex'])
+    );
+    expect(suggestionValues(['browser', 'policy', '--all'])).toEqual(
+      expect.arrayContaining(['auto', 'manual'])
+    );
+    expect(suggestionValues(['codex'])).toEqual(
+      expect.arrayContaining(['--browser', '--no-browser'])
+    );
   });
 
   test('treats cursor as a provider shortcut in completion', () => {

@@ -20,6 +20,10 @@ interface BrowserRouteBody {
   };
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 function isValidBrowserPolicy(value: string): value is 'auto' | 'manual' {
   return value === 'auto' || value === 'manual';
 }
@@ -56,23 +60,47 @@ router.get('/status', async (_req: Request, res: Response): Promise<void> => {
 });
 
 router.put('/', async (req: Request, res: Response): Promise<void> => {
-  if (
-    req.body === null ||
-    req.body === undefined ||
-    typeof req.body !== 'object' ||
-    Array.isArray(req.body)
-  ) {
+  if (!isPlainObject(req.body)) {
     res.status(400).json({ error: 'Invalid request body. Must be an object.' });
     return;
   }
 
-  const { claude, codex } = req.body as BrowserRouteBody;
-  if (claude && (typeof claude !== 'object' || Array.isArray(claude))) {
+  const body = req.body as Record<string, unknown>;
+  const rootKeys = Object.keys(body);
+  const unknownRootKeys = rootKeys.filter((key) => key !== 'claude' && key !== 'codex');
+  if (unknownRootKeys.length > 0) {
+    res.status(400).json({
+      error: `Unknown browser config field(s): ${unknownRootKeys.join(', ')}.`,
+    });
+    return;
+  }
+
+  const { claude, codex } = body as BrowserRouteBody;
+  if (Object.prototype.hasOwnProperty.call(body, 'claude') && !isPlainObject(claude)) {
     res.status(400).json({ error: 'Invalid value for claude. Must be an object.' });
     return;
   }
-  if (codex && (typeof codex !== 'object' || Array.isArray(codex))) {
+  if (Object.prototype.hasOwnProperty.call(body, 'codex') && !isPlainObject(codex)) {
     res.status(400).json({ error: 'Invalid value for codex. Must be an object.' });
+    return;
+  }
+  const unknownClaudeKeys = Object.keys(claude ?? {}).filter(
+    (key) =>
+      key !== 'enabled' && key !== 'policy' && key !== 'userDataDir' && key !== 'devtoolsPort'
+  );
+  if (unknownClaudeKeys.length > 0) {
+    res.status(400).json({
+      error: `Unknown claude browser field(s): ${unknownClaudeKeys.join(', ')}.`,
+    });
+    return;
+  }
+  const unknownCodexKeys = Object.keys(codex ?? {}).filter(
+    (key) => key !== 'enabled' && key !== 'policy'
+  );
+  if (unknownCodexKeys.length > 0) {
+    res.status(400).json({
+      error: `Unknown codex browser field(s): ${unknownCodexKeys.join(', ')}.`,
+    });
     return;
   }
   if (claude?.enabled !== undefined && typeof claude.enabled !== 'boolean') {

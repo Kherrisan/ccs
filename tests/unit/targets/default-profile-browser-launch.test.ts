@@ -431,4 +431,86 @@ server.listen(0, '127.0.0.1', () => {
       }
     }
   });
+
+  it('keeps Claude browser attach hidden under manual policy until --browser is passed', async () => {
+    if (process.platform === 'win32') return;
+
+    const mockServerScriptPath = path.join(tmpHome, 'mock-devtools-server-manual-default.js');
+    const mockServerPortPath = path.join(tmpHome, 'mock-devtools-port-manual-default.txt');
+    fs.writeFileSync(
+      mockServerScriptPath,
+      `const { createServer } = require('http');
+const fs = require('fs');
+const server = createServer((req, res) => {
+  if (req.url === '/json/version') {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ Browser: 'Chrome/136.0.0.0', webSocketDebuggerUrl: 'ws://127.0.0.1/devtools/browser/manual-default-target' }));
+    return;
+  }
+  res.writeHead(404);
+  res.end('not found');
+});
+server.listen(0, '127.0.0.1', () => {
+  const address = server.address();
+  fs.writeFileSync(${JSON.stringify(mockServerPortPath)}, String(address.port), 'utf8');
+});
+`,
+      'utf8'
+    );
+
+    devtoolsServer = spawn(process.execPath, [mockServerScriptPath], {
+      stdio: 'ignore',
+      env: baseEnv,
+    });
+
+    const port = await waitForMockDevtoolsPort(mockServerPortPath);
+    await waitForDevtoolsVersionEndpoint(port);
+
+    fs.mkdirSync(browserProfileDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(browserProfileDir, 'DevToolsActivePort'),
+      `${port}\n/devtools/browser/manual-default-target`,
+      'utf8'
+    );
+
+    const originalCcsHome = process.env.CCS_HOME;
+    process.env.CCS_HOME = tmpHome;
+
+    try {
+      mutateUnifiedConfig((config) => {
+        config.browser = {
+          claude: {
+            enabled: true,
+            policy: 'manual',
+            user_data_dir: browserProfileDir,
+            devtools_port: Number.parseInt(port, 10),
+          },
+          codex: {
+            enabled: true,
+            policy: 'auto',
+          },
+        };
+      });
+
+      const hiddenResult = runCcs(['default', 'smoke'], {
+        ...baseEnv,
+      });
+      expect(hiddenResult.status).toBe(0);
+      expect(fs.readFileSync(claudeArgsLogPath, 'utf8')).not.toContain(BROWSER_PROMPT_SNIPPET);
+      expect(fs.readFileSync(claudeEnvLogPath, 'utf8')).not.toContain(browserProfileDir);
+
+      const forcedResult = runCcs(['default', '--browser', 'smoke'], {
+        ...baseEnv,
+      });
+      expect(forcedResult.status).toBe(0);
+      expect(fs.readFileSync(claudeArgsLogPath, 'utf8')).toContain(BROWSER_PROMPT_SNIPPET);
+      expect(fs.readFileSync(claudeEnvLogPath, 'utf8')).toContain(browserProfileDir);
+    } finally {
+      if (originalCcsHome !== undefined) {
+        process.env.CCS_HOME = originalCcsHome;
+      } else {
+        delete process.env.CCS_HOME;
+      }
+    }
+  });
 });

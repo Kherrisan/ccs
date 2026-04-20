@@ -305,6 +305,8 @@ export const PROVIDER_FLAGS = [
   '--effort',
   '--1m',
   '--no-1m',
+  '--browser',
+  '--no-browser',
   '--logout',
   '--headless',
   '--port-forward',

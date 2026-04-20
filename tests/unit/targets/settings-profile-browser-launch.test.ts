@@ -389,4 +389,92 @@ server.listen(0, '127.0.0.1', () => {
       }
     }
   });
+
+  it('keeps settings-profile Claude attach hidden under manual policy until --browser is passed', async () => {
+    if (process.platform === 'win32') return;
+
+    const mockServerScriptPath = path.join(tmpHome, 'mock-devtools-server-manual-settings.js');
+    const mockServerPortPath = path.join(tmpHome, 'mock-devtools-port-manual-settings.txt');
+    fs.writeFileSync(
+      mockServerScriptPath,
+      `const { createServer } = require('http');
+const fs = require('fs');
+const server = createServer((req, res) => {
+  if (req.url === '/json/version') {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ Browser: 'Chrome/136.0.0.0', webSocketDebuggerUrl: 'ws://127.0.0.1/devtools/browser/manual-settings-target' }));
+    return;
+  }
+  res.writeHead(404);
+  res.end('not found');
+});
+server.listen(0, '127.0.0.1', () => {
+  const address = server.address();
+  fs.writeFileSync(${JSON.stringify(mockServerPortPath)}, String(address.port), 'utf8');
+});
+`,
+      'utf8'
+    );
+
+    devtoolsServer = spawn(process.execPath, [mockServerScriptPath], {
+      stdio: 'ignore',
+      env: baseEnv,
+    });
+
+    const startDeadline = Date.now() + 5000;
+    while (!fs.existsSync(mockServerPortPath)) {
+      if (Date.now() > startDeadline) {
+        throw new Error('Timed out waiting for mock DevTools server to start');
+      }
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    const port = fs.readFileSync(mockServerPortPath, 'utf8').trim();
+
+    fs.mkdirSync(browserProfileDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(browserProfileDir, 'DevToolsActivePort'),
+      `${port}\n/devtools/browser/manual-settings-target`,
+      'utf8'
+    );
+
+    const originalCcsHome = process.env.CCS_HOME;
+    process.env.CCS_HOME = tmpHome;
+
+    try {
+      mutateUnifiedConfig((config) => {
+        config.browser = {
+          claude: {
+            enabled: true,
+            policy: 'manual',
+            user_data_dir: browserProfileDir,
+            devtools_port: Number.parseInt(port, 10),
+          },
+          codex: {
+            enabled: true,
+            policy: 'auto',
+          },
+        };
+      });
+
+      const hiddenResult = runCcs(['glm', 'smoke'], {
+        ...baseEnv,
+      });
+      expect(hiddenResult.status).toBe(0);
+      expect(fs.readFileSync(claudeArgsLogPath, 'utf8')).not.toContain(BROWSER_PROMPT_SNIPPET);
+      expect(fs.readFileSync(claudeEnvLogPath, 'utf8')).not.toContain(browserProfileDir);
+
+      const forcedResult = runCcs(['glm', '--browser', 'smoke'], {
+        ...baseEnv,
+      });
+      expect(forcedResult.status).toBe(0);
+      expect(fs.readFileSync(claudeArgsLogPath, 'utf8')).toContain(BROWSER_PROMPT_SNIPPET);
+      expect(fs.readFileSync(claudeEnvLogPath, 'utf8')).toContain(browserProfileDir);
+    } finally {
+      if (originalCcsHome !== undefined) {
+        process.env.CCS_HOME = originalCcsHome;
+      } else {
+        delete process.env.CCS_HOME;
+      }
+    }
+  });
 });
