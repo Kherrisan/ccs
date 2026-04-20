@@ -190,7 +190,10 @@ function getSuggestionsForCommand(tokensBeforeCurrent: string[]): CompletionSugg
       return completeSubcommands([], COMMAND_FLAG_SUGGESTIONS.docker);
     case 'browser':
       if (!subcommand || subcommand.startsWith('-')) {
-        return completeSubcommands(['setup', 'status', 'doctor'], ['--help', '-h']);
+        return completeSubcommands(
+          ['setup', 'status', 'doctor', 'policy', 'enable', 'disable'],
+          ['--help', '-h']
+        );
       }
       if (subcommand === 'setup' || subcommand === 'doctor') {
         return completeSubcommands([], ['--help', '-h']);

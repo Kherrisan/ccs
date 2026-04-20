@@ -88,11 +88,13 @@ function persistBrowserSetupConfig(deps: BrowserSetupDeps, currentConfig: Browse
     config.browser = {
       claude: {
         enabled: true,
+        policy: existingBrowser.claude.policy,
         user_data_dir: currentUserDataDir || getRecommendedBrowserUserDataDir(),
         devtools_port: currentConfig.claude.devtools_port,
       },
       codex: {
         enabled: existingBrowser.codex.enabled,
+        policy: existingBrowser.codex.policy,
       },
     };
   });

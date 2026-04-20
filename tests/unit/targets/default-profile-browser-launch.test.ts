@@ -270,11 +270,13 @@ server.listen(0, '127.0.0.1', () => {
         config.browser = {
           claude: {
             enabled: true,
+            policy: 'auto',
             user_data_dir: '',
             devtools_port: 43123,
           },
           codex: {
             enabled: true,
+            policy: 'auto',
           },
         };
       });
@@ -321,11 +323,13 @@ server.listen(0, '127.0.0.1', () => {
         config.browser = {
           claude: {
             enabled: true,
+            policy: 'auto',
             user_data_dir: '',
             devtools_port: unreachablePort,
           },
           codex: {
             enabled: true,
+            policy: 'auto',
           },
         };
       });
@@ -396,11 +400,13 @@ server.listen(0, '127.0.0.1', () => {
         config.browser = {
           claude: {
             enabled: true,
+            policy: 'auto',
             user_data_dir: browserProfileDir,
             devtools_port: Number.parseInt(port, 10),
           },
           codex: {
             enabled: true,
+            policy: 'auto',
           },
         };
       });

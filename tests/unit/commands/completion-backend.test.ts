@@ -142,7 +142,7 @@ describe('completion backend', () => {
 
   test('suggests browser subcommands and fix/setup flags', () => {
     expect(suggestionValues(['browser'])).toEqual(
-      expect.arrayContaining(['setup', 'status', 'doctor'])
+      expect.arrayContaining(['setup', 'status', 'doctor', 'policy', 'enable', 'disable'])
     );
     expect(suggestionValues(['browser', 'setup'])).toEqual(expect.arrayContaining(['--help', '-h']));
     expect(suggestionValues(['browser', 'doctor'])).toEqual(

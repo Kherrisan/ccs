@@ -205,11 +205,13 @@ process.exit(0);
         config.browser = {
           claude: {
             enabled: false,
+            policy: 'auto',
             user_data_dir: '',
             devtools_port: 9222,
           },
           codex: {
             enabled: false,
+            policy: 'auto',
           },
         };
       });
@@ -233,6 +235,114 @@ process.exit(0);
         delete process.env.CCS_HOME;
       }
     }
+  });
+
+  it('keeps Codex browser MCP overrides off by default when policy is manual', () => {
+    if (process.platform === 'win32') return;
+
+    const originalCcsHome = process.env.CCS_HOME;
+    process.env.CCS_HOME = tmpHome;
+
+    try {
+      mutateUnifiedConfig((config) => {
+        config.browser = {
+          claude: {
+            enabled: false,
+            policy: 'auto',
+            user_data_dir: '',
+            devtools_port: 9222,
+          },
+          codex: {
+            enabled: true,
+            policy: 'manual',
+          },
+        };
+      });
+
+      const result = runCcs(['default', '--target', 'codex', 'fix failing tests'], {
+        ...process.env,
+        CI: '1',
+        NO_COLOR: '1',
+        CCS_HOME: tmpHome,
+        CCS_CODEX_PATH: fakeCodexPath,
+        CCS_TEST_CODEX_ARGS_OUT: codexArgsLogPath,
+      });
+
+      expect(result.status).toBe(0);
+      const calls = readLoggedCodexCalls(codexArgsLogPath);
+      expect(calls).toEqual([['fix failing tests']]);
+    } finally {
+      if (originalCcsHome !== undefined) {
+        process.env.CCS_HOME = originalCcsHome;
+      } else {
+        delete process.env.CCS_HOME;
+      }
+    }
+  });
+
+  it('forces Codex browser MCP overrides on for one launch when --browser is passed', () => {
+    if (process.platform === 'win32') return;
+
+    const originalCcsHome = process.env.CCS_HOME;
+    process.env.CCS_HOME = tmpHome;
+
+    try {
+      mutateUnifiedConfig((config) => {
+        config.browser = {
+          claude: {
+            enabled: false,
+            policy: 'auto',
+            user_data_dir: '',
+            devtools_port: 9222,
+          },
+          codex: {
+            enabled: true,
+            policy: 'manual',
+          },
+        };
+      });
+
+      const result = runCcs(['default', '--target', 'codex', '--browser', 'fix failing tests'], {
+        ...process.env,
+        CI: '1',
+        NO_COLOR: '1',
+        CCS_HOME: tmpHome,
+        CCS_CODEX_PATH: fakeCodexPath,
+        CCS_TEST_CODEX_ARGS_OUT: codexArgsLogPath,
+      });
+
+      expect(result.status).toBe(0);
+      const calls = readLoggedCodexCalls(codexArgsLogPath);
+      expect(calls[1]).toEqual(
+        expect.arrayContaining([
+          'mcp_servers.ccs_browser.enabled=true',
+          'fix failing tests',
+        ])
+      );
+    } finally {
+      if (originalCcsHome !== undefined) {
+        process.env.CCS_HOME = originalCcsHome;
+      } else {
+        delete process.env.CCS_HOME;
+      }
+    }
+  });
+
+  it('suppresses Codex browser MCP overrides for one launch when --no-browser is passed', () => {
+    if (process.platform === 'win32') return;
+
+    const result = runCcs(['default', '--target', 'codex', '--no-browser', 'fix failing tests'], {
+      ...process.env,
+      CI: '1',
+      NO_COLOR: '1',
+      CCS_HOME: tmpHome,
+      CCS_CODEX_PATH: fakeCodexPath,
+      CCS_TEST_CODEX_ARGS_OUT: codexArgsLogPath,
+    });
+
+    expect(result.status).toBe(0);
+    const calls = readLoggedCodexCalls(codexArgsLogPath);
+    expect(calls).toEqual([['fix failing tests']]);
   });
 
   it('keeps browser MCP runtime overrides when CCS_THINKING is ignored for native Codex default mode', () => {

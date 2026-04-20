@@ -123,7 +123,7 @@ export const ROOT_COMMAND_CATALOG: readonly RootCommandEntry[] = [
   },
   {
     name: 'browser',
-    summary: 'Set up or inspect Claude Browser Attach and Codex Browser Tools readiness',
+    summary: 'Set up, inspect, and control Claude Browser Attach and Codex Browser Tools',
     group: 'runtime',
     visibility: 'public',
   },
@@ -320,7 +320,7 @@ export const COMMAND_FLAG_SUGGESTIONS: Readonly<Record<string, readonly string[]
   config: ['--help', '-h', '--port', '-p', '--host', '-H', '--dev'],
   cursor: ['--help', '-h'],
   doctor: ['--fix', '-f', '--help', '-h'],
-  browser: ['setup', 'status', 'doctor', '--help', '-h'],
+  browser: ['setup', 'status', 'doctor', 'policy', 'enable', 'disable', '--help', '-h'],
   docker: ['--help', '-h', '--host'],
   env: ['--format', '--shell', '--ide', '--help', '-h'],
   migrate: MIGRATE_FLAGS,

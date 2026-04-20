@@ -46,6 +46,10 @@ The Browser screen exposes two sections:
   - enable/disable CCS-managed browser tooling for Codex-target launches
   - review whether the detected Codex build supports managed browser overrides
 
+Browser policy controls are CLI-first in this release. The dashboard remains the shared setup and
+status surface, while `ccs browser policy` is the authoritative place to decide whether browser
+tooling is auto-exposed or kept manual by default.
+
 ### Via CLI
 
 ```bash
@@ -53,10 +57,13 @@ ccs help browser
 ccs browser setup
 ccs browser status
 ccs browser doctor
+ccs browser policy
+ccs browser policy --all manual
 ```
 
 Use `ccs browser setup` for the primary one-command setup path. Use `ccs browser status` for
-the current state and `ccs browser doctor` for read-only troubleshooting guidance.
+the current state, `ccs browser doctor` for read-only troubleshooting guidance, and
+`ccs browser policy` to control default browser exposure.
 
 ### Via Config File
 
@@ -66,17 +73,45 @@ Edit `~/.ccs/config.yaml`:
 browser:
   claude:
     enabled: false
+    policy: auto
     user_data_dir: "~/.ccs/browser/chrome-user-data"
     devtools_port: 9222
   codex:
     enabled: true
+    policy: auto
 ```
 
 Notes:
 
+- `claude.policy` and `codex.policy` accept `auto` or `manual`
 - `claude.user_data_dir` is a **Chrome user-data directory**, not a display-name browser profile
 - `claude.devtools_port` is the expected remote debugging port for attach mode
 - `codex.enabled` controls whether CCS injects browser tooling into Codex-target launches
+- `manual` keeps the lane configured but hidden until a launch explicitly opts in with `--browser`
+
+## Runtime Policy Controls
+
+CCS now separates **lane enablement** from **default exposure policy**:
+
+- `enabled: false`
+  - the lane is off
+- `enabled: true` + `policy: auto`
+  - the lane is exposed automatically on matching launches
+- `enabled: true` + `policy: manual`
+  - the lane stays configured, but CCS keeps browser tooling hidden unless the current launch uses
+    `--browser`
+
+One-run launch overrides:
+
+```bash
+ccs browser policy --all manual
+ccs glm --browser "inspect the page"
+ccs glm --no-browser "summarize the docs"
+ccs default --target codex --browser "use the browser tools for this run"
+```
+
+- `--browser` forces browser tooling on for the current launch when that lane is enabled
+- `--no-browser` suppresses browser tooling for the current launch even when policy is `auto`
 
 ## Environment Variable Overrides
 

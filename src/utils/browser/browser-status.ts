@@ -1,4 +1,5 @@
 import * as path from 'path';
+import type { BrowserToolPolicy } from '../../config/unified-config-types';
 import { getBrowserConfig } from '../../config/unified-config-loader';
 import { getCcsPathDisplay } from '../config-manager';
 import { getCodexBinaryInfo } from '../../targets/codex-detector';
@@ -17,6 +18,7 @@ import {
 
 export interface ClaudeBrowserStatus {
   enabled: boolean;
+  policy: BrowserToolPolicy;
   source: 'config' | 'CCS_BROWSER_USER_DATA_DIR' | 'CCS_BROWSER_PROFILE_DIR';
   overrideActive: boolean;
   state: 'disabled' | 'path_missing' | 'browser_not_running' | 'endpoint_unreachable' | 'ready';
@@ -34,6 +36,7 @@ export interface ClaudeBrowserStatus {
 
 export interface CodexBrowserStatus {
   enabled: boolean;
+  policy: BrowserToolPolicy;
   state: 'disabled' | 'enabled' | 'unsupported_build';
   title: string;
   detail: string;
@@ -65,6 +68,7 @@ async function buildClaudeBrowserStatus(
   const managedBootstrap = ensureManagedBrowserUserDataDir(effective);
   const base: Omit<ClaudeBrowserStatus, 'state' | 'title' | 'detail' | 'nextStep'> = {
     enabled: effective.enabled,
+    policy: browserConfig.claude.policy,
     source: effective.source,
     overrideActive: effective.overrideActive,
     effectiveUserDataDir: effective.userDataDir,
@@ -171,6 +175,7 @@ function buildCodexBrowserStatus(browserConfig = getBrowserConfig()): CodexBrows
   if (!browserConfig.codex.enabled) {
     return {
       enabled: false,
+      policy: browserConfig.codex.policy,
       state: 'disabled',
       title: 'Codex Browser Tools are disabled.',
       detail: 'CCS will not inject Playwright MCP browser tooling into Codex-target launches.',
@@ -187,6 +192,7 @@ function buildCodexBrowserStatus(browserConfig = getBrowserConfig()): CodexBrows
   if (!binaryInfo || !supportsConfigOverrides) {
     return {
       enabled: true,
+      policy: browserConfig.codex.policy,
       state: 'unsupported_build',
       title: 'Codex Browser Tools need a Codex build with --config override support.',
       detail: binaryInfo
@@ -202,6 +208,7 @@ function buildCodexBrowserStatus(browserConfig = getBrowserConfig()): CodexBrows
 
   return {
     enabled: true,
+    policy: browserConfig.codex.policy,
     state: 'enabled',
     title: 'Codex Browser Tools are enabled.',
     detail: 'CCS can inject the managed Playwright MCP overrides into Codex-target launches.',

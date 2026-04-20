@@ -98,11 +98,13 @@ describe('browser status', () => {
       config.browser = {
         claude: {
           enabled: true,
+          policy: 'auto',
           user_data_dir: '',
           devtools_port: 9222,
         },
         codex: {
           enabled: true,
+          policy: 'auto',
         },
       };
     });
@@ -138,11 +140,13 @@ describe('browser status', () => {
       config.browser = {
         claude: {
           enabled: true,
+          policy: 'auto',
           user_data_dir: '/config-browser',
           devtools_port: 9333,
         },
         codex: {
           enabled: true,
+          policy: 'auto',
         },
       };
     });
@@ -185,11 +189,13 @@ describe('browser status', () => {
       config.browser = {
         claude: {
           enabled: true,
+          policy: 'auto',
           user_data_dir: '',
           devtools_port: 9222,
         },
         codex: {
           enabled: true,
+          policy: 'auto',
         },
       };
     });
@@ -227,11 +233,13 @@ describe('browser status', () => {
       config.browser = {
         claude: {
           enabled: true,
+          policy: 'auto',
           user_data_dir: '/tmp/browser-profile',
           devtools_port: 9222,
         },
         codex: {
           enabled: true,
+          policy: 'auto',
         },
       };
     });
@@ -294,11 +302,13 @@ describe('browser status', () => {
       config.browser = {
         claude: {
           enabled: true,
+          policy: 'auto',
           user_data_dir: '/tmp/config-browser',
           devtools_port: 9222,
         },
         codex: {
           enabled: true,
+          policy: 'auto',
         },
       };
     });
