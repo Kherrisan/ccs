@@ -284,7 +284,10 @@ export class DeltaAccumulator {
 
   getToolCallBlockIndex(toolCallIndex: number): number {
     const toolCall = this.toolCallsIndex[toolCallIndex];
-    return toolCall?.blockIndex ?? 0;
+    if (!toolCall || toolCall.blockIndex < 0) {
+      throw new Error(`Tool call ${toolCallIndex} does not have an assigned content block`);
+    }
+    return toolCall.blockIndex;
   }
 
   getUnstoppedBlocks(): ContentBlock[] {

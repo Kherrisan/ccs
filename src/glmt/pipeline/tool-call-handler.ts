@@ -5,20 +5,12 @@
  * - Process tool call deltas from OpenAI
  * - Generate tool_use content blocks for Anthropic format
  * - Handle input_json_delta events
- * - Close previous tool_use blocks before starting new ones (Anthropic sequential block requirement)
  */
 
 import type { DeltaAccumulator } from '../delta-accumulator';
 import type { OpenAIToolCallDelta, OpenAIToolCall, ContentBlock, AnthropicSSEEvent } from './types';
-import { ResponseBuilder } from './response-builder';
 
 export class ToolCallHandler {
-  private responseBuilder: ResponseBuilder;
-
-  constructor() {
-    this.responseBuilder = new ResponseBuilder(false);
-  }
-
   processToolCalls(toolCalls: OpenAIToolCall[]): ContentBlock[] {
     const content: ContentBlock[] = [];
 
@@ -54,12 +46,8 @@ export class ToolCallHandler {
       accumulator.addToolCallDelta(toolCallDelta);
 
       if (isNewToolCall) {
-        const previousBlock = accumulator.getCurrentBlock();
-        if (previousBlock && previousBlock.type === 'tool_use' && !previousBlock.stopped) {
-          events.push(this.responseBuilder.createContentBlockStopEvent(previousBlock));
-          previousBlock.stopped = true;
-        }
-
+        // OpenAI may interleave tool_call fragments across chunks, so blocks must stay open
+        // until the stream finalizes. Closing on a later index truncates earlier tool input.
         const block = accumulator.startBlock('tool_use');
         const toolCall = accumulator.getToolCall(toolCallDelta.index);
         accumulator.setToolCallBlockIndex(toolCallDelta.index, block.index);

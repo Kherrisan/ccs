@@ -457,8 +457,34 @@ function transformMessages(messagesValue: unknown): OpenAIMessage[] {
     }
 
     if (role === 'user') {
-      const preToolResultParts: OpenAIContentPart[] = [];
+      const userParts: OpenAIContentPart[] = [];
+      const followUpParts: OpenAIContentPart[] = [];
       const resolvedToolUseIds = new Set<string>();
+
+      const handleUserPart = (
+        part: OpenAIContentPart,
+        blockIndex: number,
+        kind: 'text' | 'image'
+      ) => {
+        if (!pendingToolUseIds || pendingToolUseIds.size === 0) {
+          userParts.push(part);
+          return;
+        }
+
+        if (resolvedToolUseIds.size === 0) {
+          throw new Error(
+            `messages[${messageIndex}].content[${blockIndex}] ${kind} is not allowed before tool_result blocks for pending tool_use ids`
+          );
+        }
+
+        if (resolvedToolUseIds.size !== pendingToolUseIds.size) {
+          throw new Error(
+            `messages[${messageIndex}].content[${blockIndex}] ${kind} is not allowed between tool_result blocks for pending tool_use ids`
+          );
+        }
+
+        followUpParts.push(part);
+      };
 
       content.forEach((block, blockIndex) => {
         const parsed = assertObject(
@@ -472,25 +498,16 @@ function transformMessages(messagesValue: unknown): OpenAIMessage[] {
 
         if (parsed.type === 'text') {
           const text = typeof parsed.text === 'string' ? parsed.text : '';
-          if (pendingToolUseIds && pendingToolUseIds.size > 0 && !resolvedToolUseIds.size) {
-            preToolResultParts.push({ type: 'text', text });
-          } else {
-            translatedMessages.push({ role: 'user', content: text });
-          }
+          handleUserPart({ type: 'text', text }, blockIndex, 'text');
           return;
         }
 
         if (isImageBlock(parsed)) {
-          if (pendingToolUseIds && pendingToolUseIds.size > 0 && !resolvedToolUseIds.size) {
-            preToolResultParts.push(
-              toImagePart(parsed, `messages[${messageIndex}].content[${blockIndex}]`)
-            );
-          } else {
-            translatedMessages.push({
-              role: 'user',
-              content: [toImagePart(parsed, `messages[${messageIndex}].content[${blockIndex}]`)],
-            });
-          }
+          handleUserPart(
+            toImagePart(parsed, `messages[${messageIndex}].content[${blockIndex}]`),
+            blockIndex,
+            'image'
+          );
           return;
         }
 
@@ -555,8 +572,12 @@ function transformMessages(messagesValue: unknown): OpenAIMessage[] {
         );
       }
 
-      if (preToolResultParts.length > 0) {
-        flushUserContent(translatedMessages, preToolResultParts);
+      if (userParts.length > 0) {
+        flushUserContent(translatedMessages, userParts);
+      }
+
+      if (followUpParts.length > 0) {
+        flushUserContent(translatedMessages, followUpParts);
       }
       return;
     }

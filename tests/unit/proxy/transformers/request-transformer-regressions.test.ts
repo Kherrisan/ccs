@@ -120,7 +120,47 @@ describe('ProxyRequestTransformer regressions', () => {
           },
         ],
       })
+    ).toThrow('text is not allowed before tool_result blocks for pending tool_use ids');
+
+    expect(() =>
+      new ProxyRequestTransformer().transform({
+        messages: [
+          {
+            role: 'assistant',
+            content: [{ type: 'tool_use', id: 'toolu_1', name: 'vision', input: { detail: 'high' } }],
+          },
+          {
+            role: 'user',
+            content: [
+              { type: 'tool_result', tool_use_id: 'toolu_1', content: 'result' },
+              { type: 'text', text: 'follow-up' },
+            ],
+          },
+        ],
+      })
     ).not.toThrow();
+
+    expect(() =>
+      new ProxyRequestTransformer().transform({
+        messages: [
+          {
+            role: 'assistant',
+            content: [
+              { type: 'tool_use', id: 'toolu_1', name: 'search', input: { q: 'docs' } },
+              { type: 'tool_use', id: 'toolu_2', name: 'open', input: { url: 'https://example.com' } },
+            ],
+          },
+          {
+            role: 'user',
+            content: [
+              { type: 'tool_result', tool_use_id: 'toolu_1', content: 'partial' },
+              { type: 'text', text: 'follow-up' },
+              { type: 'tool_result', tool_use_id: 'toolu_2', content: 'done' },
+            ],
+          },
+        ],
+      })
+    ).toThrow('text is not allowed between tool_result blocks for pending tool_use ids');
 
     expect(() =>
       new ProxyRequestTransformer().transform({

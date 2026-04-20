@@ -23,10 +23,34 @@ function startMockUpstream(): Promise<void> {
         body += chunk.toString();
       }
       upstreamBody = JSON.parse(body);
-      const parsed = upstreamBody as { stream?: boolean };
+      const parsed = upstreamBody as {
+        stream?: boolean;
+        messages?: Array<{ role?: string; content?: string | Array<{ type?: string; text?: string }> }>;
+      };
 
       if (parsed.stream) {
         res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+
+        if (parsed.messages?.[0]?.content === 'interleaved tool fragments') {
+          res.write(
+            'data: {"id":"chatcmpl_1","model":"hf-model","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"search"}}]}}]}\n\n'
+          );
+          res.write(
+            'data: {"id":"chatcmpl_1","model":"hf-model","choices":[{"index":0,"delta":{"tool_calls":[{"index":1,"id":"call_2","type":"function","function":{"name":"open"}}]}}]}\n\n'
+          );
+          res.write(
+            'data: {"id":"chatcmpl_1","model":"hf-model","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\\"path\\":\\"a.ts\\"}"}}]}}]}\n\n'
+          );
+          res.write(
+            'data: {"id":"chatcmpl_1","model":"hf-model","choices":[{"index":0,"delta":{"tool_calls":[{"index":1,"function":{"arguments":"{\\"path\\":\\"b.ts\\"}"}}]}}]}\n\n'
+          );
+          res.write(
+            'data: {"id":"chatcmpl_1","model":"hf-model","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":9,"completion_tokens":4}}\n\n'
+          );
+          res.end('data: [DONE]\n\n');
+          return;
+        }
+
         res.write(
           'data: {"id":"chatcmpl_1","model":"hf-model","choices":[{"index":0,"delta":{"role":"assistant","content":"Hello"}}]}\n\n'
         );
@@ -356,6 +380,66 @@ describe('openai proxy messages endpoint', () => {
     expect(userAfterTool?.[1]?.content).toBe('What should I do next?');
   });
 
+  it('rejects text before tool_result blocks when tool results are pending', async () => {
+    const response = await requestProxy({
+      model: 'hf-model',
+      stream: false,
+      messages: [
+        { role: 'user', content: 'search docs' },
+        {
+          role: 'assistant',
+          content: [{ type: 'tool_use', id: 'toolu_01', name: 'search', input: { q: 'docs' } }],
+        },
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: 'before' },
+            { type: 'tool_result', tool_use_id: 'toolu_01', content: 'found 3 docs' },
+          ],
+        },
+      ],
+    });
+
+    const body = (await response.json()) as { error?: { type?: string; message?: string } };
+    expect(response.status).toBe(400);
+    expect(body.error?.type).toBe('invalid_request_error');
+    expect(body.error?.message).toContain(
+      'text is not allowed before tool_result blocks for pending tool_use ids'
+    );
+  });
+
+  it('rejects follow-up text between pending tool_result blocks', async () => {
+    const response = await requestProxy({
+      model: 'hf-model',
+      stream: false,
+      messages: [
+        { role: 'user', content: 'read both files' },
+        {
+          role: 'assistant',
+          content: [
+            { type: 'tool_use', id: 'toolu_01', name: 'Read', input: { file_path: 'a.ts' } },
+            { type: 'tool_use', id: 'toolu_02', name: 'Read', input: { file_path: 'b.ts' } },
+          ],
+        },
+        {
+          role: 'user',
+          content: [
+            { type: 'tool_result', tool_use_id: 'toolu_01', content: 'content of a' },
+            { type: 'text', text: 'Now compare them' },
+            { type: 'tool_result', tool_use_id: 'toolu_02', content: 'content of b' },
+          ],
+        },
+      ],
+    });
+
+    const body = (await response.json()) as { error?: { type?: string; message?: string } };
+    expect(response.status).toBe(400);
+    expect(body.error?.type).toBe('invalid_request_error');
+    expect(body.error?.message).toContain(
+      'text is not allowed between tool_result blocks for pending tool_use ids'
+    );
+  });
+
   it('translates parallel tool calls with streaming', async () => {
     const response = await requestProxy({
       model: 'hf-model',
@@ -408,5 +492,37 @@ describe('openai proxy messages endpoint', () => {
     expect(toolMsgs?.length).toBe(2);
     expect(toolMsgs?.[0]?.tool_call_id).toBe('toolu_01');
     expect(toolMsgs?.[1]?.tool_call_id).toBe('toolu_02');
+  });
+
+  it('streams interleaved tool call fragments without premature block stops', async () => {
+    const response = await requestProxy({
+      model: 'hf-model',
+      stream: true,
+      messages: [{ role: 'user', content: [{ type: 'text', text: 'interleaved tool fragments' }] }],
+      tools: [
+        {
+          name: 'search',
+          description: 'Search docs',
+          input_schema: { type: 'object', properties: { path: { type: 'string' } } },
+        },
+        {
+          name: 'open',
+          description: 'Open a file',
+          input_schema: { type: 'object', properties: { path: { type: 'string' } } },
+        },
+      ],
+    });
+
+    const body = await response.text();
+    expect(response.status).toBe(200);
+    expect(body.match(/event: content_block_start/g)?.length).toBe(2);
+    expect(body.match(/event: content_block_stop/g)?.length).toBe(2);
+
+    const stopIndex = body.indexOf('event: content_block_stop');
+    const deltaAIndex = body.indexOf('"partial_json":"{\\"path\\":\\"a.ts\\"}"');
+    const deltaBIndex = body.indexOf('"partial_json":"{\\"path\\":\\"b.ts\\"}"');
+    expect(deltaAIndex).toBeGreaterThan(-1);
+    expect(deltaBIndex).toBeGreaterThan(-1);
+    expect(stopIndex).toBeGreaterThan(deltaBIndex);
   });
 });
