@@ -23,7 +23,7 @@ enabled. A recent Chrome update alone is not sufficient.
 The managed `ccs-browser` runtime currently exposes seven tool groups:
 
 - **Session inspection**: `browser_get_session_info`, `browser_get_url_and_title`, `browser_get_visible_text`, `browser_get_dom_snapshot`
-- **Navigation and interaction**: `browser_navigate`, `browser_click`, `browser_type`, `browser_press_key`, `browser_scroll`, `browser_select_page`, `browser_open_page`, `browser_close_page`, `browser_take_screenshot`, `browser_drag_element`, `browser_pointer_action`
+- **Navigation and interaction**: `browser_navigate`, `browser_click`, `browser_type`, `browser_press_key`, `browser_scroll`, `browser_select_page`, `browser_open_page`, `browser_close_page`, `browser_take_screenshot`, `browser_drag_element`, `browser_pointer_action`, `browser_start_replay`, `browser_get_replay`, `browser_cancel_replay`
 - **Hover diagnostics**: `browser_hover`, `browser_query`, `browser_take_element_screenshot`
 - **Readiness and page evaluation**: `browser_wait_for`, `browser_eval`
 - **Event observation**: `browser_wait_for_event`
@@ -100,6 +100,14 @@ Phase 10A capability details:
 - Phase 10A records structured steps only; replay and orchestration remain out of scope for this phase
 - high-level recording prefers `click`, `type`, `press_key`, `scroll`, and `drag_element`; unresolved interactions may be represented as `pointer_action` or warnings
 - only one active recording session is allowed per MCP runtime; if the recorded page is closed, the session stops and keeps the captured result plus a warning summary
+
+Phase 10B capability details:
+
+- `browser_start_replay`, `browser_get_replay`, and `browser_cancel_replay` add a minimal replay workflow that consumes Phase 10A-compatible structured steps
+- replay state is session-local and is not persisted across runtime restarts
+- replay executes steps sequentially and stops on the first failure
+- replay reuses existing Browser MCP action semantics rather than introducing a new replay DSL
+- only one active replay session is allowed per MCP runtime; orchestration remains out of scope for Phase 10B
 
 Minimal multi-tab workflow examples:
 
