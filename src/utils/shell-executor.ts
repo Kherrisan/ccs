@@ -26,6 +26,28 @@ export function stripAnthropicEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return result;
 }
 
+const ANTHROPIC_ROUTING_ENV_KEYS = new Set([
+  'ANTHROPIC_BASE_URL',
+  'ANTHROPIC_AUTH_TOKEN',
+  'ANTHROPIC_API_KEY',
+]);
+
+/**
+ * Strip inherited Anthropic routing/auth env while preserving model intent.
+ * Used for nested settings-profile Claude launches where `--settings` already
+ * defines the provider transport and the parent process should only lend model
+ * defaults or effort hints.
+ */
+export function stripAnthropicRoutingEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const result: NodeJS.ProcessEnv = {};
+  for (const key of Object.keys(env)) {
+    if (!ANTHROPIC_ROUTING_ENV_KEYS.has(key)) {
+      result[key] = env[key];
+    }
+  }
+  return result;
+}
+
 /**
  * Strip Claude Code nested-session guard env var from a process environment.
  *
@@ -137,14 +159,18 @@ export function execClaude(
   const webSearchEnv = getWebSearchHookEnv();
   const claudeLaunchEnv = getClaudeLaunchEnvOverrides();
 
-  // For account/default profiles, strip ANTHROPIC_* from parent env to prevent
-  // stale proxy config (e.g., from prior CLIProxy sessions) from interfering
-  // with native Claude API routing. Settings-based profiles explicitly inject
-  // their own ANTHROPIC_* values, so they don't need this protection.
+  // Strip inherited ANTHROPIC_* when the launch should not reuse parent routing.
+  // Account/default profiles need full isolation from prior proxy sessions.
+  // Settings profiles can selectively strip only routing/auth when `--settings`
+  // already carries the provider source of truth but the parent model intent
+  // should still flow into nested Team/subagent launches.
   const profileType = envVars?.CCS_PROFILE_TYPE;
-  const baseEnv =
-    profileType === 'account' || profileType === 'default'
-      ? stripAnthropicEnv(process.env)
+  const stripInheritedAnthropicEnv = profileType === 'account' || profileType === 'default';
+  const stripInheritedAnthropicRoutingEnv = envVars?.CCS_STRIP_INHERITED_ANTHROPIC_ENV === '1';
+  const baseEnv = stripInheritedAnthropicEnv
+    ? stripAnthropicEnv(process.env)
+    : stripInheritedAnthropicRoutingEnv
+      ? stripAnthropicRoutingEnv(process.env)
       : process.env;
 
   // Prepare environment (merge with base env if envVars provided)

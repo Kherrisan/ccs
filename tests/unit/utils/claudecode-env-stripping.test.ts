@@ -336,6 +336,37 @@ describe('CLAUDECODE environment stripping', () => {
     expect(normalizeSpy).toHaveBeenCalledWith(instancePath);
   });
 
+  it('execClaude strips inherited ANTHROPIC routing env but keeps model intent for settings-profile Claude launches', () => {
+    process.env.ANTHROPIC_BASE_URL = 'http://127.0.0.1:8317/api/provider/codex';
+    process.env.ANTHROPIC_AUTH_TOKEN = 'ccs-internal-managed';
+    process.env.ANTHROPIC_API_KEY = 'stale-api-key';
+    process.env.ANTHROPIC_MODEL = 'gpt-5.4';
+    process.env.ANTHROPIC_DEFAULT_OPUS_MODEL = 'gpt-5.4';
+    process.env.ANTHROPIC_DEFAULT_SONNET_MODEL = 'gpt-5.4';
+    process.env.ANTHROPIC_DEFAULT_HAIKU_MODEL = 'gpt-5.4-mini';
+    process.env.ANTHROPIC_SMALL_FAST_MODEL = 'gpt-5-codex-mini';
+
+    execClaude('claude', ['--help'], {
+      CCS_PROFILE_TYPE: 'settings',
+      CCS_STRIP_INHERITED_ANTHROPIC_ENV: '1',
+      CLAUDE_CONFIG_DIR: path.join(os.tmpdir(), 'ccs-settings-profile-instance'),
+      CCS_WEBSEARCH_SKIP: '1',
+    });
+
+    expect(spawnCalls.length).toBeGreaterThan(0);
+    const env = spawnCalls[0].options?.env as NodeJS.ProcessEnv;
+    expect(env.CCS_PROFILE_TYPE).toBe('settings');
+    expect(env.CLAUDE_CONFIG_DIR).toContain('ccs-settings-profile-instance');
+    expect(env.ANTHROPIC_BASE_URL).toBeUndefined();
+    expect(env.ANTHROPIC_AUTH_TOKEN).toBeUndefined();
+    expect(env.ANTHROPIC_API_KEY).toBeUndefined();
+    expect(env.ANTHROPIC_MODEL).toBe('gpt-5.4');
+    expect(env.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe('gpt-5.4');
+    expect(env.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe('gpt-5.4');
+    expect(env.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe('gpt-5.4-mini');
+    expect(env.ANTHROPIC_SMALL_FAST_MODEL).toBe('gpt-5-codex-mini');
+  });
+
   it('headless executor spawn path strips CLAUDECODE before spawn', async () => {
     writeConfigWithAutoUpdatePreference(false);
     process.env.CLAUDECODE = 'nested';
