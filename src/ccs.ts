@@ -1329,6 +1329,10 @@ async function main(): Promise<void> {
             ...imageAnalysisEnv,
             CCS_CURRENT_PROVIDER: '',
             CCS_IMAGE_ANALYSIS_SKIP: '1',
+            CCS_IMAGE_ANALYSIS_RUNTIME_PATH: '',
+            CCS_IMAGE_ANALYSIS_RUNTIME_BASE_URL: '',
+            CCS_IMAGE_ANALYSIS_RUNTIME_API_KEY: '',
+            CCS_IMAGE_ANALYSIS_RUNTIME_ALLOW_SELF_SIGNED: '0',
           };
         } else if (imageAnalysisStatus.proxyReadiness === 'stopped') {
           const ensureServiceResult = await ensureCliproxyService(
