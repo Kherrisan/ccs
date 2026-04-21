@@ -135,6 +135,12 @@ printf "%s\n" "$@" > "${claudeArgsLogPath}"
   printf "port=%s\n" "$CCS_BROWSER_DEVTOOLS_PORT"
   printf "httpUrl=%s\n" "$CCS_BROWSER_DEVTOOLS_HTTP_URL"
   printf "wsUrl=%s\n" "$CCS_BROWSER_DEVTOOLS_WS_URL"
+  printf "stripAnthropic=%s\n" "$CCS_STRIP_INHERITED_ANTHROPIC_ENV"
+  printf "anthropicBaseUrl=%s\n" "$ANTHROPIC_BASE_URL"
+  printf "anthropicAuthToken=%s\n" "$ANTHROPIC_AUTH_TOKEN"
+  printf "anthropicApiKey=%s\n" "$ANTHROPIC_API_KEY"
+  printf "anthropicModel=%s\n" "$ANTHROPIC_MODEL"
+  printf "anthropicSonnet=%s\n" "$ANTHROPIC_DEFAULT_SONNET_MODEL"
 } > "${claudeEnvLogPath}"
 exit 0
 `,
@@ -177,6 +183,44 @@ exit 0
     expect(result.status).toBe(0);
     expect(result.stderr).not.toContain('DevToolsActivePort');
     expect(fs.existsSync(claudeArgsLogPath)).toBe(true);
+  });
+
+  it('passes selective Anthropic env stripping to settings-profile Claude launches while preserving model defaults', () => {
+    if (process.platform === 'win32') return;
+
+    fs.writeFileSync(
+      settingsPath,
+      JSON.stringify(
+        {
+          env: {
+            ANTHROPIC_BASE_URL: 'https://api.z.ai/api/anthropic',
+            ANTHROPIC_AUTH_TOKEN: 'profile-token',
+            ANTHROPIC_MODEL: 'gpt-5.4',
+            ANTHROPIC_DEFAULT_SONNET_MODEL: 'gpt-5.4',
+          },
+        },
+        null,
+        2
+      ) + '\n'
+    );
+
+    const result = runCcs(['glm', 'smoke'], {
+      ...baseEnv,
+      ANTHROPIC_BASE_URL: 'http://127.0.0.1:8317/api/provider/codex',
+      ANTHROPIC_AUTH_TOKEN: 'parent-routing-token',
+      ANTHROPIC_API_KEY: 'parent-api-key',
+      ANTHROPIC_MODEL: 'gpt-5.4',
+      ANTHROPIC_DEFAULT_SONNET_MODEL: 'gpt-5.4',
+    });
+
+    expect(result.status).toBe(0);
+    const launchedEnv = fs.readFileSync(claudeEnvLogPath, 'utf8');
+    expect(launchedEnv).toContain('stripAnthropic=1');
+    expect(launchedEnv).toContain('anthropicBaseUrl=');
+    expect(launchedEnv).toContain('anthropicAuthToken=');
+    expect(launchedEnv).toContain('anthropicApiKey=');
+    expect(launchedEnv).toContain('anthropicModel=gpt-5.4');
+    expect(launchedEnv).toContain('anthropicSonnet=gpt-5.4');
   });
 
   it('does not auto-enable browser reuse for settings-profile launches from env overrides alone', async () => {

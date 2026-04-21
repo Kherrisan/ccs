@@ -1359,8 +1359,20 @@ async function main(): Promise<void> {
         console.error(info(`Global env: ${envNames}`));
       }
 
-      // Explicitly inject effective settings env vars so stale ANTHROPIC_*
-      // values from prior sessions cannot leak into the active profile.
+      // For Claude target launches that already pass `--settings`, keep runtime
+      // env limited to CCS-managed flags so nested Team/subagent sessions do not
+      // inherit profile-specific ANTHROPIC_* routing from the parent process.
+      const claudeRuntimeEnvVars: NodeJS.ProcessEnv = {
+        ...globalEnv,
+        ...(inheritedClaudeConfigDir ? { CLAUDE_CONFIG_DIR: inheritedClaudeConfigDir } : {}),
+        ...webSearchEnv,
+        ...imageAnalysisEnv,
+        ...(browserRuntimeEnv || {}),
+        CCS_PROFILE_TYPE: 'settings',
+        CCS_STRIP_INHERITED_ANTHROPIC_ENV: '1',
+      };
+
+      // Non-Claude targets still need effective credentials injected directly.
       const envVars: NodeJS.ProcessEnv = {
         ...globalEnv,
         ...settingsEnv,
@@ -1472,7 +1484,7 @@ async function main(): Promise<void> {
         settingsPath: expandedSettingsPath,
       });
 
-      execClaude(claudeCli, launchArgs, { ...envVars, ...traceEnv });
+      execClaude(claudeCli, launchArgs, { ...claudeRuntimeEnvVars, ...traceEnv });
     } else if (profileInfo.type === 'account') {
       // NEW FLOW: Account-based profile (work, personal)
       // All platforms: Use instance isolation with CLAUDE_CONFIG_DIR
