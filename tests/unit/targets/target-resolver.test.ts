@@ -158,14 +158,20 @@ describe('resolveTargetType', () => {
 
   it('should detect internal entry target for dedicated package bin entrypoints', () => {
     process.env.CCS_INTERNAL_ENTRY_TARGET = 'droid';
-    process.argv = ['node', 'ccs'];
+    process.argv = ['node', '/usr/local/lib/ccs/dist/bin/droid-runtime.js'];
     expect(resolveTargetType([])).toBe('droid');
   });
 
   it('should detect internal entry target for codex runtime bins', () => {
     process.env.CCS_INTERNAL_ENTRY_TARGET = 'codex';
-    process.argv = ['node', 'ccs'];
+    process.argv = ['node', '/usr/local/lib/ccs/dist/bin/codex-runtime.js'];
     expect(resolveTargetType([])).toBe('codex');
+  });
+
+  it('should ignore leaked internal entry target env on the main ccs entrypoint', () => {
+    process.env.CCS_INTERNAL_ENTRY_TARGET = 'codex';
+    process.argv = ['node', 'ccs.js'];
+    expect(resolveTargetType([])).toBe('claude');
   });
 
   it('should normalize argv[0] and custom aliases case-insensitively', () => {
@@ -242,7 +248,7 @@ describe('resolveTargetType', () => {
 
   it('should prioritize internal entry target over profile config', () => {
     process.env.CCS_INTERNAL_ENTRY_TARGET = 'droid';
-    process.argv = ['node', 'ccs'];
+    process.argv = ['node', '/usr/local/lib/ccs/dist/bin/droid-runtime.js'];
     expect(resolveTargetType([], { target: 'claude' })).toBe('droid');
   });
 

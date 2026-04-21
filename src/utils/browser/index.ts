@@ -16,6 +16,14 @@ export {
 } from './mcp-installer';
 
 export { appendBrowserToolArgs } from './claude-tool-args';
+export {
+  describeBrowserPolicy,
+  describeDefaultBrowserExposure,
+  getBlockedBrowserOverrideWarning,
+  resolveBrowserExposure,
+  resolveBrowserLaunchFlagResolution,
+} from './browser-policy';
+export type { BrowserLaunchOverride, BrowserLaunchFlagResolution } from './browser-policy';
 
 export {
   buildBrowserLaunchCommands,

@@ -1,5 +1,6 @@
 import * as path from 'path';
-import { getBrowserConfig } from '../../config/unified-config-loader';
+import type { BrowserConfig, BrowserToolPolicy } from '../../config/unified-config-types';
+import { getBrowserConfig, loadUnifiedConfig } from '../../config/unified-config-loader';
 import { getCcsPathDisplay } from '../config-manager';
 import { getCodexBinaryInfo } from '../../targets/codex-detector';
 import { type BrowserRuntimeEnv, resolveBrowserRuntimeEnv } from './chrome-reuse';
@@ -17,6 +18,7 @@ import {
 
 export interface ClaudeBrowserStatus {
   enabled: boolean;
+  policy: BrowserToolPolicy;
   source: 'config' | 'CCS_BROWSER_USER_DATA_DIR' | 'CCS_BROWSER_PROFILE_DIR';
   overrideActive: boolean;
   state: 'disabled' | 'path_missing' | 'browser_not_running' | 'endpoint_unreachable' | 'ready';
@@ -34,6 +36,7 @@ export interface ClaudeBrowserStatus {
 
 export interface CodexBrowserStatus {
   enabled: boolean;
+  policy: BrowserToolPolicy;
   state: 'disabled' | 'enabled' | 'unsupported_build';
   title: string;
   detail: string;
@@ -50,21 +53,63 @@ export interface BrowserStatusPayload {
 }
 
 export async function getBrowserStatus(): Promise<BrowserStatusPayload> {
-  const browserConfig = getBrowserConfig();
+  const browserConfig = getUserFacingBrowserConfig();
   return {
     claude: await buildClaudeBrowserStatus(browserConfig),
     codex: buildCodexBrowserStatus(browserConfig),
   };
 }
 
+type PersistedBrowserConfig = {
+  claude?: Partial<BrowserConfig['claude']>;
+  codex?: Partial<BrowserConfig['codex']>;
+};
+
+function resolveSafeBrowserPolicy(policy: BrowserToolPolicy | undefined): BrowserToolPolicy {
+  return policy === 'auto' || policy === 'manual' ? policy : 'manual';
+}
+
+export function getUserFacingBrowserConfig(): BrowserConfig {
+  const canonical = getBrowserConfig();
+  const persisted = loadUnifiedConfig()?.browser as PersistedBrowserConfig | undefined;
+
+  if (!persisted) {
+    return {
+      claude: {
+        ...canonical.claude,
+        enabled: false,
+        policy: 'manual',
+      },
+      codex: {
+        ...canonical.codex,
+        enabled: false,
+        policy: 'manual',
+      },
+    };
+  }
+
+  return {
+    claude: {
+      ...canonical.claude,
+      enabled: persisted.claude?.enabled ?? false,
+      policy: resolveSafeBrowserPolicy(persisted.claude?.policy),
+    },
+    codex: {
+      ...canonical.codex,
+      enabled: persisted.codex?.enabled ?? false,
+      policy: resolveSafeBrowserPolicy(persisted.codex?.policy),
+    },
+  };
+}
+
 async function buildClaudeBrowserStatus(
-  browserConfig = getBrowserConfig()
+  browserConfig = getUserFacingBrowserConfig()
 ): Promise<ClaudeBrowserStatus> {
   const effective = getEffectiveClaudeBrowserAttachConfig(browserConfig);
   const launchCommands = buildBrowserLaunchCommands(effective.userDataDir, effective.devtoolsPort);
-  const managedBootstrap = ensureManagedBrowserUserDataDir(effective);
   const base: Omit<ClaudeBrowserStatus, 'state' | 'title' | 'detail' | 'nextStep'> = {
     enabled: effective.enabled,
+    policy: browserConfig.claude.policy,
     source: effective.source,
     overrideActive: effective.overrideActive,
     effectiveUserDataDir: effective.userDataDir,
@@ -81,10 +126,12 @@ async function buildClaudeBrowserStatus(
       state: 'disabled',
       title: 'Claude Browser Attach is disabled.',
       detail:
-        'CCS will not provision the managed browser MCP runtime for Claude launches until this lane is enabled.',
-      nextStep: `Enable Claude Browser Attach in Settings > Browser or in ${getCcsPathDisplay('config.yaml')}, then run \`ccs browser setup\`.`,
+        'CCS keeps Claude Browser Attach off by default and will not provision the managed browser MCP runtime until this lane is enabled.',
+      nextStep: `Enable Claude Browser Attach in Settings > Browser or in ${getCcsPathDisplay('config.yaml')}, then run \`ccs browser setup\` when you are ready to opt in.`,
     };
   }
+
+  const managedBootstrap = ensureManagedBrowserUserDataDir(effective);
 
   if (managedBootstrap.createdProfileDir) {
     const managedMessage = describeManagedBrowserAttachNotReady(
@@ -117,8 +164,13 @@ async function buildClaudeBrowserStatus(
       state: 'ready',
       title: 'Claude Browser Attach is ready.',
       detail:
-        'CCS can reach the configured Chrome DevTools endpoint for the current attach session.',
-      nextStep: 'Launch a Claude-target CCS session to use the managed browser MCP runtime.',
+        browserConfig.claude.policy === 'manual'
+          ? 'CCS can reach the configured Chrome DevTools endpoint, and the lane stays hidden until a launch uses `--browser`.'
+          : 'CCS can reach the configured Chrome DevTools endpoint for the current attach session.',
+      nextStep:
+        browserConfig.claude.policy === 'manual'
+          ? 'Launch a Claude-target CCS session with `--browser` to use the managed browser MCP runtime.'
+          : 'Launch a Claude-target CCS session to use the managed browser MCP runtime.',
       runtimeEnv,
     };
   } catch (error) {
@@ -167,15 +219,17 @@ async function buildClaudeBrowserStatus(
   }
 }
 
-function buildCodexBrowserStatus(browserConfig = getBrowserConfig()): CodexBrowserStatus {
+function buildCodexBrowserStatus(browserConfig = getUserFacingBrowserConfig()): CodexBrowserStatus {
   if (!browserConfig.codex.enabled) {
     return {
       enabled: false,
+      policy: browserConfig.codex.policy,
       state: 'disabled',
       title: 'Codex Browser Tools are disabled.',
-      detail: 'CCS will not inject Playwright MCP browser tooling into Codex-target launches.',
+      detail:
+        'CCS keeps Codex Browser Tools off by default and will not inject Playwright MCP browser tooling until this lane is enabled.',
       nextStep:
-        'Enable Codex Browser Tools in Settings > Browser to restore the managed Codex browser path.',
+        'Enable Codex Browser Tools in Settings > Browser when you want browser access on Codex-target launches.',
       serverName: 'ccs_browser',
       supportsConfigOverrides: false,
       binaryPath: null,
@@ -187,6 +241,7 @@ function buildCodexBrowserStatus(browserConfig = getBrowserConfig()): CodexBrows
   if (!binaryInfo || !supportsConfigOverrides) {
     return {
       enabled: true,
+      policy: browserConfig.codex.policy,
       state: 'unsupported_build',
       title: 'Codex Browser Tools need a Codex build with --config override support.',
       detail: binaryInfo
@@ -202,10 +257,17 @@ function buildCodexBrowserStatus(browserConfig = getBrowserConfig()): CodexBrows
 
   return {
     enabled: true,
+    policy: browserConfig.codex.policy,
     state: 'enabled',
     title: 'Codex Browser Tools are enabled.',
-    detail: 'CCS can inject the managed Playwright MCP overrides into Codex-target launches.',
-    nextStep: 'Use a Codex-target CCS launch to access browser tools.',
+    detail:
+      browserConfig.codex.policy === 'manual'
+        ? 'CCS can inject the managed Playwright MCP overrides when a Codex-target launch opts in with `--browser`.'
+        : 'CCS can inject the managed Playwright MCP overrides into Codex-target launches.',
+    nextStep:
+      browserConfig.codex.policy === 'manual'
+        ? 'Use `--browser` on a Codex-target CCS launch to access browser tools.'
+        : 'Use a Codex-target CCS launch to access browser tools.',
     serverName: 'ccs_browser',
     supportsConfigOverrides,
     binaryPath: binaryInfo.path,

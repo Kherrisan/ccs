@@ -93,21 +93,27 @@ describe('browser routes', () => {
     expect(payload.config).toMatchObject({
       claude: {
         enabled: false,
+        policy: 'manual',
         userDataDir: join(tempHome, '.ccs', 'browser', 'chrome-user-data'),
         devtoolsPort: 9222,
       },
       codex: {
-        enabled: true,
+        enabled: false,
+        policy: 'manual',
       },
     });
     expect(payload.status.claude).toMatchObject({
       state: 'disabled',
+      policy: 'manual',
       managedMcpServerName: 'ccs-browser',
     });
     expect(payload.status.codex).toMatchObject({
-      enabled: true,
+      enabled: false,
+      state: 'disabled',
+      policy: 'manual',
       serverName: 'ccs_browser',
     });
+    expect(payload.status.codex.detail).toContain('off by default');
   });
 
   it('updates the saved browser config through the dashboard route', async () => {
@@ -117,11 +123,13 @@ describe('browser routes', () => {
       body: JSON.stringify({
         claude: {
           enabled: true,
+          policy: 'manual',
           userDataDir: '/tmp/ccs-browser',
           devtoolsPort: 9333,
         },
         codex: {
           enabled: false,
+          policy: 'manual',
         },
       }),
     });
@@ -131,11 +139,13 @@ describe('browser routes', () => {
     expect(payload.browser.config).toMatchObject({
       claude: {
         enabled: true,
+        policy: 'manual',
         userDataDir: '/tmp/ccs-browser',
         devtoolsPort: 9333,
       },
       codex: {
         enabled: false,
+        policy: 'manual',
       },
     });
 
@@ -143,11 +153,13 @@ describe('browser routes', () => {
     expect(config.browser).toMatchObject({
       claude: {
         enabled: true,
+        policy: 'manual',
         user_data_dir: '/tmp/ccs-browser',
         devtools_port: 9333,
       },
       codex: {
         enabled: false,
+        policy: 'manual',
       },
     });
   });
@@ -159,6 +171,7 @@ describe('browser routes', () => {
       body: JSON.stringify({
         claude: {
           enabled: true,
+          policy: 'manual',
           userDataDir: '/tmp/ccs-browser-custom',
           devtoolsPort: 9333,
         },
@@ -181,6 +194,7 @@ describe('browser routes', () => {
     const payload = await resetResponse.json();
     expect(payload.browser.config.claude).toMatchObject({
       enabled: true,
+      policy: 'manual',
       userDataDir: join(tempHome, '.ccs', 'browser', 'chrome-user-data'),
       devtoolsPort: 9333,
     });
@@ -192,6 +206,7 @@ describe('browser routes', () => {
     expect(config.browser).toMatchObject({
       claude: {
         enabled: true,
+        policy: 'manual',
         user_data_dir: join(tempHome, '.ccs', 'browser', 'chrome-user-data'),
         devtools_port: 9333,
       },
@@ -212,6 +227,72 @@ describe('browser routes', () => {
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({
       error: 'Invalid value for claude.devtoolsPort. Must be an integer between 1 and 65535.',
+    });
+  });
+
+  it('rejects null browser lane payloads instead of treating them as no-ops', async () => {
+    const response = await fetch(`${baseUrl}/api/browser`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        claude: null,
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: 'Invalid value for claude. Must be an object.',
+    });
+  });
+
+  it('rejects unknown browser config fields instead of silently ignoring them', async () => {
+    const response = await fetch(`${baseUrl}/api/browser`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        codxe: {
+          enabled: true,
+        },
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: 'Unknown browser config field(s): codxe.',
+    });
+  });
+
+  it('rejects invalid browser policy values at the route boundary', async () => {
+    const response = await fetch(`${baseUrl}/api/browser`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        codex: {
+          policy: 'always',
+        },
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: 'Invalid value for codex.policy. Must be auto or manual.',
+    });
+  });
+
+  it('rejects unknown nested browser lane fields instead of silently ignoring them', async () => {
+    const response = await fetch(`${baseUrl}/api/browser`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        claude: {
+          userDatDir: '/tmp/typo',
+        },
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: 'Unknown claude browser field(s): userDatDir.',
     });
   });
 });

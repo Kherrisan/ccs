@@ -37,6 +37,7 @@ import type {
   OfficialChannelId,
   DashboardAuthConfig,
   BrowserConfig,
+  BrowserToolPolicy,
   ImageAnalysisConfig,
   LoggingConfig,
   CursorConfig,
@@ -71,15 +72,21 @@ function normalizeBrowserDevtoolsPort(value: number | undefined): number {
   return port;
 }
 
+function normalizeBrowserPolicy(value: string | undefined): BrowserToolPolicy {
+  return value === 'auto' || value === 'manual' ? value : DEFAULT_BROWSER_CONFIG.claude.policy;
+}
+
 function canonicalizeBrowserConfig(config?: BrowserConfig): BrowserConfig {
   return {
     claude: {
       enabled: config?.claude?.enabled ?? DEFAULT_BROWSER_CONFIG.claude.enabled,
+      policy: normalizeBrowserPolicy(config?.claude?.policy),
       user_data_dir: config?.claude?.user_data_dir?.trim() || getRecommendedBrowserUserDataDir(),
       devtools_port: normalizeBrowserDevtoolsPort(config?.claude?.devtools_port),
     },
     codex: {
       enabled: config?.codex?.enabled ?? DEFAULT_BROWSER_CONFIG.codex.enabled,
+      policy: normalizeBrowserPolicy(config?.codex?.policy),
     },
   };
 }

@@ -26,8 +26,9 @@ import { CLIPROXY_PROVIDER_IDS } from '../cliproxy/provider-capabilities';
  * Version 10 = Exa + Tavily WebSearch backends
  * Version 11 = Discord Channels runtime auto-enable preferences
  * Version 12 = Official Channels multi-provider support (Telegram, Discord, iMessage)
+ * Version 13 = Browser automation defaults to safe manual/off exposure
  */
-export const UNIFIED_CONFIG_VERSION = 12;
+export const UNIFIED_CONFIG_VERSION = 13;
 
 /**
  * Supported CLIProxy providers.
@@ -820,9 +821,13 @@ export const DEFAULT_DASHBOARD_AUTH_CONFIG: DashboardAuthConfig = {
  * Browser automation configuration.
  * Controls Claude browser attach and Codex browser tooling.
  */
+export type BrowserToolPolicy = 'auto' | 'manual';
+
 export interface BrowserClaudeConfig {
   /** Enable Claude browser attach (default: false) */
   enabled: boolean;
+  /** Control whether Claude browser attach is exposed automatically or only via --browser */
+  policy: BrowserToolPolicy;
   /** Chrome user-data directory used for attach mode */
   user_data_dir: string;
   /** DevTools port used for attach mode (default: 9222) */
@@ -830,8 +835,10 @@ export interface BrowserClaudeConfig {
 }
 
 export interface BrowserCodexConfig {
-  /** Enable Codex browser tooling injection (default: true) */
+  /** Enable Codex browser tooling injection (default: false) */
   enabled: boolean;
+  /** Control whether Codex browser tooling is exposed automatically or only via --browser */
+  policy: BrowserToolPolicy;
 }
 
 export interface BrowserConfig {
@@ -842,11 +849,13 @@ export interface BrowserConfig {
 export const DEFAULT_BROWSER_CONFIG: BrowserConfig = {
   claude: {
     enabled: false,
+    policy: 'manual',
     user_data_dir: '',
     devtools_port: 9222,
   },
   codex: {
-    enabled: true,
+    enabled: false,
+    policy: 'manual',
   },
 };
 

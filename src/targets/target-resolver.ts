@@ -29,6 +29,17 @@ const GENERIC_TARGET_ALIAS_ENV_VAR = 'CCS_TARGET_ALIASES';
 const LEGACY_TARGET_ALIAS_ENV_VARS: Partial<Record<TargetType, string>> =
   getLegacyTargetAliasEnvVars();
 const RESERVED_BIN_NAMES = new Set<string>(['ccs', ...Object.keys(BUILTIN_ARGV0_TARGET_MAP)]);
+const INTERNAL_RUNTIME_ENTRY_BASENAMES = new Set([
+  'droid-runtime',
+  'droid-runtime.ts',
+  'droid-runtime.js',
+  'codex-runtime',
+  'codex-runtime.ts',
+  'codex-runtime.js',
+  'ccsxp-runtime',
+  'ccsxp-runtime.ts',
+  'ccsxp-runtime.js',
+]);
 
 function addAliasToMap(map: Record<string, TargetType>, alias: string, target: TargetType): void {
   const normalizedAlias = alias.trim().toLowerCase();
@@ -99,6 +110,11 @@ function buildArgv0TargetMap(): Record<string, TargetType> {
 function resolveEntrypointTarget(): TargetType | null {
   const rawTarget = process.env[INTERNAL_ENTRY_TARGET_ENV_VAR];
   if (!rawTarget) {
+    return null;
+  }
+
+  const entryScript = path.basename(process.argv[1] || '');
+  if (!INTERNAL_RUNTIME_ENTRY_BASENAMES.has(entryScript)) {
     return null;
   }
 

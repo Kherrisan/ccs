@@ -1,6 +1,6 @@
 # CCS Project Roadmap
 
-Last Updated: 2026-04-18
+Last Updated: 2026-04-19
 
 Forward-looking roadmap documenting current priorities, GitHub issues, and future feature plans.
 
@@ -41,6 +41,8 @@ All major modularization work is complete. The codebase evolved from monolithic 
 
 ### Recent Fixes
 
+- **2026-04-20**: **#1051** Browser automation now defaults safe-off for new installs and upgrades that do not already carry explicit browser settings. CCS changes both Claude Browser Attach and Codex Browser Tools to start with `enabled: false` and `policy: manual`, normalizes missing browser policies on upgrade back to `manual`, preserves explicit existing enablement, and updates status/help/docs so browser tooling is never implied to auto-expose unless users opt in.
+- **2026-04-19**: **#1051** Browser tooling now has an explicit exposure policy instead of only coarse enablement toggles. CCS adds `browser.<lane>.policy` (`auto` or `manual`) for both Claude Browser Attach and Codex Browser Tools, exposes CLI-first policy controls through `ccs browser policy`, `ccs browser enable`, and `ccs browser disable`, and adds one-run launch overrides `--browser` and `--no-browser` so users can force browser tooling on or off without editing saved config.
 - **2026-04-19**: **#1049** Browser setup now has a real remediation path instead of status/doctor-only guidance. CCS adds `ccs browser setup` as the primary one-command flow for Claude Browser Attach, shortens managed browser-path output to home-relative display paths where appropriate, and updates browser readiness guidance to point users at setup first while keeping browser doctor read-only by default.
 - **2026-04-18**: **#1038** Legacy OpenAI-compatible provider writes no longer self-destruct on the next `ccs cliproxy restart`. CCS now preserves AI-provider-managed top-level sections such as `openai-compatibility` during CLIProxy config regeneration, and the legacy `openai-compat` manager now rewrites only its own YAML section instead of dumping the whole file and stripping the generated version header. Regression coverage now proves the legacy helper keeps the generated header intact and that OpenAI-compatible connectors survive regeneration.
 - **2026-04-16**: **#1030** Browser automation is now a first-class CCS surface instead of an env-only/runtime-only feature. CCS adds `ccs help browser`, `ccs browser status`, and `ccs browser doctor`; a dedicated `Settings -> Browser` dashboard tab for Claude Browser Attach and Codex Browser Tools; a new `browser` section in `~/.ccs/config.yaml`; explicit readiness/next-step messaging for attach-mode Chrome sessions; and Codex UI guidance that marks the managed `ccs_browser` entry as CCS-owned and redirects browser setup away from the generic MCP editor.

@@ -65,8 +65,12 @@ import {
 } from '../../utils/image-analysis';
 import {
   appendBrowserToolArgs,
+  type BrowserLaunchOverride,
   ensureBrowserMcpOrThrow,
+  getBlockedBrowserOverrideWarning,
   getEffectiveClaudeBrowserAttachConfig,
+  resolveBrowserExposure,
+  resolveBrowserLaunchFlagResolution,
   resolveOptionalBrowserAttachRuntime,
   syncBrowserMcpToConfigDir,
 } from '../../utils/browser';
@@ -245,6 +249,33 @@ export async function execClaudeWithCLIProxy(
         }
       : undefined,
   });
+  let browserLaunchOverride: BrowserLaunchOverride | undefined;
+  let argsWithoutBrowserFlags = argsWithoutProxy;
+  try {
+    const browserLaunchFlags = resolveBrowserLaunchFlagResolution(argsWithoutProxy);
+    browserLaunchOverride = browserLaunchFlags.override;
+    argsWithoutBrowserFlags = browserLaunchFlags.argsWithoutFlags;
+  } catch (error) {
+    console.error(fail((error as Error).message));
+    process.exit(1);
+    return;
+  }
+  const browserConfig = getBrowserConfig();
+  const browserAttachConfig = getEffectiveClaudeBrowserAttachConfig(browserConfig);
+  const claudeBrowserExposure = resolveBrowserExposure(
+    {
+      enabled: browserAttachConfig.enabled,
+      policy: browserConfig.claude.policy,
+    },
+    browserLaunchOverride
+  );
+  const blockedBrowserOverrideWarning = getBlockedBrowserOverrideWarning(
+    'Claude Browser Attach',
+    claudeBrowserExposure
+  );
+  if (blockedBrowserOverrideWarning) {
+    console.error(warn(blockedBrowserOverrideWarning));
+  }
 
   // Port resolution and validation
   if (cfg.port && cfg.port !== CLIPROXY_DEFAULT_PORT) {
@@ -264,10 +295,10 @@ export async function execClaudeWithCLIProxy(
   // Setup first-class CCS WebSearch runtime
   ensureWebSearchMcpOrThrow();
   const imageAnalysisMcpReady = ensureImageAnalysisMcpOrThrow();
-  const browserAttachConfig = getEffectiveClaudeBrowserAttachConfig(getBrowserConfig());
-  const browserAttachRuntime = browserAttachConfig.enabled
-    ? await resolveOptionalBrowserAttachRuntime(browserAttachConfig)
-    : undefined;
+  const browserAttachRuntime =
+    browserAttachConfig.enabled && claudeBrowserExposure.exposeForLaunch
+      ? await resolveOptionalBrowserAttachRuntime(browserAttachConfig)
+      : undefined;
   const browserRuntimeEnv = browserAttachRuntime?.runtimeEnv;
   if (browserAttachRuntime?.warning) {
     process.stderr.write(`${warn(browserAttachRuntime.warning)}\n`);
@@ -1260,7 +1291,7 @@ export async function execClaudeWithCLIProxy(
     '--settings',
     ...PROXY_CLI_FLAGS,
   ];
-  const claudeArgs = argsWithoutProxy.filter((arg, idx) => {
+  const claudeArgs = argsWithoutBrowserFlags.filter((arg, idx) => {
     if (ccsFlags.includes(arg)) return false;
     if (arg.startsWith('--kiro-auth-method=')) return false;
     if (arg.startsWith('--kiro-idc-start-url=')) return false;
@@ -1270,14 +1301,14 @@ export async function execClaudeWithCLIProxy(
     if (arg.startsWith('--effort=')) return false;
     if (arg.startsWith('--1m=') || arg.startsWith('--no-1m=')) return false;
     if (
-      argsWithoutProxy[idx - 1] === '--use' ||
-      argsWithoutProxy[idx - 1] === '--nickname' ||
-      argsWithoutProxy[idx - 1] === '--kiro-auth-method' ||
-      argsWithoutProxy[idx - 1] === '--kiro-idc-start-url' ||
-      argsWithoutProxy[idx - 1] === '--kiro-idc-region' ||
-      argsWithoutProxy[idx - 1] === '--kiro-idc-flow' ||
-      argsWithoutProxy[idx - 1] === '--thinking' ||
-      argsWithoutProxy[idx - 1] === '--effort'
+      argsWithoutBrowserFlags[idx - 1] === '--use' ||
+      argsWithoutBrowserFlags[idx - 1] === '--nickname' ||
+      argsWithoutBrowserFlags[idx - 1] === '--kiro-auth-method' ||
+      argsWithoutBrowserFlags[idx - 1] === '--kiro-idc-start-url' ||
+      argsWithoutBrowserFlags[idx - 1] === '--kiro-idc-region' ||
+      argsWithoutBrowserFlags[idx - 1] === '--kiro-idc-flow' ||
+      argsWithoutBrowserFlags[idx - 1] === '--thinking' ||
+      argsWithoutBrowserFlags[idx - 1] === '--effort'
     )
       return false;
     return true;

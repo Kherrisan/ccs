@@ -1,7 +1,11 @@
-import { afterEach, describe, expect, test, spyOn } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test, spyOn } from 'bun:test';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import * as browserUtils from '../../../src/utils/browser';
 import { handleBrowserCommand } from '../../../src/commands/browser-command';
+import { getBrowserConfig } from '../../../src/config/unified-config-loader';
 
 function stripAnsi(input: string): string {
   return input.replace(/\u001b\[[0-9;]*m/g, '');
@@ -20,7 +24,22 @@ function currentPlatform(): 'darwin' | 'linux' | 'win32' {
 }
 
 describe('browser command', () => {
+  let tempHome = '';
+  let originalCcsHome: string | undefined;
+
+  beforeEach(() => {
+    tempHome = mkdtempSync(join(tmpdir(), 'ccs-browser-command-'));
+    originalCcsHome = process.env.CCS_HOME;
+    process.env.CCS_HOME = tempHome;
+  });
+
   afterEach(() => {
+    if (originalCcsHome !== undefined) {
+      process.env.CCS_HOME = originalCcsHome;
+    } else {
+      delete process.env.CCS_HOME;
+    }
+    rmSync(tempHome, { recursive: true, force: true });
     process.exitCode = 0;
   });
 
@@ -28,6 +47,7 @@ describe('browser command', () => {
     const statusSpy = spyOn(browserUtils, 'getBrowserStatus').mockResolvedValue({
       claude: {
         enabled: true,
+        policy: 'manual',
         source: 'config',
         overrideActive: false,
         state: 'ready',
@@ -54,6 +74,7 @@ describe('browser command', () => {
       },
       codex: {
         enabled: true,
+        policy: 'manual',
         state: 'enabled',
         title: 'Codex Browser Tools are enabled.',
         detail: 'CCS can inject the managed Playwright MCP overrides.',
@@ -73,8 +94,15 @@ describe('browser command', () => {
       expect(rendered.includes('Codex Browser Tools inject managed Playwright MCP overrides')).toBe(
         true
       );
+      expect(
+        rendered.includes(
+          'New installs, plus upgrades without saved browser settings, keep both lanes off by default'
+        )
+      ).toBe(true);
       expect(rendered.includes('Managed MCP: ccs-browser')).toBe(true);
       expect(rendered.includes('Managed server: ccs_browser')).toBe(true);
+      expect(rendered.includes('Policy: manual')).toBe(true);
+      expect(rendered.includes('Default launch behavior: hidden until `--browser`')).toBe(true);
       expect(rendered.includes('DevTools endpoint: http://127.0.0.1:9222')).toBe(true);
     } finally {
       statusSpy.mockRestore();
@@ -91,6 +119,7 @@ describe('browser command', () => {
     const statusSpy = spyOn(browserUtils, 'getBrowserStatus').mockResolvedValue({
       claude: {
         enabled: true,
+        policy: 'manual',
         source: 'CCS_BROWSER_PROFILE_DIR',
         overrideActive: true,
         state: 'browser_not_running',
@@ -106,6 +135,7 @@ describe('browser command', () => {
       },
       codex: {
         enabled: true,
+        policy: 'manual',
         state: 'unsupported_build',
         title: 'Codex Browser Tools need a Codex build with --config override support.',
         detail: 'Detected Codex at /usr/local/bin/codex, but it does not advertise --config overrides.',
@@ -121,6 +151,7 @@ describe('browser command', () => {
       const rendered = await renderLines(['doctor']);
 
       expect(rendered.includes('Result: action required')).toBe(true);
+      expect(rendered.includes('Default launch behavior: hidden until `--browser`')).toBe(true);
       expect(rendered.includes('Source: CCS_BROWSER_PROFILE_DIR (env override active)')).toBe(
         true
       );
@@ -140,6 +171,7 @@ describe('browser command', () => {
     const statusSpy = spyOn(browserUtils, 'getBrowserStatus').mockResolvedValue({
       claude: {
         enabled: false,
+        policy: 'auto',
         source: 'config',
         overrideActive: false,
         state: 'disabled',
@@ -162,6 +194,7 @@ describe('browser command', () => {
       },
       codex: {
         enabled: true,
+        policy: 'auto',
         state: 'unsupported_build',
         title: 'Codex Browser Tools need a Codex build with --config override support.',
         detail: 'No Codex binary was detected, so CCS cannot confirm managed browser override support.',
@@ -194,6 +227,7 @@ describe('browser command', () => {
       status: {
         claude: {
           enabled: true,
+          policy: 'auto',
           source: 'config',
           overrideActive: false,
           state: 'ready',
@@ -220,6 +254,7 @@ describe('browser command', () => {
         },
         codex: {
           enabled: true,
+          policy: 'auto',
           state: 'enabled',
           title: 'Codex Browser Tools are enabled.',
           detail: 'CCS can inject the managed Playwright MCP overrides.',
@@ -255,10 +290,54 @@ describe('browser command', () => {
     expect(process.exitCode).toBe(1);
   });
 
+  test('policy shows and updates the saved browser exposure mode', async () => {
+    const rendered = await renderLines(['policy', '--all', 'manual']);
+
+    expect(rendered.includes('ccs browser policy')).toBe(true);
+    expect(
+      rendered.includes(
+        'New installs and upgrades without saved browser settings: both lanes start disabled and manual.'
+      )
+    ).toBe(true);
+    expect(rendered.includes('Default launch behavior: hidden until `--browser`')).toBe(true);
+    expect(getBrowserConfig().claude.policy).toBe('manual');
+    expect(getBrowserConfig().codex.policy).toBe('manual');
+  });
+
+  test('policy shows safe default-off browser settings on a fresh install', async () => {
+    const rendered = await renderLines(['policy']);
+
+    expect(rendered.includes('ccs browser policy')).toBe(true);
+    expect(
+      rendered.includes(
+        'New installs and upgrades without saved browser settings: both lanes start disabled and manual.'
+      )
+    ).toBe(true);
+    expect(rendered.includes('Claude Browser Attach')).toBe(true);
+    expect(rendered.includes('Codex Browser Tools')).toBe(true);
+    expect(rendered.includes('Enabled: no')).toBe(true);
+    expect(rendered.includes('Policy: manual')).toBe(true);
+    expect(rendered.includes('Default launch behavior: hidden until `--browser`')).toBe(true);
+  });
+
+  test('enable updates a single browser lane', async () => {
+    const rendered = await renderLines(['enable', 'codex']);
+    expect(rendered.includes('Updated codex browser lane.')).toBe(true);
+    expect(getBrowserConfig().codex.enabled).toBe(true);
+    expect(getBrowserConfig().codex.policy).toBe('manual');
+  });
+
   test('literal browser help still renders the help page', async () => {
     const rendered = await renderLines(['help']);
 
     expect(rendered.includes('CCS Browser Help')).toBe(true);
     expect(rendered.includes('ccs browser setup')).toBe(true);
+    expect(rendered.includes('ccs browser policy')).toBe(true);
+    expect(rendered.includes('--browser')).toBe(true);
+    expect(
+      rendered.includes(
+        'New installs and upgrades without saved browser settings keep both lanes off by default'
+      )
+    ).toBe(true);
   });
 });
