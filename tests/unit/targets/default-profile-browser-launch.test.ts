@@ -198,7 +198,7 @@ exit 0
     expect(launchedEnv).not.toContain('devtools/browser/stale-default');
   });
 
-  it('passes browser runtime env through default Claude launches when reuse is configured', async () => {
+  it('does not auto-enable browser runtime for default Claude launches from env overrides alone', async () => {
     if (process.platform === 'win32') return;
 
     const mockServerScriptPath = path.join(tmpHome, 'mock-devtools-server.js');
@@ -249,14 +249,14 @@ server.listen(0, '127.0.0.1', () => {
     expect(result.stderr).not.toContain('Chrome reuse metadata not found');
     expect(result.status).toBe(0);
     const launchedArgs = fs.readFileSync(claudeArgsLogPath, 'utf8');
-    expect(launchedArgs).toContain('--append-system-prompt');
-    expect(launchedArgs).toContain(BROWSER_PROMPT_SNIPPET);
+    expect(launchedArgs).not.toContain('--append-system-prompt');
+    expect(launchedArgs).not.toContain(BROWSER_PROMPT_SNIPPET);
 
     const launchedEnv = fs.readFileSync(claudeEnvLogPath, 'utf8');
-    expect(launchedEnv).toContain(`userDataDir=${browserProfileDir}`);
-    expect(launchedEnv).toContain(`port=${port}`);
-    expect(launchedEnv).toContain(`httpUrl=http://127.0.0.1:${port}`);
-    expect(launchedEnv).toContain('wsUrl=ws://127.0.0.1/devtools/browser/default-target');
+    expect(launchedEnv).not.toContain(`userDataDir=${browserProfileDir}`);
+    expect(launchedEnv).not.toContain(`port=${port}`);
+    expect(launchedEnv).not.toContain(`httpUrl=http://127.0.0.1:${port}`);
+    expect(launchedEnv).not.toContain('wsUrl=ws://127.0.0.1/devtools/browser/default-target');
   });
 
   it('skips managed browser attach when the default CCS browser profile directory is missing', () => {

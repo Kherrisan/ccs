@@ -48,13 +48,13 @@ function writeCommandTable(writeLine: HelpWriter): void {
     `  ${color('ccs browser doctor', 'command')}                     Explain what is missing and how to fix it`
   );
   writeLine(
-    `  ${color('ccs browser policy', 'command')}                     Show the saved browser exposure policy`
+    `  ${color('ccs browser policy', 'command')}                     Show the saved browser exposure policy and safe defaults`
   );
   writeLine(
     `  ${color('ccs browser policy --all manual', 'command')}        Keep browser tooling hidden unless a launch uses --browser`
   );
   writeLine(
-    `  ${color('ccs browser enable <claude|codex|all>', 'command')}  Turn a browser lane on`
+    `  ${color('ccs browser enable <claude|codex|all>', 'command')}  Turn a browser lane on without forcing auto-exposure`
   );
   writeLine(
     `  ${color('ccs browser disable <claude|codex|all>', 'command')} Turn a browser lane off`
@@ -66,6 +66,9 @@ function writeIntro(writeLine: HelpWriter): void {
   writeLine('  Claude Browser Attach reuses a local Chrome session for Claude-target launches.');
   writeLine(
     '  Codex Browser Tools inject managed Playwright MCP overrides into Codex-target launches.'
+  );
+  writeLine(
+    '  New installs, plus upgrades without saved browser settings, keep both lanes off by default; enable a lane and use `--browser` when you want browser access.'
   );
   writeLine('');
   writeLine(subheader('Launch Overrides'));
@@ -158,6 +161,10 @@ function writePolicySummary(writeLine: HelpWriter): void {
   writeLine(header('ccs browser policy'));
   writeLine('');
   writeIntro(writeLine);
+  writeLine(
+    '  New installs and upgrades without saved browser settings: both lanes start disabled and manual.'
+  );
+  writeLine('');
   writeLine(subheader('Claude Browser Attach'));
   writeLine(`  Enabled: ${config.claude.enabled ? 'yes' : 'no'}`);
   writeLaunchPolicy(config.claude.policy, writeLine);
@@ -191,6 +198,11 @@ function writeToggleSummary(
   writeLine('');
   writeLine(`  Updated ${lane} browser lane${lane === 'all' ? 's' : ''}.`);
   writeLine(`  Browser lanes are now ${verb} as requested.`);
+  if (subcommand === 'enable') {
+    writeLine(
+      '  Enabled lanes still respect policy, so browser access stays hidden until `--browser` while policy is manual.'
+    );
+  }
   writeLine('');
   writeLine(subheader('Current State'));
   writeLine(`  Claude enabled: ${config.claude.enabled ? 'yes' : 'no'}`);
@@ -296,6 +308,9 @@ export async function showBrowserHelp(writeLine: HelpWriter = console.log): Prom
   writeLine(subheader('What Each Lane Does'));
   writeLine('  Claude Browser Attach expects a Chrome user-data dir and remote debugging port.');
   writeLine('  Codex Browser Tools depend on a Codex build that supports --config overrides.');
+  writeLine(
+    '  New installs and upgrades without saved browser settings keep both lanes off by default, so enabling a lane does not auto-expose browser tooling unless policy is set to auto.'
+  );
   writeLine('');
   writeLine(subheader('Examples'));
   writeLine(

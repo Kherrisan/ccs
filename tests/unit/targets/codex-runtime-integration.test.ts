@@ -163,7 +163,7 @@ process.exit(0);
     fs.rmSync(tmpHome, { recursive: true, force: true });
   });
 
-  it('injects browser MCP runtime overrides for native Codex default launches', () => {
+  it('keeps browser MCP runtime overrides off for untouched Codex launches', () => {
     if (process.platform === 'win32') return;
 
     const result = runCcs(['default', '--target', 'codex', 'fix failing tests'], {
@@ -178,20 +178,64 @@ process.exit(0);
 
     expect(result.status).toBe(0);
     const calls = readLoggedCodexCalls(codexArgsLogPath);
-    expect(calls).toEqual([
-      ['-c', 'model="gpt-5"', '--version'],
-      [
-        '-c',
-        `mcp_servers.ccs_browser.command=${JSON.stringify(process.platform === 'win32' ? 'npx.cmd' : 'npx')}`,
-        '-c',
-        `mcp_servers.ccs_browser.args=${JSON.stringify(['-y', '@playwright/mcp@0.0.70'])}`,
-        '-c',
-        'mcp_servers.ccs_browser.enabled=true',
-        '-c',
-        'mcp_servers.ccs_browser.tool_timeout_sec=30',
-        'fix failing tests',
-      ],
-    ]);
+    expect(calls).toEqual([['fix failing tests']]);
+  });
+
+  it('injects browser MCP runtime overrides when Codex browser policy is explicitly auto-enabled', () => {
+    if (process.platform === 'win32') return;
+
+    const originalCcsHome = process.env.CCS_HOME;
+    process.env.CCS_HOME = tmpHome;
+
+    try {
+      mutateUnifiedConfig((config) => {
+        config.browser = {
+          claude: {
+            enabled: false,
+            policy: 'manual',
+            user_data_dir: '',
+            devtools_port: 9222,
+          },
+          codex: {
+            enabled: true,
+            policy: 'auto',
+          },
+        };
+      });
+
+      const result = runCcs(['default', '--target', 'codex', 'fix failing tests'], {
+        ...process.env,
+        CI: '1',
+        NO_COLOR: '1',
+        CCS_HOME: tmpHome,
+        CCS_CODEX_PATH: fakeCodexPath,
+        CCS_TEST_CODEX_ARGS_OUT: codexArgsLogPath,
+        CCS_THINKING: '8192',
+      });
+
+      expect(result.status).toBe(0);
+      const calls = readLoggedCodexCalls(codexArgsLogPath);
+      expect(calls).toEqual([
+        ['-c', 'model="gpt-5"', '--version'],
+        [
+          '-c',
+          `mcp_servers.ccs_browser.command=${JSON.stringify(process.platform === 'win32' ? 'npx.cmd' : 'npx')}`,
+          '-c',
+          `mcp_servers.ccs_browser.args=${JSON.stringify(['-y', '@playwright/mcp@0.0.70'])}`,
+          '-c',
+          'mcp_servers.ccs_browser.enabled=true',
+          '-c',
+          'mcp_servers.ccs_browser.tool_timeout_sec=30',
+          'fix failing tests',
+        ],
+      ]);
+    } finally {
+      if (originalCcsHome !== undefined) {
+        process.env.CCS_HOME = originalCcsHome;
+      } else {
+        delete process.env.CCS_HOME;
+      }
+    }
   });
 
   it('skips Codex browser MCP overrides when browser tooling is disabled in config', () => {
@@ -345,7 +389,7 @@ process.exit(0);
     expect(calls).toEqual([['fix failing tests']]);
   });
 
-  it('keeps browser MCP runtime overrides when CCS_THINKING is ignored for native Codex default mode', () => {
+  it('keeps browser MCP runtime overrides off when CCS_THINKING is ignored for native Codex default mode', () => {
     if (process.platform === 'win32') return;
 
     const result = runCcs(['default', '--target', 'codex', 'fix failing tests'], {
@@ -360,20 +404,7 @@ process.exit(0);
 
     expect(result.status).toBe(0);
     const calls = readLoggedCodexCalls(codexArgsLogPath);
-    expect(calls).toEqual([
-      ['-c', 'model="gpt-5"', '--version'],
-      [
-        '-c',
-        `mcp_servers.ccs_browser.command=${JSON.stringify(process.platform === 'win32' ? 'npx.cmd' : 'npx')}`,
-        '-c',
-        `mcp_servers.ccs_browser.args=${JSON.stringify(['-y', '@playwright/mcp@0.0.70'])}`,
-        '-c',
-        'mcp_servers.ccs_browser.enabled=true',
-        '-c',
-        'mcp_servers.ccs_browser.tool_timeout_sec=30',
-        'fix failing tests',
-      ],
-    ]);
+    expect(calls).toEqual([['fix failing tests']]);
   });
 
   for (const versionFlag of ['--version', '-v']) {
@@ -488,14 +519,6 @@ process.exit(0);
     expect(readLoggedCodexCalls(codexArgsLogPath)).toEqual([
       ['-c', 'model="gpt-5"', '--version'],
       [
-        '-c',
-        'mcp_servers.ccs_browser.command="npx"',
-        '-c',
-        'mcp_servers.ccs_browser.args=["-y","@playwright/mcp@0.0.70"]',
-        '-c',
-        'mcp_servers.ccs_browser.enabled=true',
-        '-c',
-        'mcp_servers.ccs_browser.tool_timeout_sec=30',
         '-c',
         'model_reasoning_effort="high"',
         'fix failing tests',
@@ -690,14 +713,6 @@ process.exit(0);
     expect(readLoggedCodexCalls(codexArgsLogPath)).toEqual([
       ['-c', 'model="gpt-5"', '--version'],
       [
-        '-c',
-        'mcp_servers.ccs_browser.command="npx"',
-        '-c',
-        'mcp_servers.ccs_browser.args=["-y","@playwright/mcp@0.0.70"]',
-        '-c',
-        'mcp_servers.ccs_browser.enabled=true',
-        '-c',
-        'mcp_servers.ccs_browser.tool_timeout_sec=30',
         '-c',
         'model_reasoning_effort="high"',
         'fix failing tests',

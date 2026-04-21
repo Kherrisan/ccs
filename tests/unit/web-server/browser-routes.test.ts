@@ -93,23 +93,27 @@ describe('browser routes', () => {
     expect(payload.config).toMatchObject({
       claude: {
         enabled: false,
-        policy: 'auto',
+        policy: 'manual',
         userDataDir: join(tempHome, '.ccs', 'browser', 'chrome-user-data'),
         devtoolsPort: 9222,
       },
       codex: {
-        enabled: true,
-        policy: 'auto',
+        enabled: false,
+        policy: 'manual',
       },
     });
     expect(payload.status.claude).toMatchObject({
       state: 'disabled',
+      policy: 'manual',
       managedMcpServerName: 'ccs-browser',
     });
     expect(payload.status.codex).toMatchObject({
-      enabled: true,
+      enabled: false,
+      state: 'disabled',
+      policy: 'manual',
       serverName: 'ccs_browser',
     });
+    expect(payload.status.codex.detail).toContain('off by default');
   });
 
   it('updates the saved browser config through the dashboard route', async () => {

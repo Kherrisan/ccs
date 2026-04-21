@@ -47,7 +47,7 @@ describe('browser command', () => {
     const statusSpy = spyOn(browserUtils, 'getBrowserStatus').mockResolvedValue({
       claude: {
         enabled: true,
-        policy: 'auto',
+        policy: 'manual',
         source: 'config',
         overrideActive: false,
         state: 'ready',
@@ -74,7 +74,7 @@ describe('browser command', () => {
       },
       codex: {
         enabled: true,
-        policy: 'auto',
+        policy: 'manual',
         state: 'enabled',
         title: 'Codex Browser Tools are enabled.',
         detail: 'CCS can inject the managed Playwright MCP overrides.',
@@ -94,9 +94,15 @@ describe('browser command', () => {
       expect(rendered.includes('Codex Browser Tools inject managed Playwright MCP overrides')).toBe(
         true
       );
+      expect(
+        rendered.includes(
+          'New installs, plus upgrades without saved browser settings, keep both lanes off by default'
+        )
+      ).toBe(true);
       expect(rendered.includes('Managed MCP: ccs-browser')).toBe(true);
       expect(rendered.includes('Managed server: ccs_browser')).toBe(true);
-      expect(rendered.includes('Policy: auto')).toBe(true);
+      expect(rendered.includes('Policy: manual')).toBe(true);
+      expect(rendered.includes('Default launch behavior: hidden until `--browser`')).toBe(true);
       expect(rendered.includes('DevTools endpoint: http://127.0.0.1:9222')).toBe(true);
     } finally {
       statusSpy.mockRestore();
@@ -288,18 +294,37 @@ describe('browser command', () => {
     const rendered = await renderLines(['policy', '--all', 'manual']);
 
     expect(rendered.includes('ccs browser policy')).toBe(true);
+    expect(
+      rendered.includes(
+        'New installs and upgrades without saved browser settings: both lanes start disabled and manual.'
+      )
+    ).toBe(true);
     expect(rendered.includes('Default launch behavior: hidden until `--browser`')).toBe(true);
     expect(getBrowserConfig().claude.policy).toBe('manual');
     expect(getBrowserConfig().codex.policy).toBe('manual');
   });
 
-  test('enable updates a single browser lane', async () => {
-    await renderLines(['disable', 'codex']);
-    expect(getBrowserConfig().codex.enabled).toBe(false);
+  test('policy shows safe default-off browser settings on a fresh install', async () => {
+    const rendered = await renderLines(['policy']);
 
+    expect(rendered.includes('ccs browser policy')).toBe(true);
+    expect(
+      rendered.includes(
+        'New installs and upgrades without saved browser settings: both lanes start disabled and manual.'
+      )
+    ).toBe(true);
+    expect(rendered.includes('Claude Browser Attach')).toBe(true);
+    expect(rendered.includes('Codex Browser Tools')).toBe(true);
+    expect(rendered.includes('Enabled: no')).toBe(true);
+    expect(rendered.includes('Policy: manual')).toBe(true);
+    expect(rendered.includes('Default launch behavior: hidden until `--browser`')).toBe(true);
+  });
+
+  test('enable updates a single browser lane', async () => {
     const rendered = await renderLines(['enable', 'codex']);
     expect(rendered.includes('Updated codex browser lane.')).toBe(true);
     expect(getBrowserConfig().codex.enabled).toBe(true);
+    expect(getBrowserConfig().codex.policy).toBe('manual');
   });
 
   test('literal browser help still renders the help page', async () => {
@@ -309,5 +334,10 @@ describe('browser command', () => {
     expect(rendered.includes('ccs browser setup')).toBe(true);
     expect(rendered.includes('ccs browser policy')).toBe(true);
     expect(rendered.includes('--browser')).toBe(true);
+    expect(
+      rendered.includes(
+        'New installs and upgrades without saved browser settings keep both lanes off by default'
+      )
+    ).toBe(true);
   });
 });

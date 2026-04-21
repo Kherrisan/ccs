@@ -8,6 +8,8 @@ CCS provides browser automation through two separate runtime paths:
 - **Codex Browser Tools**: injects Playwright MCP tooling into Codex-target launches
 
 These are related, but they are not the same implementation and they do not promise a shared browser session.
+On new installs, and on upgrades that do not already have explicit browser settings, both lanes
+start **disabled** and **manual** so browser tooling is not auto-exposed until you opt in.
 
 ## How Browser Automation Works
 
@@ -48,7 +50,8 @@ The Browser screen exposes two sections:
 
 Browser policy controls are CLI-first in this release. The dashboard remains the shared setup and
 status surface, while `ccs browser policy` is the authoritative place to decide whether browser
-tooling is auto-exposed or kept manual by default.
+tooling is auto-exposed or kept manual by default. Fresh installs, plus upgrades without an
+existing browser section, surface both lanes as off/manual until you explicitly enable them.
 
 ### Via CLI
 
@@ -63,7 +66,8 @@ ccs browser policy --all manual
 
 Use `ccs browser setup` for the primary one-command setup path. Use `ccs browser status` for
 the current state, `ccs browser doctor` for read-only troubleshooting guidance, and
-`ccs browser policy` to control default browser exposure.
+`ccs browser policy` to control default browser exposure. If you only want browser access for one
+run, keep policy manual and add `--browser` to that launch.
 
 ### Via Config File
 
@@ -73,12 +77,12 @@ Edit `~/.ccs/config.yaml`:
 browser:
   claude:
     enabled: false
-    policy: auto
+    policy: manual
     user_data_dir: "~/.ccs/browser/chrome-user-data"
     devtools_port: 9222
   codex:
-    enabled: true
-    policy: auto
+    enabled: false
+    policy: manual
 ```
 
 Notes:
@@ -87,6 +91,7 @@ Notes:
 - `claude.user_data_dir` is a **Chrome user-data directory**, not a display-name browser profile
 - `claude.devtools_port` is the expected remote debugging port for attach mode
 - `codex.enabled` controls whether CCS injects browser tooling into Codex-target launches
+- New installs, plus upgrades without saved browser settings, default both lanes to `enabled: false` and `policy: manual`
 - `manual` keeps the lane configured but hidden until a launch explicitly opts in with `--browser`
 
 ## Runtime Policy Controls
@@ -94,7 +99,7 @@ Notes:
 CCS now separates **lane enablement** from **default exposure policy**:
 
 - `enabled: false`
-  - the lane is off
+  - the lane is off; this is the default for both lanes on new installs and upgrades without saved browser settings
 - `enabled: true` + `policy: auto`
   - the lane is exposed automatically on matching launches
 - `enabled: true` + `policy: manual`
@@ -159,10 +164,11 @@ ccs browser setup
 That flow:
 
 1. enables Claude Browser Attach in the saved CCS browser config
-2. keeps the configured DevTools port normalized
-3. creates the configured browser user-data directory if needed
-4. prints the exact browser launch command for the current platform
-5. re-checks readiness and reports the next step if Chrome still needs manual attention
+2. leaves launch exposure under the saved policy, so `policy: manual` still requires `--browser`
+3. keeps the configured DevTools port normalized
+4. creates the configured browser user-data directory if needed
+5. prints the exact browser launch command for the current platform
+6. re-checks readiness and reports the next step if Chrome still needs manual attention
 
 ## Launching Chrome For Claude Attach
 

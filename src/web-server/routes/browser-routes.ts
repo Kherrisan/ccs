@@ -1,6 +1,8 @@
 import { Router, type Request, type Response } from 'express';
-import { getBrowserConfig, mutateUnifiedConfig } from '../../config/unified-config-loader';
+import { mutateUnifiedConfig } from '../../config/unified-config-loader';
+import type { BrowserConfig } from '../../config/unified-config-types';
 import { getBrowserStatus } from '../../utils/browser';
+import { getUserFacingBrowserConfig } from '../../utils/browser/browser-status';
 import { requireLocalAccessWhenAuthDisabled } from '../middleware/auth-middleware';
 
 const router = Router();
@@ -40,7 +42,7 @@ router.use((req: Request, res: Response, next) => {
 
 router.get('/', async (_req: Request, res: Response): Promise<void> => {
   try {
-    const config = getBrowserConfig();
+    const config = getUserFacingBrowserConfig();
     const status = await getBrowserStatus();
     res.json({
       config: toBrowserRouteConfig(config),
@@ -140,7 +142,7 @@ router.put('/', async (req: Request, res: Response): Promise<void> => {
   }
 
   try {
-    const current = getBrowserConfig();
+    const current = getUserFacingBrowserConfig();
     const nextClaudeUserDataDir =
       claude?.userDataDir === undefined ? current.claude.user_data_dir : claude.userDataDir.trim();
     mutateUnifiedConfig((config) => {
@@ -158,7 +160,7 @@ router.put('/', async (req: Request, res: Response): Promise<void> => {
       };
     });
 
-    const config = getBrowserConfig();
+    const config = getUserFacingBrowserConfig();
     const status = await getBrowserStatus();
     res.json({
       success: true,
@@ -172,7 +174,7 @@ router.put('/', async (req: Request, res: Response): Promise<void> => {
   }
 });
 
-function toBrowserRouteConfig(config: ReturnType<typeof getBrowserConfig>) {
+function toBrowserRouteConfig(config: BrowserConfig) {
   return {
     claude: {
       enabled: config.claude.enabled,

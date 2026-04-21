@@ -73,7 +73,7 @@ function normalizeBrowserDevtoolsPort(value: number | undefined): number {
 }
 
 function normalizeBrowserPolicy(value: string | undefined): BrowserToolPolicy {
-  return value === 'manual' ? 'manual' : DEFAULT_BROWSER_CONFIG.claude.policy;
+  return value === 'auto' || value === 'manual' ? value : DEFAULT_BROWSER_CONFIG.claude.policy;
 }
 
 function canonicalizeBrowserConfig(config?: BrowserConfig): BrowserConfig {

@@ -5,7 +5,9 @@ import { join } from 'node:path';
 import {
   getBrowserConfig,
   mutateUnifiedConfig,
+  saveUnifiedConfig,
 } from '../../../../src/config/unified-config-loader';
+import { createEmptyUnifiedConfig } from '../../../../src/config/unified-config-types';
 import * as chromeReuse from '../../../../src/utils/browser/chrome-reuse';
 import { getBrowserStatus } from '../../../../src/utils/browser/browser-status';
 import {
@@ -62,7 +64,7 @@ describe('browser status', () => {
     rmSync(tempHome, { recursive: true, force: true });
   });
 
-  it('returns a disabled Claude lane with the recommended managed user-data dir by default', async () => {
+  it('returns disabled/manual browser lanes with the recommended managed user-data dir by default', async () => {
     const codexSpy = spyOn(codexDetector, 'getCodexBinaryInfo').mockReturnValue({
       path: '/usr/local/bin/codex',
       needsShell: false,
@@ -76,20 +78,68 @@ describe('browser status', () => {
       expect(status.claude).toMatchObject({
         enabled: false,
         state: 'disabled',
+        policy: 'manual',
         source: 'config',
         effectiveUserDataDir: join(tempHome, '.ccs', 'browser', 'chrome-user-data'),
         devtoolsPort: 9222,
         managedMcpServerName: 'ccs-browser',
       });
       expect(status.claude.launchCommands.linux).toContain('--remote-debugging-port=9222');
+      expect(status.claude.detail).toContain('off by default');
       expect(status.codex).toMatchObject({
-        enabled: true,
-        state: 'enabled',
+        enabled: false,
+        policy: 'manual',
+        state: 'disabled',
         serverName: 'ccs_browser',
-        supportsConfigOverrides: true,
+        supportsConfigOverrides: false,
       });
+      expect(status.codex.detail).toContain('off by default');
       expect(existsSync(join(tempHome, '.ccs', 'browser', 'chrome-user-data'))).toBe(false);
     } finally {
+      codexSpy.mockRestore();
+    }
+  });
+
+  it('resolves missing saved browser policies to manual while preserving explicit enabled values', async () => {
+    const config = createEmptyUnifiedConfig();
+    config.browser = {
+      claude: {
+        enabled: true,
+        user_data_dir: '/tmp/explicit-claude',
+        devtools_port: 9333,
+      } as typeof config.browser.claude,
+      codex: {
+        enabled: true,
+      } as typeof config.browser.codex,
+    };
+    saveUnifiedConfig(config);
+
+    const runtimeSpy = spyOn(chromeReuse, 'resolveBrowserRuntimeEnv').mockRejectedValue(
+      new Error('Chrome reuse metadata not found: /tmp/explicit-claude/DevToolsActivePort')
+    );
+    const codexSpy = spyOn(codexDetector, 'getCodexBinaryInfo').mockReturnValue({
+      path: '/usr/local/bin/codex',
+      needsShell: false,
+      version: 'codex-cli 0.120.0',
+      features: ['config-overrides'],
+    });
+
+    try {
+      const status = await getBrowserStatus();
+
+      expect(status.claude).toMatchObject({
+        enabled: true,
+        policy: 'manual',
+        effectiveUserDataDir: '/tmp/explicit-claude',
+        devtoolsPort: 9333,
+      });
+      expect(status.codex).toMatchObject({
+        enabled: true,
+        policy: 'manual',
+        state: 'enabled',
+      });
+    } finally {
+      runtimeSpy.mockRestore();
       codexSpy.mockRestore();
     }
   });

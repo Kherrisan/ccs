@@ -26,8 +26,9 @@ import { CLIPROXY_PROVIDER_IDS } from '../cliproxy/provider-capabilities';
  * Version 10 = Exa + Tavily WebSearch backends
  * Version 11 = Discord Channels runtime auto-enable preferences
  * Version 12 = Official Channels multi-provider support (Telegram, Discord, iMessage)
+ * Version 13 = Browser automation defaults to safe manual/off exposure
  */
-export const UNIFIED_CONFIG_VERSION = 12;
+export const UNIFIED_CONFIG_VERSION = 13;
 
 /**
  * Supported CLIProxy providers.
@@ -834,7 +835,7 @@ export interface BrowserClaudeConfig {
 }
 
 export interface BrowserCodexConfig {
-  /** Enable Codex browser tooling injection (default: true) */
+  /** Enable Codex browser tooling injection (default: false) */
   enabled: boolean;
   /** Control whether Codex browser tooling is exposed automatically or only via --browser */
   policy: BrowserToolPolicy;
@@ -848,13 +849,13 @@ export interface BrowserConfig {
 export const DEFAULT_BROWSER_CONFIG: BrowserConfig = {
   claude: {
     enabled: false,
-    policy: 'auto',
+    policy: 'manual',
     user_data_dir: '',
     devtools_port: 9222,
   },
   codex: {
-    enabled: true,
-    policy: 'auto',
+    enabled: false,
+    policy: 'manual',
   },
 };
 
