@@ -109,9 +109,12 @@ export function getImageAnalysisHookEnv(
     : resolveImageAnalysisStatus({ profileName: '' }, config);
   const skipImageAnalysis = !status.supported;
   const runtimeApiKey =
-    typeof context === 'object' && context.cliproxyBridge
+    !skipImageAnalysis && typeof context === 'object' && context.cliproxyBridge
       ? resolveCliproxyBridgeProfile(context.cliproxyBridge.provider).apiKey
       : '';
+  const runtimePath = skipImageAnalysis ? '' : status.runtimePath || '';
+  const runtimeBaseUrl =
+    skipImageAnalysis || typeof context !== 'object' ? '' : context.cliproxyBridge?.currentBaseUrl || '';
 
   return {
     CCS_IMAGE_ANALYSIS_ENABLED: config.enabled ? '1' : '0',
@@ -120,9 +123,8 @@ export function getImageAnalysisHookEnv(
     CCS_CURRENT_PROVIDER: status.backendId || '',
     CCS_IMAGE_ANALYSIS_BACKEND_ID: status.backendId || '',
     CCS_IMAGE_ANALYSIS_MODEL: status.model || '',
-    CCS_IMAGE_ANALYSIS_RUNTIME_PATH: status.runtimePath || '',
-    CCS_IMAGE_ANALYSIS_RUNTIME_BASE_URL:
-      typeof context === 'object' ? context.cliproxyBridge?.currentBaseUrl || '' : '',
+    CCS_IMAGE_ANALYSIS_RUNTIME_PATH: runtimePath,
+    CCS_IMAGE_ANALYSIS_RUNTIME_BASE_URL: runtimeBaseUrl,
     ...(runtimeApiKey ? { CCS_IMAGE_ANALYSIS_RUNTIME_API_KEY: runtimeApiKey } : {}),
     CCS_IMAGE_ANALYSIS_PROMPTS_DIR: getPromptsDir(),
     CCS_IMAGE_ANALYSIS_SKIP: skipImageAnalysis ? '1' : '0',
