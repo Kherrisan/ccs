@@ -80,7 +80,7 @@ import { handleError, runCleanup } from './errors';
 import { tryHandleRootCommand } from './commands/root-command-router';
 
 // Import extracted utility functions
-import { execClaude } from './utils/shell-executor';
+import { execClaude, stripAnthropicRoutingEnv } from './utils/shell-executor';
 import { isDeprecatedGlmtProfileName, normalizeDeprecatedGlmtEnv } from './utils/glmt-deprecation';
 import { maybeWarnAboutResumeLaneMismatch } from './auth/resume-lane-warning';
 import { createLogger } from './services/logging';
@@ -1360,10 +1360,11 @@ async function main(): Promise<void> {
       }
 
       // For Claude target launches that already pass `--settings`, keep runtime
-      // env limited to CCS-managed flags so nested Team/subagent sessions do not
-      // inherit profile-specific ANTHROPIC_* routing from the parent process.
+      // env free of ANTHROPIC routing/auth while preserving non-routing profile
+      // env so nested Team/subagent sessions can still inherit model intent and
+      // other profile-scoped runtime flags.
       const claudeRuntimeEnvVars: NodeJS.ProcessEnv = {
-        ...globalEnv,
+        ...stripAnthropicRoutingEnv({ ...globalEnv, ...settingsEnv }),
         ...(inheritedClaudeConfigDir ? { CLAUDE_CONFIG_DIR: inheritedClaudeConfigDir } : {}),
         ...webSearchEnv,
         ...imageAnalysisEnv,

@@ -141,6 +141,7 @@ printf "%s\n" "$@" > "${claudeArgsLogPath}"
   printf "anthropicApiKey=%s\n" "$ANTHROPIC_API_KEY"
   printf "anthropicModel=%s\n" "$ANTHROPIC_MODEL"
   printf "anthropicSonnet=%s\n" "$ANTHROPIC_DEFAULT_SONNET_MODEL"
+  printf "maxOutputTokens=%s\n" "$CLAUDE_CODE_MAX_OUTPUT_TOKENS"
 } > "${claudeEnvLogPath}"
 exit 0
 `,
@@ -197,6 +198,7 @@ exit 0
             ANTHROPIC_AUTH_TOKEN: 'profile-token',
             ANTHROPIC_MODEL: 'gpt-5.4',
             ANTHROPIC_DEFAULT_SONNET_MODEL: 'gpt-5.4',
+            CLAUDE_CODE_MAX_OUTPUT_TOKENS: '12345',
           },
         },
         null,
@@ -204,23 +206,47 @@ exit 0
       ) + '\n'
     );
 
-    const result = runCcs(['glm', 'smoke'], {
-      ...baseEnv,
-      ANTHROPIC_BASE_URL: 'http://127.0.0.1:8317/api/provider/codex',
-      ANTHROPIC_AUTH_TOKEN: 'parent-routing-token',
-      ANTHROPIC_API_KEY: 'parent-api-key',
-      ANTHROPIC_MODEL: 'gpt-5.4',
-      ANTHROPIC_DEFAULT_SONNET_MODEL: 'gpt-5.4',
-    });
+    const originalCcsHome = process.env.CCS_HOME;
+    process.env.CCS_HOME = tmpHome;
 
-    expect(result.status).toBe(0);
-    const launchedEnv = fs.readFileSync(claudeEnvLogPath, 'utf8');
-    expect(launchedEnv).toContain('stripAnthropic=1');
-    expect(launchedEnv).toContain('anthropicBaseUrl=');
-    expect(launchedEnv).toContain('anthropicAuthToken=');
-    expect(launchedEnv).toContain('anthropicApiKey=');
-    expect(launchedEnv).toContain('anthropicModel=gpt-5.4');
-    expect(launchedEnv).toContain('anthropicSonnet=gpt-5.4');
+    try {
+      mutateUnifiedConfig((config) => {
+        config.global_env = {
+          enabled: true,
+          env: {
+            ANTHROPIC_BASE_URL: 'http://127.0.0.1:9999/api/provider/global',
+            ANTHROPIC_AUTH_TOKEN: 'global-routing-token',
+            ANTHROPIC_API_KEY: 'global-api-key',
+            CLAUDE_CODE_MAX_OUTPUT_TOKENS: '54321',
+          },
+        };
+      });
+
+      const result = runCcs(['glm', 'smoke'], {
+        ...baseEnv,
+        ANTHROPIC_BASE_URL: 'http://127.0.0.1:8317/api/provider/codex',
+        ANTHROPIC_AUTH_TOKEN: 'parent-routing-token',
+        ANTHROPIC_API_KEY: 'parent-api-key',
+        ANTHROPIC_MODEL: 'gpt-5.4',
+        ANTHROPIC_DEFAULT_SONNET_MODEL: 'gpt-5.4',
+      });
+
+      expect(result.status).toBe(0);
+      const launchedEnv = fs.readFileSync(claudeEnvLogPath, 'utf8');
+      expect(launchedEnv).toContain('stripAnthropic=1');
+      expect(launchedEnv).toContain('anthropicBaseUrl=');
+      expect(launchedEnv).toContain('anthropicAuthToken=');
+      expect(launchedEnv).toContain('anthropicApiKey=');
+      expect(launchedEnv).toContain('anthropicModel=gpt-5.4');
+      expect(launchedEnv).toContain('anthropicSonnet=gpt-5.4');
+      expect(launchedEnv).toContain('maxOutputTokens=12345');
+    } finally {
+      if (originalCcsHome !== undefined) {
+        process.env.CCS_HOME = originalCcsHome;
+      } else {
+        delete process.env.CCS_HOME;
+      }
+    }
   });
 
   it('does not auto-enable browser reuse for settings-profile launches from env overrides alone', async () => {
