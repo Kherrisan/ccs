@@ -45,9 +45,9 @@ echo "    branch: $CURRENT_BRANCH"
 echo "    base:   $BASE_BRANCH"
 
 bun run typecheck
-bun run lint:fix
+bun run lint
 bun run format:check
-bun run build:all
+bun run test:fast
 
 git fetch origin "$BASE_BRANCH" --quiet || true
 DIFF_RANGE="HEAD"

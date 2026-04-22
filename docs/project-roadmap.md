@@ -242,28 +242,13 @@ All criteria achieved:
 - [x] Clear domain boundaries
 - [x] Consistent naming conventions
 
-## Maintainability Gate (Issue #539 Foundation)
+## Historical Maintainability Gate (Retired)
 
-- Baseline metrics artifact: `docs/metrics/maintainability-baseline.json`
-- Branch-aware gate wrapper: `scripts/maintainability-check.js`
-- Generate or refresh baseline:
-  - `bun run maintainability:baseline`
-  - `npm run maintainability:baseline`
-- Run regression check gate:
-  - `bun run maintainability:check`
-  - `npm run maintainability:check`
-  - `bun run maintainability:check:strict` (force strict locally)
+This section is preserved as historical context from the original Issue `#539` work.
 
-The baseline/check scripts enumerate git-tracked files under `src` for deterministic results and fail fast if git file listing is unavailable.
-
-Default gate behavior:
-- strict mode on protected branches (`main`, `dev`, `hotfix/*`, `kai/hotfix-*`)
-- warning mode on PR CI and non-protected branches (parallel PR friendly)
-
-The check mode supports a maintainability regression gate that blocks increases in:
-- `process.exit` references
-- synchronous fs API references
-- TypeScript files over 350 LOC
+- The maintainability baseline gate is no longer part of the active CCS workflow.
+- Current contributor and CI gates are documented in `CLAUDE.md`, `CONTRIBUTING.md`, and the GitHub workflow files.
+- Do not assume `maintainability:baseline` or `maintainability:check` exist unless they are reintroduced in a future follow-up.
 
 ---
 
