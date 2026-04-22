@@ -41,6 +41,20 @@ gh pr checks <n>
 ### Absolute rule
 AI MUST NOT declare a task done, close a session, or move to the next task while CI is red or still running. Leaving a PR red and moving on is the primary failure mode this protocol prevents.
 
+### Self-Hosted Runner Awareness
+
+- If `gh pr checks` or `gh run watch` stays queued for more than 10 minutes, assume the self-hosted runner is offline.
+- Confirm on the maintainer host with `ssh docker "systemctl status actions-runner"`.
+- Treat runner outages as infrastructure issues, not code failures. Do not blindly rerun local commands and hope the queue clears.
+
+### Dev Release vs Push CI
+
+- `CI` is the pull-request quality gate for contributor branches.
+- `Push CI` is the post-merge quality signal for `dev`.
+- `Dev Release` publishes the `@dev` package after `dev` changes land.
+- A red `Dev Release` does **not** automatically mean contributor code failed. Check `Push CI` first.
+- `dev-release.yml` currently pushes with `PAT_TOKEN` because `dev` is protected by required status checks (`typecheck`, `lint`, `format`, `build`, `test`). Do not switch it back to `github.token` unless branch protection changes with it.
+
 ## Core Function
 
 Multi-provider profile and runtime manager for Claude Code, Factory Droid,
@@ -87,7 +101,7 @@ broader topic.
 | Mistake | Consequence | Correct Action |
 |---------|-------------|----------------|
 | Running `validate` without `format` first | format:check fails | Run `bun run format` BEFORE validate |
-| Assuming maintainability check is always strict | PR/feature branches run warning mode by default | Use `bun run maintainability:check:strict` before merge when touching debt-sensitive code |
+| Treating `Dev Release` as the contributor quality signal | Publish failures on `dev` look like broken code | Check PR `CI` on the branch and `Push CI` on `dev` first |
 | Using `chore:` for dev→main PR | No npm release triggered | Use `feat:` or `fix:` prefix |
 | Committing directly to `main` or `dev` | Bypasses CI/review | Always use PRs |
 | Manual version bump or git tag | Conflicts with semantic-release | Let CI handle versioning |
@@ -208,8 +222,8 @@ Quality gates MUST pass before pushing. **Both projects have identical workflow.
 # Main project (from repo root)
 bun run format              # Step 1: Fix formatting
 bun run lint:fix            # Step 2: Fix lint issues
-bun run validate            # Step 3: Full gate (typecheck + lint + format + maintainability + tests)
-bun run validate:ci-parity  # Step 4: full CI parity gate (build + validate + base branch check)
+bun run validate            # Step 3: Fast gate (typecheck + lint + format + test:fast)
+bun run validate:ci-parity  # Step 4: PR-CI parity gate (branch check + build + full tests + e2e)
 
 # UI project (if UI changed)
 cd ui
@@ -221,16 +235,16 @@ bun run validate            # Step 3: Final check (must pass)
 **WHY THIS ORDER:**
 - `validate` runs `format:check` which only VERIFIES—won't fix
 - If format:check fails, you skipped step 1
-- CI runs `validate` only (no auto-fix)—local must be clean
+- `validate` now uses read-only `lint`, so autofix still belongs in step 2
+- PR CI and `validate:ci-parity` both run non-mutating checks only
 
-### What Validate Runs
+### What Each Gate Runs
 
 | Project | Command | Runs |
 |---------|---------|------|
-| Main | `bun run validate` | typecheck + lint:fix + format:check + test:all |
+| Main | `bun run validate` | typecheck + lint + format:check + test:fast |
+| Main | `bun run validate:ci-parity` | base branch check + typecheck + lint + format:check + build:all + test:all + test:e2e |
 | UI | `bun run validate` | typecheck + lint:fix + format:check |
-
-**Note:** `maintainability:check` is a SEPARATE gate — not part of `validate`. Run it explicitly via `bun run maintainability:check[:strict|:warn]` when touching debt-sensitive code or before merging to protected branches.
 
 ### ESLint Rules (ALL errors)
 
@@ -255,33 +269,13 @@ bun run validate            # Step 3: Final check (must pass)
 
 ### Automatic Enforcement
 
-- `prepublishOnly` / `prepack` runs `build:all` + `validate` + `sync-version.js`
-- CI/CD runs `bun run validate` on every PR (maintainability is warning mode on PR events)
+- `prepack` runs `build:all`
+- PR `CI` runs `typecheck`, `lint`, `format`, `build`, `test:all`, and `test:e2e`
+- `Push CI` runs the same quality suite on `dev` after merge, separate from release publishing
+- `Dev Release` still runs build + validate + tests before publishing and still requires `PAT_TOKEN` to push back to protected `dev`
 - husky `pre-commit` runs quick lint/type/format checks
 - husky `pre-push` runs the full `bun run validate:ci-parity` gate on `main`/`dev`/hotfix branches
-- husky `pre-push` runs a faster feature-branch gate (`typecheck` + `lint:fix` + `format:check` + targeted checks based on changed files) before GitHub CI handles the full matrix
-
-### Maintainability Baseline Gate
-
-- Baseline file: `docs/metrics/maintainability-baseline.json`
-- Metric collector/check script: `scripts/maintainability-baseline.js`
-- Branch-aware gate wrapper: `scripts/maintainability-check.js`
-- Enforcement path: `bun run maintainability:check` (run separately — NOT part of `bun run validate`; invoked by `validate:ci-parity` on protected branches)
-- Gate modes:
-  - `strict`: protected branches (`main`, `dev`, `hotfix/*`, `kai/hotfix-*`) and equivalent CI refs
-  - `warn`: pull request CI and non-protected local branches (non-blocking for parallel PR workflow)
-  - override commands:
-    - `bun run maintainability:check:strict`
-    - `bun run maintainability:check:warn`
-- Gated metrics (must not increase vs baseline):
-  - `processExitReferenceCount`
-  - `synchronousFsApiReferenceCount`
-- Informational metrics (collected but not gated):
-  - `largeFileCountOver350Loc`
-- Baseline update policy:
-  1. Prefer reducing the metric and keeping the baseline unchanged.
-  2. On protected-branch integration (strict mode), if increase is intentional and accepted, run `bun run maintainability:baseline`.
-  3. Commit both the code change and `docs/metrics/maintainability-baseline.json`, and state reason in PR description.
+- husky `pre-push` runs a faster feature-branch gate (`typecheck` + `lint` + `format:check` + `test:fast`) plus targeted checks based on changed files
 
 ## Critical Constraints (NEVER VIOLATE)
 
@@ -532,17 +526,16 @@ rm -rf ~/.ccs             # Clean environment
 Optimized for iterative push-then-review workflow. Do NOT run the full gate on every push — CI is the safety net. Run the full gate once before asking for review / merge.
 
 ### Tier 1 — Iterative push (feature branch)
-Husky `pre-push` auto-runs: `typecheck + lint:fix + format:check + build:all` plus targeted tests based on changed files. AI does **nothing extra** at push time.
+Husky `pre-push` auto-runs: `typecheck + lint + format:check + test:fast` plus targeted checks based on changed files. AI does **nothing extra** at push time.
 
 **After push (MANDATORY):** follow the [CI-First Protocol](#ci-first-protocol-mandatory) — watch CI until green. Do not move on while CI is red.
 
 ### Tier 2 — Before requesting review / merge
 Run ONCE, not per push:
-- [ ] `bun run validate:ci-parity` — full build + validate matches CI
+- [ ] `bun run validate:ci-parity` — branch freshness + build + full non-e2e tests + e2e
 - [ ] `gh pr checks <n>` — all checks green
-- [ ] If touching debt-sensitive code: `bun run maintainability:check:strict`
-- [ ] If strict mode fails and increase is intentional: `bun run maintainability:baseline` and commit `docs/metrics/maintainability-baseline.json`
 - [ ] If UI changed: `cd ui && bun run format && bun run validate`
+- [ ] If touching command routing, proxy flows, workflows, or release logic: `bun run test:e2e`
 
 ### Code / Docs / Standards (verify before merge)
 - [ ] Conventional commit format (`feat:`, `fix:`, etc.)

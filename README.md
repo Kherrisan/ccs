@@ -177,6 +177,9 @@ ccs ollama "summarize these logs"
 ## Contribute And Report Safely
 
 - Contributing guide: [CONTRIBUTING.md](./CONTRIBUTING.md)
+- Daily local gate: `bun run format && bun run validate`
+- Before review or merge confidence: `bun run validate:ci-parity`
+- If PR checks stay queued for more than 10 minutes, assume the self-hosted runner is offline and notify a maintainer instead of retrying blindly
 - Starter work:
   [good first issue](https://github.com/kaitranntt/ccs/labels/good%20first%20issue),
   [help wanted](https://github.com/kaitranntt/ccs/labels/help%20wanted)
