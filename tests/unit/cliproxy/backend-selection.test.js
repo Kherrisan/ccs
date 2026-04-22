@@ -28,8 +28,8 @@ describe('Backend Selection', () => {
   });
 
   describe('DEFAULT_BACKEND', () => {
-    it('defaults to plus backend for backward compatibility', () => {
-      assert.strictEqual(platformDetector.DEFAULT_BACKEND, 'plus');
+    it('defaults to original backend (Plus upstream deleted, issue #1062)', () => {
+      assert.strictEqual(platformDetector.DEFAULT_BACKEND, 'original');
     });
   });
 
@@ -45,9 +45,10 @@ describe('Backend Selection', () => {
       assert(info.binaryName.startsWith('CLIProxyAPIPlus_6.6.51-0_'));
     });
 
-    it('uses plus backend by default', () => {
+    it('uses original backend by default (Plus upstream deleted, issue #1062)', () => {
       const info = platformDetector.detectPlatform();
-      assert(info.binaryName.includes('CLIProxyAPIPlus'));
+      assert(info.binaryName.startsWith('CLIProxyAPI_'));
+      assert(!info.binaryName.includes('CLIProxyAPIPlus'));
     });
 
     it('uses fallback version when version not specified', () => {
@@ -76,9 +77,10 @@ describe('Backend Selection', () => {
       assert.strictEqual(name, expected);
     });
 
-    it('defaults to plus backend', () => {
+    it('defaults to original backend (Plus upstream deleted, issue #1062)', () => {
       const name = platformDetector.getExecutableName();
-      assert(name.includes('cli-proxy-api-plus'));
+      const expected = isWindows ? 'cli-proxy-api.exe' : 'cli-proxy-api';
+      assert.strictEqual(name, expected);
     });
   });
 
@@ -94,9 +96,10 @@ describe('Backend Selection', () => {
       assert(url.includes('router-for-me/CLIProxyAPIPlus/releases'));
     });
 
-    it('defaults to plus backend', () => {
+    it('defaults to original backend (Plus upstream deleted, issue #1062)', () => {
       const url = platformDetector.getDownloadUrl();
-      assert(url.includes('CLIProxyAPIPlus'));
+      assert(url.includes('router-for-me/CLIProxyAPI/releases'));
+      assert(!url.includes('CLIProxyAPIPlus'));
     });
   });
 

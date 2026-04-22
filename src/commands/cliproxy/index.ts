@@ -6,14 +6,13 @@
  */
 
 import { CLIProxyBackend } from '../../cliproxy/types';
-import { DEFAULT_BACKEND } from '../../cliproxy/platform-detector';
+import { getStoredConfiguredBackend } from '../../cliproxy/binary-manager';
 import {
   type QuotaSupportedProvider,
   QUOTA_PROVIDER_HELP_TEXT,
   mapExternalProviderName,
   isQuotaSupportedProvider,
 } from '../../cliproxy/provider-capabilities';
-import { loadOrCreateUnifiedConfig } from '../../config/unified-config-loader';
 import { handleSync } from '../cliproxy-sync-handler';
 import { extractOption, hasAnyFlag } from '../arg-extractor';
 
@@ -71,12 +70,10 @@ function parseBackendArg(args: string[]): {
 }
 
 /**
- * Get effective backend (CLI flag > config.yaml > default)
+ * Get selected backend input (CLI flag > config.yaml > default)
  */
 function getEffectiveBackend(cliBackend?: CLIProxyBackend): CLIProxyBackend {
-  if (cliBackend) return cliBackend;
-  const config = loadOrCreateUnifiedConfig();
-  return config.cliproxy?.backend ?? DEFAULT_BACKEND;
+  return cliBackend ?? getStoredConfiguredBackend();
 }
 
 /**

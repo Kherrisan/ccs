@@ -5,10 +5,17 @@
  * Pattern: Mirrors npm install behavior (fast check, download only when needed)
  */
 
+import * as fs from 'fs';
+import * as path from 'path';
 import { info, warn } from '../utils/ui';
 import { getBinDir, CLIPROXY_DEFAULT_PORT } from './config-generator';
 import { BinaryInfo, BinaryManagerConfig } from './types';
-import { BACKEND_CONFIG, DEFAULT_BACKEND, CLIPROXY_MAX_STABLE_VERSION } from './platform-detector';
+import {
+  BACKEND_CONFIG,
+  DEFAULT_BACKEND,
+  CLIPROXY_MAX_STABLE_VERSION,
+  getExecutableName,
+} from './platform-detector';
 import { stopProxy } from './services/proxy-lifecycle-service';
 import { waitForPortFree } from '../utils/port-utils';
 import { loadOrCreateUnifiedConfig } from '../config/unified-config-loader';
@@ -16,6 +23,7 @@ import {
   UpdateCheckResult,
   checkForUpdates,
   deleteBinary,
+  getVersionCachePath,
   getBinaryPath,
   isBinaryInstalled,
   getBinaryInfo,
@@ -30,17 +38,96 @@ import {
 } from './binary';
 
 import type { CLIProxyBackend } from './types';
+import { getVersionListCachePath } from './binary/version-cache';
+
+export const CLIPROXY_PLUS_TRACKING_URL = 'https://github.com/kaitranntt/ccs/issues/1062';
 
 /**
- * Get backend from config or default to 'plus'
+ * Track whether we've already warned the user about the Plus fallback this
+ * process lifetime. Prevents spamming the warning on every command.
  */
-function getConfiguredBackend(): CLIProxyBackend {
+let plusFallbackWarned = false;
+
+function emitPlusFallbackWarning(): void {
+  if (plusFallbackWarned) return;
+  plusFallbackWarned = true;
+  process.stderr.write(
+    `${warn(
+      'CLIProxyAPIPlus upstream repo is currently unavailable; local CLIProxy is falling back to ' +
+        '`backend: original`. Run `ccs config` to update your saved config. ' +
+        `Tracking: ${CLIPROXY_PLUS_TRACKING_URL}`
+    )}\n`
+  );
+}
+
+export function getPlusBackendUnavailableMessage(provider?: string): string {
+  const prefix = provider
+    ? `${provider} requires CLIProxyAPIPlus,`
+    : 'CLIProxyAPIPlus upstream repo is currently unavailable,';
+  return (
+    `${prefix} but local CLIProxy currently supports only \`backend: original\`. ` +
+    `Tracking: ${CLIPROXY_PLUS_TRACKING_URL}`
+  );
+}
+
+export function resolveLocalBackend(
+  backend: CLIProxyBackend = DEFAULT_BACKEND,
+  options: { warnOnFallback?: boolean } = {}
+): CLIProxyBackend {
+  if (backend !== 'plus') return backend;
+  if (options.warnOnFallback) {
+    emitPlusFallbackWarning();
+  }
+  return 'original';
+}
+
+function copyFallbackStateIfMissing(sourcePath: string, targetPath: string): void {
+  if (!fs.existsSync(sourcePath) || fs.existsSync(targetPath)) return;
+  fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+  fs.copyFileSync(sourcePath, targetPath);
+}
+
+export function syncPlusFallbackStateIfNeeded(configuredBackend: CLIProxyBackend): void {
+  if (configuredBackend !== 'plus') return;
+
+  const plusDir = getBackendBinDir('plus');
+  const originalDir = getBackendBinDir('original');
+
+  copyFallbackStateIfMissing(
+    path.join(plusDir, getExecutableName('plus')),
+    path.join(originalDir, getExecutableName('original'))
+  );
+  copyFallbackStateIfMissing(path.join(plusDir, '.version'), path.join(originalDir, '.version'));
+  copyFallbackStateIfMissing(getVersionPinPath('plus'), getVersionPinPath('original'));
+  copyFallbackStateIfMissing(getVersionCachePath('plus'), getVersionCachePath('original'));
+  copyFallbackStateIfMissing(getVersionListCachePath('plus'), getVersionListCachePath('original'));
+}
+
+function getConfiguredOrDefaultBackend(): CLIProxyBackend {
   try {
     const config = loadOrCreateUnifiedConfig();
     return config.cliproxy?.backend || DEFAULT_BACKEND;
   } catch {
     return DEFAULT_BACKEND;
   }
+}
+
+export function getStoredConfiguredBackend(): CLIProxyBackend {
+  return getConfiguredOrDefaultBackend();
+}
+
+/**
+ * Get backend from config, with runtime fallback to 'original' when the user
+ * still has `backend: plus` saved.
+ *
+ * Context (issue #1062): the upstream `router-for-me/CLIProxyAPIPlus` repo was
+ * deleted, so any `backend: plus` install/update path hits a 404. Rather than
+ * forcing users to manually edit config.yaml, we degrade to `original` at
+ * runtime and warn once. This keeps existing installations working without a
+ * reconfig step, while CCS self-maintains its own Plus fork (future work).
+ */
+export function getConfiguredBackend(options: { warnOnFallback?: boolean } = {}): CLIProxyBackend {
+  return resolveLocalBackend(getConfiguredOrDefaultBackend(), options);
 }
 
 /**
@@ -52,7 +139,7 @@ function getBackendBinDir(backend: CLIProxyBackend = DEFAULT_BACKEND): string {
   return `${baseDir}/${backend}`;
 }
 
-/** Default configuration (uses backend from config.yaml or defaults to 'plus') */
+/** Default configuration (uses backend from config.yaml or defaults to `DEFAULT_BACKEND`) */
 function createDefaultConfig(backend: CLIProxyBackend = DEFAULT_BACKEND): BinaryManagerConfig {
   const backendConfig = BACKEND_CONFIG[backend];
   return {
@@ -76,7 +163,9 @@ export class BinaryManager {
   private backend: CLIProxyBackend;
 
   constructor(config: Partial<BinaryManagerConfig> = {}, backend?: CLIProxyBackend) {
-    this.backend = backend ?? getConfiguredBackend();
+    const configuredBackend = backend ?? getConfiguredOrDefaultBackend();
+    syncPlusFallbackStateIfNeeded(configuredBackend);
+    this.backend = resolveLocalBackend(configuredBackend, { warnOnFallback: true });
     const defaultConfig = createDefaultConfig(this.backend);
     this.config = { ...defaultConfig, ...config };
   }
@@ -127,7 +216,9 @@ export async function ensureCLIProxyBinary(
   verbose = false,
   options: EnsureCLIProxyBinaryOptions = {}
 ): Promise<string> {
-  const backend = getConfiguredBackend();
+  const configuredBackend = getConfiguredOrDefaultBackend();
+  syncPlusFallbackStateIfNeeded(configuredBackend);
+  const backend = resolveLocalBackend(configuredBackend, { warnOnFallback: true });
 
   // Migrate old shared pin to backend-specific location (one-time migration)
   migrateVersionPin(backend);
@@ -158,19 +249,25 @@ export async function ensureCLIProxyBinary(
 
 /** Check if CLIProxyAPI binary is installed */
 export function isCLIProxyInstalled(backend?: CLIProxyBackend): boolean {
-  const effectiveBackend = backend ?? getConfiguredBackend();
+  const configuredBackend = backend ?? getConfiguredOrDefaultBackend();
+  syncPlusFallbackStateIfNeeded(configuredBackend);
+  const effectiveBackend = resolveLocalBackend(configuredBackend, { warnOnFallback: true });
   return new BinaryManager({}, effectiveBackend).isBinaryInstalled();
 }
 
 /** Get CLIProxyAPI binary path (may not exist) */
 export function getCLIProxyPath(backend?: CLIProxyBackend): string {
-  const effectiveBackend = backend ?? getConfiguredBackend();
+  const configuredBackend = backend ?? getConfiguredOrDefaultBackend();
+  syncPlusFallbackStateIfNeeded(configuredBackend);
+  const effectiveBackend = resolveLocalBackend(configuredBackend, { warnOnFallback: true });
   return new BinaryManager({}, effectiveBackend).getBinaryPath();
 }
 
 /** Get installed CLIProxyAPI version from .version file */
 export function getInstalledCliproxyVersion(backend?: CLIProxyBackend): string {
-  const effectiveBackend = backend ?? getConfiguredBackend();
+  const configuredBackend = backend ?? getConfiguredOrDefaultBackend();
+  syncPlusFallbackStateIfNeeded(configuredBackend);
+  const effectiveBackend = resolveLocalBackend(configuredBackend, { warnOnFallback: true });
   return readInstalledVersion(
     getBackendBinDir(effectiveBackend),
     BACKEND_CONFIG[effectiveBackend].fallbackVersion
@@ -196,7 +293,9 @@ export async function installCliproxyVersion(
   backend?: CLIProxyBackend,
   deps: InstallCliproxyVersionDeps = {}
 ): Promise<void> {
-  const effectiveBackend = backend ?? getConfiguredBackend();
+  const configuredBackend = backend ?? getConfiguredOrDefaultBackend();
+  syncPlusFallbackStateIfNeeded(configuredBackend);
+  const effectiveBackend = resolveLocalBackend(configuredBackend, { warnOnFallback: true });
   const manager =
     deps.createManager?.({ version, verbose, forceVersion: true }, effectiveBackend) ??
     new BinaryManager({ version, verbose, forceVersion: true }, effectiveBackend);
@@ -237,7 +336,9 @@ export async function installCliproxyVersion(
 
 /** Fetch the latest CLIProxyAPI version from GitHub API */
 export async function fetchLatestCliproxyVersion(backend?: CLIProxyBackend): Promise<string> {
-  const effectiveBackend = backend ?? getConfiguredBackend();
+  const configuredBackend = backend ?? getConfiguredOrDefaultBackend();
+  syncPlusFallbackStateIfNeeded(configuredBackend);
+  const effectiveBackend = resolveLocalBackend(configuredBackend, { warnOnFallback: true });
   const result = await new BinaryManager({}, effectiveBackend).checkForUpdates();
   return result.latestVersion;
 }
@@ -262,7 +363,9 @@ export interface CliproxyUpdateCheckResult {
 export async function checkCliproxyUpdate(
   backend?: CLIProxyBackend
 ): Promise<CliproxyUpdateCheckResult> {
-  const effectiveBackend = backend ?? getConfiguredBackend();
+  const configuredBackend = backend ?? getConfiguredOrDefaultBackend();
+  syncPlusFallbackStateIfNeeded(configuredBackend);
+  const effectiveBackend = resolveLocalBackend(configuredBackend, { warnOnFallback: true });
   const result = await new BinaryManager({}, effectiveBackend).checkForUpdates();
 
   // Import isNewerVersion for stability check

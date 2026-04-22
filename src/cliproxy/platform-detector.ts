@@ -29,8 +29,15 @@ export const BACKEND_CONFIG = {
   },
 } as const;
 
-/** Default backend */
-export const DEFAULT_BACKEND: CLIProxyBackend = 'plus';
+/**
+ * Default backend
+ *
+ * Set to 'original' because upstream `router-for-me/CLIProxyAPIPlus` was
+ * deleted (issue #1062). The original `router-for-me/CLIProxyAPI` repo is
+ * still maintained. Users with existing `backend: plus` configs are migrated
+ * at runtime via a 404 fallback in the installer (see binary/installer.ts).
+ */
+export const DEFAULT_BACKEND: CLIProxyBackend = 'original';
 
 /**
  * CLIProxyAPIPlus fallback version (used when GitHub API unavailable)

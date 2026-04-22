@@ -18,7 +18,11 @@ import { ProgressIndicator } from '../../utils/progress-indicator';
 import { ok, fail, info, warn } from '../../utils/ui';
 import { getCcsDir } from '../../utils/config-manager';
 import { escapeShellArg, getWindowsEscapedCommandShell } from '../../utils/shell-executor';
-import { ensureCLIProxyBinary } from '../binary-manager';
+import {
+  ensureCLIProxyBinary,
+  getConfiguredBackend,
+  getPlusBackendUnavailableMessage,
+} from '../binary-manager';
 import {
   generateConfig,
   getProviderConfig,
@@ -30,7 +34,6 @@ import {
 import { checkRemoteProxy } from '../remote-proxy-client';
 import { isAuthenticated } from '../auth-handler';
 import { CLIProxyProvider, CLIProxyBackend, PLUS_ONLY_PROVIDERS, ExecutorConfig } from '../types';
-import { DEFAULT_BACKEND } from '../platform-detector';
 import { configureProviderModel, getCurrentModel } from '../model-config';
 import { reconcileCodexModelForActivePlan } from '../codex-plan-compatibility';
 import { resolveProxyConfig, PROXY_CLI_FLAGS } from '../proxy-config-resolver';
@@ -207,23 +210,8 @@ export async function execClaudeWithCLIProxy(
   // 0. Resolve proxy configuration (CLI > ENV > config.yaml > defaults)
   const unifiedConfig = loadOrCreateUnifiedConfig();
 
-  // 0a. Runtime backend/provider validation
-  const backend: CLIProxyBackend = unifiedConfig.cliproxy?.backend ?? DEFAULT_BACKEND;
-
   // Collect all providers to validate (default + composite tiers)
   const allProviders = [provider, ...compositeProviders];
-  for (const p of allProviders) {
-    if (backend === 'original' && PLUS_ONLY_PROVIDERS.includes(p as CLIProxyProvider)) {
-      console.error('');
-      console.error(fail(`${p} requires CLIProxyAPIPlus backend`));
-      console.error('');
-      console.error('To use this provider, either:');
-      console.error('  1. Set `cliproxy.backend: plus` in ~/.ccs/config.yaml');
-      console.error('  2. Use --backend=plus flag: ccs ' + p + ' --backend=plus');
-      console.error('');
-      throw new Error(`Provider ${p} requires Plus backend`);
-    }
-  }
 
   const cliproxyServerConfig = unifiedConfig.cliproxy_server;
   const { config: proxyConfig, remainingArgs: argsWithoutProxy } = resolveProxyConfig(args, {
@@ -283,6 +271,7 @@ export async function execClaudeWithCLIProxy(
 
   // Check remote proxy if configured
   let useRemoteProxy = false;
+  let localBackend: CLIProxyBackend = 'original';
   if (proxyConfig.mode === 'remote' && proxyConfig.host) {
     const status = await checkRemoteProxy({
       host: proxyConfig.host,
@@ -326,6 +315,19 @@ export async function execClaudeWithCLIProxy(
         }
       } else {
         throw new Error('Remote proxy unreachable and fallback disabled');
+      }
+    }
+  }
+
+  if (!useRemoteProxy) {
+    localBackend = getConfiguredBackend({ warnOnFallback: true });
+
+    for (const p of allProviders) {
+      if (localBackend === 'original' && PLUS_ONLY_PROVIDERS.includes(p as CLIProxyProvider)) {
+        console.error('');
+        console.error(fail(getPlusBackendUnavailableMessage(p)));
+        console.error('');
+        throw new Error(`Provider ${p} is temporarily unavailable on local CLIProxy`);
       }
     }
   }
@@ -969,13 +971,13 @@ export async function execClaudeWithCLIProxy(
         cfg.port,
         cfg.timeout,
         cfg.pollInterval,
-        backend,
+        localBackend,
         configPath
       );
 
       // Register session
       if (proxy.pid) {
-        sessionId = registerProxySession(cfg.port, proxy.pid, backend, verbose);
+        sessionId = registerProxySession(cfg.port, proxy.pid, localBackend, verbose);
       }
     }
   }
