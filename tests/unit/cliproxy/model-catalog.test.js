@@ -150,8 +150,8 @@ describe('Model Catalog', () => {
       // Opus 4.7 requires adaptive thinking (type: 'levels'); manual budget_tokens
       // is rejected by the Anthropic API with 400. Extended (1M) context is available.
       assert.strictEqual(opus47.thinking.type, 'levels');
-      assert.deepStrictEqual(opus47.thinking.levels, ['low', 'medium', 'high', 'xhigh']);
-      assert.strictEqual(opus47.thinking.maxLevel, 'xhigh');
+      assert.deepStrictEqual(opus47.thinking.levels, ['low', 'medium', 'high', 'xhigh', 'max']);
+      assert.strictEqual(opus47.thinking.maxLevel, 'max');
       assert.strictEqual(opus47.extendedContext, true);
     });
 
