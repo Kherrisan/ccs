@@ -151,4 +151,49 @@ describe('useProviderEditor', () => {
       ANTHROPIC_DEFAULT_HAIKU_MODEL: 'claude-haiku-4-5-20251001',
     });
   });
+
+  it('preserves explicit codex effort suffixes in editor state updates', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL) => {
+        const url = String(input);
+
+        if (url.includes('/api/settings/codex/raw')) {
+          return Promise.resolve(
+            createJsonResponse({
+              profile: 'codex',
+              settings: {
+                env: {
+                  ANTHROPIC_MODEL: 'gpt-5.3-codex-high',
+                  ANTHROPIC_DEFAULT_OPUS_MODEL: 'gpt-5.3-codex-xhigh',
+                  ANTHROPIC_DEFAULT_SONNET_MODEL: 'gpt-5.3-codex-high',
+                  ANTHROPIC_DEFAULT_HAIKU_MODEL: 'gpt-5.4-mini-medium',
+                },
+              },
+              mtime: 1,
+              path: '~/.ccs/codex.settings.json',
+            })
+          );
+        }
+
+        return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+      })
+    );
+
+    const { result } = renderHook(() => useProviderEditor('codex'), { wrapper });
+
+    await waitFor(() => expect(result.current.currentModel).toBe('gpt-5.3-codex-high'));
+
+    act(() => {
+      result.current.updateEnvValue('ANTHROPIC_MODEL', 'gpt-5.3-codex-xhigh');
+    });
+
+    const nextSettings = JSON.parse(result.current.rawJsonContent);
+    expect(nextSettings.env).toMatchObject({
+      ANTHROPIC_MODEL: 'gpt-5.3-codex-xhigh',
+      ANTHROPIC_DEFAULT_OPUS_MODEL: 'gpt-5.3-codex-xhigh',
+      ANTHROPIC_DEFAULT_SONNET_MODEL: 'gpt-5.3-codex-high',
+      ANTHROPIC_DEFAULT_HAIKU_MODEL: 'gpt-5.4-mini-medium',
+    });
+  });
 });

@@ -263,6 +263,7 @@ export const MODEL_CATALOGS: Record<string, ProviderCatalog> = {
         id: 'gpt-5-codex',
         name: 'GPT-5 Codex',
         description: 'Cross-plan safe Codex default',
+        codexMaxEffort: 'xhigh',
         presetMapping: {
           default: 'gpt-5-codex',
           opus: 'gpt-5-codex',
@@ -274,6 +275,7 @@ export const MODEL_CATALOGS: Record<string, ProviderCatalog> = {
         id: 'gpt-5-codex-mini',
         name: 'GPT-5 Codex Mini',
         description: 'Faster and cheaper Codex option',
+        codexMaxEffort: 'high',
         presetMapping: {
           default: 'gpt-5-codex-mini',
           opus: 'gpt-5-codex',
@@ -285,6 +287,7 @@ export const MODEL_CATALOGS: Record<string, ProviderCatalog> = {
         id: 'gpt-5-mini',
         name: 'GPT-5 Mini',
         description: 'Legacy mini model ID kept for backwards compatibility',
+        codexMaxEffort: 'high',
         presetMapping: {
           default: 'gpt-5-mini',
           opus: 'gpt-5-codex',
@@ -296,6 +299,7 @@ export const MODEL_CATALOGS: Record<string, ProviderCatalog> = {
         id: 'gpt-5.1-codex-mini',
         name: 'GPT-5.1 Codex Mini',
         description: 'Legacy fast Codex mini model',
+        codexMaxEffort: 'high',
         presetMapping: {
           default: 'gpt-5.1-codex-mini',
           opus: 'gpt-5.1-codex-max',
@@ -307,6 +311,7 @@ export const MODEL_CATALOGS: Record<string, ProviderCatalog> = {
         id: 'gpt-5.1-codex-max',
         name: 'GPT-5.1 Codex Max',
         description: 'Higher-effort Codex model with xhigh support',
+        codexMaxEffort: 'xhigh',
         presetMapping: {
           default: 'gpt-5.1-codex-max',
           opus: 'gpt-5.1-codex-max',
@@ -318,6 +323,7 @@ export const MODEL_CATALOGS: Record<string, ProviderCatalog> = {
         id: 'gpt-5.2-codex',
         name: 'GPT-5.2 Codex',
         description: 'Cross-plan Codex model with xhigh support',
+        codexMaxEffort: 'xhigh',
         presetMapping: {
           default: 'gpt-5.2-codex',
           opus: 'gpt-5.2-codex',
@@ -330,6 +336,7 @@ export const MODEL_CATALOGS: Record<string, ProviderCatalog> = {
         name: 'GPT-5.3 Codex',
         tier: 'paid',
         description: 'Paid Codex plans only',
+        codexMaxEffort: 'xhigh',
         presetMapping: {
           default: 'gpt-5.3-codex',
           opus: 'gpt-5.3-codex',
@@ -342,6 +349,7 @@ export const MODEL_CATALOGS: Record<string, ProviderCatalog> = {
         name: 'GPT-5.3 Codex Spark',
         tier: 'paid',
         description: 'Paid Codex plans only, ultra-fast coding model',
+        codexMaxEffort: 'xhigh',
         presetMapping: {
           default: 'gpt-5.3-codex-spark',
           opus: 'gpt-5.3-codex',
@@ -354,6 +362,7 @@ export const MODEL_CATALOGS: Record<string, ProviderCatalog> = {
         name: 'GPT-5.4',
         tier: 'paid',
         description: 'Paid Codex plans only, latest GPT-5 family model',
+        codexMaxEffort: 'xhigh',
         presetMapping: {
           default: 'gpt-5.4',
           opus: 'gpt-5.4',

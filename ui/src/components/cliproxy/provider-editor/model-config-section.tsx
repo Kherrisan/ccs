@@ -229,7 +229,8 @@ export function ModelConfigSection({
         {provider === 'codex' && (
           <p className="text-[11px] text-muted-foreground mb-3 rounded-md border bg-muted/30 px-2.5 py-2">
             Codex tip: suffixes <code>-medium</code>, <code>-high</code>, and <code>-xhigh</code>{' '}
-            pin reasoning effort. Unsuffixed models use Thinking settings.
+            pin reasoning effort. Select a suffixed model to pin effort; unsuffixed models use
+            Thinking settings.
           </p>
         )}
         <div className="space-y-4">

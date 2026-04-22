@@ -84,7 +84,11 @@ export const loginRateLimiter = rateLimit({
 /**
  * Create session middleware configured for CCS dashboard.
  */
-export function createSessionMiddleware() {
+export function createSessionMiddleware(): (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => void {
   const authConfig = getDashboardAuthConfig();
   const maxAge = (authConfig.session_timeout_hours ?? 24) * 60 * 60 * 1000;
 

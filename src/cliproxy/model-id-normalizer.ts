@@ -65,6 +65,18 @@ function splitBaseModelAndSuffix(model: string): { baseModel: string; suffix: st
   };
 }
 
+function splitCodexEffortSuffix(model: string): { baseModel: string; suffix: string } {
+  const match = model.match(CODEX_EFFORT_SUFFIX_REGEX);
+  if (!match?.[0]) {
+    return { baseModel: model, suffix: '' };
+  }
+
+  return {
+    baseModel: model.slice(0, -match[0].length),
+    suffix: match[0],
+  };
+}
+
 /**
  * Extract provider segment from `/api/provider/{provider}` request paths.
  *
@@ -97,20 +109,24 @@ export function isIFlowProvider(provider: ProviderLike): boolean {
   return provider.trim().toLowerCase() === 'iflow';
 }
 
-/** Normalize Codex effort-suffixed IDs to canonical IDs. */
+/** Strip Codex effort suffixes while preserving trailing config suffixes. */
 export function stripCodexEffortSuffix(model: string): string {
-  return model.replace(CODEX_EFFORT_SUFFIX_REGEX, '');
+  const trimmed = trimModelId(model);
+  const { baseModel, suffix } = splitBaseModelAndSuffix(trimmed);
+  const { baseModel: withoutEffort } = splitCodexEffortSuffix(baseModel);
+  return `${withoutEffort}${suffix}`;
 }
 
 /** Normalize legacy Codex aliases to the current public Codex model IDs. */
 export function normalizeCodexLegacyModelAliases(model: string): string {
   const trimmed = trimModelId(model);
   const { baseModel, suffix } = splitBaseModelAndSuffix(trimmed);
-  const replacement = CODEX_LEGACY_MODEL_ALIASES[baseModel.trim().toLowerCase()];
+  const { baseModel: baseWithoutEffort, suffix: effortSuffix } = splitCodexEffortSuffix(baseModel);
+  const replacement = CODEX_LEGACY_MODEL_ALIASES[baseWithoutEffort.trim().toLowerCase()];
   if (!replacement) {
     return trimmed;
   }
-  return `${replacement}${suffix}`;
+  return `${replacement}${effortSuffix}${suffix}`;
 }
 
 /**
@@ -217,15 +233,12 @@ export function normalizeModelIdForProvider(model: string, provider: ProviderLik
 
 /**
  * Canonicalize model ID for provider-specific compatibility.
- * - Codex: strip effort suffixes.
+ * - Codex: preserve valid effort suffixes while normalizing legacy aliases.
  * - Antigravity: normalize dotted/historical aliases.
  */
 export function canonicalizeModelIdForProvider(model: string, provider: ProviderLike): string {
   const trimmedModel = trimModelId(model);
-  const withoutCodexSuffix = isCodexProvider(provider)
-    ? stripCodexEffortSuffix(trimmedModel)
-    : trimmedModel;
-  return normalizeModelIdForProvider(withoutCodexSuffix, provider);
+  return normalizeModelIdForProvider(trimmedModel, provider);
 }
 
 /**

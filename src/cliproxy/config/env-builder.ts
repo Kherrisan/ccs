@@ -42,7 +42,6 @@ interface ProviderSettings {
 const DEPRECATED_MODEL_PREFIX = 'gemini-claude-';
 /** Replacement prefix matching actual upstream model names */
 const UPSTREAM_MODEL_PREFIX = 'claude-';
-const CODEX_EFFORT_SUFFIX_REGEX = /-(xhigh|high|medium)$/i;
 const PRESET_MODEL_KEYS = ['default', 'opus', 'sonnet', 'haiku'] as const;
 const REQUIRED_PROVIDER_ENV_KEYS = [
   'ANTHROPIC_BASE_URL',
@@ -60,10 +59,6 @@ const CURSOR_LEGACY_ENV_OVERRIDE_KEYS = new Set([
 
 function isObjectRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function stripCodexEffortSuffix(modelId: string): string {
-  return modelId.replace(CODEX_EFFORT_SUFFIX_REGEX, '');
 }
 
 /**
@@ -111,58 +106,6 @@ function migrateDeprecatedModelNames(
         if (typeof value !== 'string') continue;
         let canonical = normalizeModelIdForProvider(value, provider);
         canonical = migrateDeniedAntigravityModelAliases(canonical);
-        if (canonical !== value) {
-          presetRecord[key] = canonical;
-          migrated = true;
-        }
-      }
-    }
-  }
-
-  if (migrated) {
-    try {
-      fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n', { mode: 0o600 });
-    } catch {
-      // Best-effort migration — don't block startup if write fails
-    }
-  }
-
-  return migrated;
-}
-
-/**
- * Migrate codex effort-suffixed model IDs in settings to canonical IDs.
- * Example: gpt-5.3-codex-xhigh -> gpt-5.3-codex
- */
-function migrateCodexEffortSuffixes(
-  settingsPath: string,
-  provider: CLIProxyProvider,
-  settings: ProviderSettings
-): boolean {
-  if (provider !== 'codex') return false;
-  if (!settings.env || typeof settings.env !== 'object') return false;
-
-  let migrated = false;
-
-  for (const key of MODEL_ENV_VAR_KEYS) {
-    const value = settings.env[key];
-    if (typeof value !== 'string') continue;
-    const canonical = stripCodexEffortSuffix(value);
-    if (canonical !== value) {
-      settings.env[key] = canonical;
-      migrated = true;
-    }
-  }
-
-  if (Array.isArray(settings.presets)) {
-    for (const preset of settings.presets) {
-      if (!preset || typeof preset !== 'object') continue;
-      const presetRecord = preset as Record<string, unknown>;
-
-      for (const key of PRESET_MODEL_KEYS) {
-        const value = presetRecord[key];
-        if (typeof value !== 'string') continue;
-        const canonical = stripCodexEffortSuffix(value);
         if (canonical !== value) {
           presetRecord[key] = canonical;
           migrated = true;
@@ -510,8 +453,6 @@ export function getEffectiveEnvVars(
         if (settings.env && typeof settings.env === 'object') {
           // Migrate deprecated gemini-claude-* model names if present
           migrateDeprecatedModelNames(expandedPath, provider, settings);
-          // Migrate codex effort suffixes to canonical IDs if present
-          migrateCodexEffortSuffixes(expandedPath, provider, settings);
           // Migrate legacy iFlow placeholders to supported model IDs
           migrateIFlowPlaceholderModel(expandedPath, provider, settings);
           // Custom variant settings found - merge with global env
@@ -545,8 +486,6 @@ export function getEffectiveEnvVars(
       if (settings.env && typeof settings.env === 'object') {
         // Migrate deprecated gemini-claude-* model names if present
         migrateDeprecatedModelNames(settingsPath, provider, settings);
-        // Migrate codex effort suffixes to canonical IDs if present
-        migrateCodexEffortSuffixes(settingsPath, provider, settings);
         // Migrate legacy iFlow placeholders to supported model IDs
         migrateIFlowPlaceholderModel(settingsPath, provider, settings);
         // User override found - merge with global env
@@ -719,7 +658,6 @@ export function getRemoteEnvVars(
         const settings: ProviderSettings = JSON.parse(content);
         if (settings.env && typeof settings.env === 'object') {
           migrateDeprecatedModelNames(expandedPath, provider, settings);
-          migrateCodexEffortSuffixes(expandedPath, provider, settings);
           migrateIFlowPlaceholderModel(expandedPath, provider, settings);
           userEnvVars = settings.env as Record<string, string>;
         }
@@ -739,7 +677,6 @@ export function getRemoteEnvVars(
         const settings: ProviderSettings = JSON.parse(content);
         if (settings.env && typeof settings.env === 'object') {
           migrateDeprecatedModelNames(settingsPath, provider, settings);
-          migrateCodexEffortSuffixes(settingsPath, provider, settings);
           migrateIFlowPlaceholderModel(settingsPath, provider, settings);
           userEnvVars = settings.env as Record<string, string>;
         }
