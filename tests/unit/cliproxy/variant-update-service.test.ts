@@ -6,7 +6,10 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
-import { updateVariant } from '../../../src/cliproxy/services/variant-service';
+import {
+  updateVariant,
+  validateProviderBackend,
+} from '../../../src/cliproxy/services/variant-service';
 import { loadOrCreateUnifiedConfig } from '../../../src/config/unified-config-loader';
 
 describe('updateVariant - provider/model consistency', () => {
@@ -50,6 +53,7 @@ preferences:
   telemetry: false
   auto_update: true
 cliproxy:
+  backend: plus
   oauth_accounts: {}
   providers:
     - gemini
@@ -90,6 +94,12 @@ cliproxy:
     });
     expect(result.success).toBe(false);
     expect(result.error).toContain('denylist');
+  });
+
+  it('reports plus-only providers as temporarily unavailable on local CLIProxy', () => {
+    const error = validateProviderBackend('ghcp');
+    expect(error).toContain('currently supports only `backend: original`');
+    expect(error).toContain('issues/1062');
   });
 
   it('updates provider and regenerates provider-specific core env in same settings file', () => {

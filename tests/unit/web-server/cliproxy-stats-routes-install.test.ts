@@ -10,6 +10,7 @@ let createEmptyUnifiedConfig: typeof import('../../../src/config/unified-config-
 let saveUnifiedConfig: typeof import('../../../src/config/unified-config-loader').saveUnifiedConfig;
 let setGlobalConfigDir: typeof import('../../../src/utils/config-manager').setGlobalConfigDir;
 let writeInstalledVersion: typeof import('../../../src/cliproxy/binary/version-cache').writeInstalledVersion;
+let writeVersionCache: typeof import('../../../src/cliproxy/binary/version-cache').writeVersionCache;
 let writeVersionListCache: typeof import('../../../src/cliproxy/binary/version-cache').writeVersionListCache;
 
 let server: Server;
@@ -25,20 +26,21 @@ beforeAll(async () => {
   ({ setGlobalConfigDir } = await import('../../../src/utils/config-manager'));
   ({ createEmptyUnifiedConfig } = await import('../../../src/config/unified-config-types'));
   ({ saveUnifiedConfig } = await import('../../../src/config/unified-config-loader'));
-  ({ writeInstalledVersion, writeVersionListCache } = await import(
+  ({ writeInstalledVersion, writeVersionCache, writeVersionListCache } = await import(
     '../../../src/cliproxy/binary/version-cache'
   ));
 
   const ccsDir = path.join(tempHome, '.ccs');
-  const plusBinDir = path.join(ccsDir, 'cliproxy', 'bin', 'plus');
-  fs.mkdirSync(plusBinDir, { recursive: true });
+  const originalBinDir = path.join(ccsDir, 'cliproxy', 'bin', 'original');
+  fs.mkdirSync(originalBinDir, { recursive: true });
   setGlobalConfigDir(ccsDir);
 
   const config = createEmptyUnifiedConfig();
   config.cliproxy = { backend: 'plus' };
   saveUnifiedConfig(config);
 
-  writeInstalledVersion(plusBinDir, '6.6.80');
+  writeInstalledVersion(originalBinDir, '6.6.80');
+  writeVersionCache('6.6.89', 'original');
   writeVersionListCache(
     {
       versions: ['6.6.89', '6.6.88', '6.6.81', '6.6.80'],
@@ -46,7 +48,7 @@ beforeAll(async () => {
       latest: '6.6.89',
       checkedAt: Date.now(),
     },
-    'plus'
+    'original'
   );
 
   ({ default: cliproxyStatsRoutes } = await import(
@@ -94,6 +96,23 @@ afterAll(async () => {
 });
 
 describe('cliproxy-stats-routes install contract', () => {
+  it('routes saved plus configs through original backend for update checks', async () => {
+    const response = await fetch(`${baseUrl}/api/cliproxy/update-check`);
+    expect(response.status).toBe(200);
+
+    const body = (await response.json()) as {
+      backend: string;
+      backendLabel: string;
+      currentVersion: string;
+      latestVersion: string;
+    };
+
+    expect(body.backend).toBe('original');
+    expect(body.backendLabel).toBe('CLIProxy');
+    expect(body.currentVersion).toBe('6.6.80');
+    expect(body.latestVersion).toBe('6.6.89');
+  });
+
   it('returns faultyRange in the versions response', async () => {
     const response = await fetch(`${baseUrl}/api/cliproxy/versions`);
     expect(response.status).toBe(200);

@@ -191,7 +191,7 @@ export default function ProxySection() {
   }, [isAgyConfirmPhraseValid, persistAgyAckBypass, t]);
 
   // Backend state (loaded from API) + mutation hook for proper query invalidation
-  const [backend, setBackend] = useState<'original' | 'plus'>('plus');
+  const [backend, setBackend] = useState<'original' | 'plus'>('original');
   const [hasKiroGhcpVariants, setHasKiroGhcpVariants] = useState(false);
   const updateBackendMutation = useUpdateBackend();
   const { data: proxyStatus } = useProxyStatus();
@@ -490,9 +490,6 @@ export default function ProxySection() {
               >
                 <div className="flex items-center gap-3 mb-2">
                   <span className="font-medium">{t('settingsProxy.backendPlusApi')}</span>
-                  <span className="text-xs px-1.5 py-0.5 rounded bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-400">
-                    {t('settingsProxy.default')}
-                  </span>
                 </div>
                 <p className="text-xs text-muted-foreground">{t('settingsProxy.plusDesc')}</p>
               </button>
@@ -509,10 +506,22 @@ export default function ProxySection() {
               >
                 <div className="flex items-center gap-3 mb-2">
                   <span className="font-medium">{t('settingsProxy.backendApi')}</span>
+                  <span className="text-xs px-1.5 py-0.5 rounded bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-400">
+                    {t('settingsProxy.default')}
+                  </span>
                 </div>
                 <p className="text-xs text-muted-foreground">{t('settingsProxy.originalDesc')}</p>
               </button>
             </div>
+            {backend === 'plus' && (
+              <Alert className="py-2 border-amber-200 bg-amber-50 dark:border-amber-900/50 dark:bg-amber-900/20 [&>svg]:top-2.5">
+                <AlertTriangle className="h-4 w-4 text-amber-600" />
+                <AlertDescription className="text-amber-700 dark:text-amber-400">
+                  CLIProxyAPIPlus upstream is currently unavailable. Local CLIProxy will use the
+                  original backend until issue #1062 is resolved.
+                </AlertDescription>
+              </Alert>
+            )}
             {/* Warning when original backend selected with Kiro/ghcp variants */}
             {backend === 'original' && hasKiroGhcpVariants && (
               <Alert variant="destructive" className="py-2">

@@ -8,12 +8,10 @@
 import * as os from 'os';
 import * as path from 'path';
 import { CLIProxyProfileName } from '../../auth/profile-detector';
-import { CLIProxyProvider, CLIProxyBackend, PLUS_ONLY_PROVIDERS } from '../types';
+import { CLIProxyProvider, PLUS_ONLY_PROVIDERS } from '../types';
 import { CompositeTierConfig, CompositeVariantConfig } from '../../config/unified-config-types';
 import type { TargetType } from '../../targets/target-adapter';
 import { isReservedName, isWindowsReservedName } from '../../config/reserved-names';
-import { loadOrCreateUnifiedConfig } from '../../config/unified-config-loader';
-import { DEFAULT_BACKEND } from '../platform-detector';
 import { isUnifiedMode } from '../../config/unified-config-loader';
 import { deleteConfigForPort } from '../config-generator';
 import { hasActiveSessions, deleteSessionLockForPort } from '../session-tracker';
@@ -44,6 +42,7 @@ import {
   removeVariantFromLegacyConfig,
   getNextAvailablePort,
 } from './variant-config-adapter';
+import { getConfiguredBackend, getPlusBackendUnavailableMessage } from '../binary-manager';
 
 // Re-export VariantConfig from adapter
 export type { VariantConfig } from './variant-config-adapter';
@@ -80,16 +79,15 @@ export function validateProfileName(name: string): string | null {
 
 /**
  * Validate provider/backend compatibility
- * Returns error message if provider requires Plus backend but original is configured
+ * Returns error message if a provider requires Plus while local CLIProxy is
+ * running with the fallbacked original backend.
  */
 export function validateProviderBackend(provider: CLIProxyProfileName): string | null {
-  const config = loadOrCreateUnifiedConfig();
-  const backend: CLIProxyBackend = config.cliproxy?.backend ?? DEFAULT_BACKEND;
-
   // Normalize provider to lowercase for case-insensitive comparison
   const normalizedProvider = provider.toLowerCase() as CLIProxyProvider;
+  const backend = getConfiguredBackend();
   if (backend === 'original' && PLUS_ONLY_PROVIDERS.includes(normalizedProvider)) {
-    return `${provider} requires CLIProxyAPIPlus. Set \`cliproxy.backend: plus\` in config.yaml or use --backend=plus`;
+    return getPlusBackendUnavailableMessage(provider);
   }
   return null;
 }

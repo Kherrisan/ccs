@@ -47,7 +47,7 @@ export async function showStatus(verbose: boolean, backend: CLIProxyBackend): Pr
     console.log(`  ${dim('Run "ccs gemini" or any provider to auto-install')}`);
   }
 
-  const latestCheck = await checkLatestVersion();
+  const latestCheck = await checkLatestVersion(backend);
   if (latestCheck.success && latestCheck.latestVersion) {
     console.log('');
     if (latestCheck.updateAvailable) {

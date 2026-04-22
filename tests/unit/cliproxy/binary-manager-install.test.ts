@@ -25,6 +25,54 @@ afterEach(() => {
 });
 
 describe('installCliproxyVersion', () => {
+  it('degrades explicit plus backend requests to original before install flows run', async () => {
+    let seenBackend: string | undefined;
+
+    const binaryManager = await import(
+      `../../../src/cliproxy/binary-manager?binary-manager-explicit-plus=${Date.now()}`
+    );
+
+    await binaryManager.installCliproxyVersion('6.7.1', false, 'plus', {
+      createManager: (_config: unknown, backend: string) => {
+        seenBackend = backend;
+        return {
+          isBinaryInstalled: () => false,
+          deleteBinary: () => undefined,
+          ensureBinary: async () => '/tmp/ccs-bin/original/cliproxy',
+        };
+      },
+      stopProxyFn: async () => ({ stopped: false, error: 'No active CLIProxy session found' }),
+      waitForPortFreeFn: async () => true,
+      formatInfo: (message: string) => message,
+      formatWarn: (message: string) => message,
+      getInstalledVersion: () => '6.6.80',
+    });
+
+    expect(seenBackend).toBe('original');
+  });
+
+  it('returns original and emits a real warning when plus backend is resolved locally', async () => {
+    const binaryManager = await import(
+      `../../../src/cliproxy/binary-manager?binary-manager-warning=${Date.now()}`
+    );
+
+    const writes: string[] = [];
+    const originalWrite = process.stderr.write.bind(process.stderr);
+    process.stderr.write = ((chunk: string | Uint8Array) => {
+      writes.push(typeof chunk === 'string' ? chunk : Buffer.from(chunk).toString('utf8'));
+      return true;
+    }) as typeof process.stderr.write;
+
+    try {
+      expect(binaryManager.resolveLocalBackend('plus', { warnOnFallback: true })).toBe('original');
+    } finally {
+      process.stderr.write = originalWrite;
+    }
+
+    expect(writes.join('')).toContain('CLIProxyAPIPlus upstream repo is currently unavailable');
+    expect(writes.join('')).toContain('backend: original');
+  });
+
   it('attempts to stop the proxy even when there is no tracked running session', async () => {
     const calls = {
       stopProxy: 0,

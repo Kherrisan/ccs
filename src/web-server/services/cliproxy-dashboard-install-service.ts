@@ -1,4 +1,4 @@
-import { installCliproxyVersion } from '../../cliproxy/binary-manager';
+import { installCliproxyVersion, resolveLocalBackend } from '../../cliproxy/binary-manager';
 import { ensureCliproxyService, type ServiceStartResult } from '../../cliproxy/service-manager';
 import { getProxyStatus as getProxyProcessStatus } from '../../cliproxy/session-tracker';
 import { isCliproxyRunning } from '../../cliproxy/stats-fetcher';
@@ -52,12 +52,13 @@ export async function installDashboardCliproxyVersion(
   backend: CLIProxyBackend,
   deps: InstallDashboardCliproxyVersionDeps = defaultDeps
 ): Promise<DashboardCliproxyInstallResult> {
-  const backendLabel = backend === 'plus' ? 'CLIProxy Plus' : 'CLIProxy';
+  const effectiveBackend = resolveLocalBackend(backend, { warnOnFallback: true });
+  const backendLabel = effectiveBackend === 'plus' ? 'CLIProxy Plus' : 'CLIProxy';
   const shouldRestoreService = await wasProxyRunning(deps);
 
   // The installer owns the stop-and-replace lifecycle, including best-effort
   // shutdown for tracked and untracked proxies before swapping the binary.
-  await deps.installCliproxyVersion(version, true, backend);
+  await deps.installCliproxyVersion(version, true, effectiveBackend);
 
   if (!shouldRestoreService) {
     return {

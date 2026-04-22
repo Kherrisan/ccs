@@ -211,7 +211,7 @@ export interface CLIProxyRoutingConfig {
  * CLIProxy configuration section.
  */
 export interface CLIProxyConfig {
-  /** Backend selection: 'original' or 'plus' (default: 'plus') */
+  /** Backend selection: 'original' or 'plus' (default: 'original') */
   backend?: 'original' | 'plus';
   /** Nickname to email mapping for OAuth accounts */
   oauth_accounts: OAuthAccounts;
