@@ -75,7 +75,7 @@
     "verify:bundle": "node scripts/verify-bundle.js",
     "test": "bun run build && bun run test:all",
     "test:ci": "bun run test:all",
-    "test:all": "bun test tests/unit tests/integration tests/npm",
+    "test:all": "bun test --max-concurrency=1 tests/unit tests/integration tests/npm",
     "test:unit": "bun test tests/unit",
     "test:npm": "bun test tests/npm/",
     "test:native": "bash tests/native/unix/edge-cases.sh",
