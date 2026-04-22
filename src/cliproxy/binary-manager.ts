@@ -32,15 +32,43 @@ import {
 import type { CLIProxyBackend } from './types';
 
 /**
- * Get backend from config or default to 'plus'
+ * Track whether we've already warned the user about the Plus fallback this
+ * process lifetime. Prevents spamming the warning on every command.
+ */
+let plusFallbackWarned = false;
+
+/**
+ * Get backend from config, with runtime fallback to 'original' when the user
+ * still has `backend: plus` saved.
+ *
+ * Context (issue #1062): the upstream `router-for-me/CLIProxyAPIPlus` repo was
+ * deleted, so any `backend: plus` install/update path hits a 404. Rather than
+ * forcing users to manually edit config.yaml, we degrade to `original` at
+ * runtime and warn once. This keeps existing installations working without a
+ * reconfig step, while CCS self-maintains its own Plus fork (future work).
  */
 function getConfiguredBackend(): CLIProxyBackend {
+  let configured: CLIProxyBackend;
   try {
     const config = loadOrCreateUnifiedConfig();
-    return config.cliproxy?.backend || DEFAULT_BACKEND;
+    configured = config.cliproxy?.backend || DEFAULT_BACKEND;
   } catch {
     return DEFAULT_BACKEND;
   }
+
+  if (configured === 'plus') {
+    if (!plusFallbackWarned) {
+      plusFallbackWarned = true;
+      warn(
+        'CLIProxyAPIPlus upstream repo is currently unavailable; falling back to ' +
+          '`backend: original`. Run `ccs config` to update your saved config. ' +
+          'Tracking: https://github.com/kaitranntt/ccs/issues/1062'
+      );
+    }
+    return 'original';
+  }
+
+  return configured;
 }
 
 /**
@@ -52,7 +80,7 @@ function getBackendBinDir(backend: CLIProxyBackend = DEFAULT_BACKEND): string {
   return `${baseDir}/${backend}`;
 }
 
-/** Default configuration (uses backend from config.yaml or defaults to 'plus') */
+/** Default configuration (uses backend from config.yaml or defaults to `DEFAULT_BACKEND`) */
 function createDefaultConfig(backend: CLIProxyBackend = DEFAULT_BACKEND): BinaryManagerConfig {
   const backendConfig = BACKEND_CONFIG[backend];
   return {

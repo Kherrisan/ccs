@@ -1016,7 +1016,7 @@ export function createEmptyUnifiedConfig(): UnifiedConfig {
     accounts: {},
     profiles: {},
     cliproxy: {
-      backend: 'plus',
+      backend: 'original',
       oauth_accounts: {},
       providers: [...CLIPROXY_SUPPORTED_PROVIDERS],
       variants: {},
