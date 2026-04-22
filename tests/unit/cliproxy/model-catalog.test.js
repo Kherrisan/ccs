@@ -147,9 +147,11 @@ describe('Model Catalog', () => {
       const opus47 = MODEL_CATALOG.claude.models.find((m) => m.id === 'claude-opus-4-7');
       assert(opus47, 'Should include Claude Opus 4.7');
       assert.strictEqual(opus47.name, 'Claude Opus 4.7');
-      // Claude provider differs from AGY: zero thinking budget is disallowed,
-      // and extended (1M) context is available on the Anthropic API.
-      assert.strictEqual(opus47.thinking.zeroAllowed, false);
+      // Opus 4.7 requires adaptive thinking (type: 'levels'); manual budget_tokens
+      // is rejected by the Anthropic API with 400. Extended (1M) context is available.
+      assert.strictEqual(opus47.thinking.type, 'levels');
+      assert.deepStrictEqual(opus47.thinking.levels, ['low', 'medium', 'high', 'xhigh']);
+      assert.strictEqual(opus47.thinking.maxLevel, 'xhigh');
       assert.strictEqual(opus47.extendedContext, true);
     });
 

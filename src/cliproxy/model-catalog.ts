@@ -295,11 +295,13 @@ export const MODEL_CATALOG: Partial<Record<CLIProxyProvider, ProviderCatalog>> =
         name: 'Claude Opus 4.7',
         description: 'Latest flagship model',
         nativeImageInput: true,
+        // Opus 4.7 only supports adaptive thinking on the Anthropic API; manual
+        // thinking.type: "enabled" with budget_tokens is rejected with 400.
+        // Expose effort levels; the proxy translates these into adaptive effort.
         thinking: {
-          type: 'budget',
-          min: 1024,
-          max: 128000,
-          zeroAllowed: false,
+          type: 'levels',
+          levels: ['low', 'medium', 'high', 'xhigh'],
+          maxLevel: 'xhigh',
           dynamicAllowed: true,
         },
         extendedContext: true,
