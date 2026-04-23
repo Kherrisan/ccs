@@ -68,17 +68,30 @@ function toToolResultContent(content: unknown, label: string): string {
   return safeJsonStringify(content, TOOL_RESULT_SERIALIZATION_FALLBACK);
 }
 
-function mapThinkingToReasoningEffort(
-  thinking: CursorAnthropicRequest['thinking']
-): string | undefined {
+function mapAdaptiveEffortToCursorReasoningEffort(effort: string | undefined): string {
+  const normalized = effort?.trim().toLowerCase();
+  if (!normalized || normalized === 'auto') {
+    return 'high';
+  }
+  if (normalized === 'minimal' || normalized === 'low' || normalized === 'medium') {
+    return 'medium';
+  }
+  return 'high';
+}
+
+function mapThinkingToReasoningEffort(request: CursorAnthropicRequest): string | undefined {
+  const thinking = request.thinking;
   if (!thinking) {
     return undefined;
   }
   if (thinking.type === 'disabled') {
     return undefined;
   }
+  if (thinking.type === 'adaptive') {
+    return mapAdaptiveEffortToCursorReasoningEffort(request.output_config?.effort);
+  }
   if (thinking.type !== 'enabled') {
-    throw new Error('thinking.type must be "enabled" or "disabled"');
+    throw new Error('thinking.type must be "enabled", "adaptive", or "disabled"');
   }
   return typeof thinking.budget_tokens === 'number' && thinking.budget_tokens >= 8192
     ? 'high'
@@ -209,7 +222,7 @@ export function translateAnthropicRequest(raw: unknown): TranslatedAnthropicRequ
         ? request.model
         : undefined,
     stream: request.stream === true,
-    reasoning_effort: mapThinkingToReasoningEffort(request.thinking),
+    reasoning_effort: mapThinkingToReasoningEffort(request),
     tools: Array.isArray(request.tools) ? request.tools : undefined,
     messages: translatedMessages,
   };

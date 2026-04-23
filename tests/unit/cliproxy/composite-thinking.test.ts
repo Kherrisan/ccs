@@ -538,6 +538,20 @@ describe('applyThinkingConfig - composite variant integration', () => {
     expect(result.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe('claude-opus-4-6-thinking(32768)');
   });
 
+  it('rewrites legacy budget suffixes for claude level-based models', () => {
+    const envVars: NodeJS.ProcessEnv = {
+      ANTHROPIC_MODEL: 'claude-opus-4-7(32768)',
+      ANTHROPIC_DEFAULT_OPUS_MODEL: 'claude-opus-4-7(32768)',
+      ANTHROPIC_DEFAULT_SONNET_MODEL: 'claude-sonnet-4-6',
+      ANTHROPIC_DEFAULT_HAIKU_MODEL: 'claude-haiku-4-5-20251001',
+    };
+
+    const result = applyThinkingConfig(envVars, 'claude' as CLIProxyProvider, 'max');
+
+    expect(result.ANTHROPIC_MODEL).toBe('claude-opus-4-7(max)');
+    expect(result.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe('claude-opus-4-7(max)');
+  });
+
   it('should use codex effort suffix style when provider is codex', () => {
     const envVars: NodeJS.ProcessEnv = {
       ANTHROPIC_MODEL: 'gpt-5.3-codex',

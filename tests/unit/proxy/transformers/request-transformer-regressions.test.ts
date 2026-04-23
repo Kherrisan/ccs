@@ -30,6 +30,17 @@ describe('ProxyRequestTransformer regressions', () => {
     expect(result.reasoning).toEqual({ enabled: true, effort: 'high' });
   });
 
+  it('explicitly normalizes anthropic xhigh adaptive effort for OpenAI-compatible upstreams', () => {
+    const result = new ProxyRequestTransformer().transform({
+      messages: [{ role: 'user', content: 'hello' }],
+      thinking: { type: 'adaptive' },
+      output_config: { effort: 'xhigh' },
+    });
+
+    expect(result.reasoning_effort).toBe('high');
+    expect(result.reasoning).toEqual({ enabled: true, effort: 'high' });
+  });
+
   it('rejects unsupported thinking types instead of silently dropping them', () => {
     expect(() =>
       new ProxyRequestTransformer().transform({

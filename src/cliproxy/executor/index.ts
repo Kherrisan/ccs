@@ -574,7 +574,7 @@ export async function execClaudeWithCLIProxy(
       console.error('    Alias: --thinking xhigh (same behavior)');
     } else {
       console.error('    Examples: --thinking low, --thinking 8192, --thinking off');
-      console.error('    Levels: minimal, low, medium, high, xhigh, auto');
+      console.error('    Levels: minimal, low, medium, high, xhigh, max, auto');
     }
 
     process.exit(1);

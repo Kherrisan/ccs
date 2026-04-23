@@ -32,6 +32,11 @@ export interface ThinkingValidationResult {
 
 /**
  * Named thinking level mappings to budget values (when converting level→budget)
+ *
+ * `max` sits above `xhigh` to represent unconstrained thinking (Claude Opus 4.7,
+ * Mythos). The numeric value is a CCS-internal mapping, not an Anthropic wire
+ * value: Opus 4.7 uses adaptive thinking with an effort string, and other
+ * max-capable models already treat the level as a qualitative cap.
  */
 export const THINKING_LEVEL_BUDGETS: Record<string, number> = {
   minimal: 512,
@@ -39,6 +44,7 @@ export const THINKING_LEVEL_BUDGETS: Record<string, number> = {
   medium: 8192,
   high: 24576,
   xhigh: 32768,
+  max: 65536,
 };
 
 /**
@@ -50,12 +56,21 @@ export const THINKING_LEVEL_RANK: Record<string, number> = {
   medium: 3,
   high: 4,
   xhigh: 5,
+  max: 6,
 };
 
 /**
  * Valid thinking level names
  */
-export const VALID_THINKING_LEVELS = ['minimal', 'low', 'medium', 'high', 'xhigh', 'auto'] as const;
+export const VALID_THINKING_LEVELS = [
+  'minimal',
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+  'max',
+  'auto',
+] as const;
 export type ThinkingLevel = (typeof VALID_THINKING_LEVELS)[number];
 
 /**
@@ -121,7 +136,12 @@ function findClosestLevel(input: string, validLevels: string[]): string | undefi
     }
   }
 
-  // Common aliases
+  // Common aliases.
+  //
+  // `max: 'xhigh'` is a graceful fallback for models whose levels list does not
+  // include `max` (e.g. Codex `gpt-5.4`). Exact match above takes priority, so
+  // Opus 4.7 (which has `max` in its validLevels) returns `max` directly while
+  // Codex still maps `max` → `xhigh`.
   const aliases: Record<string, string> = {
     min: 'minimal',
     lo: 'low',

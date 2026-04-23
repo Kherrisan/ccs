@@ -9,6 +9,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import * as lockfile from 'proper-lockfile';
+import { getModelThinkingSupport } from '../cliproxy/model-catalog';
+import { validateThinking } from '../cliproxy/thinking-validator';
+import { stripModelConfigurationSuffixes } from '../shared/extended-context-utils';
 
 const CCS_MODEL_PREFIX = 'ccs-';
 const CCS_DISPLAY_PREFIX = 'CCS ';
@@ -144,6 +147,24 @@ function toAnthropicBudget(value: string | number): number {
   return DROID_ANTHROPIC_BUDGET_BY_EFFORT[normalized] ?? DROID_ANTHROPIC_BUDGET_BY_EFFORT.high;
 }
 
+function resolveAnthropicModelId(model: string): string {
+  return stripModelConfigurationSuffixes(model);
+}
+
+function usesAnthropicAdaptiveThinking(model: string): boolean {
+  return getModelThinkingSupport('claude', resolveAnthropicModelId(model))?.type === 'levels';
+}
+
+function toAnthropicAdaptiveEffort(model: string, value: string | number): string | undefined {
+  const validation = validateThinking('claude', resolveAnthropicModelId(model), value);
+  if (isReasoningOffValue(validation.value)) {
+    return undefined;
+  }
+
+  const normalized = String(validation.value).trim().toLowerCase();
+  return normalized === 'auto' ? undefined : normalized;
+}
+
 function toReasoningEffort(value: string | number): string {
   if (typeof value === 'number') {
     if (value <= 4000) return 'low';
@@ -181,12 +202,35 @@ function applyReasoningOverride(
 
     if (isReasoningOffValue(reasoningOverride)) {
       delete extraArgs.thinking;
+      delete extraArgs.output_config;
+    } else if (usesAnthropicAdaptiveThinking(entry.model)) {
+      const thinking = isObject(extraArgs.thinking) ? { ...extraArgs.thinking } : {};
+      const outputConfig = isObject(extraArgs.output_config) ? { ...extraArgs.output_config } : {};
+      const effort = toAnthropicAdaptiveEffort(entry.model, reasoningOverride);
+
+      thinking.type = 'adaptive';
+      delete thinking.budget_tokens;
+      delete thinking.budgetTokens;
+
+      if (effort) {
+        outputConfig.effort = effort;
+      } else {
+        delete outputConfig.effort;
+      }
+
+      extraArgs.thinking = thinking;
+      if (Object.keys(outputConfig).length > 0) {
+        extraArgs.output_config = outputConfig;
+      } else {
+        delete extraArgs.output_config;
+      }
     } else {
       const thinking = isObject(extraArgs.thinking) ? { ...extraArgs.thinking } : {};
       thinking.type = 'enabled';
       thinking.budget_tokens = toAnthropicBudget(reasoningOverride);
       delete thinking.budgetTokens;
       extraArgs.thinking = thinking;
+      delete extraArgs.output_config;
     }
   } else if (provider === 'openai') {
     delete extraArgs.reasoning_effort;

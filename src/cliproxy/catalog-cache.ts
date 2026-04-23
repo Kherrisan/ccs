@@ -264,9 +264,17 @@ export function mergeCatalog(
     mergedIds.add(remote.id.toLowerCase());
 
     if (staticEntry) {
+      const mergedThinking = remoteEntry.thinking
+        ? {
+            ...remoteEntry.thinking,
+            maxLevel: remoteEntry.thinking.maxLevel ?? staticEntry.thinking?.maxLevel,
+          }
+        : staticEntry.thinking;
+
       // Merge: remote overrides, static fills gaps
       mergedModels.push({
         ...remoteEntry,
+        thinking: mergedThinking,
         // Preserve static-only fields
         tier: staticEntry.tier,
         broken: staticEntry.broken,

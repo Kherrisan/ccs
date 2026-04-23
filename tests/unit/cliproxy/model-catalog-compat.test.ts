@@ -58,4 +58,24 @@ describe('model-catalog compatibility lookups', () => {
 
     expect(catalog?.models.map((model) => model.id)).toEqual(['gemini-2.5-pro']);
   });
+
+  it('preserves static maxLevel when live thinking metadata omits it', () => {
+    const catalog = mergeCatalog('claude', [
+      {
+        id: 'claude-opus-4-7',
+        display_name: 'Claude Opus 4.7',
+        thinking: {
+          levels: ['low', 'medium', 'high', 'xhigh', 'max'],
+          dynamic_allowed: true,
+        },
+      },
+    ]);
+
+    expect(catalog?.models[0]?.thinking).toMatchObject({
+      type: 'levels',
+      levels: ['low', 'medium', 'high', 'xhigh', 'max'],
+      maxLevel: 'max',
+      dynamicAllowed: true,
+    });
+  });
 });
