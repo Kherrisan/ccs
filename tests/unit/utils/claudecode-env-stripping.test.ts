@@ -21,8 +21,16 @@ type SpawnCall = {
   options: Record<string, unknown> | undefined;
 };
 
-const STEERING_PROMPT_SNIPPET = 'prefer the CCS MCP tool WebSearch instead of Bash/curl/http fetches';
+type SpawnSyncCall = {
+  command: string;
+  args: string[];
+  options: Record<string, unknown> | undefined;
+};
+
+const STEERING_PROMPT_SNIPPET =
+  'prefer the CCS MCP tool WebSearch instead of Bash/curl/http fetches';
 const spawnCalls: SpawnCall[] = [];
+const spawnSyncCalls: SpawnSyncCall[] = [];
 const originalPlatform = process.platform;
 let baselineSigintListeners: Array<(...args: unknown[]) => void> = [];
 let baselineSigtermListeners: Array<(...args: unknown[]) => void> = [];
@@ -31,6 +39,7 @@ let originalCcsHome: string | undefined;
 let originalCcsClaudePath: string | undefined;
 let originalDisableAutoUpdater: string | undefined;
 let originalClaudeConfigDir: string | undefined;
+let originalTmux: string | undefined;
 const realSpawn = childProcess.spawn.bind(childProcess);
 const realSpawnSync = childProcess.spawnSync.bind(childProcess);
 const realExecSync = childProcess.execSync.bind(childProcess);
@@ -103,6 +112,18 @@ function registerChildProcessMock(): void {
         | Record<string, unknown>
         | undefined;
 
+      if (command === 'tmux') {
+        spawnSyncCalls.push({ command, args, options });
+        return {
+          pid: process.pid,
+          output: ['', '', ''],
+          stdout: '',
+          stderr: '',
+          status: 0,
+          signal: null,
+        };
+      }
+
       return realSpawnSync(command, args, options as Parameters<typeof childProcess.spawnSync>[2]);
     },
     execSync: (...execArgs: unknown[]) =>
@@ -140,6 +161,7 @@ ${yamlBody}
 }
 
 let execClaude: typeof import('../../../src/utils/shell-executor').execClaude;
+let stripAnthropicRoutingEnv: typeof import('../../../src/utils/shell-executor').stripAnthropicRoutingEnv;
 let stripClaudeCodeEnv: typeof import('../../../src/utils/shell-executor').stripClaudeCodeEnv;
 let HeadlessExecutor: typeof import('../../../src/delegation/headless-executor').HeadlessExecutor;
 let SharedManager: typeof import('../../../src/management/shared-manager').default;
@@ -149,6 +171,7 @@ beforeAll(async () => {
 
   const shellExecutor = await import('../../../src/utils/shell-executor');
   execClaude = shellExecutor.execClaude;
+  stripAnthropicRoutingEnv = shellExecutor.stripAnthropicRoutingEnv;
   stripClaudeCodeEnv = shellExecutor.stripClaudeCodeEnv;
 
   const sharedManagerModule = await import('../../../src/management/shared-manager');
@@ -165,6 +188,7 @@ afterAll(() => {
 describe('CLAUDECODE environment stripping', () => {
   beforeEach(() => {
     spawnCalls.length = 0;
+    spawnSyncCalls.length = 0;
     process.env.CCS_QUIET = '1';
 
     // Save original env values for restoration in afterEach
@@ -172,10 +196,12 @@ describe('CLAUDECODE environment stripping', () => {
     originalCcsClaudePath = process.env.CCS_CLAUDE_PATH;
     originalDisableAutoUpdater = process.env.DISABLE_AUTOUPDATER;
     originalClaudeConfigDir = process.env.CLAUDE_CONFIG_DIR;
+    originalTmux = process.env.TMUX;
 
     // Clear CCS-managed env vars that leak from host sessions
     delete process.env.DISABLE_AUTOUPDATER;
     delete process.env.CLAUDE_CONFIG_DIR;
+    delete process.env.TMUX;
 
     baselineSigintListeners = process.listeners('SIGINT');
     baselineSigtermListeners = process.listeners('SIGTERM');
@@ -197,8 +223,20 @@ describe('CLAUDECODE environment stripping', () => {
     } else {
       delete process.env.DISABLE_AUTOUPDATER;
     }
-    if (originalClaudeConfigDir !== undefined) process.env.CLAUDE_CONFIG_DIR = originalClaudeConfigDir;
+    if (originalClaudeConfigDir !== undefined)
+      process.env.CLAUDE_CONFIG_DIR = originalClaudeConfigDir;
     else delete process.env.CLAUDE_CONFIG_DIR;
+    if (originalTmux !== undefined) process.env.TMUX = originalTmux;
+    else delete process.env.TMUX;
+    delete process.env.ANTHROPIC_BASE_URL;
+    delete process.env.ANTHROPIC_AUTH_TOKEN;
+    delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.ANTHROPIC_MODEL;
+    delete process.env.ANTHROPIC_DEFAULT_OPUS_MODEL;
+    delete process.env.ANTHROPIC_DEFAULT_SONNET_MODEL;
+    delete process.env.ANTHROPIC_DEFAULT_HAIKU_MODEL;
+    delete process.env.ANTHROPIC_SMALL_FAST_MODEL;
+    delete process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS;
 
     for (const listener of process.listeners('SIGINT')) {
       if (!baselineSigintListeners.includes(listener)) {
@@ -227,6 +265,25 @@ describe('CLAUDECODE environment stripping', () => {
 
     const result = stripClaudeCodeEnv(input);
     expect(Object.keys(result).map((k) => k.toUpperCase())).not.toContain('CLAUDECODE');
+    expect(result.PATH).toBe('/usr/bin');
+  });
+
+  it('stripAnthropicRoutingEnv removes routing/auth env case-insensitively while preserving model vars', () => {
+    const input: NodeJS.ProcessEnv = {
+      anthropic_base_url: 'http://127.0.0.1:8317/api/provider/codex',
+      Anthropic_Auth_Token: 'parent-routing-token',
+      ANTHROPIC_API_KEY: 'parent-api-key',
+      ANTHROPIC_MODEL: 'gpt-5.4',
+      ANTHROPIC_DEFAULT_SONNET_MODEL: 'gpt-5.4',
+      PATH: '/usr/bin',
+    };
+
+    const result = stripAnthropicRoutingEnv(input);
+    expect(result.anthropic_base_url).toBeUndefined();
+    expect(result.Anthropic_Auth_Token).toBeUndefined();
+    expect(result.ANTHROPIC_API_KEY).toBeUndefined();
+    expect(result.ANTHROPIC_MODEL).toBe('gpt-5.4');
+    expect(result.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe('gpt-5.4');
     expect(result.PATH).toBe('/usr/bin');
   });
 
@@ -336,6 +393,97 @@ describe('CLAUDECODE environment stripping', () => {
     expect(normalizeSpy).toHaveBeenCalledWith(instancePath);
   });
 
+  it('execClaude strips inherited ANTHROPIC routing env but keeps model intent for settings-profile Claude launches', () => {
+    process.env.ANTHROPIC_BASE_URL = 'http://127.0.0.1:8317/api/provider/codex';
+    process.env.ANTHROPIC_AUTH_TOKEN = 'ccs-internal-managed';
+    process.env.ANTHROPIC_API_KEY = 'stale-api-key';
+    process.env.ANTHROPIC_MODEL = 'gpt-5.4';
+    process.env.ANTHROPIC_DEFAULT_OPUS_MODEL = 'gpt-5.4';
+    process.env.ANTHROPIC_DEFAULT_SONNET_MODEL = 'gpt-5.4';
+    process.env.ANTHROPIC_DEFAULT_HAIKU_MODEL = 'gpt-5.4-mini';
+    process.env.ANTHROPIC_SMALL_FAST_MODEL = 'gpt-5-codex-mini';
+
+    execClaude('claude', ['--help'], {
+      CCS_PROFILE_TYPE: 'settings',
+      CCS_STRIP_INHERITED_ANTHROPIC_ENV: '1',
+      CLAUDE_CONFIG_DIR: path.join(os.tmpdir(), 'ccs-settings-profile-instance'),
+      CCS_WEBSEARCH_SKIP: '1',
+    });
+
+    expect(spawnCalls.length).toBeGreaterThan(0);
+    const env = spawnCalls[0].options?.env as NodeJS.ProcessEnv;
+    expect(env.CCS_PROFILE_TYPE).toBe('settings');
+    expect(env.CLAUDE_CONFIG_DIR).toContain('ccs-settings-profile-instance');
+    expect(env.ANTHROPIC_BASE_URL).toBeUndefined();
+    expect(env.ANTHROPIC_AUTH_TOKEN).toBeUndefined();
+    expect(env.ANTHROPIC_API_KEY).toBeUndefined();
+    expect(env.ANTHROPIC_MODEL).toBe('gpt-5.4');
+    expect(env.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe('gpt-5.4');
+    expect(env.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe('gpt-5.4');
+    expect(env.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe('gpt-5.4-mini');
+    expect(env.ANTHROPIC_SMALL_FAST_MODEL).toBe('gpt-5-codex-mini');
+  });
+
+  it('execClaude strips routing env reintroduced by explicit settings-profile overrides', () => {
+    execClaude('claude', ['--help'], {
+      CCS_PROFILE_TYPE: 'settings',
+      CCS_STRIP_INHERITED_ANTHROPIC_ENV: '1',
+      ANTHROPIC_BASE_URL: 'http://127.0.0.1:8317/api/provider/codex',
+      ANTHROPIC_AUTH_TOKEN: 'reintroduced-routing-token',
+      ANTHROPIC_API_KEY: 'reintroduced-api-key',
+      ANTHROPIC_MODEL: 'gpt-5.4',
+      ANTHROPIC_DEFAULT_SONNET_MODEL: 'gpt-5.4',
+    });
+
+    expect(spawnCalls.length).toBeGreaterThan(0);
+    const env = spawnCalls[0].options?.env as NodeJS.ProcessEnv;
+    expect(env.ANTHROPIC_BASE_URL).toBeUndefined();
+    expect(env.ANTHROPIC_AUTH_TOKEN).toBeUndefined();
+    expect(env.ANTHROPIC_API_KEY).toBeUndefined();
+    expect(env.ANTHROPIC_MODEL).toBe('gpt-5.4');
+    expect(env.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe('gpt-5.4');
+  });
+
+  it('execClaude sanitizes tmux teammate env for bridge-backed settings launches while keeping the launched child on the runtime proxy', () => {
+    process.env.TMUX = 'session-1';
+    process.env.ANTHROPIC_BASE_URL = 'http://127.0.0.1:8317/api/provider/codex';
+    process.env.ANTHROPIC_AUTH_TOKEN = 'parent-routing-token';
+    process.env.ANTHROPIC_API_KEY = 'parent-api-key';
+    process.env.ANTHROPIC_MODEL = 'gpt-5.4';
+    process.env.ANTHROPIC_DEFAULT_SONNET_MODEL = 'gpt-5.4';
+
+    execClaude('claude', ['--help'], {
+      CCS_PROFILE_TYPE: 'settings',
+      CLAUDE_CONFIG_DIR: path.join(os.tmpdir(), 'ccs-settings-profile-instance'),
+      ANTHROPIC_BASE_URL: 'http://127.0.0.1:3456',
+      ANTHROPIC_AUTH_TOKEN: 'fresh-runtime-token',
+      ANTHROPIC_MODEL: 'gpt-5.4',
+    });
+
+    expect(spawnCalls.length).toBeGreaterThan(0);
+    const childEnv = spawnCalls[0].options?.env as NodeJS.ProcessEnv;
+    expect(childEnv.ANTHROPIC_BASE_URL).toBe('http://127.0.0.1:3456');
+    expect(childEnv.ANTHROPIC_AUTH_TOKEN).toBe('fresh-runtime-token');
+
+    const unsetBaseUrlCall = spawnSyncCalls.find(
+      (call) => call.command === 'tmux' && call.args.join(' ') === 'setenv -u ANTHROPIC_BASE_URL'
+    );
+    const unsetAuthTokenCall = spawnSyncCalls.find(
+      (call) => call.command === 'tmux' && call.args.join(' ') === 'setenv -u ANTHROPIC_AUTH_TOKEN'
+    );
+    const modelCall = spawnSyncCalls.find(
+      (call) =>
+        call.command === 'tmux' &&
+        call.args[0] === 'setenv' &&
+        call.args[1] === 'ANTHROPIC_MODEL' &&
+        call.args[2] === 'gpt-5.4'
+    );
+
+    expect(unsetBaseUrlCall).toBeDefined();
+    expect(unsetAuthTokenCall).toBeDefined();
+    expect(modelCall).toBeDefined();
+  });
+
   it('headless executor spawn path strips CLAUDECODE before spawn', async () => {
     writeConfigWithAutoUpdatePreference(false);
     process.env.CLAUDECODE = 'nested';
@@ -432,6 +580,92 @@ describe('CLAUDECODE environment stripping', () => {
     });
   });
 
+  it('headless executor strips inherited routing env for settings-profile delegation while preserving model intent', async () => {
+    writeConfigWithAutoUpdatePreference(false);
+    const ccsDir = path.join(process.env.CCS_HOME as string, '.ccs');
+    fs.writeFileSync(
+      path.join(ccsDir, 'glm.settings.json'),
+      JSON.stringify(
+        {
+          env: {
+            ANTHROPIC_MODEL: 'gpt-5.4',
+            ANTHROPIC_DEFAULT_SONNET_MODEL: 'gpt-5.4',
+            CLAUDE_CODE_MAX_OUTPUT_TOKENS: '12345',
+          },
+        },
+        null,
+        2
+      ) + '\n',
+      'utf8'
+    );
+    const projectDir = path.join(ccsDir, 'project-headless-settings');
+    fs.mkdirSync(projectDir, { recursive: true });
+    process.env.CCS_CLAUDE_PATH = 'claude';
+    process.env.ANTHROPIC_BASE_URL = 'http://127.0.0.1:8317/api/provider/codex';
+    process.env.ANTHROPIC_AUTH_TOKEN = 'parent-routing-token';
+    process.env.ANTHROPIC_API_KEY = 'parent-api-key';
+    process.env.ANTHROPIC_MODEL = 'gpt-5.4';
+
+    const result = await HeadlessExecutor.execute('glm', 'latest AI chip news', {
+      cwd: projectDir,
+      permissionMode: 'default',
+      timeout: 1000,
+    });
+
+    expect(result.success).toBe(true);
+    expect(spawnCalls.length).toBeGreaterThan(0);
+    const env = spawnCalls[0].options?.env as NodeJS.ProcessEnv;
+    expect(env.ANTHROPIC_BASE_URL).toBeUndefined();
+    expect(env.ANTHROPIC_AUTH_TOKEN).toBeUndefined();
+    expect(env.ANTHROPIC_API_KEY).toBeUndefined();
+    expect(env.ANTHROPIC_MODEL).toBe('gpt-5.4');
+    expect(env.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe('gpt-5.4');
+    expect(env.CLAUDE_CODE_MAX_OUTPUT_TOKENS).toBe('12345');
+  });
+
+  it('headless executor rebuilds OpenAI-compatible bridge env from settings instead of inheriting stale parent routing', async () => {
+    writeConfigWithAutoUpdatePreference(false);
+    const ccsDir = path.join(process.env.CCS_HOME as string, '.ccs');
+    fs.writeFileSync(
+      path.join(ccsDir, 'bridge.settings.json'),
+      JSON.stringify(
+        {
+          env: {
+            ANTHROPIC_BASE_URL: 'https://api.openai.com/v1',
+            ANTHROPIC_AUTH_TOKEN: 'settings-bridge-token',
+            ANTHROPIC_MODEL: 'gpt-5.4',
+            CLAUDE_CODE_MAX_OUTPUT_TOKENS: '12345',
+          },
+        },
+        null,
+        2
+      ) + '\n',
+      'utf8'
+    );
+    const projectDir = path.join(ccsDir, 'project-headless-bridge');
+    fs.mkdirSync(projectDir, { recursive: true });
+    process.env.CCS_CLAUDE_PATH = 'claude';
+    process.env.ANTHROPIC_BASE_URL = 'http://127.0.0.1:8317/api/provider/codex';
+    process.env.ANTHROPIC_AUTH_TOKEN = 'parent-routing-token';
+    process.env.ANTHROPIC_API_KEY = 'parent-api-key';
+
+    const result = await HeadlessExecutor.execute('bridge', 'latest AI chip news', {
+      cwd: projectDir,
+      permissionMode: 'default',
+      timeout: 1000,
+    });
+
+    expect(result.success).toBe(true);
+    expect(spawnCalls.length).toBeGreaterThan(0);
+    const env = spawnCalls[0].options?.env as NodeJS.ProcessEnv;
+    expect(env.ANTHROPIC_BASE_URL).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
+    expect(env.ANTHROPIC_BASE_URL).not.toBe('http://127.0.0.1:8317/api/provider/codex');
+    expect(env.ANTHROPIC_AUTH_TOKEN).toBeDefined();
+    expect(env.ANTHROPIC_AUTH_TOKEN).not.toBe('parent-routing-token');
+    expect(env.ANTHROPIC_MODEL).toBe('gpt-5.4');
+    expect(env.CLAUDE_CODE_MAX_OUTPUT_TOKENS).toBe('12345');
+  });
+
   it('headless executor prepares image-analysis MCP and suppresses the legacy hook on healthy launches', async () => {
     writeConfigWithAutoUpdatePreference(false);
     const ccsDir = path.join(process.env.CCS_HOME as string, '.ccs');
@@ -468,9 +702,7 @@ describe('CLAUDECODE environment stripping', () => {
       args: [path.join(ccsDir, 'mcp', 'ccs-image-analysis-server.cjs')],
       env: {},
     });
-    expect(fs.existsSync(path.join(ccsDir, 'hooks', 'image-analyzer-transformer.cjs'))).toBe(
-      false
-    );
+    expect(fs.existsSync(path.join(ccsDir, 'hooks', 'image-analyzer-transformer.cjs'))).toBe(false);
     expect(fs.existsSync(path.join(ccsDir, 'hooks', 'image-analysis-runtime.cjs'))).toBe(false);
   });
 

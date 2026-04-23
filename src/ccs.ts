@@ -80,7 +80,7 @@ import { handleError, runCleanup } from './errors';
 import { tryHandleRootCommand } from './commands/root-command-router';
 
 // Import extracted utility functions
-import { execClaude } from './utils/shell-executor';
+import { execClaude, stripAnthropicRoutingEnv } from './utils/shell-executor';
 import { isDeprecatedGlmtProfileName, normalizeDeprecatedGlmtEnv } from './utils/glmt-deprecation';
 import { maybeWarnAboutResumeLaneMismatch } from './auth/resume-lane-warning';
 import { createLogger } from './services/logging';
@@ -1359,8 +1359,21 @@ async function main(): Promise<void> {
         console.error(info(`Global env: ${envNames}`));
       }
 
-      // Explicitly inject effective settings env vars so stale ANTHROPIC_*
-      // values from prior sessions cannot leak into the active profile.
+      // For Claude target launches that already pass `--settings`, keep runtime
+      // env free of ANTHROPIC routing/auth while preserving non-routing profile
+      // env so nested Team/subagent sessions can still inherit model intent and
+      // other profile-scoped runtime flags.
+      const claudeRuntimeEnvVars: NodeJS.ProcessEnv = {
+        ...stripAnthropicRoutingEnv({ ...globalEnv, ...settingsEnv }),
+        ...(inheritedClaudeConfigDir ? { CLAUDE_CONFIG_DIR: inheritedClaudeConfigDir } : {}),
+        ...webSearchEnv,
+        ...imageAnalysisEnv,
+        ...(browserRuntimeEnv || {}),
+        CCS_PROFILE_TYPE: 'settings',
+        CCS_STRIP_INHERITED_ANTHROPIC_ENV: '1',
+      };
+
+      // Non-Claude targets still need effective credentials injected directly.
       const envVars: NodeJS.ProcessEnv = {
         ...globalEnv,
         ...settingsEnv,
@@ -1472,7 +1485,7 @@ async function main(): Promise<void> {
         settingsPath: expandedSettingsPath,
       });
 
-      execClaude(claudeCli, launchArgs, { ...envVars, ...traceEnv });
+      execClaude(claudeCli, launchArgs, { ...claudeRuntimeEnvVars, ...traceEnv });
     } else if (profileInfo.type === 'account') {
       // NEW FLOW: Account-based profile (work, personal)
       // All platforms: Use instance isolation with CLAUDE_CONFIG_DIR

@@ -26,6 +26,71 @@ export function stripAnthropicEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return result;
 }
 
+const ANTHROPIC_ROUTING_ENV_KEYS = [
+  'ANTHROPIC_BASE_URL',
+  'ANTHROPIC_AUTH_TOKEN',
+  'ANTHROPIC_API_KEY',
+];
+const ANTHROPIC_ROUTING_ENV_KEY_SET = new Set(ANTHROPIC_ROUTING_ENV_KEYS);
+const ANTHROPIC_MODEL_ENV_KEYS = [
+  'ANTHROPIC_MODEL',
+  'ANTHROPIC_DEFAULT_OPUS_MODEL',
+  'ANTHROPIC_DEFAULT_SONNET_MODEL',
+  'ANTHROPIC_DEFAULT_HAIKU_MODEL',
+  'ANTHROPIC_SMALL_FAST_MODEL',
+];
+const TMUX_SYNC_ENV_KEYS = [
+  'CLAUDE_CONFIG_DIR',
+  'CCS_PROFILE_TYPE',
+  'CCS_WEBSEARCH_SKIP',
+  'CCS_STRIP_INHERITED_ANTHROPIC_ENV',
+  'CLAUDE_CODE_MAX_OUTPUT_TOKENS',
+  ...ANTHROPIC_MODEL_ENV_KEYS,
+  ...ANTHROPIC_ROUTING_ENV_KEYS,
+];
+
+/**
+ * Strip inherited Anthropic routing/auth env while preserving model intent.
+ * Used for nested settings-profile Claude launches where `--settings` already
+ * defines the provider transport and the parent process should only lend model
+ * defaults or effort hints.
+ */
+export function stripAnthropicRoutingEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const result: NodeJS.ProcessEnv = {};
+  for (const key of Object.keys(env)) {
+    if (!ANTHROPIC_ROUTING_ENV_KEY_SET.has(key.toUpperCase())) {
+      result[key] = env[key];
+    }
+  }
+  return result;
+}
+
+function syncTmuxNestedSessionEnv(env: NodeJS.ProcessEnv, profileType: string | undefined): void {
+  if (!process.env.TMUX) {
+    return;
+  }
+
+  const nestedSessionEnv =
+    profileType === 'account' || profileType === 'default'
+      ? stripAnthropicEnv(env)
+      : profileType === 'settings'
+        ? stripAnthropicRoutingEnv(env)
+        : env;
+
+  for (const key of TMUX_SYNC_ENV_KEYS) {
+    try {
+      const value = nestedSessionEnv[key];
+      if (value !== undefined) {
+        spawnSync('tmux', ['setenv', key, value], { stdio: 'ignore' });
+      } else {
+        spawnSync('tmux', ['setenv', '-u', key], { stdio: 'ignore' });
+      }
+    } catch {
+      // tmux setenv can fail if not in a tmux session; safe to ignore
+    }
+  }
+}
+
 /**
  * Strip Claude Code nested-session guard env var from a process environment.
  *
@@ -137,24 +202,31 @@ export function execClaude(
   const webSearchEnv = getWebSearchHookEnv();
   const claudeLaunchEnv = getClaudeLaunchEnvOverrides();
 
-  // For account/default profiles, strip ANTHROPIC_* from parent env to prevent
-  // stale proxy config (e.g., from prior CLIProxy sessions) from interfering
-  // with native Claude API routing. Settings-based profiles explicitly inject
-  // their own ANTHROPIC_* values, so they don't need this protection.
+  // Strip inherited ANTHROPIC_* when the launch should not reuse parent routing.
+  // Account/default profiles need full isolation from prior proxy sessions.
+  // Settings profiles can selectively strip only routing/auth when `--settings`
+  // already carries the provider source of truth but the parent model intent
+  // should still flow into nested Team/subagent launches.
   const profileType = envVars?.CCS_PROFILE_TYPE;
-  const baseEnv =
-    profileType === 'account' || profileType === 'default'
-      ? stripAnthropicEnv(process.env)
+  const stripInheritedAnthropicEnv = profileType === 'account' || profileType === 'default';
+  const stripInheritedAnthropicRoutingEnv = envVars?.CCS_STRIP_INHERITED_ANTHROPIC_ENV === '1';
+  const baseEnv = stripInheritedAnthropicEnv
+    ? stripAnthropicEnv(process.env)
+    : stripInheritedAnthropicRoutingEnv
+      ? stripAnthropicRoutingEnv(process.env)
       : process.env;
 
   // Prepare environment (merge with base env if envVars provided)
   const mergedEnv = envVars
     ? { ...baseEnv, ...claudeLaunchEnv, ...envVars, ...webSearchEnv }
     : { ...baseEnv, ...claudeLaunchEnv, ...webSearchEnv };
+  const effectiveMergedEnv = stripInheritedAnthropicRoutingEnv
+    ? stripAnthropicRoutingEnv(mergedEnv)
+    : mergedEnv;
 
   // Strip Claude Code nested session guard env var to allow CCS delegation
   // (Claude Code v2.1.39+ sets CLAUDECODE to detect nested sessions)
-  const env = stripClaudeCodeEnv(mergedEnv);
+  const env = stripClaudeCodeEnv(effectiveMergedEnv);
 
   if (profileType !== 'account') {
     try {
@@ -164,20 +236,9 @@ export function execClaude(
     }
   }
 
-  // propagate key env vars to tmux session so agent team teammates
-  // (spawned via tmux split-window) inherit the correct config dir
-  if (process.env.TMUX && envVars) {
-    const tmuxPropagateVars = ['CLAUDE_CONFIG_DIR', 'CCS_PROFILE_TYPE', 'CCS_WEBSEARCH_SKIP'];
-    for (const key of tmuxPropagateVars) {
-      if (envVars[key]) {
-        try {
-          spawnSync('tmux', ['setenv', key, envVars[key] ?? ''], { stdio: 'ignore' });
-        } catch {
-          // tmux setenv can fail if not in a tmux session; safe to ignore
-        }
-      }
-    }
-  }
+  // Keep tmux teammate panes aligned with the nested-safe Claude runtime env
+  // rather than the tmux server's original shell environment.
+  syncTmuxNestedSessionEnv(env, profileType);
 
   let child: ChildProcess;
   if (isPowerShellScript) {
