@@ -27,7 +27,12 @@ describe('push ci workflow', () => {
     expect(workflow).toContain("cmd: 'bun run lint'");
     expect(workflow).toContain("cmd: 'bun run format:check'");
     expect(workflow).toContain('run: bun run build:all');
-    expect(workflow).toContain('run: bun run test:all');
+    expect(workflow).toContain("FAST_TEST_BUDGET_SECONDS: '90'");
+    expect(workflow).toContain('name: Test fast bucket with perf budget');
+    expect(workflow).toContain('bun run test:fast');
+    expect(workflow).toContain('::warning::test:fast took ${elapsed_seconds}s');
+    expect(workflow).toContain('scripts/run-test-bucket.js');
+    expect(workflow).toContain('run: bun run test:slow');
     expect(workflow).toContain("CCS_E2E_SKIP_BUILD: '1'");
     expect(workflow).toContain('run: bun run test:e2e');
   });

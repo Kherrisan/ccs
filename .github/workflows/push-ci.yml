@@ -95,6 +95,7 @@ jobs:
     needs: [build]
     env:
       BUN_INSTALL_CACHE_DIR: ${{ github.workspace }}/.bun/install/cache
+      FAST_TEST_BUDGET_SECONDS: '90'
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -125,8 +126,32 @@ jobs:
           name: dist
           path: dist/
 
-      - name: Test
-        run: bun run test:all
+      - name: Test fast bucket with perf budget
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          start_epoch=$(date +%s)
+          bun run test:fast
+          end_epoch=$(date +%s)
+          elapsed_seconds=$((end_epoch - start_epoch))
+
+          {
+            echo "### test:fast perf budget"
+            echo ""
+            echo "- Elapsed: ${elapsed_seconds}s"
+            echo "- Budget: ${FAST_TEST_BUDGET_SECONDS}s"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if (( elapsed_seconds > FAST_TEST_BUDGET_SECONDS )); then
+            echo "::warning::test:fast took ${elapsed_seconds}s (budget ${FAST_TEST_BUDGET_SECONDS}s) - check for undeclared slow tests in scripts/run-test-bucket.js"
+            echo "- Result: warning emitted. Check for undeclared slow tests in scripts/run-test-bucket.js." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "- Result: within budget." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Test slow bucket
+        run: bun run test:slow
 
       - name: Test CLI e2e
         env:

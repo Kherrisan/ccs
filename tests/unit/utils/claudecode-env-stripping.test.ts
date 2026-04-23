@@ -165,6 +165,7 @@ let stripAnthropicRoutingEnv: typeof import('../../../src/utils/shell-executor')
 let stripClaudeCodeEnv: typeof import('../../../src/utils/shell-executor').stripClaudeCodeEnv;
 let HeadlessExecutor: typeof import('../../../src/delegation/headless-executor').HeadlessExecutor;
 let SharedManager: typeof import('../../../src/management/shared-manager').default;
+let stopOpenAICompatProxy: typeof import('../../../src/proxy/proxy-daemon').stopOpenAICompatProxy;
 
 beforeAll(async () => {
   registerChildProcessMock();
@@ -179,6 +180,9 @@ beforeAll(async () => {
 
   const headless = await import('../../../src/delegation/headless-executor');
   HeadlessExecutor = headless.HeadlessExecutor;
+
+  const proxyDaemon = await import('../../../src/proxy/proxy-daemon');
+  stopOpenAICompatProxy = proxyDaemon.stopOpenAICompatProxy;
 });
 
 afterAll(() => {
@@ -208,7 +212,14 @@ describe('CLAUDECODE environment stripping', () => {
     baselineSighupListeners = process.listeners('SIGHUP');
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    const tempCcsHome = process.env.CCS_HOME?.startsWith(os.tmpdir())
+      ? process.env.CCS_HOME
+      : undefined;
+    if (tempCcsHome) {
+      await stopOpenAICompatProxy();
+    }
+
     Object.defineProperty(process, 'platform', { value: originalPlatform });
     delete process.env.CLAUDECODE;
     delete process.env.claudecode;
@@ -252,6 +263,10 @@ describe('CLAUDECODE environment stripping', () => {
       if (!baselineSighupListeners.includes(listener)) {
         process.removeListener('SIGHUP', listener as (...args: unknown[]) => void);
       }
+    }
+
+    if (tempCcsHome) {
+      fs.rmSync(tempCcsHome, { recursive: true, force: true });
     }
   });
 

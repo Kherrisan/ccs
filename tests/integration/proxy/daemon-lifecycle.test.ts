@@ -256,12 +256,12 @@ describe('openai proxy daemon lifecycle', () => {
   }, 35000);
 
   it('fails when an explicit port is already occupied', async () => {
-    const occupiedPort = await getPort();
     const server = Bun.serve({
-      port: occupiedPort,
+      port: 0,
       hostname: '127.0.0.1',
       fetch: () => new Response('busy'),
     });
+    const occupiedPort = server.port;
 
     try {
       const settingsPath = path.join(tempDir, 'occupied-explicit.settings.json');
@@ -298,12 +298,12 @@ describe('openai proxy daemon lifecycle', () => {
   });
 
   it('fails when a configured profile port is already occupied', async () => {
-    const occupiedPort = await getPort();
     const server = Bun.serve({
-      port: occupiedPort,
+      port: 0,
       hostname: '127.0.0.1',
       fetch: () => new Response('busy'),
     });
+    const occupiedPort = server.port;
 
     try {
       mutateUnifiedConfig((config) => {
@@ -347,12 +347,12 @@ describe('openai proxy daemon lifecycle', () => {
   });
 
   it('falls back when a configured shared proxy.port is occupied', async () => {
-    const occupiedPort = await getPort();
     const server = Bun.serve({
-      port: occupiedPort,
+      port: 0,
       hostname: '127.0.0.1',
       fetch: () => new Response('busy'),
     });
+    const occupiedPort = server.port;
 
     try {
       mutateUnifiedConfig((config) => {
@@ -396,12 +396,12 @@ describe('openai proxy daemon lifecycle', () => {
 
   it('keeps the existing proxy running if replacement startup fails', async () => {
     const firstPort = await getPort();
-    const occupiedPort = await getPort();
     const busyServer = Bun.serve({
-      port: occupiedPort,
+      port: 0,
       hostname: '127.0.0.1',
       fetch: () => new Response('busy'),
     });
+    const occupiedPort = busyServer.port;
 
     try {
       const settingsPath = path.join(tempDir, 'rollback.settings.json');
