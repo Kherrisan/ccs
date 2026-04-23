@@ -132,7 +132,12 @@ jobs:
           set -euo pipefail
 
           start_epoch=$(date +%s)
-          bun run test:fast
+          test_status=0
+          if bun run test:fast; then
+            test_status=0
+          else
+            test_status=$?
+          fi
           end_epoch=$(date +%s)
           elapsed_seconds=$((end_epoch - start_epoch))
 
@@ -149,6 +154,8 @@ jobs:
           else
             echo "- Result: within budget." >> "$GITHUB_STEP_SUMMARY"
           fi
+
+          exit "$test_status"
 
       - name: Test slow bucket
         run: bun run test:slow
