@@ -26,11 +26,28 @@ export function stripAnthropicEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return result;
 }
 
-const ANTHROPIC_ROUTING_ENV_KEYS = new Set([
+const ANTHROPIC_ROUTING_ENV_KEYS = [
   'ANTHROPIC_BASE_URL',
   'ANTHROPIC_AUTH_TOKEN',
   'ANTHROPIC_API_KEY',
-]);
+];
+const ANTHROPIC_ROUTING_ENV_KEY_SET = new Set(ANTHROPIC_ROUTING_ENV_KEYS);
+const ANTHROPIC_MODEL_ENV_KEYS = [
+  'ANTHROPIC_MODEL',
+  'ANTHROPIC_DEFAULT_OPUS_MODEL',
+  'ANTHROPIC_DEFAULT_SONNET_MODEL',
+  'ANTHROPIC_DEFAULT_HAIKU_MODEL',
+  'ANTHROPIC_SMALL_FAST_MODEL',
+];
+const TMUX_SYNC_ENV_KEYS = [
+  'CLAUDE_CONFIG_DIR',
+  'CCS_PROFILE_TYPE',
+  'CCS_WEBSEARCH_SKIP',
+  'CCS_STRIP_INHERITED_ANTHROPIC_ENV',
+  'CLAUDE_CODE_MAX_OUTPUT_TOKENS',
+  ...ANTHROPIC_MODEL_ENV_KEYS,
+  ...ANTHROPIC_ROUTING_ENV_KEYS,
+];
 
 /**
  * Strip inherited Anthropic routing/auth env while preserving model intent.
@@ -41,11 +58,37 @@ const ANTHROPIC_ROUTING_ENV_KEYS = new Set([
 export function stripAnthropicRoutingEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const result: NodeJS.ProcessEnv = {};
   for (const key of Object.keys(env)) {
-    if (!ANTHROPIC_ROUTING_ENV_KEYS.has(key)) {
+    if (!ANTHROPIC_ROUTING_ENV_KEY_SET.has(key.toUpperCase())) {
       result[key] = env[key];
     }
   }
   return result;
+}
+
+function syncTmuxNestedSessionEnv(env: NodeJS.ProcessEnv, profileType: string | undefined): void {
+  if (!process.env.TMUX) {
+    return;
+  }
+
+  const nestedSessionEnv =
+    profileType === 'account' || profileType === 'default'
+      ? stripAnthropicEnv(env)
+      : profileType === 'settings'
+        ? stripAnthropicRoutingEnv(env)
+        : env;
+
+  for (const key of TMUX_SYNC_ENV_KEYS) {
+    try {
+      const value = nestedSessionEnv[key];
+      if (value !== undefined) {
+        spawnSync('tmux', ['setenv', key, value], { stdio: 'ignore' });
+      } else {
+        spawnSync('tmux', ['setenv', '-u', key], { stdio: 'ignore' });
+      }
+    } catch {
+      // tmux setenv can fail if not in a tmux session; safe to ignore
+    }
+  }
 }
 
 /**
@@ -193,20 +236,9 @@ export function execClaude(
     }
   }
 
-  // propagate key env vars to tmux session so agent team teammates
-  // (spawned via tmux split-window) inherit the correct config dir
-  if (process.env.TMUX && envVars) {
-    const tmuxPropagateVars = ['CLAUDE_CONFIG_DIR', 'CCS_PROFILE_TYPE', 'CCS_WEBSEARCH_SKIP'];
-    for (const key of tmuxPropagateVars) {
-      if (envVars[key]) {
-        try {
-          spawnSync('tmux', ['setenv', key, envVars[key] ?? ''], { stdio: 'ignore' });
-        } catch {
-          // tmux setenv can fail if not in a tmux session; safe to ignore
-        }
-      }
-    }
-  }
+  // Keep tmux teammate panes aligned with the nested-safe Claude runtime env
+  // rather than the tmux server's original shell environment.
+  syncTmuxNestedSessionEnv(env, profileType);
 
   let child: ChildProcess;
   if (isPowerShellScript) {
