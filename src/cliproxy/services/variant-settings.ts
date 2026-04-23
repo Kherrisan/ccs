@@ -41,16 +41,12 @@ interface SettingsFile {
   [key: string]: unknown;
 }
 
-const CODEX_EFFORT_SUFFIX_REGEX = /-(xhigh|high|medium)$/i;
-
 function canonicalizeModelForProvider(
   provider: CLIProxyProfileName | undefined,
   model: string
 ): string {
-  const withoutCodexSuffix =
-    provider === 'codex' ? model.replace(CODEX_EFFORT_SUFFIX_REGEX, '') : model;
-  if (!provider) return withoutCodexSuffix;
-  return normalizeModelIdForProvider(withoutCodexSuffix, provider);
+  if (!provider) return model;
+  return normalizeModelIdForProvider(model, provider);
 }
 
 /**

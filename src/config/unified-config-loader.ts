@@ -431,7 +431,7 @@ function mergeWithDefaults(partial: Partial<UnifiedConfig>): UnifiedConfig {
       backend:
         partial.cliproxy?.backend === 'original' || partial.cliproxy?.backend === 'plus'
           ? partial.cliproxy.backend
-          : undefined, // Invalid values become undefined (defaults to 'plus' at runtime)
+          : undefined, // Invalid values become undefined (defaults to 'original' at runtime)
       // Auto-sync - default to true
       auto_sync: partial.cliproxy?.auto_sync ?? defaults.cliproxy.auto_sync ?? true,
       routing: {
@@ -925,7 +925,9 @@ function generateYamlWithComments(config: UnifiedConfig): string {
     lines.push(
       '# Modes: auto (use tier_defaults), off (disable), manual (--thinking/--effort flags)'
     );
-    lines.push('# Levels: minimal (512), low (1K), medium (8K), high (24K), xhigh (32K), auto');
+    lines.push(
+      '# Levels: minimal (512), low (1K), medium (8K), high (24K), xhigh (32K), max (adaptive ceiling), auto'
+    );
     lines.push('# Override: Set global override value (number or level name)');
     lines.push('# Provider overrides: Per-provider tier defaults');
     lines.push('# ----------------------------------------------------------------------------');

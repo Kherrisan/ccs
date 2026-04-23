@@ -1,15 +1,22 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  CLIPROXY_PROVIDER_SECTIONS,
+  CORE_CLIPROXY_PROVIDERS,
   formatRequestedUpstreamModelRules,
   getProviderDescription,
   getProviderDisplayName,
   getProviderFallbackVisual,
   getProviderLogoAsset,
+  getProviderSection,
   getRequestedUpstreamModelRuleErrors,
   getRequestedModelId,
+  groupProvidersBySection,
+  isPlusExtraProvider,
   parseRequestedUpstreamModelRules,
+  PLUS_EXTRA_CLIPROXY_PROVIDERS,
   PROVIDER_COLORS,
+  variantUsesPlusExtraProvider,
 } from '@/lib/provider-config';
 
 describe('provider model mapping helpers', () => {
@@ -49,6 +56,61 @@ describe('provider model mapping helpers', () => {
 });
 
 describe('provider presentation metadata', () => {
+  it('splits providers into core and plus-extra sections', () => {
+    expect(CLIPROXY_PROVIDER_SECTIONS.map((section) => section.id)).toEqual(['core', 'plus-extra']);
+    expect(CORE_CLIPROXY_PROVIDERS).toContain('gemini');
+    expect(CORE_CLIPROXY_PROVIDERS).toContain('kimi');
+    expect(PLUS_EXTRA_CLIPROXY_PROVIDERS).toEqual([
+      'kiro',
+      'ghcp',
+      'cursor',
+      'gitlab',
+      'codebuddy',
+      'kilo',
+    ]);
+    expect(getProviderSection('gitlab')?.id).toBe('plus-extra');
+    expect(getProviderSection('gemini')?.id).toBe('core');
+    expect(isPlusExtraProvider('cursor')).toBe(true);
+    expect(isPlusExtraProvider('gemini')).toBe(false);
+  });
+
+  it('groups provider-backed data by shared section metadata', () => {
+    const grouped = groupProvidersBySection(
+      [
+        { provider: 'cursor', value: 'plus' },
+        { provider: 'gemini', value: 'core' },
+      ],
+      (entry) => entry.provider
+    );
+
+    expect(grouped).toHaveLength(2);
+    expect(grouped[0]?.id).toBe('core');
+    expect(grouped[0]?.items.map((entry) => entry.provider)).toEqual(['gemini']);
+    expect(grouped[1]?.id).toBe('plus-extra');
+    expect(grouped[1]?.items.map((entry) => entry.provider)).toEqual(['cursor']);
+  });
+
+  it('detects plus-extra providers inside composite variants', () => {
+    expect(
+      variantUsesPlusExtraProvider({
+        provider: 'gemini',
+        tiers: {
+          opus: { provider: 'gemini' },
+          sonnet: { provider: 'cursor' },
+        },
+      })
+    ).toBe(true);
+    expect(
+      variantUsesPlusExtraProvider({
+        provider: 'gemini',
+        tiers: {
+          opus: { provider: 'gemini' },
+          sonnet: { provider: 'kimi' },
+        },
+      })
+    ).toBe(false);
+  });
+
   it.each([
     ['cursor', 'Cursor', 'Cursor browser-authenticated provider', '/assets/sidebar/cursor.svg'],
     ['gitlab', 'GitLab Duo', 'GitLab Duo with OAuth or PAT auth', '/assets/providers/gitlab.svg'],

@@ -304,6 +304,7 @@ export function ProviderEditor({
                   <ProviderInfoTab
                     provider={provider}
                     displayName={displayName}
+                    baseProvider={baseProvider}
                     defaultTarget={defaultTarget}
                     data={data}
                     authStatus={authStatus}

@@ -90,6 +90,16 @@ describe('translateAnthropicRequest', () => {
     ]);
   });
 
+  it('maps adaptive anthropic thinking into Cursor reasoning effort', () => {
+    const translated = translateAnthropicRequest({
+      thinking: { type: 'adaptive' },
+      output_config: { effort: 'xhigh' },
+      messages: [{ role: 'user', content: 'hello' }],
+    });
+
+    expect(translated.reasoning_effort).toBe('high');
+  });
+
   it('preserves mixed user text around tool_result blocks in order', () => {
     const translated = translateAnthropicRequest({
       messages: [

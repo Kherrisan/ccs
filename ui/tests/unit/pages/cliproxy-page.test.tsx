@@ -2,6 +2,23 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, userEvent } from '@tests/setup/test-utils';
 
 const hookState = vi.hoisted(() => ({
+  authData: {
+    authStatus: [
+      {
+        provider: 'gemini',
+        displayName: 'Gemini',
+        authenticated: true,
+        accounts: [{ id: 'acct-1', provider: 'gemini' }],
+      },
+      {
+        provider: 'ghcp',
+        displayName: 'GitHub Copilot (OAuth)',
+        authenticated: false,
+        accounts: [],
+      },
+    ],
+    source: 'local' as const,
+  },
   catalogData: undefined as
     | {
         catalogs: Record<
@@ -23,17 +40,7 @@ vi.mock('@/hooks/use-cliproxy', () => ({
     isFetching: false,
   }),
   useCliproxyAuth: () => ({
-    data: {
-      authStatus: [
-        {
-          provider: 'gemini',
-          displayName: 'Gemini',
-          authenticated: true,
-          accounts: [{ id: 'acct-1', provider: 'gemini' }],
-        },
-      ],
-      source: 'local',
-    },
+    data: hookState.authData,
     isLoading: false,
   }),
   useCliproxyCatalog: () => ({
@@ -85,7 +92,37 @@ import { CliproxyPage } from '@/pages/cliproxy';
 
 describe('CliproxyPage add-account catalog gating', () => {
   beforeEach(() => {
+    hookState.authData = {
+      authStatus: [
+        {
+          provider: 'gemini',
+          displayName: 'Gemini',
+          authenticated: true,
+          accounts: [{ id: 'acct-1', provider: 'gemini' }],
+        },
+        {
+          provider: 'ghcp',
+          displayName: 'GitHub Copilot (OAuth)',
+          authenticated: false,
+          accounts: [],
+        },
+      ],
+      source: 'local',
+    };
     hookState.catalogData = undefined;
+  });
+
+  it('separates core providers from plus extras in the sidebar', () => {
+    render(<CliproxyPage />);
+
+    expect(screen.getByText('Core / original backend')).toBeInTheDocument();
+    expect(screen.getByText('Plus extras / community-maintained')).toBeInTheDocument();
+    expect(screen.getByText('Default, always-available provider track')).toBeInTheDocument();
+    expect(
+      screen.getByText('Still supported, but separated from the default backend for now')
+    ).toBeInTheDocument();
+    expect(screen.getByText('Gemini')).toBeInTheDocument();
+    expect(screen.getByText('GitHub Copilot (OAuth)')).toBeInTheDocument();
   });
 
   it('does not pass a static fallback catalog before the catalog query resolves', async () => {

@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
-import getPort from 'get-port';
 import * as http from 'http';
 import { startOpenAICompatProxyServer } from '../../../src/proxy/server/proxy-server';
 import type { OpenAICompatProfileConfig } from '../../../src/proxy/profile-router';
@@ -10,52 +9,64 @@ let upstreamBody: unknown;
 let upstreamPort: number;
 let proxyPort: number;
 
-function startMockUpstream(): Promise<void> {
-  return new Promise((resolve) => {
-    upstreamServer = http.createServer(async (req, res) => {
-      if (req.method !== 'POST' || req.url !== '/v1/chat/completions') {
-        res.writeHead(404).end();
-        return;
-      }
+function resolveListeningPort(server: http.Server): number {
+  const address = server.address();
+  if (!address || typeof address === 'string') {
+    throw new Error('Failed to resolve server port');
+  }
+  return address.port;
+}
 
-      let body = '';
-      for await (const chunk of req) {
-        body += chunk.toString();
-      }
-      upstreamBody = JSON.parse(body);
-      const parsed = upstreamBody as {
-        stream?: boolean;
-        messages?: Array<{ role?: string; content?: string | Array<{ type?: string; text?: string }> }>;
-      };
+async function waitForServerListening(server: http.Server): Promise<number> {
+  if (server.listening) {
+    return resolveListeningPort(server);
+  }
 
-      if (parsed.stream) {
-        res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+  return new Promise<number>((resolve, reject) => {
+    const onError = (error: Error) => reject(error);
+    server.once('error', onError);
+    server.once('listening', () => {
+      server.off('error', onError);
+      resolve(resolveListeningPort(server));
+    });
+  });
+}
 
-        if (parsed.messages?.[0]?.content === 'interleaved tool fragments') {
-          res.write(
-            'data: {"id":"chatcmpl_1","model":"hf-model","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"search"}}]}}]}\n\n'
-          );
-          res.write(
-            'data: {"id":"chatcmpl_1","model":"hf-model","choices":[{"index":0,"delta":{"tool_calls":[{"index":1,"id":"call_2","type":"function","function":{"name":"open"}}]}}]}\n\n'
-          );
-          res.write(
-            'data: {"id":"chatcmpl_1","model":"hf-model","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\\"path\\":\\"a.ts\\"}"}}]}}]}\n\n'
-          );
-          res.write(
-            'data: {"id":"chatcmpl_1","model":"hf-model","choices":[{"index":0,"delta":{"tool_calls":[{"index":1,"function":{"arguments":"{\\"path\\":\\"b.ts\\"}"}}]}}]}\n\n'
-          );
-          res.write(
-            'data: {"id":"chatcmpl_1","model":"hf-model","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":9,"completion_tokens":4}}\n\n'
-          );
-          res.end('data: [DONE]\n\n');
-          return;
-        }
+async function startMockUpstream(): Promise<void> {
+  upstreamServer = http.createServer(async (req, res) => {
+    if (req.method !== 'POST' || req.url !== '/v1/chat/completions') {
+      res.writeHead(404).end();
+      return;
+    }
 
+    let body = '';
+    for await (const chunk of req) {
+      body += chunk.toString();
+    }
+    upstreamBody = JSON.parse(body);
+    const parsed = upstreamBody as {
+      stream?: boolean;
+      messages?: Array<{
+        role?: string;
+        content?: string | Array<{ type?: string; text?: string }>;
+      }>;
+    };
+
+    if (parsed.stream) {
+      res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+
+      if (parsed.messages?.[0]?.content === 'interleaved tool fragments') {
         res.write(
-          'data: {"id":"chatcmpl_1","model":"hf-model","choices":[{"index":0,"delta":{"role":"assistant","content":"Hello"}}]}\n\n'
+          'data: {"id":"chatcmpl_1","model":"hf-model","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"search"}}]}}]}\n\n'
         );
         res.write(
-          'data: {"id":"chatcmpl_1","model":"hf-model","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"search","arguments":"{\\"q\\":\\"docs\\"}"}}]}}]}\n\n'
+          'data: {"id":"chatcmpl_1","model":"hf-model","choices":[{"index":0,"delta":{"tool_calls":[{"index":1,"id":"call_2","type":"function","function":{"name":"open"}}]}}]}\n\n'
+        );
+        res.write(
+          'data: {"id":"chatcmpl_1","model":"hf-model","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\\"path\\":\\"a.ts\\"}"}}]}}]}\n\n'
+        );
+        res.write(
+          'data: {"id":"chatcmpl_1","model":"hf-model","choices":[{"index":0,"delta":{"tool_calls":[{"index":1,"function":{"arguments":"{\\"path\\":\\"b.ts\\"}"}}]}}]}\n\n'
         );
         res.write(
           'data: {"id":"chatcmpl_1","model":"hf-model","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":9,"completion_tokens":4}}\n\n'
@@ -64,25 +75,38 @@ function startMockUpstream(): Promise<void> {
         return;
       }
 
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(
-        JSON.stringify({
-          id: 'chatcmpl_1',
-          model: 'hf-model',
-          choices: [
-            {
-              index: 0,
-              message: { role: 'assistant', content: 'Plain answer' },
-              finish_reason: 'stop',
-            },
-          ],
-          usage: { prompt_tokens: 2, completion_tokens: 3 },
-        })
+      res.write(
+        'data: {"id":"chatcmpl_1","model":"hf-model","choices":[{"index":0,"delta":{"role":"assistant","content":"Hello"}}]}\n\n'
       );
-    });
+      res.write(
+        'data: {"id":"chatcmpl_1","model":"hf-model","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"search","arguments":"{\\"q\\":\\"docs\\"}"}}]}}]}\n\n'
+      );
+      res.write(
+        'data: {"id":"chatcmpl_1","model":"hf-model","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":9,"completion_tokens":4}}\n\n'
+      );
+      res.end('data: [DONE]\n\n');
+      return;
+    }
 
-    upstreamServer.listen(upstreamPort, '127.0.0.1', () => resolve());
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(
+      JSON.stringify({
+        id: 'chatcmpl_1',
+        model: 'hf-model',
+        choices: [
+          {
+            index: 0,
+            message: { role: 'assistant', content: 'Plain answer' },
+            finish_reason: 'stop',
+          },
+        ],
+        usage: { prompt_tokens: 2, completion_tokens: 3 },
+      })
+    );
   });
+
+  upstreamServer.listen(0, '127.0.0.1');
+  upstreamPort = await waitForServerListening(upstreamServer);
 }
 
 async function requestProxy(payload: unknown): Promise<Response> {
@@ -98,8 +122,6 @@ async function requestProxy(payload: unknown): Promise<Response> {
 }
 
 beforeEach(async () => {
-  upstreamPort = await getPort();
-  proxyPort = await getPort();
   upstreamBody = undefined;
   await startMockUpstream();
   const profile: OpenAICompatProfileConfig = {
@@ -112,9 +134,10 @@ beforeEach(async () => {
   };
   proxyServer = startOpenAICompatProxyServer({
     profile,
-    port: proxyPort,
+    port: 0,
     authToken: 'test-proxy-token',
   });
+  proxyPort = await waitForServerListening(proxyServer);
 });
 
 afterEach(async () => {

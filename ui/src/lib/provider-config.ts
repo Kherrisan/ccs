@@ -10,6 +10,7 @@ import {
   getProvidersByOAuthFlow,
 } from '../../../src/cliproxy/provider-capabilities';
 import type { AiProviderFamilyId, AiProviderModelAlias } from '../../../src/cliproxy/ai-providers';
+import { PLUS_ONLY_PROVIDERS } from '../../../src/cliproxy/types';
 import i18n from './i18n';
 
 // Monorepo contract: UI consumes provider capability constants directly from backend
@@ -19,6 +20,39 @@ import i18n from './i18n';
 export const CLIPROXY_PROVIDERS = CLIPROXY_PROVIDER_IDS;
 export type CLIProxyProvider = (typeof CLIPROXY_PROVIDERS)[number];
 export type ProviderVisualId = CLIProxyProvider | 'openai' | 'vertex';
+export type CLIProxyProviderSectionId = 'core' | 'plus-extra';
+
+export interface CLIProxyProviderSection {
+  id: CLIProxyProviderSectionId;
+  labelKey: string;
+  hintKey: string;
+  providers: readonly CLIProxyProvider[];
+}
+
+const PLUS_ONLY_PROVIDER_SET = new Set<CLIProxyProvider>(PLUS_ONLY_PROVIDERS);
+
+export const CORE_CLIPROXY_PROVIDERS: readonly CLIProxyProvider[] = Object.freeze(
+  CLIPROXY_PROVIDERS.filter((provider) => !PLUS_ONLY_PROVIDER_SET.has(provider))
+);
+
+export const PLUS_EXTRA_CLIPROXY_PROVIDERS: readonly CLIProxyProvider[] = Object.freeze(
+  CLIPROXY_PROVIDERS.filter((provider) => PLUS_ONLY_PROVIDER_SET.has(provider))
+);
+
+export const CLIPROXY_PROVIDER_SECTIONS: readonly CLIProxyProviderSection[] = Object.freeze([
+  {
+    id: 'core',
+    labelKey: 'providerConfig.sectionCoreLabel',
+    hintKey: 'providerConfig.sectionCoreHint',
+    providers: CORE_CLIPROXY_PROVIDERS,
+  },
+  {
+    id: 'plus-extra',
+    labelKey: 'providerConfig.sectionPlusLabel',
+    hintKey: 'providerConfig.sectionPlusHint',
+    providers: PLUS_EXTRA_CLIPROXY_PROVIDERS,
+  },
+]);
 
 /** Check if a string is a backend-supported CLIProxy provider. */
 export function isValidProvider(provider: string): provider is CLIProxyProvider {
@@ -257,6 +291,52 @@ export function getProviderDisplayName(provider: unknown): string {
     return i18n.t('toasts.providerUnknown', { provider: 'unknown' });
   }
   return PROVIDER_NAMES[normalized] || i18n.t('toasts.providerUnknown', { provider: normalized });
+}
+
+export function isPlusExtraProvider(provider: unknown): boolean {
+  const normalized = normalizeProviderInput(provider);
+  return isValidProvider(normalized) && PLUS_ONLY_PROVIDER_SET.has(normalized);
+}
+
+export function getProviderSection(provider: unknown): CLIProxyProviderSection | null {
+  const normalized = normalizeProviderInput(provider);
+  if (!isValidProvider(normalized)) {
+    return null;
+  }
+
+  return (
+    CLIPROXY_PROVIDER_SECTIONS.find((section) => section.providers.includes(normalized)) || null
+  );
+}
+
+interface VariantLike {
+  provider?: unknown;
+  tiers?: Record<string, { provider?: unknown } | undefined> | null;
+}
+
+export function variantUsesPlusExtraProvider(variant: VariantLike | null | undefined): boolean {
+  if (!variant) {
+    return false;
+  }
+
+  if (variant.tiers) {
+    return Object.values(variant.tiers).some((tier) => isPlusExtraProvider(tier?.provider));
+  }
+
+  return isPlusExtraProvider(variant.provider);
+}
+
+export function groupProvidersBySection<T>(
+  items: readonly T[],
+  getProvider: (item: T) => unknown
+): Array<CLIProxyProviderSection & { items: T[] }> {
+  return CLIPROXY_PROVIDER_SECTIONS.map((section) => ({
+    ...section,
+    items: items.filter((item) => {
+      const normalized = normalizeProviderInput(getProvider(item));
+      return isValidProvider(normalized) && section.providers.includes(normalized);
+    }),
+  })).filter((section) => section.items.length > 0);
 }
 
 /** Map provider to user-facing short description */

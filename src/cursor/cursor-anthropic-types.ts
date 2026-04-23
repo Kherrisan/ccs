@@ -41,6 +41,9 @@ export interface CursorAnthropicRequest {
   system?: string | AnthropicTextBlock[];
   stream?: boolean;
   tools?: CursorTool[];
+  output_config?: {
+    effort?: string;
+  };
   thinking?: {
     type?: string;
     budget_tokens?: number;

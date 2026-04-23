@@ -15,16 +15,8 @@ import { initUI, color, bold, dim, ok, info, header } from '../utils/ui';
 import { getCcsDir } from '../utils/config-manager';
 import { normalizeModelIdForProvider } from './model-id-normalizer';
 
-const CODEX_EFFORT_SUFFIX_REGEX = /-(xhigh|high|medium)$/i;
-
-function stripCodexEffortSuffix(model: string, provider: CLIProxyProvider): string {
-  if (provider !== 'codex') return model;
-  return model.replace(CODEX_EFFORT_SUFFIX_REGEX, '');
-}
-
 function canonicalizeModelForProvider(provider: CLIProxyProvider, model: string): string {
-  const withoutCodexSuffix = stripCodexEffortSuffix(model, provider);
-  return normalizeModelIdForProvider(withoutCodexSuffix, provider);
+  return normalizeModelIdForProvider(model, provider);
 }
 
 /**

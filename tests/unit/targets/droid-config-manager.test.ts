@@ -143,6 +143,23 @@ describe('droid-config-manager', () => {
       expect(settings.customModels[0].extraArgs?.thinking?.budget_tokens).toBe(40960);
     });
 
+    it('writes adaptive anthropic thinking for claude-opus-4-7 overrides', async () => {
+      await upsertCcsModel('claude', {
+        model: 'claude-opus-4-7',
+        displayName: 'CCS claude',
+        baseUrl: 'https://api.anthropic.com',
+        apiKey: 'anthropic-key',
+        provider: 'anthropic',
+        reasoningOverride: 'max',
+      });
+
+      const settingsPath = path.join(tmpDir, '.factory', 'settings.json');
+      const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+      expect(settings.customModels[0].extraArgs?.thinking?.type).toBe('adaptive');
+      expect(settings.customModels[0].extraArgs?.thinking?.budget_tokens).toBeUndefined();
+      expect(settings.customModels[0].extraArgs?.output_config?.effort).toBe('max');
+    });
+
     it('should clear prior reasoning config when override disables thinking', async () => {
       await upsertCcsModel('glm', {
         model: 'glm-4.7',

@@ -396,7 +396,7 @@ function mapThinkingToReasoning(
   };
 }
 
-const VALID_EFFORT_LEVELS = new Set(['low', 'medium', 'high', 'max']);
+const VALID_EFFORT_LEVELS = new Set(['low', 'medium', 'high', 'xhigh', 'max']);
 
 function resolveOutputConfigEffort(
   outputConfig: AnthropicOutputConfig | undefined
@@ -416,7 +416,7 @@ function resolveOutputConfigEffort(
  * for Codex; for generic OpenAI-compat providers we clamp to high.
  */
 function toOpenAIEffort(effort: string): string {
-  return effort === 'max' ? 'high' : effort;
+  return effort === 'max' || effort === 'xhigh' ? 'high' : effort;
 }
 
 function transformMessages(messagesValue: unknown): OpenAIMessage[] {

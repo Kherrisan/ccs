@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { FlexibleModelSelector } from '@/components/cliproxy/provider-model-selector';
-import { buildUiCatalogs } from '@/lib/model-catalogs';
+import { MODEL_CATALOGS, buildUiCatalogs } from '@/lib/model-catalogs';
 import { render, screen, userEvent } from '@tests/setup/test-utils';
 
 const noisyAgyModels = [
@@ -86,5 +86,69 @@ describe('FlexibleModelSelector', () => {
     expect(screen.getByText('Current value')).toBeInTheDocument();
     expect(screen.getAllByText('gemini-3.1-pro-preview').length).toBeGreaterThan(0);
     expect(screen.getByText('gemini-3.1-pro-high')).toBeInTheDocument();
+  });
+
+  it('offers codex effort-suffixed variants as first-class selectable options', async () => {
+    const onChange = vi.fn();
+
+    render(
+      <FlexibleModelSelector
+        label="Primary model"
+        value={undefined}
+        onChange={onChange}
+        catalog={MODEL_CATALOGS.codex}
+        allModels={[]}
+      />
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: /select model/i }));
+
+    expect(screen.getByText('gpt-5.3-codex-high')).toBeInTheDocument();
+    expect(screen.getByText('gpt-5.3-codex-xhigh')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByText('gpt-5.3-codex-high'));
+    expect(onChange).toHaveBeenCalledWith('gpt-5.3-codex-high');
+  });
+
+  it('does not relegate saved codex effort variants to the legacy current-value fallback', async () => {
+    render(
+      <FlexibleModelSelector
+        label="Primary model"
+        value="gpt-5.3-codex-high"
+        onChange={vi.fn()}
+        catalog={MODEL_CATALOGS.codex}
+        allModels={[]}
+      />
+    );
+
+    expect(screen.getByRole('button', { name: /gpt-5\.3-codex-high/i })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: /gpt-5\.3-codex-high/i }));
+
+    expect(screen.queryByText('Current value')).not.toBeInTheDocument();
+    expect(screen.getByText('gpt-5.3-codex')).toBeInTheDocument();
+    expect(screen.getAllByText('gpt-5.3-codex-high').length).toBeGreaterThan(0);
+  });
+
+  it('preserves explicit suffixes on supplemental codex models outside the static catalog', async () => {
+    const onChange = vi.fn();
+
+    render(
+      <FlexibleModelSelector
+        label="Primary model"
+        value={undefined}
+        onChange={onChange}
+        catalog={MODEL_CATALOGS.codex}
+        allModels={[{ id: 'gpt-5.5-codex-high', owned_by: 'openai' }]}
+      />
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: /select model/i }));
+
+    expect(screen.getByText(/All Models \(1\)/i)).toBeInTheDocument();
+    expect(screen.getByText('gpt-5.5-codex-high')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByText('gpt-5.5-codex-high'));
+    expect(onChange).toHaveBeenCalledWith('gpt-5.5-codex-high');
   });
 });

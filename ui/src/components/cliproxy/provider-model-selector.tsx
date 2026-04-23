@@ -12,7 +12,8 @@ import { Badge } from '@/components/ui/badge';
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { CliproxyProviderRoutingHints } from '@/lib/api-client';
-import { getCodexEffortDisplay } from '@/lib/codex-effort';
+import type { CodexEffort } from '@/lib/codex-effort';
+import { getCodexEffortDisplay, getCodexEffortVariants } from '@/lib/codex-effort';
 import { getResolvedCatalogModels, getSupplementalCatalogModels } from '@/lib/model-catalogs';
 import { cn } from '@/lib/utils';
 
@@ -35,6 +36,8 @@ export interface ModelEntry {
     sonnet: string;
     haiku: string;
   };
+  /** Highest codex reasoning-effort suffix this model supports in the dashboard UI. */
+  codexMaxEffort?: CodexEffort;
 }
 
 /** Provider catalog */
@@ -313,6 +316,14 @@ function getPreferredOptionValue(
   return routingHint?.recommendedModelId ?? modelId;
 }
 
+function getModelOptionValues(
+  codexMaxEffort: CodexEffort | undefined,
+  optionValue: string,
+  isCodexProvider: boolean
+): string[] {
+  return isCodexProvider ? getCodexEffortVariants(optionValue, codexMaxEffort) : [optionValue];
+}
+
 export function FlexibleModelSelector({
   label,
   description,
@@ -342,55 +353,64 @@ export function FlexibleModelSelector({
   const recommendedOptionValues = useMemo(
     () =>
       new Set(
-        resolvedCatalogModels.map((model) =>
-          getPreferredOptionValue(model.id, routingHints.get(model.id.toLowerCase()))
+        resolvedCatalogModels.flatMap((model) =>
+          getModelOptionValues(
+            model.codexMaxEffort,
+            getPreferredOptionValue(model.id, routingHints.get(model.id.toLowerCase())),
+            isCodexProvider
+          )
         )
       ),
-    [resolvedCatalogModels, routingHints]
+    [isCodexProvider, resolvedCatalogModels, routingHints]
   );
   const selectedRoutingHint = useMemo(
     () => routingHints.get(normalizeModelValue(value, routing).toLowerCase()),
     [routing, routingHints, value]
   );
 
-  const recommendedOptions = resolvedCatalogModels.map((model) => ({
-    value: getPreferredOptionValue(model.id, routingHints.get(model.id.toLowerCase())),
-    groupKey: 'recommended',
-    searchText: `${model.id} ${model.name} ${routingHints.get(model.id.toLowerCase())?.recommendedModelId ?? ''}`,
-    keywords: [model.tier ?? '', catalog?.provider ?? ''],
-    triggerContent: (
-      <div className="flex min-w-0 items-center gap-2">
-        <span className="truncate font-mono text-xs">
-          {getPreferredOptionValue(model.id, routingHints.get(model.id.toLowerCase()))}
-        </span>
-        {routingHints.get(model.id.toLowerCase())?.pinnedAvailable ? (
-          <Badge variant="secondary" className="text-[9px] h-4 px-1 uppercase">
-            {routingHints.get(model.id.toLowerCase())?.prefix}
-          </Badge>
-        ) : null}
-        {isCodexProvider && <CodexEffortBadge modelId={model.id} />}
-      </div>
-    ),
-    itemContent: (
-      <div className="flex min-w-0 items-center gap-2">
-        <span className="truncate font-mono text-xs">
-          {getPreferredOptionValue(model.id, routingHints.get(model.id.toLowerCase()))}
-        </span>
-        {model.tier === 'paid' && <PaidBadge label={t('providerModelSelector.paid')} />}
-        {routingHints.get(model.id.toLowerCase())?.unprefixedStatus === 'shadowed' ? (
-          <Badge variant="outline" className="text-[9px] h-4 px-1">
-            {t('providerModelSelector.shadowed')}
-          </Badge>
-        ) : null}
-        {routingHints.get(model.id.toLowerCase())?.unprefixedStatus === 'prefix-only' ? (
-          <Badge variant="outline" className="text-[9px] h-4 px-1">
-            {t('providerModelSelector.prefixOnly')}
-          </Badge>
-        ) : null}
-        {isCodexProvider && <CodexEffortBadge modelId={model.id} />}
-      </div>
-    ),
-  }));
+  const recommendedOptions = resolvedCatalogModels.flatMap((model) => {
+    const routingHint = routingHints.get(model.id.toLowerCase());
+    const optionValues = getModelOptionValues(
+      model.codexMaxEffort,
+      getPreferredOptionValue(model.id, routingHint),
+      isCodexProvider
+    );
+
+    return optionValues.map((optionValue) => ({
+      value: optionValue,
+      groupKey: 'recommended',
+      searchText: `${optionValue} ${model.id} ${model.name} ${routingHint?.recommendedModelId ?? ''}`,
+      keywords: [model.tier ?? '', catalog?.provider ?? ''],
+      triggerContent: (
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="truncate font-mono text-xs">{optionValue}</span>
+          {routingHint?.pinnedAvailable ? (
+            <Badge variant="secondary" className="text-[9px] h-4 px-1 uppercase">
+              {routingHint.prefix}
+            </Badge>
+          ) : null}
+          {isCodexProvider && <CodexEffortBadge modelId={optionValue} />}
+        </div>
+      ),
+      itemContent: (
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="truncate font-mono text-xs">{optionValue}</span>
+          {model.tier === 'paid' && <PaidBadge label={t('providerModelSelector.paid')} />}
+          {routingHint?.unprefixedStatus === 'shadowed' ? (
+            <Badge variant="outline" className="text-[9px] h-4 px-1">
+              {t('providerModelSelector.shadowed')}
+            </Badge>
+          ) : null}
+          {routingHint?.unprefixedStatus === 'prefix-only' ? (
+            <Badge variant="outline" className="text-[9px] h-4 px-1">
+              {t('providerModelSelector.prefixOnly')}
+            </Badge>
+          ) : null}
+          {isCodexProvider && <CodexEffortBadge modelId={optionValue} />}
+        </div>
+      ),
+    }));
+  });
 
   const allModelOptions = supplementalModels
     .filter((model) => !catalogModelIds.has(model.id))
@@ -400,43 +420,48 @@ export function FlexibleModelSelector({
           getPreferredOptionValue(model.id, routingHints.get(model.id.toLowerCase()))
         )
     )
-    .map((model) => ({
-      value: getPreferredOptionValue(model.id, routingHints.get(model.id.toLowerCase())),
-      groupKey: 'all',
-      searchText: `${model.id} ${routingHints.get(model.id.toLowerCase())?.recommendedModelId ?? ''}`,
-      keywords: [model.owned_by],
-      triggerContent: (
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="truncate font-mono text-xs">
-            {getPreferredOptionValue(model.id, routingHints.get(model.id.toLowerCase()))}
-          </span>
-          {routingHints.get(model.id.toLowerCase())?.pinnedAvailable ? (
-            <Badge variant="secondary" className="text-[9px] h-4 px-1 uppercase">
-              {routingHints.get(model.id.toLowerCase())?.prefix}
-            </Badge>
-          ) : null}
-          {isCodexProvider && <CodexEffortBadge modelId={model.id} />}
-        </div>
-      ),
-      itemContent: (
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="truncate font-mono text-xs">
-            {getPreferredOptionValue(model.id, routingHints.get(model.id.toLowerCase()))}
-          </span>
-          {routingHints.get(model.id.toLowerCase())?.unprefixedStatus === 'shadowed' ? (
-            <Badge variant="outline" className="text-[9px] h-4 px-1">
-              {t('providerModelSelector.shadowed')}
-            </Badge>
-          ) : null}
-          {routingHints.get(model.id.toLowerCase())?.unprefixedStatus === 'prefix-only' ? (
-            <Badge variant="outline" className="text-[9px] h-4 px-1">
-              {t('providerModelSelector.prefixOnly')}
-            </Badge>
-          ) : null}
-          {isCodexProvider && <CodexEffortBadge modelId={model.id} />}
-        </div>
-      ),
-    }));
+    .flatMap((model) => {
+      const routingHint = routingHints.get(model.id.toLowerCase());
+      const optionValues = getModelOptionValues(
+        undefined,
+        getPreferredOptionValue(model.id, routingHint),
+        isCodexProvider
+      );
+
+      return optionValues.map((optionValue) => ({
+        value: optionValue,
+        groupKey: 'all',
+        searchText: `${optionValue} ${model.id} ${routingHint?.recommendedModelId ?? ''}`,
+        keywords: [model.owned_by],
+        triggerContent: (
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="truncate font-mono text-xs">{optionValue}</span>
+            {routingHint?.pinnedAvailable ? (
+              <Badge variant="secondary" className="text-[9px] h-4 px-1 uppercase">
+                {routingHint.prefix}
+              </Badge>
+            ) : null}
+            {isCodexProvider && <CodexEffortBadge modelId={optionValue} />}
+          </div>
+        ),
+        itemContent: (
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="truncate font-mono text-xs">{optionValue}</span>
+            {routingHint?.unprefixedStatus === 'shadowed' ? (
+              <Badge variant="outline" className="text-[9px] h-4 px-1">
+                {t('providerModelSelector.shadowed')}
+              </Badge>
+            ) : null}
+            {routingHint?.unprefixedStatus === 'prefix-only' ? (
+              <Badge variant="outline" className="text-[9px] h-4 px-1">
+                {t('providerModelSelector.prefixOnly')}
+              </Badge>
+            ) : null}
+            {isCodexProvider && <CodexEffortBadge modelId={optionValue} />}
+          </div>
+        ),
+      }));
+    });
   const selectedValueMissing =
     Boolean(value) &&
     !recommendedOptions.some((option) => option.value === value) &&

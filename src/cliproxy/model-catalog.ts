@@ -33,7 +33,7 @@ export interface ThinkingSupport {
   /** Valid level names (for levels type) */
   levels?: string[];
   /** Maximum reasoning effort level (caps effort at this level for levels type) */
-  maxLevel?: 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
+  maxLevel?: 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
   /** Whether zero/disabled thinking is allowed */
   zeroAllowed?: boolean;
   /** Whether dynamic/auto thinking is allowed */
@@ -295,11 +295,14 @@ export const MODEL_CATALOG: Partial<Record<CLIProxyProvider, ProviderCatalog>> =
         name: 'Claude Opus 4.7',
         description: 'Latest flagship model',
         nativeImageInput: true,
+        // Opus 4.7 only supports adaptive thinking on the Anthropic API; manual
+        // thinking.type: "enabled" with budget_tokens is rejected with 400.
+        // Expose effort levels; the proxy translates these into adaptive effort.
+        // `max` is a distinct adaptive effort above `xhigh` exposed by Anthropic.
         thinking: {
-          type: 'budget',
-          min: 1024,
-          max: 128000,
-          zeroAllowed: false,
+          type: 'levels',
+          levels: ['low', 'medium', 'high', 'xhigh', 'max'],
+          maxLevel: 'max',
           dynamicAllowed: true,
         },
         extendedContext: true,

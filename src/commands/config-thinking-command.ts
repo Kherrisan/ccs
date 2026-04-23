@@ -60,7 +60,7 @@ function showHelp(): void {
 
   console.log(subheader('Levels:'));
   console.log(
-    `  ${dim('minimal (512), low (1K), medium (8K), high (24K), xhigh (32K), auto, off')}`
+    `  ${dim('minimal (512), low (1K), medium (8K), high (24K), xhigh (32K), max (adaptive ceiling), auto, off')}`
   );
   console.log('');
 

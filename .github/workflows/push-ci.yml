@@ -1,25 +1,17 @@
-name: CI
+name: Push CI
 
 on:
-  pull_request:
-    branches: [main, dev]
-
-# Design notes:
-# - Matrix parallelism cuts wall time from ~3-4min to ~60-90s (cache warm).
-# - Concurrency group cancels superseded runs on the same ref (saves runner time on rapid pushes).
-# - Build leg produces dist/ artifact; test leg downloads it instead of rebuilding (DRY).
-# - fail-fast: false so every failure is visible in one run (no re-pushing to see the next failure).
+  push:
+    branches: [dev]
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: push-ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   validate:
     runs-on: [self-hosted, linux, x64]
     env:
-      # Keep Bun cache isolated per job workspace so parallel self-hosted runs
-      # do not race on ~/.bun/install/cache and corrupt restore/install state.
       BUN_INSTALL_CACHE_DIR: ${{ github.workspace }}/.bun/install/cache
     strategy:
       fail-fast: false

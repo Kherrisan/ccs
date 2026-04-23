@@ -6,8 +6,11 @@ describe('codex model catalog defaults', () => {
     const codexCatalog = MODEL_CATALOGS.codex;
     const codex53 = codexCatalog.models.find((model) => model.id === 'gpt-5.3-codex');
     const codex52 = codexCatalog.models.find((model) => model.id === 'gpt-5.2-codex');
+    const codexMini = codexCatalog.models.find((model) => model.id === 'gpt-5-codex-mini');
 
     expect(codex53?.presetMapping?.haiku).toBe('gpt-5-codex-mini');
     expect(codex52?.presetMapping?.haiku).toBe('gpt-5-codex-mini');
+    expect(codex53?.codexMaxEffort).toBe('xhigh');
+    expect(codexMini?.codexMaxEffort).toBe('high');
   });
 });

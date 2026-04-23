@@ -51,4 +51,48 @@ describe('ProviderInfoTab', () => {
     expect(screen.queryByText('Change model')).not.toBeInTheDocument();
     expect(screen.getByText('ccs custom-provider --auth --add')).toBeInTheDocument();
   });
+
+  it('shows the plus-extra track note for community-maintained providers', () => {
+    render(
+      <ProviderInfoTab
+        provider="cursor"
+        displayName="Cursor"
+        defaultTarget="claude"
+        authStatus={{
+          ...authenticatedStatus,
+          provider: 'cursor',
+          displayName: 'Cursor',
+        }}
+        supportsModelConfig
+      />
+    );
+
+    expect(screen.getByText('Track')).toBeInTheDocument();
+    expect(screen.getByText('Plus extras / community-maintained')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /Requires the optional Plus backend while that track remains community-maintained\./
+      )
+    ).toBeInTheDocument();
+  });
+
+  it('uses the base provider when rendering variant track metadata', () => {
+    render(
+      <ProviderInfoTab
+        provider="my-cursor"
+        baseProvider="cursor"
+        displayName="My Cursor Variant"
+        defaultTarget="claude"
+        authStatus={{
+          ...authenticatedStatus,
+          provider: 'cursor',
+          displayName: 'Cursor',
+        }}
+        supportsModelConfig
+      />
+    );
+
+    expect(screen.getByText('Track')).toBeInTheDocument();
+    expect(screen.getByText('Plus extras / community-maintained')).toBeInTheDocument();
+  });
 });

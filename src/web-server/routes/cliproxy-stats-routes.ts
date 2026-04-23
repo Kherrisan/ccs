@@ -38,7 +38,11 @@ import {
 } from '../../cliproxy/config-generator';
 import { getProxyStatus as getProxyProcessStatus, stopProxy } from '../../cliproxy/session-tracker';
 import { ensureCliproxyService } from '../../cliproxy/service-manager';
-import { checkCliproxyUpdate, getInstalledCliproxyVersion } from '../../cliproxy/binary-manager';
+import {
+  checkCliproxyUpdate,
+  getInstalledCliproxyVersion,
+  getStoredConfiguredBackend,
+} from '../../cliproxy/binary-manager';
 import {
   fetchAllVersions,
   isNewerVersion,
@@ -47,9 +51,7 @@ import {
 import {
   CLIPROXY_MAX_STABLE_VERSION,
   CLIPROXY_FAULTY_RANGE,
-  DEFAULT_BACKEND,
 } from '../../cliproxy/platform-detector';
-import { loadOrCreateUnifiedConfig } from '../../config/unified-config-loader';
 import { CLIPROXY_DEFAULT_PORT } from '../../cliproxy/config/port-manager';
 import {
   MODEL_ENV_VAR_KEYS,
@@ -143,18 +145,8 @@ export function shouldCacheQuotaResult(result: {
   return !transientPatterns.some((p) => msg.includes(p));
 }
 
-/** Get configured backend from config */
-function getConfiguredBackend() {
-  try {
-    const config = loadOrCreateUnifiedConfig();
-    return config.cliproxy?.backend || DEFAULT_BACKEND;
-  } catch {
-    return DEFAULT_BACKEND;
-  }
-}
-
 function buildUpdateCheckFallback(
-  backend: ReturnType<typeof getConfiguredBackend>,
+  backend: ReturnType<typeof getStoredConfiguredBackend>,
   getInstalledVersionFn: typeof getInstalledCliproxyVersion = getInstalledCliproxyVersion
 ) {
   const currentVersion = getInstalledVersionFn(backend);
@@ -178,7 +170,7 @@ function buildUpdateCheckFallback(
 }
 
 function buildVersionsFallback(
-  backend: ReturnType<typeof getConfiguredBackend>,
+  backend: ReturnType<typeof getStoredConfiguredBackend>,
   getInstalledVersionFn: typeof getInstalledCliproxyVersion = getInstalledCliproxyVersion
 ) {
   const currentVersion = getInstalledVersionFn(backend);
@@ -206,7 +198,7 @@ interface ResolveVersionsDeps {
 }
 
 export async function resolveCliproxyUpdateCheckPayload(
-  backend: ReturnType<typeof getConfiguredBackend>,
+  backend: ReturnType<typeof getStoredConfiguredBackend>,
   deps: ResolveUpdateCheckDeps = {}
 ) {
   const checkCliproxyUpdateFn = deps.checkCliproxyUpdateFn ?? checkCliproxyUpdate;
@@ -218,7 +210,7 @@ export async function resolveCliproxyUpdateCheckPayload(
 }
 
 export async function resolveCliproxyVersionsPayload(
-  backend: ReturnType<typeof getConfiguredBackend>,
+  backend: ReturnType<typeof getStoredConfiguredBackend>,
   deps: ResolveVersionsDeps = {}
 ) {
   const fetchAllVersionsFn = deps.fetchAllVersionsFn ?? fetchAllVersions;
@@ -409,7 +401,7 @@ router.post('/proxy-stop', async (_req: Request, res: Response): Promise<void> =
  */
 router.get('/update-check', async (_req: Request, res: Response): Promise<void> => {
   try {
-    const backend = getConfiguredBackend();
+    const backend = getStoredConfiguredBackend();
     const result = await resolveCliproxyUpdateCheckPayload(backend);
 
     res.json(result);
@@ -1019,7 +1011,7 @@ router.get('/quota/:provider/:accountId', async (req: Request, res: Response): P
  */
 router.get('/versions', async (_req: Request, res: Response): Promise<void> => {
   try {
-    const backend = getConfiguredBackend();
+    const backend = getStoredConfiguredBackend();
     res.json(await resolveCliproxyVersionsPayload(backend));
   } catch (error) {
     console.error(`[cliproxy-stats] ${(error as Error).message}`);
@@ -1073,7 +1065,7 @@ router.post('/install', async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const backend = getConfiguredBackend();
+    const backend = getStoredConfiguredBackend();
     const installResult = await installDashboardCliproxyVersion(version, backend);
 
     res.json({

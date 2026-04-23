@@ -977,10 +977,13 @@ const resources = {
         backendBinary: 'Backend Binary',
         stopProxyToSwitch: 'Stop the running proxy in Instance Status to switch backend.',
         default: 'Default',
-        plusDesc: 'Full provider support including Kiro and GitHub Copilot',
-        originalDesc: 'Original binary (Gemini, Codex, Antigravity only)',
+        plusDesc:
+          'Optional track for extra providers. Still supported, but currently community-maintained instead of upstream-maintained.',
+        originalDesc: 'Default, always-available backend for the core provider track.',
+        plusFallbackNotice:
+          'The Plus provider track is not deprecated, but local CLIProxy still falls back to the original backend while the maintained fork path is being brought back.',
         variantsIncompatible:
-          'Existing Kiro/Copilot variants will not work with CLIProxyAPI. Switch to CLIProxyAPIPlus or remove those variants.',
+          'Existing plus-extra variants ({{providers}}) will not run on the original backend. Keep them visible for reference, but switch to Plus before using them.',
         safety: 'Safety',
         agyModeTitle: 'Antigravity + Gemini Power User Mode',
         agyModeDesc:
@@ -2234,6 +2237,13 @@ const resources = {
       },
       providerConfig: {
         defaultDeviceCodeInstruction: 'Complete the authorization in your browser.',
+        trackLabel: 'Track',
+        sectionCoreLabel: 'Core / original backend',
+        sectionCoreHint: 'Default, always-available provider track',
+        sectionPlusLabel: 'Plus extras / community-maintained',
+        sectionPlusHint: 'Still supported, but separated from the default backend for now',
+        plusTrackNote:
+          'Requires the optional Plus backend while that track remains community-maintained.',
       },
 
       // ========================================
@@ -3455,10 +3465,12 @@ const resources = {
         backendBinary: '后端二进制',
         stopProxyToSwitch: '请先在实例状态中停止正在运行的代理，再切换后端。',
         default: '默认',
-        plusDesc: '完整支持包括 Kiro 和 GitHub Copilot 在内的提供商',
-        originalDesc: '原版二进制（仅 Gemini、Codex、Antigravity）',
+        plusDesc: '额外提供商的可选线路。仍受支持，但目前由社区维护而非上游维护。',
+        originalDesc: '核心提供商线路的默认、始终可用后端。',
+        plusFallbackNotice:
+          'Plus 提供商线路并未弃用，但在受维护的 fork 恢复之前，本地 CLIProxy 仍会回退到原始后端。',
         variantsIncompatible:
-          '现有 Kiro/Copilot 变体与 CLIProxyAPI 不兼容。请切换到 CLIProxyAPIPlus 或移除这些变体。',
+          '现有 plus 扩展变体（{{providers}}）无法在原始后端上运行。可以保留作参考，但使用前请切换到 Plus。',
         safety: '安全',
         agyModeTitle: 'Antigravity + Gemini 高级模式',
         agyModeDesc: '跳过 AGY 责任确认清单，以及 Gemini Dashboard 中输入风险短语的步骤。',
@@ -4668,6 +4680,12 @@ const resources = {
       },
       providerConfig: {
         defaultDeviceCodeInstruction: '请在浏览器中完成授权。',
+        trackLabel: '分组',
+        sectionCoreLabel: '核心 / 原始后端',
+        sectionCoreHint: '默认且始终可用的提供商线路',
+        sectionPlusLabel: 'Plus 扩展 / 社区维护',
+        sectionPlusHint: '仍然受支持，但目前与默认后端分开显示',
+        plusTrackNote: '需要可选的 Plus 后端；当前这条线路由社区维护。',
       },
       profileEditorSections: {
         imageAnalysis: '图片分析',
@@ -5958,10 +5976,13 @@ const resources = {
         stopProxyToSwitch:
           'Dừng proxy đang chạy trong Trạng thái phiên bản trước khi chuyển backend.',
         default: 'Mặc định',
-        plusDesc: 'Hỗ trợ đầy đủ nhà cung cấp, bao gồm Kiro và GitHub Copilot',
-        originalDesc: 'Binary gốc (chỉ Gemini, Codex, Antigravity)',
+        plusDesc:
+          'Nhánh tùy chọn cho các nhà cung cấp bổ sung. Vẫn được hỗ trợ nhưng hiện do cộng đồng duy trì thay vì upstream.',
+        originalDesc: 'Backend mặc định, luôn sẵn sàng cho nhóm nhà cung cấp cốt lõi.',
+        plusFallbackNotice:
+          'Nhánh nhà cung cấp Plus chưa bị khai tử, nhưng CLIProxy cục bộ vẫn quay về backend gốc cho tới khi đường dẫn fork được duy trì được bật lại.',
         variantsIncompatible:
-          'Các biến thể Kiro/Copilot hiện tại sẽ không hoạt động với CLIProxyAPI. Chuyển sang CLIProxyAPIPlus hoặc xóa các biến thể đó.',
+          'Các biến thể plus-extra hiện có ({{providers}}) sẽ không chạy trên backend gốc. Có thể giữ lại để tham chiếu, nhưng hãy chuyển sang Plus trước khi dùng.',
         safety: 'An toàn',
         agyModeTitle: 'Chế độ power user Antigravity + Gemini',
         agyModeDesc:
@@ -7194,6 +7215,12 @@ const resources = {
       },
       providerConfig: {
         defaultDeviceCodeInstruction: 'Hoàn tất việc cấp quyền trong trình duyệt của bạn.',
+        trackLabel: 'Nhóm',
+        sectionCoreLabel: 'Core / backend gốc',
+        sectionCoreHint: 'Nhóm nhà cung cấp mặc định, luôn sẵn sàng',
+        sectionPlusLabel: 'Plus extras / cộng đồng duy trì',
+        sectionPlusHint: 'Vẫn được hỗ trợ nhưng hiện được tách khỏi backend mặc định',
+        plusTrackNote: 'Cần backend Plus tùy chọn; hiện tại nhánh này do cộng đồng duy trì.',
       },
       profileEditorSections: {
         imageAnalysis: 'Phân tích hình ảnh',
@@ -8497,10 +8524,13 @@ const resources = {
         stopProxyToSwitch:
           'バックエンドを切り替える前に、インスタンス状態から実行中のプロキシを停止してください。',
         default: 'デフォルト',
-        plusDesc: 'Kiro と GitHub Copilot を含むすべてのプロバイダーをサポート',
-        originalDesc: '元のバイナリ（Gemini、Codex、Antigravity のみ）',
+        plusDesc:
+          '追加プロバイダー向けのオプショントラックです。引き続きサポートされていますが、現在は upstream ではなくコミュニティ保守です。',
+        originalDesc: 'コアプロバイダートラック向けの既定かつ常時利用可能な backend。',
+        plusFallbackNotice:
+          'Plus プロバイダートラックは廃止ではありませんが、保守中の fork が戻るまではローカル CLIProxy は引き続きオリジナル backend にフォールバックします。',
         variantsIncompatible:
-          '既存の Kiro/Copilot バリアントは CLIProxyAPI では動作しません。CLIProxyAPIPlus に切り替えるか、それらのバリアントを削除してください。',
+          '既存の plus-extra バリアント（{{providers}}）はオリジナル backend では動作しません。参照用に残すことはできますが、使用前に Plus へ切り替えてください。',
         safety: '安全設定',
         agyModeTitle: 'Antigravity + Gemini パワーユーザーモード',
         agyModeDesc:
@@ -10032,6 +10062,14 @@ const resources = {
       },
       providerConfig: {
         defaultDeviceCodeInstruction: 'ブラウザーで認証を完了してください。',
+        trackLabel: 'トラック',
+        sectionCoreLabel: 'コア / オリジナル backend',
+        sectionCoreHint: '既定で常に利用できるプロバイダートラック',
+        sectionPlusLabel: 'Plus 拡張 / コミュニティ保守',
+        sectionPlusHint:
+          '引き続きサポートされていますが、当面は既定の backend から分離されています',
+        plusTrackNote:
+          'このトラックはオプションの Plus backend が必要で、現在はコミュニティ保守です。',
       },
       updatesSpotlight: {
         openUpdatesCenter: '更新センターを開く',

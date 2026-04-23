@@ -10,11 +10,13 @@ import { Info, Shield } from 'lucide-react';
 import { UsageCommand } from './usage-command';
 import type { SettingsResponse } from './types';
 import type { AuthStatus, CliTarget } from '@/lib/api-client';
+import { getProviderSection, isPlusExtraProvider } from '@/lib/provider-config';
 import { useTranslation } from 'react-i18next';
 
 interface ProviderInfoTabProps {
   provider: string;
   displayName: string;
+  baseProvider?: string;
   defaultTarget?: CliTarget;
   data?: SettingsResponse;
   authStatus: AuthStatus;
@@ -24,6 +26,7 @@ interface ProviderInfoTabProps {
 export function ProviderInfoTab({
   provider,
   displayName,
+  baseProvider,
   defaultTarget,
   data,
   authStatus,
@@ -33,6 +36,8 @@ export function ProviderInfoTab({
   const resolvedTarget = defaultTarget || 'claude';
   const isDroidTarget = resolvedTarget === 'droid';
   const isCodexProvider = provider === 'codex';
+  const sectionProvider = baseProvider || authStatus.provider || provider;
+  const providerSection = getProviderSection(sectionProvider);
   const managementPrefix =
     resolvedTarget === 'claude' ? `ccs ${provider}` : `ccs ${provider} --target claude`;
   const changeModelCommand = `${managementPrefix} --config`;
@@ -101,6 +106,22 @@ export function ProviderInfoTab({
               </span>
               <span className="font-mono">{resolvedTarget}</span>
             </div>
+            {providerSection && (
+              <div className="grid grid-cols-[100px_1fr] gap-2 text-sm items-start">
+                <span className="font-medium text-muted-foreground">
+                  {t('providerConfig.trackLabel')}
+                </span>
+                <div className="space-y-1">
+                  <span className="font-mono">{t(providerSection.labelKey)}</span>
+                  <p className="text-xs text-muted-foreground">
+                    {t(providerSection.hintKey)}
+                    {isPlusExtraProvider(sectionProvider)
+                      ? ` ${t('providerConfig.plusTrackNote')}`
+                      : ''}
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 

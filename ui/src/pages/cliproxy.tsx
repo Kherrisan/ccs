@@ -33,7 +33,11 @@ import {
 } from '@/hooks/use-cliproxy';
 import type { AuthStatus, Variant } from '@/lib/api-client';
 import { buildUiCatalogs } from '@/lib/model-catalogs';
-import { getProviderDisplayName, isValidProvider } from '@/lib/provider-config';
+import {
+  getProviderDisplayName,
+  groupProvidersBySection,
+  isValidProvider,
+} from '@/lib/provider-config';
 import { cn } from '@/lib/utils';
 import { useTranslation } from 'react-i18next';
 
@@ -261,6 +265,10 @@ export function CliproxyPage() {
   });
 
   const providers = useMemo(() => authData?.authStatus || [], [authData?.authStatus]);
+  const providerSections = useMemo(
+    () => groupProvidersBySection(providers, (status) => status.provider),
+    [providers]
+  );
   const isRemoteMode = authData?.source === 'remote';
   const variants = useMemo(() => variantsData?.variants || [], [variantsData?.variants]);
   const catalogs = useMemo(() => buildUiCatalogs(catalogData?.catalogs), [catalogData?.catalogs]);
@@ -393,14 +401,28 @@ export function CliproxyPage() {
                 ))}
               </div>
             ) : (
-              <div className="space-y-1">
-                {providers.map((status) => (
-                  <ProviderSidebarItem
-                    key={status.provider}
-                    status={status}
-                    isSelected={effectiveProvider === status.provider}
-                    onSelect={() => handleSelectProvider(status.provider)}
-                  />
+              <div className="space-y-4">
+                {providerSections.map((section) => (
+                  <div key={section.id} className="space-y-1">
+                    <div className="px-3">
+                      <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                        {t(section.labelKey)}
+                      </div>
+                      <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+                        {t(section.hintKey)}
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      {section.items.map((status) => (
+                        <ProviderSidebarItem
+                          key={status.provider}
+                          status={status}
+                          isSelected={effectiveProvider === status.provider}
+                          onSelect={() => handleSelectProvider(status.provider)}
+                        />
+                      ))}
+                    </div>
+                  </div>
                 ))}
               </div>
             )}

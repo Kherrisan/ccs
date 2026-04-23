@@ -56,7 +56,7 @@ describe('installDashboardCliproxyVersion', () => {
       success: true,
       restarted: true,
       port: 8317,
-      message: 'Successfully installed CLIProxy Plus v6.7.1 and restarted it on port 8317',
+      message: 'Successfully installed CLIProxy v6.7.1 and restarted it on port 8317',
     });
     expect(calls.isCliproxyRunning).toBe(0);
     expect(calls.installCliproxyVersion).toBe(1);
@@ -71,7 +71,7 @@ describe('installDashboardCliproxyVersion', () => {
     expect(result).toEqual<DashboardCliproxyInstallResult>({
       success: true,
       restarted: false,
-      message: 'Successfully installed CLIProxy Plus v6.7.1',
+      message: 'Successfully installed CLIProxy v6.7.1',
     });
     expect(calls.isCliproxyRunning).toBe(1);
     expect(calls.installCliproxyVersion).toBe(1);
@@ -118,8 +118,8 @@ describe('installDashboardCliproxyVersion', () => {
     expect(result).toEqual<DashboardCliproxyInstallResult>({
       success: false,
       restarted: false,
-      error: 'Installed CLIProxy Plus v6.7.1, but restart failed',
-      message: 'Installed CLIProxy Plus v6.7.1, but failed to restart it',
+      error: 'Installed CLIProxy v6.7.1, but restart failed',
+      message: 'Installed CLIProxy v6.7.1, but failed to restart it',
     });
   });
 });

@@ -16,8 +16,13 @@ import { type ExecutionOptions, type ExecutionResult, type StreamMessage } from 
 import { StreamBuffer, formatToolVerbose } from './executor/stream-parser';
 import { buildExecutionResult } from './executor/result-aggregator';
 import { getCcsDir, getModelDisplayName, loadSettings } from '../utils/config-manager';
+import { getGlobalEnvConfig } from '../config/unified-config-loader';
 import { getProfileLookupCandidates } from '../utils/profile-compat';
-import { getClaudeLaunchEnvOverrides, stripClaudeCodeEnv } from '../utils/shell-executor';
+import {
+  getClaudeLaunchEnvOverrides,
+  stripAnthropicRoutingEnv,
+  stripClaudeCodeEnv,
+} from '../utils/shell-executor';
 import { resolveProfileContinuityInheritance } from '../auth/profile-continuity-inheritance';
 import {
   appendThirdPartyImageAnalysisToolArgs,
@@ -38,6 +43,11 @@ import {
 import { resolveCliproxyBridgeMetadata } from '../api/services';
 import { ensureCliproxyService } from '../cliproxy';
 import { CLIPROXY_DEFAULT_PORT } from '../cliproxy/config/port-manager';
+import {
+  buildOpenAICompatProxyEnv,
+  resolveOpenAICompatProfileConfig,
+  startOpenAICompatProxy,
+} from '../proxy';
 import {
   appendThirdPartyWebSearchToolArgs,
   appendWebSearchTrace,
@@ -129,6 +139,14 @@ export class HeadlessExecutor {
     syncImageAnalysisMcpToConfigDir(inheritedClaudeConfigDir);
 
     const settings = loadSettings(settingsPath);
+    const globalEnvConfig = getGlobalEnvConfig();
+    const globalEnv = globalEnvConfig.enabled ? globalEnvConfig.env : {};
+    const settingsEnv = settings.env || {};
+    const openAICompatProfile = resolveOpenAICompatProfileConfig(
+      profile,
+      settingsPath,
+      settingsEnv
+    );
     const cliproxyBridge = resolveCliproxyBridgeMetadata(settings);
     let imageAnalysisFallbackHookReady: boolean | undefined;
     if (imageAnalysisMcpReady) {
@@ -205,6 +223,33 @@ export class HeadlessExecutor {
           CCS_IMAGE_ANALYSIS_SKIP: '1',
         };
       }
+    }
+
+    let runtimeEnvVars: NodeJS.ProcessEnv = {
+      ...stripAnthropicRoutingEnv({ ...globalEnv, ...settingsEnv }),
+      ...(inheritedClaudeConfigDir ? { CLAUDE_CONFIG_DIR: inheritedClaudeConfigDir } : {}),
+      CCS_PROFILE_TYPE: 'settings',
+      CCS_STRIP_INHERITED_ANTHROPIC_ENV: '1',
+    };
+
+    if (openAICompatProfile) {
+      const proxyStart = await startOpenAICompatProxy(openAICompatProfile, {
+        insecure: openAICompatProfile.insecure,
+      });
+      if (!proxyStart.success) {
+        throw new Error(proxyStart.error || 'Failed to start local OpenAI-compatible proxy');
+      }
+
+      runtimeEnvVars = {
+        ...runtimeEnvVars,
+        ...buildOpenAICompatProxyEnv(
+          openAICompatProfile,
+          proxyStart.port,
+          proxyStart.authToken || '',
+          inheritedClaudeConfigDir
+        ),
+      };
+      delete runtimeEnvVars.ANTHROPIC_API_KEY;
     }
 
     // Smart slash command detection and preservation
@@ -321,6 +366,7 @@ export class HeadlessExecutor {
       sessionMgr,
       claudeConfigDir: inheritedClaudeConfigDir,
       imageAnalysisEnv,
+      runtimeEnvVars,
       traceEnv,
     });
   }
@@ -340,6 +386,7 @@ export class HeadlessExecutor {
       sessionMgr: SessionManager;
       claudeConfigDir?: string;
       imageAnalysisEnv?: Record<string, string>;
+      runtimeEnvVars?: NodeJS.ProcessEnv;
       traceEnv?: Record<string, string>;
     }
   ): Promise<ExecutionResult> {
@@ -352,6 +399,7 @@ export class HeadlessExecutor {
       sessionMgr,
       claudeConfigDir,
       imageAnalysisEnv = {},
+      runtimeEnvVars = {},
       traceEnv = {},
     } = ctx;
 
@@ -368,9 +416,10 @@ export class HeadlessExecutor {
       // Strip Claude Code nested session guard env var to allow CCS delegation
       // (Claude Code v2.1.39+ sets CLAUDECODE to detect nested sessions)
       const cleanEnv = stripClaudeCodeEnv({
-        ...process.env,
+        ...stripAnthropicRoutingEnv(process.env),
         ...getClaudeLaunchEnvOverrides(),
         ...getWebSearchHookEnv(),
+        ...runtimeEnvVars,
         ...imageAnalysisEnv,
         ...traceEnv,
         ...(claudeConfigDir ? { CLAUDE_CONFIG_DIR: claudeConfigDir } : {}),

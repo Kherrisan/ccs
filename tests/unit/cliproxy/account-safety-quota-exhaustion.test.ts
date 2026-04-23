@@ -17,6 +17,8 @@ import {
   handleQuotaExhaustion,
   writeQuotaWarning,
   maskEmail,
+  pauseAccountForQuotaCooldown,
+  restoreExpiredQuotaPauses,
 } from '../../../src/cliproxy/account-safety';
 import { sanitizeEmail } from '../../../src/cliproxy/auth-utils';
 
@@ -82,6 +84,12 @@ function writeClaudeAuth(accountId: string, accessToken: string): void {
       2
     )
   );
+}
+
+function writeAuthToken(tokenFile: string, payload: Record<string, unknown>): void {
+  const authDir = path.join(tmpDir, '.ccs', 'cliproxy', 'auth');
+  fs.mkdirSync(authDir, { recursive: true });
+  fs.writeFileSync(path.join(authDir, tokenFile), JSON.stringify(payload, null, 2));
 }
 
 describe('Quota Exhaustion Handlers', () => {
@@ -247,10 +255,13 @@ describe('Quota Exhaustion Handlers', () => {
       });
 
       const result = await handleQuotaExhaustion('agy', 'only@gmail.com', 10);
+      const { getAccount } = await import('../../../src/cliproxy/account-manager');
 
       // Should return gracefully with null switched
       expect(result.switchedTo).toBeNull();
       expect(result.reason).toContain('no alternatives');
+      expect(getAccount('agy', 'only@gmail.com')?.paused).not.toBe(true);
+      expect(fs.existsSync(path.join(tmpDir, '.ccs', 'cliproxy', 'quota-paused.json'))).toBe(false);
     });
 
     it('should switch Claude accounts when fallback quota endpoint returns 404', async () => {
@@ -305,6 +316,18 @@ describe('Quota Exhaustion Handlers', () => {
 
       expect(result.switchedTo).toBe('fallback@example.com');
       expect(getDefaultAccount('claude')?.id).toBe('fallback@example.com');
+      expect(fs.existsSync(path.join(tmpDir, '.ccs', 'cliproxy', 'quota-paused.json'))).toBe(true);
+      expect(
+        fs.existsSync(
+          path.join(
+            tmpDir,
+            '.ccs',
+            'cliproxy',
+            'auth-paused',
+            `claude-${sanitizeEmail('exhausted@example.com')}.json`
+          )
+        )
+      ).toBe(true);
     });
 
     it('should write warning to stderr', async () => {
@@ -388,6 +411,122 @@ describe('Quota Exhaustion Handlers', () => {
       const result = await handleQuotaExhaustion('agy', 'test@gmail.com', 5);
       expect(result).toBeDefined();
       expect(result.switchedTo).toBeNull();
+    });
+
+    it('auto-resumes quota-paused accounts after cooldown expiry', async () => {
+      writeRegistry({
+        agy: {
+          default: 'cooldown@gmail.com',
+          accounts: {
+            'cooldown@gmail.com': {
+              email: 'cooldown@gmail.com',
+              tokenFile: 'agy-cooldown.json',
+            },
+          },
+        },
+      });
+      writeAuthToken('agy-cooldown.json', {
+        type: 'agy',
+        email: 'cooldown@gmail.com',
+        access_token: 'token',
+      });
+
+      const now = Date.now();
+      expect(pauseAccountForQuotaCooldown('agy', 'cooldown@gmail.com', 5, now)).toBe(true);
+
+      const { getAccount } = await import('../../../src/cliproxy/account-manager');
+      expect(getAccount('agy', 'cooldown@gmail.com')?.paused).toBe(true);
+
+      const resumed = restoreExpiredQuotaPauses(now + 6 * 60 * 1000);
+
+      expect(resumed).toBe(1);
+      expect(getAccount('agy', 'cooldown@gmail.com')?.paused).not.toBe(true);
+      expect(fs.existsSync(path.join(tmpDir, '.ccs', 'cliproxy', 'quota-paused.json'))).toBe(false);
+    });
+
+    it('does not auto-resume quota-paused accounts when pausedAt metadata is missing', async () => {
+      writeRegistry({
+        agy: {
+          default: 'cooldown@gmail.com',
+          accounts: {
+            'cooldown@gmail.com': {
+              email: 'cooldown@gmail.com',
+              tokenFile: 'agy-cooldown.json',
+            },
+          },
+        },
+      });
+      writeAuthToken('agy-cooldown.json', {
+        type: 'agy',
+        email: 'cooldown@gmail.com',
+        access_token: 'token',
+      });
+
+      const now = Date.now();
+      expect(pauseAccountForQuotaCooldown('agy', 'cooldown@gmail.com', 5, now)).toBe(true);
+
+      const registryPath = path.join(tmpDir, '.ccs', 'cliproxy', 'accounts.json');
+      const registry = JSON.parse(fs.readFileSync(registryPath, 'utf8')) as {
+        providers: {
+          agy: {
+            default: string;
+            accounts: Record<string, { paused?: boolean; pausedAt?: string }>;
+          };
+        };
+      };
+      delete registry.providers.agy.accounts['cooldown@gmail.com']?.pausedAt;
+      fs.writeFileSync(registryPath, JSON.stringify(registry, null, 2));
+
+      const resumed = restoreExpiredQuotaPauses(now + 6 * 60 * 1000);
+      const { getAccount } = await import('../../../src/cliproxy/account-manager');
+
+      expect(resumed).toBe(0);
+      expect(getAccount('agy', 'cooldown@gmail.com')?.paused).toBe(true);
+      expect(
+        fs.existsSync(path.join(tmpDir, '.ccs', 'cliproxy', 'auth-paused', 'agy-cooldown.json'))
+      ).toBe(true);
+      expect(fs.existsSync(path.join(tmpDir, '.ccs', 'cliproxy', 'quota-paused.json'))).toBe(false);
+    });
+
+    it('keeps quota-paused entries when auto-resume fails and retries later', async () => {
+      writeRegistry({
+        agy: {
+          default: 'cooldown@gmail.com',
+          accounts: {
+            'cooldown@gmail.com': {
+              email: 'cooldown@gmail.com',
+              tokenFile: 'agy-cooldown.json',
+            },
+          },
+        },
+      });
+      writeAuthToken('agy-cooldown.json', {
+        type: 'agy',
+        email: 'cooldown@gmail.com',
+        access_token: 'token',
+      });
+
+      const now = Date.now();
+      expect(pauseAccountForQuotaCooldown('agy', 'cooldown@gmail.com', 5, now)).toBe(true);
+
+      fs.rmSync(path.join(tmpDir, '.ccs', 'cliproxy', 'auth'), {
+        recursive: true,
+        force: true,
+      });
+
+      const resumed = restoreExpiredQuotaPauses(now + 6 * 60 * 1000);
+      const { getAccount } = await import('../../../src/cliproxy/account-manager');
+      const quotaPausedPath = path.join(tmpDir, '.ccs', 'cliproxy', 'quota-paused.json');
+      const quotaPaused = JSON.parse(fs.readFileSync(quotaPausedPath, 'utf8')) as {
+        entries?: Array<{ accountId?: string }>;
+      };
+
+      expect(resumed).toBe(0);
+      expect(getAccount('agy', 'cooldown@gmail.com')?.paused).toBe(true);
+      expect(
+        fs.existsSync(path.join(tmpDir, '.ccs', 'cliproxy', 'auth-paused', 'agy-cooldown.json'))
+      ).toBe(true);
+      expect(quotaPaused.entries?.map((entry) => entry.accountId)).toContain('cooldown@gmail.com');
     });
   });
 });

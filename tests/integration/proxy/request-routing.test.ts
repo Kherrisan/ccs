@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
-import getPort from 'get-port';
 import * as fs from 'fs';
 import * as http from 'http';
 import * as os from 'os';
@@ -13,40 +12,61 @@ let proxyServer: http.Server;
 let upstreamServers: http.Server[] = [];
 let proxyPort: number;
 
-function startMockUpstream(
-  port: number,
+function resolveListeningPort(server: http.Server): number {
+  const address = server.address();
+  if (!address || typeof address === 'string') {
+    throw new Error('Failed to resolve server port');
+  }
+  return address.port;
+}
+
+async function waitForServerListening(server: http.Server): Promise<number> {
+  if (server.listening) {
+    return resolveListeningPort(server);
+  }
+
+  return new Promise<number>((resolve, reject) => {
+    const onError = (error: Error) => reject(error);
+    server.once('error', onError);
+    server.once('listening', () => {
+      server.off('error', onError);
+      resolve(resolveListeningPort(server));
+    });
+  });
+}
+
+async function startMockUpstream(
   hitLabel: string,
   hits: string[],
   bodies: Array<{ label: string; body: unknown }>
-): Promise<void> {
-  return new Promise((resolve) => {
-    const server = http.createServer(async (req, res) => {
-      let body = '';
-      for await (const chunk of req) {
-        body += chunk.toString();
-      }
-      hits.push(hitLabel);
-      bodies.push({ label: hitLabel, body: JSON.parse(body) });
+): Promise<number> {
+  const server = http.createServer(async (req, res) => {
+    let body = '';
+    for await (const chunk of req) {
+      body += chunk.toString();
+    }
+    hits.push(hitLabel);
+    bodies.push({ label: hitLabel, body: JSON.parse(body) });
 
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(
-        JSON.stringify({
-          id: `chatcmpl_${hitLabel}`,
-          model: hitLabel,
-          choices: [
-            {
-              index: 0,
-              message: { role: 'assistant', content: `Reply from ${hitLabel}` },
-              finish_reason: 'stop',
-            },
-          ],
-          usage: { prompt_tokens: 2, completion_tokens: 3 },
-        })
-      );
-    });
-    upstreamServers.push(server);
-    server.listen(port, '127.0.0.1', () => resolve());
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(
+      JSON.stringify({
+        id: `chatcmpl_${hitLabel}`,
+        model: hitLabel,
+        choices: [
+          {
+            index: 0,
+            message: { role: 'assistant', content: `Reply from ${hitLabel}` },
+            finish_reason: 'stop',
+          },
+        ],
+        usage: { prompt_tokens: 2, completion_tokens: 3 },
+      })
+    );
   });
+  upstreamServers.push(server);
+  server.listen(0, '127.0.0.1');
+  return waitForServerListening(server);
 }
 
 function writeSettings(profileName: string, env: Record<string, string>): string {
@@ -71,7 +91,7 @@ beforeEach(async () => {
   tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ccs-proxy-routing-'));
   fs.mkdirSync(path.join(tempDir, '.ccs'), { recursive: true });
   process.env.CCS_HOME = tempDir;
-  proxyPort = await getPort();
+  proxyPort = 0;
 });
 
 afterEach(async () => {
@@ -97,12 +117,10 @@ afterEach(async () => {
 
 describe('openai proxy request routing', () => {
   it('routes explicit profile:model selectors to the matching upstream profile', async () => {
-    const primaryPort = await getPort();
-    const secondaryPort = await getPort();
     const hits: string[] = [];
     const bodies: Array<{ label: string; body: unknown }> = [];
-    await startMockUpstream(primaryPort, 'primary', hits, bodies);
-    await startMockUpstream(secondaryPort, 'secondary', hits, bodies);
+    const primaryPort = await startMockUpstream('primary', hits, bodies);
+    const secondaryPort = await startMockUpstream('secondary', hits, bodies);
 
     const primarySettings = writeSettings('hf', {
       ANTHROPIC_BASE_URL: `http://127.0.0.1:${primaryPort}`,
@@ -133,9 +151,10 @@ describe('openai proxy request routing', () => {
     };
     proxyServer = startOpenAICompatProxyServer({
       profile,
-      port: proxyPort,
+      port: 0,
       authToken: 'test-proxy-token',
     });
+    proxyPort = await waitForServerListening(proxyServer);
 
     const response = await requestProxy({
       model: 'deepseek:deepseek-reasoner',
@@ -150,12 +169,10 @@ describe('openai proxy request routing', () => {
   });
 
   it('routes thinking requests through the configured think scenario', async () => {
-    const primaryPort = await getPort();
-    const thinkPort = await getPort();
     const hits: string[] = [];
     const bodies: Array<{ label: string; body: unknown }> = [];
-    await startMockUpstream(primaryPort, 'primary', hits, bodies);
-    await startMockUpstream(thinkPort, 'thinker', hits, bodies);
+    const primaryPort = await startMockUpstream('primary', hits, bodies);
+    const thinkPort = await startMockUpstream('thinker', hits, bodies);
 
     const primarySettings = writeSettings('hf', {
       ANTHROPIC_BASE_URL: `http://127.0.0.1:${primaryPort}`,
@@ -197,9 +214,10 @@ describe('openai proxy request routing', () => {
     };
     proxyServer = startOpenAICompatProxyServer({
       profile,
-      port: proxyPort,
+      port: 0,
       authToken: 'test-proxy-token',
     });
+    proxyPort = await waitForServerListening(proxyServer);
 
     const response = await requestProxy({
       model: 'hf-default',
@@ -216,12 +234,10 @@ describe('openai proxy request routing', () => {
   });
 
   it('routes adaptive thinking requests through the configured think scenario', async () => {
-    const primaryPort = await getPort();
-    const thinkPort = await getPort();
     const hits: string[] = [];
     const bodies: Array<{ label: string; body: unknown }> = [];
-    await startMockUpstream(primaryPort, 'primary', hits, bodies);
-    await startMockUpstream(thinkPort, 'thinker', hits, bodies);
+    const primaryPort = await startMockUpstream('primary', hits, bodies);
+    const thinkPort = await startMockUpstream('thinker', hits, bodies);
 
     const primarySettings = writeSettings('hf', {
       ANTHROPIC_BASE_URL: `http://127.0.0.1:${primaryPort}`,
@@ -263,9 +279,10 @@ describe('openai proxy request routing', () => {
     };
     proxyServer = startOpenAICompatProxyServer({
       profile,
-      port: proxyPort,
+      port: 0,
       authToken: 'test-proxy-token',
     });
+    proxyPort = await waitForServerListening(proxyServer);
 
     const response = await requestProxy({
       model: 'hf-default',

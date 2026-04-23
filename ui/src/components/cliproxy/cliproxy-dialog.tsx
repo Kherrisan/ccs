@@ -19,7 +19,13 @@ import { useTranslation } from 'react-i18next';
 import { useCreateVariant, useCliproxyAuth } from '@/hooks/use-cliproxy';
 import { usePrivacy } from '@/contexts/privacy-context';
 import { formatAccountDisplayName } from '@/lib/account-identity';
-import { CLIPROXY_PROVIDERS, getProviderDisplayName } from '@/lib/provider-config';
+import {
+  CLIPROXY_PROVIDERS,
+  CLIPROXY_PROVIDER_SECTIONS,
+  getProviderDisplayName,
+  getProviderSection,
+  isPlusExtraProvider,
+} from '@/lib/provider-config';
 import { isDeniedAgyModelId } from '@/lib/utils';
 
 const singleProviderSchema = z.object({
@@ -104,6 +110,8 @@ export function CliproxyDialog({ open, onClose }: CliproxyDialogProps) {
   });
 
   const selectedProvider = useWatch({ control: singleForm.control, name: 'provider' });
+  const compositeTiers = useWatch({ control: compositeForm.control, name: 'tiers' });
+  const selectedProviderSection = getProviderSection(selectedProvider);
   const providerAuth = authData?.authStatus.find((s) => s.provider === selectedProvider);
   const providerAccounts = providerAuth?.accounts || [];
 
@@ -197,16 +205,30 @@ export function CliproxyDialog({ open, onClose }: CliproxyDialogProps) {
                   className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                 >
                   <option value="">{t('cliproxyDialog.selectProvider')}</option>
-                  {providerOptions.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
+                  {CLIPROXY_PROVIDER_SECTIONS.map((section) => (
+                    <optgroup key={section.id} label={t(section.labelKey)}>
+                      {providerOptions
+                        .filter((opt) => section.providers.includes(opt.value))
+                        .map((opt) => (
+                          <option key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </option>
+                        ))}
+                    </optgroup>
                   ))}
                 </select>
                 {singleForm.formState.errors.provider && (
                   <span className="text-xs text-red-500">
                     {singleForm.formState.errors.provider.message}
                   </span>
+                )}
+                {selectedProviderSection && (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    {t(selectedProviderSection.hintKey)}
+                    {isPlusExtraProvider(selectedProvider)
+                      ? ` ${t('providerConfig.plusTrackNote')}`
+                      : ''}
+                  </p>
                 )}
               </div>
 
@@ -297,12 +319,26 @@ export function CliproxyDialog({ open, onClose }: CliproxyDialogProps) {
                           {...compositeForm.register(`tiers.${tier}.provider`)}
                           className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                         >
-                          {providerOptions.map((opt) => (
-                            <option key={opt.value} value={opt.value}>
-                              {opt.label}
-                            </option>
+                          {CLIPROXY_PROVIDER_SECTIONS.map((section) => (
+                            <optgroup key={section.id} label={t(section.labelKey)}>
+                              {providerOptions
+                                .filter((opt) => section.providers.includes(opt.value))
+                                .map((opt) => (
+                                  <option key={opt.value} value={opt.value}>
+                                    {opt.label}
+                                  </option>
+                                ))}
+                            </optgroup>
                           ))}
                         </select>
+                        {compositeTiers?.[tier]?.provider && (
+                          <p className="mt-2 text-xs text-muted-foreground">
+                            {t(getProviderSection(compositeTiers[tier].provider)?.hintKey || '')}
+                            {isPlusExtraProvider(compositeTiers[tier].provider)
+                              ? ` ${t('providerConfig.plusTrackNote')}`
+                              : ''}
+                          </p>
+                        )}
                       </div>
                       <div>
                         <Label htmlFor={`${tier}-model`}>{t('cliproxyDialog.model')}</Label>

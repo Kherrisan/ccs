@@ -42,8 +42,11 @@ jobs:
       - name: Build package
         run: bun run build:all
 
-      - name: Validate (typecheck + lint + format + tests)
+      - name: Validate fast gate
         run: bun run validate
+
+      - name: Test slow bucket
+        run: bun run test:slow
 
       - name: Test CLI e2e
         env:

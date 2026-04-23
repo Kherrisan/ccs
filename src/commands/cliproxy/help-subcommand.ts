@@ -84,7 +84,10 @@ export async function showHelp(): Promise<void> {
     [
       'Options:',
       [
-        ['--backend <type>', 'Use specific backend: original | plus (default: from config)'],
+        [
+          '--backend <type>',
+          'Use specific backend: original | plus (local default: original; plus currently falls back locally)',
+        ],
         ['--target <cli>', 'Default target for created/edited variants: claude | droid'],
         ['--verbose, -v', 'Show detailed diagnostics including routing hints and quota fetches'],
       ],
@@ -102,6 +105,11 @@ export async function showHelp(): Promise<void> {
 
   console.log(dim('  Note: CLIProxy now persists by default. Use "stop" to terminate.'));
   console.log(dim('  Routing: use gcli/<model> or agy/<model> to keep overlapping models pinned.'));
+  console.log(
+    dim(
+      '  Backend: local CLIProxy currently uses original by default; saved plus configs fall back locally.'
+    )
+  );
   console.log('');
   console.log(subheader('Notes:'));
   console.log(`  Default fallback version: ${color(getFallbackVersion(), 'info')}`);

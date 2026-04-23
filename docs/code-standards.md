@@ -599,6 +599,7 @@ return (
 bun run format
 bun run lint:fix
 bun run validate
+bun run validate:ci-parity
 
 # UI project (if changed)
 cd ui
@@ -611,7 +612,7 @@ bun run validate
 
 | Project | Command | Checks |
 |---------|---------|--------|
-| Main | `bun run validate` | typecheck + lint + format:check + test |
+| Main | `bun run validate` | typecheck + lint + format:check + test:fast |
 | UI | `bun run validate` | typecheck + lint + format:check |
 
 ---

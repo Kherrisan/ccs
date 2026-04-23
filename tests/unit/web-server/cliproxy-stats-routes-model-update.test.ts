@@ -129,7 +129,7 @@ describe('cliproxy-stats-routes model update canonicalization', () => {
     expect(persisted.env.ANTHROPIC_MODEL).toBe('claude-sonnet-4-6');
   });
 
-  it('canonicalizes Codex effort suffix and syncs linked core model env vars', async () => {
+  it('preserves Codex effort suffixes while syncing linked core model env vars', async () => {
     const settingsPath = path.join(tempHome, '.ccs', 'cliproxy', 'codex.settings.json');
     writeSettings(settingsPath, {
       ANTHROPIC_BASE_URL: 'http://127.0.0.1:8317/api/provider/codex',
@@ -148,14 +148,14 @@ describe('cliproxy-stats-routes model update canonicalization', () => {
     expect(response.status).toBe(200);
 
     const body = (await response.json()) as { model: string };
-    expect(body.model).toBe('gpt-5.3-codex');
+    expect(body.model).toBe('gpt-5.3-codex-xhigh');
 
     const persisted = JSON.parse(fs.readFileSync(settingsPath, 'utf8')) as {
       env: Record<string, string>;
     };
-    expect(persisted.env.ANTHROPIC_MODEL).toBe('gpt-5.3-codex');
-    expect(persisted.env.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe('gpt-5.3-codex');
-    expect(persisted.env.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe('gpt-5.3-codex');
+    expect(persisted.env.ANTHROPIC_MODEL).toBe('gpt-5.3-codex-xhigh');
+    expect(persisted.env.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe('gpt-5.3-codex-xhigh');
+    expect(persisted.env.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe('gpt-5.3-codex-xhigh');
     expect(persisted.env.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe('gpt-5.4-mini');
   });
 

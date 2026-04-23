@@ -32,6 +32,7 @@ const THINKING_LEVELS = [
   { value: 'medium', label: 'Medium (8K tokens)' },
   { value: 'high', label: 'High (24K tokens)' },
   { value: 'xhigh', label: 'Extra High (32K tokens)' },
+  { value: 'max', label: 'Max (adaptive ceiling)' },
   { value: 'auto', label: 'Auto (dynamic)' },
 ];
 

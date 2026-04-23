@@ -1,6 +1,6 @@
 # CCS Project Roadmap
 
-Last Updated: 2026-04-19
+Last Updated: 2026-04-21
 
 Forward-looking roadmap documenting current priorities, GitHub issues, and future feature plans.
 
@@ -41,6 +41,7 @@ All major modularization work is complete. The codebase evolved from monolithic 
 
 ### Recent Fixes
 
+- **2026-04-21**: CLIProxy quota failover now quarantines exhausted Claude and Antigravity accounts out of live rotation when a healthy fallback exists. CCS persists those quota-triggered pauses across launches, automatically resumes them after the configured cooldown window, and deliberately avoids auto-pausing the last available account so single-account setups still degrade gracefully instead of hard-locking themselves.
 - **2026-04-20**: **#1051** Browser automation now defaults safe-off for new installs and upgrades that do not already carry explicit browser settings. CCS changes both Claude Browser Attach and Codex Browser Tools to start with `enabled: false` and `policy: manual`, normalizes missing browser policies on upgrade back to `manual`, preserves explicit existing enablement, and updates status/help/docs so browser tooling is never implied to auto-expose unless users opt in.
 - **2026-04-19**: **#1051** Browser tooling now has an explicit exposure policy instead of only coarse enablement toggles. CCS adds `browser.<lane>.policy` (`auto` or `manual`) for both Claude Browser Attach and Codex Browser Tools, exposes CLI-first policy controls through `ccs browser policy`, `ccs browser enable`, and `ccs browser disable`, and adds one-run launch overrides `--browser` and `--no-browser` so users can force browser tooling on or off without editing saved config.
 - **2026-04-19**: **#1049** Browser setup now has a real remediation path instead of status/doctor-only guidance. CCS adds `ccs browser setup` as the primary one-command flow for Claude Browser Attach, shortens managed browser-path output to home-relative display paths where appropriate, and updates browser readiness guidance to point users at setup first while keeping browser doctor read-only by default.
@@ -241,28 +242,13 @@ All criteria achieved:
 - [x] Clear domain boundaries
 - [x] Consistent naming conventions
 
-## Maintainability Gate (Issue #539 Foundation)
+## Historical Maintainability Gate (Retired)
 
-- Baseline metrics artifact: `docs/metrics/maintainability-baseline.json`
-- Branch-aware gate wrapper: `scripts/maintainability-check.js`
-- Generate or refresh baseline:
-  - `bun run maintainability:baseline`
-  - `npm run maintainability:baseline`
-- Run regression check gate:
-  - `bun run maintainability:check`
-  - `npm run maintainability:check`
-  - `bun run maintainability:check:strict` (force strict locally)
+This section is preserved as historical context from the original Issue `#539` work.
 
-The baseline/check scripts enumerate git-tracked files under `src` for deterministic results and fail fast if git file listing is unavailable.
-
-Default gate behavior:
-- strict mode on protected branches (`main`, `dev`, `hotfix/*`, `kai/hotfix-*`)
-- warning mode on PR CI and non-protected branches (parallel PR friendly)
-
-The check mode supports a maintainability regression gate that blocks increases in:
-- `process.exit` references
-- synchronous fs API references
-- TypeScript files over 350 LOC
+- The maintainability baseline gate is no longer part of the active CCS workflow.
+- Current contributor and CI gates are documented in `CLAUDE.md`, `CONTRIBUTING.md`, and the GitHub workflow files.
+- Do not assume `maintainability:baseline` or `maintainability:check` exist unless they are reintroduced in a future follow-up.
 
 ---
 

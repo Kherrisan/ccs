@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
-import getPort from 'get-port';
 import * as fs from 'fs';
 import * as http from 'http';
 import * as os from 'os';
@@ -16,6 +15,29 @@ let tempDir: string;
 let originalTimeoutEnv: string | undefined;
 let originalCcsHome: string | undefined;
 
+function resolveListeningPort(server: http.Server): number {
+  const address = server.address();
+  if (!address || typeof address === 'string') {
+    throw new Error('Failed to resolve server port');
+  }
+  return address.port;
+}
+
+async function waitForServerListening(server: http.Server): Promise<number> {
+  if (server.listening) {
+    return resolveListeningPort(server);
+  }
+
+  return new Promise<number>((resolve, reject) => {
+    const onError = (error: Error) => reject(error);
+    server.once('error', onError);
+    server.once('listening', () => {
+      server.off('error', onError);
+      resolve(resolveListeningPort(server));
+    });
+  });
+}
+
 async function startUpstream(
   handler: (req: http.IncomingMessage, res: http.ServerResponse) => Promise<void> | void
 ): Promise<void> {
@@ -28,9 +50,8 @@ async function startUpstream(
       upstreamSockets.delete(socket);
     });
   });
-  await new Promise<void>((resolve) =>
-    upstreamServer.listen(upstreamPort, '127.0.0.1', () => resolve())
-  );
+  upstreamServer.listen(0, '127.0.0.1');
+  upstreamPort = await waitForServerListening(upstreamServer);
 }
 
 async function requestProxy(payload: unknown, signal?: AbortSignal): Promise<Response> {
@@ -46,8 +67,6 @@ async function requestProxy(payload: unknown, signal?: AbortSignal): Promise<Res
 }
 
 beforeEach(async () => {
-  upstreamPort = await getPort();
-  proxyPort = await getPort();
   tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ccs-proxy-edge-'));
   originalTimeoutEnv = process.env.CCS_OPENAI_PROXY_REQUEST_TIMEOUT_MS;
   originalCcsHome = process.env.CCS_HOME;
@@ -94,9 +113,10 @@ describe('openai proxy message edge cases', () => {
     };
     proxyServer = startOpenAICompatProxyServer({
       profile,
-      port: proxyPort,
+      port: 0,
       authToken: 'test-proxy-token',
     });
+    proxyPort = await waitForServerListening(proxyServer);
   }
 
   it('preserves rate-limit errors from the upstream provider', async () => {
