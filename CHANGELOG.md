@@ -1,3 +1,41 @@
+## [7.73.1](https://github.com/kaitranntt/ccs/compare/v7.73.0...v7.73.1) (2026-04-22)
+
+### Hotfixes
+
+* **cliproxy:** fallback from deleted CLIProxyAPIPlus to original backend ([60cbdce](https://github.com/kaitranntt/ccs/commit/60cbdce83dd429aeb6df5f1439ba99edd96acc3a)), closes [#1062](https://github.com/kaitranntt/ccs/issues/1062)
+* close cliproxy plus fallback gaps ([7b1a7f3](https://github.com/kaitranntt/ccs/commit/7b1a7f3a09b5c6394897b5f95ad32bc9109e6a21))
+* preserve plus fallback state and guard variant updates ([5b5f4a5](https://github.com/kaitranntt/ccs/commit/5b5f4a5ef52f91cb6d4bc7fd3413eac714945d4a))
+
+## [7.73.0](https://github.com/kaitranntt/ccs/compare/v7.72.1...v7.73.0) (2026-04-19)
+
+### Features
+
+* **proxy:** enhance Anthropic-to-OpenAI message transformation and schema sanitization ([2672e35](https://github.com/kaitranntt/ccs/commit/2672e35362938b054710de681760bd24c3c39e19))
+
+### Bug Fixes
+
+* **browser:** bootstrap managed attach profile setup ([b525033](https://github.com/kaitranntt/ccs/commit/b52503300b0c434fbb9d88283643d3ceaa673d44))
+* **cliproxy:** preserve legacy openai-compat connectors on restart ([16f81fc](https://github.com/kaitranntt/ccs/commit/16f81fc8a595792f1c1a6df060f88cdf28d7afb6))
+* **codex:** probe Windows cmd wrappers via cmd shell ([210ec33](https://github.com/kaitranntt/ccs/commit/210ec33c04fe88be2b651c2163f638085b1b6bd2))
+* **proxy:** harden Anthropic request transformation semantics ([ebc9219](https://github.com/kaitranntt/ccs/commit/ebc92194bb9bf2810e10f64de1fa6e599c2fa156))
+* **proxy:** preserve valid enums during schema normalization ([22ab58b](https://github.com/kaitranntt/ccs/commit/22ab58b02e5dc34f152ecce048c1fbf7d615bdfb))
+* **proxy:** restore strict Anthropic message validation ([32d6bfd](https://github.com/kaitranntt/ccs/commit/32d6bfdda7881a42a376d0973c021f0b47eed7e2))
+* **repo:** remove tracked plans workspace files ([bc4ab98](https://github.com/kaitranntt/ccs/commit/bc4ab98af41e9c9f049cc5da2e6ff356832ef14b))
+* **targets:** use cmd.exe for escaped Windows wrapper launches ([a945b0b](https://github.com/kaitranntt/ccs/commit/a945b0b1047b85a7b343dfe35d8ae9680346e25f))
+* **windows:** align escaped wrapper shell handling ([ccdd0b6](https://github.com/kaitranntt/ccs/commit/ccdd0b6e8e4185ec2b01186cfc69e28f171d0906))
+
+### Tests
+
+* **cliproxy:** assert routing persistence via unified config loader ([485fe4b](https://github.com/kaitranntt/ccs/commit/485fe4ba1c5878083c6e2b6a2d98b37208772a1f))
+* **cliproxy:** cover legacy connector removal cleanup ([00d902b](https://github.com/kaitranntt/ccs/commit/00d902b6e64839cd6b89446cc5dee540f2a059b8))
+* **cliproxy:** isolate routing strategy service state ([5e1e807](https://github.com/kaitranntt/ccs/commit/5e1e8070e821dbe660ea77bc96fec610937ed44a))
+* **websearch:** clear CCS_PROFILE_TYPE in SearXNG fallback spawn env ([e25d791](https://github.com/kaitranntt/ccs/commit/e25d791d9bee38e7143757d37c42bd850e471ae8))
+
+### CI
+
+* add concurrency group and split build/test with artifact sharing ([ad54e17](https://github.com/kaitranntt/ccs/commit/ad54e179b6a3921fd26ad3ac585f5ef965b01c1b))
+* **pre-push:** skip gate for delete-only pushes ([6236cb7](https://github.com/kaitranntt/ccs/commit/6236cb7feb15e954f7f65ae98e6fd98b323a4adb))
+
 ## [7.72.1](https://github.com/kaitranntt/ccs/compare/v7.72.0...v7.72.1) (2026-04-17)
 
 ### Bug Fixes

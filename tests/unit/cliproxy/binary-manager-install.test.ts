@@ -100,6 +100,44 @@ describe('installCliproxyVersion', () => {
     expect(status.binaryPath).toContain('/plus/');
   });
 
+  it('copies plus binary and pin state when legacy deleted upstream fallback is active', async () => {
+    const { createEmptyUnifiedConfig } = await import('../../../src/config/unified-config-types');
+    const { saveUnifiedConfig } = await import('../../../src/config/unified-config-loader');
+    const { savePinnedVersion } = await import('../../../src/cliproxy/binary/version-cache');
+    const platformDetector = await import('../../../src/cliproxy/platform-detector');
+    const binaryService = await import(
+      `../../../src/cliproxy/services/binary-service?binary-service-legacy-plus-fallback=${Date.now()}`
+    );
+
+    const plusConfig = platformDetector.BACKEND_CONFIG.plus as unknown as { repo: string };
+    const originalRepo = plusConfig.repo;
+
+    try {
+      plusConfig.repo = 'router-for-me/CLIProxyAPIPlus';
+
+      const config = createEmptyUnifiedConfig();
+      config.cliproxy = { ...config.cliproxy, backend: 'plus' };
+      saveUnifiedConfig(config);
+
+      const plusBinDir = path.join(tempHome, '.ccs', 'cliproxy', 'bin', 'plus');
+      fs.mkdirSync(plusBinDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(plusBinDir, platformDetector.getExecutableName('plus')),
+        'fake-binary'
+      );
+      fs.writeFileSync(path.join(plusBinDir, '.version'), '6.6.80-0');
+      savePinnedVersion('6.6.80-0', 'plus');
+
+      const status = binaryService.getBinaryStatus();
+
+      expect(status.installed).toBe(true);
+      expect(status.pinnedVersion).toBe('6.6.80-0');
+      expect(status.binaryPath).toContain('/original/');
+    } finally {
+      plusConfig.repo = originalRepo;
+    }
+  });
+
   it('attempts to stop the proxy even when there is no tracked running session', async () => {
     const calls = {
       stopProxy: 0,

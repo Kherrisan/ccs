@@ -5,10 +5,17 @@
  * Pattern: Mirrors npm install behavior (fast check, download only when needed)
  */
 
+import * as fs from 'fs';
+import * as path from 'path';
 import { info, warn } from '../utils/ui';
 import { getBinDir, CLIPROXY_DEFAULT_PORT } from './config-generator';
 import { BinaryInfo, BinaryManagerConfig } from './types';
-import { BACKEND_CONFIG, DEFAULT_BACKEND, CLIPROXY_MAX_STABLE_VERSION } from './platform-detector';
+import {
+  BACKEND_CONFIG,
+  DEFAULT_BACKEND,
+  CLIPROXY_MAX_STABLE_VERSION,
+  getExecutableName,
+} from './platform-detector';
 import { stopProxy } from './services/proxy-lifecycle-service';
 import { waitForPortFree } from '../utils/port-utils';
 import { loadOrCreateUnifiedConfig } from '../config/unified-config-loader';
@@ -16,6 +23,7 @@ import {
   UpdateCheckResult,
   checkForUpdates,
   deleteBinary,
+  getVersionCachePath,
   getBinaryPath,
   isBinaryInstalled,
   getBinaryInfo,
@@ -30,9 +38,30 @@ import {
 } from './binary';
 
 import type { CLIProxyBackend } from './types';
+import { getVersionListCachePath } from './binary/version-cache';
 
+export const CLIPROXY_DELETED_PLUS_REPO = 'router-for-me/CLIProxyAPIPlus';
+export const CLIPROXY_PLUS_FALLBACK_TRACKING_URL = 'https://github.com/kaitranntt/ccs/issues/1062';
 export const CLIPROXY_PLUS_FORK_URL = 'https://github.com/kaitranntt/CLIProxyAPIPlus';
 export const CLIPROXY_PLUS_TRACKING_URL = 'https://github.com/kaitranntt/ccs/issues/1065';
+
+/**
+ * Track whether we've already warned the user about the legacy Plus fallback
+ * this process lifetime. Prevents spamming the warning on every command.
+ */
+let plusFallbackWarned = false;
+
+function emitPlusFallbackWarning(): void {
+  if (plusFallbackWarned) return;
+  plusFallbackWarned = true;
+  process.stderr.write(
+    `${warn(
+      'Legacy CLIProxyAPIPlus upstream repo is unavailable; local CLIProxy is falling back to ' +
+        '`backend: original`. Run `ccs config` to use the maintained Plus fork. ' +
+        `Tracking: ${CLIPROXY_PLUS_FALLBACK_TRACKING_URL}`
+    )}\n`
+  );
+}
 
 /**
  * Track whether we've already shown the optional Plus backend notice this
@@ -66,13 +95,50 @@ export function getPlusBackendUnavailableMessage(provider?: string): string {
 
 interface ResolveLocalBackendOptions {
   notifyOnPlus?: boolean;
+  warnOnFallback?: boolean;
+}
+
+function isPlusBackendFallbackActive(): boolean {
+  return (BACKEND_CONFIG.plus.repo as string) === CLIPROXY_DELETED_PLUS_REPO;
+}
+
+function copyFallbackStateIfMissing(sourcePath: string, targetPath: string): void {
+  if (!fs.existsSync(sourcePath) || fs.existsSync(targetPath)) return;
+  fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+  fs.copyFileSync(sourcePath, targetPath);
+}
+
+export function syncPlusFallbackStateIfNeeded(configuredBackend: CLIProxyBackend): void {
+  if (configuredBackend !== 'plus' || !isPlusBackendFallbackActive()) return;
+
+  const plusDir = getBackendBinDir('plus');
+  const originalDir = getBackendBinDir('original');
+
+  copyFallbackStateIfMissing(
+    path.join(plusDir, getExecutableName('plus')),
+    path.join(originalDir, getExecutableName('original'))
+  );
+  copyFallbackStateIfMissing(path.join(plusDir, '.version'), path.join(originalDir, '.version'));
+  copyFallbackStateIfMissing(getVersionPinPath('plus'), getVersionPinPath('original'));
+  copyFallbackStateIfMissing(getVersionCachePath('plus'), getVersionCachePath('original'));
+  copyFallbackStateIfMissing(getVersionListCachePath('plus'), getVersionListCachePath('original'));
 }
 
 export function resolveLocalBackend(
   backend: CLIProxyBackend = DEFAULT_BACKEND,
   options: ResolveLocalBackendOptions = {}
 ): CLIProxyBackend {
-  if (backend === 'plus' && options.notifyOnPlus) {
+  if (backend !== 'plus') return backend;
+
+  if (isPlusBackendFallbackActive()) {
+    syncPlusFallbackStateIfNeeded(backend);
+    if (options.warnOnFallback) {
+      emitPlusFallbackWarning();
+    }
+    return 'original';
+  }
+
+  if (options.notifyOnPlus) {
     emitPlusBackendInfo();
   }
   return backend;
