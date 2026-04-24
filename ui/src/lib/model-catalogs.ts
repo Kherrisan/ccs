@@ -260,6 +260,19 @@ export const MODEL_CATALOGS: Record<string, ProviderCatalog> = {
     defaultModel: 'gpt-5-codex',
     models: [
       {
+        id: 'gpt-5.5',
+        name: 'GPT-5.5',
+        tier: 'paid',
+        description: 'Newest Codex-only GPT-5 family model',
+        codexMaxEffort: 'xhigh',
+        presetMapping: {
+          default: 'gpt-5.5',
+          opus: 'gpt-5.5',
+          sonnet: 'gpt-5.5',
+          haiku: 'gpt-5-codex-mini',
+        },
+      },
+      {
         id: 'gpt-5-codex',
         name: 'GPT-5 Codex',
         description: 'Cross-plan safe Codex default',

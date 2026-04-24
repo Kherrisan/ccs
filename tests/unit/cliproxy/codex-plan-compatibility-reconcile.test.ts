@@ -45,6 +45,48 @@ async function importCompatibilityModule(cacheTag: string) {
 const identity = (message: string) => message;
 
 describe('codex plan compatibility reconcile', () => {
+  it('warns about the GPT-5.5 free-plan fallback without rewriting saved settings', async () => {
+    const { tmpDir, settingsPath } = createCodexSettingsFixture();
+    const errorSpy = spyOn(console, 'error').mockImplementation(() => {});
+
+    try {
+      const { reconcileCodexModelForActivePlan } = await importCompatibilityModule('gpt-5-5-free');
+
+      await reconcileCodexModelForActivePlan(
+        {
+          currentModel: 'gpt-5.5',
+          verbose: false,
+        },
+        {
+          getDefaultAccount: () => ({ id: 'free@example.com' }) as never,
+          fetchCodexQuota: async () => ({
+            success: true,
+            windows: [],
+            coreUsage: { fiveHour: null, weekly: null },
+            planType: 'free',
+            lastUpdated: Date.now(),
+            accountId: 'free@example.com',
+          }),
+          formatInfo: identity,
+          formatWarn: identity,
+        }
+      );
+
+      const repaired = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as {
+        env: Record<string, string>;
+      };
+      expect(repaired.env.ANTHROPIC_MODEL).toBe('gpt-5.3-codex');
+      expect(repaired.env.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe('gpt-5.3-codex');
+      expect(repaired.env.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe('gpt-5.3-codex');
+      expect(repaired.env.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe('gpt-5.4-mini');
+      expect(errorSpy).toHaveBeenCalledWith(
+        'Codex free plan detected. Keeping saved model "gpt-5.5" in settings; runtime requests will fall back to "gpt-5.4" when needed.'
+      );
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
   it('keeps saved Codex settings intact and warns about runtime fallback for free-plan accounts', async () => {
     const { tmpDir, settingsPath } = createCodexSettingsFixture('gpt-5.3-codex-spark');
     const errorSpy = spyOn(console, 'error').mockImplementation(() => {});

@@ -130,7 +130,7 @@ function TopLevelControlsForm({
             onChange={(event) =>
               setDraft((current) => ({ ...current, model: event.target.value || null }))
             }
-            placeholder="gpt-5.4"
+            placeholder="gpt-5.5"
             disabled={disabled}
           />
         </div>
@@ -312,7 +312,9 @@ function TopLevelControlsForm({
                 className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground"
               >
                 {/* TODO i18n: missing keys codex.gpt54Selected / codex.gpt54Reference */}
-                {isGpt54Selected ? 'GPT-5.4 selected' : 'GPT-5.4 reference'}
+                {isGpt54Selected
+                  ? 'GPT-5.4 long-context selected'
+                  : 'GPT-5.4 long-context reference'}
               </Badge>
             </div>
             <p className="text-xs text-muted-foreground">
@@ -500,16 +502,16 @@ function TopLevelControlsForm({
           {/* TODO i18n: missing key codex.docs */}
           <span className="text-[10px] uppercase tracking-[0.14em]">Docs</span>
           <a
-            href="https://developers.openai.com/api/docs/models/gpt-5.4"
+            href="https://platform.openai.com/docs/models"
             target="_blank"
             rel="noreferrer"
             className="underline underline-offset-2 hover:text-foreground"
           >
-            {/* TODO i18n: missing key codex.gpt54ModelPage */}
-            GPT-5.4 model page
+            {/* TODO i18n: missing key codex.gptModelGuide */}
+            GPT-5 model guide
           </a>
           <a
-            href="https://openai.com/index/introducing-gpt-5-4/"
+            href="https://openai.com/index/introducing-gpt-5-5/"
             target="_blank"
             rel="noreferrer"
             className="underline underline-offset-2 hover:text-foreground"

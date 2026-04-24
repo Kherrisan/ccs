@@ -28,7 +28,7 @@ describe('CodexTopLevelControlsCard', () => {
     const saveButton = screen.getByRole('button', { name: 'Save top-level settings' });
     expect(saveButton).toBeDisabled();
 
-    await userEvent.type(screen.getByPlaceholderText('gpt-5.4'), 'gpt-5.4-mini');
+    await userEvent.type(screen.getByPlaceholderText('gpt-5.5'), 'gpt-5.4-mini');
     expect(saveButton).toBeEnabled();
 
     await userEvent.click(saveButton);
