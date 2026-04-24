@@ -267,7 +267,7 @@ src/
 ### Native Codex Runtime Target
 
 - Dedicated runtime entrypoints: `ccs-codex` and `ccsx` resolve through `src/bin/codex-runtime.ts`, while `ccsxp` resolves through `src/bin/ccsxp-runtime.ts`; all three set `CCS_INTERNAL_ENTRY_TARGET=codex` before delegating to `src/targets/target-resolver.ts`.
-- Provider shortcut behavior: `ccsxp` also strips user-supplied `--target` overrides and rewrites argv to `ccs codex --target codex ...`, so it always lands on the built-in Codex-via-CLIProxy route.
+- Provider shortcut behavior: `ccsxp` also strips user-supplied `--target` overrides and rewrites argv to `ccs codex --target codex ...`, so it always lands on the built-in Codex-via-CLIProxy route. It pins `CODEX_HOME` to native `~/.codex` by default so inherited launcher state does not send history/config writes to a nonstandard Codex root; `CCSXP_CODEX_HOME` is the explicit override.
 - `argv[0]` alias mapping still exists in `src/targets/target-resolver.ts` for same-binary/custom alias scenarios, but the built-in npm bins above do not depend on that map at runtime.
 - Metadata boundary: `src/targets/target-metadata.ts` keeps Codex runtime-only in v1, so persisted default targets remain `claude | droid`.
 - Compatibility guardrails: `src/targets/target-runtime-compatibility.ts` centralizes which profile types can execute on Codex.

@@ -515,6 +515,7 @@ ccsxp
 → dist/bin/ccsxp-runtime.js
 → CCS_INTERNAL_ENTRY_TARGET=codex
 → injects built-in codex profile shortcut
+→ pins CODEX_HOME to native `~/.codex` unless `CCSXP_CODEX_HOME` is set
 ```
 
 If a user launches CCS through a custom shim instead of the built-in package bins, target
