@@ -189,6 +189,19 @@ export const MODEL_CATALOG: Partial<Record<CLIProxyProvider, ProviderCatalog>> =
     defaultModel: 'gpt-5.4',
     models: [
       {
+        id: 'gpt-5.5',
+        name: 'GPT-5.5',
+        tier: 'pro',
+        description:
+          'Newest Codex-released GPT-5 family model; falls back to GPT-5.4 on free plans',
+        thinking: {
+          type: 'levels',
+          levels: ['low', 'medium', 'high', 'xhigh'],
+          maxLevel: 'xhigh',
+          dynamicAllowed: false,
+        },
+      },
+      {
         id: 'gpt-5.4',
         name: 'GPT-5.4',
         description: 'Recommended Codex default for most coding and agentic tasks',

@@ -14,6 +14,8 @@ describe('codex plan compatibility', () => {
   });
 
   it('maps paid-only free-plan models to safe fallbacks', () => {
+    expect(getFreePlanFallbackCodexModel('gpt-5.5')).toBe('gpt-5.4');
+    expect(getFreePlanFallbackCodexModel('gpt-5.5-xhigh')).toBe('gpt-5.4');
     expect(getFreePlanFallbackCodexModel('gpt-5.3-codex')).toBe('gpt-5.4');
     expect(getFreePlanFallbackCodexModel('gpt-5.3-codex-xhigh')).toBe('gpt-5.4');
     expect(getFreePlanFallbackCodexModel('gpt-5.3-codex(high)')).toBe('gpt-5.4');
@@ -71,6 +73,7 @@ describe('codex plan compatibility', () => {
   });
 
   it('tracks Codex thinking caps for current safe defaults, paid models, and legacy aliases', () => {
+    expect(getModelMaxLevel('codex', 'gpt-5.5')).toBe('xhigh');
     expect(getModelMaxLevel('codex', 'gpt-5.4')).toBe('xhigh');
     expect(getModelMaxLevel('codex', 'gpt-5.4-mini')).toBe('high');
     expect(getModelMaxLevel('codex', 'gpt-5-codex')).toBe('xhigh');
