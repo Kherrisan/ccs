@@ -25,7 +25,7 @@ afterEach(() => {
 });
 
 describe('installCliproxyVersion', () => {
-  it('degrades explicit plus backend requests to original before install flows run', async () => {
+  it('keeps explicit plus backend requests on plus before install flows run', async () => {
     let seenBackend: string | undefined;
 
     const binaryManager = await import(
@@ -38,7 +38,7 @@ describe('installCliproxyVersion', () => {
         return {
           isBinaryInstalled: () => false,
           deleteBinary: () => undefined,
-          ensureBinary: async () => '/tmp/ccs-bin/original/cliproxy',
+          ensureBinary: async () => '/tmp/ccs-bin/plus/cliproxy',
         };
       },
       stopProxyFn: async () => ({ stopped: false, error: 'No active CLIProxy session found' }),
@@ -48,10 +48,10 @@ describe('installCliproxyVersion', () => {
       getInstalledVersion: () => '6.6.80',
     });
 
-    expect(seenBackend).toBe('original');
+    expect(seenBackend).toBe('plus');
   });
 
-  it('returns original and emits a real warning when plus backend is resolved locally', async () => {
+  it('returns plus and emits an informational notice when plus backend is resolved locally', async () => {
     const binaryManager = await import(
       `../../../src/cliproxy/binary-manager?binary-manager-warning=${Date.now()}`
     );
@@ -64,16 +64,17 @@ describe('installCliproxyVersion', () => {
     }) as typeof process.stderr.write;
 
     try {
-      expect(binaryManager.resolveLocalBackend('plus', { warnOnFallback: true })).toBe('original');
+      expect(binaryManager.resolveLocalBackend('plus', { notifyOnPlus: true })).toBe('plus');
     } finally {
       process.stderr.write = originalWrite;
     }
 
-    expect(writes.join('')).toContain('CLIProxyAPIPlus upstream repo is currently unavailable');
+    expect(writes.join('')).toContain('optional community-maintained CLIProxyAPIPlus backend');
     expect(writes.join('')).toContain('backend: original');
+    expect(writes.join('')).toContain('kaitranntt/CLIProxyAPIPlus');
   });
 
-  it('reuses plus binary and pin state when local runtime falls back to original', async () => {
+  it('uses plus binary and pin state when local runtime is configured for plus', async () => {
     const { createEmptyUnifiedConfig } = await import('../../../src/config/unified-config-types');
     const { saveUnifiedConfig } = await import('../../../src/config/unified-config-loader');
     const { savePinnedVersion } = await import('../../../src/cliproxy/binary/version-cache');
@@ -96,7 +97,7 @@ describe('installCliproxyVersion', () => {
 
     expect(status.installed).toBe(true);
     expect(status.pinnedVersion).toBe('6.6.80-0');
-    expect(status.binaryPath).toContain('/original/');
+    expect(status.binaryPath).toContain('/plus/');
   });
 
   it('attempts to stop the proxy even when there is no tracked running session', async () => {

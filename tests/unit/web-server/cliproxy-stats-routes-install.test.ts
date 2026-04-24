@@ -96,7 +96,7 @@ afterAll(async () => {
 });
 
 describe('cliproxy-stats-routes install contract', () => {
-  it('routes saved plus configs through original backend for update checks', async () => {
+  it('keeps saved plus configs on the plus backend for update checks', async () => {
     const response = await fetch(`${baseUrl}/api/cliproxy/update-check`);
     expect(response.status).toBe(200);
 
@@ -107,8 +107,8 @@ describe('cliproxy-stats-routes install contract', () => {
       latestVersion: string;
     };
 
-    expect(body.backend).toBe('original');
-    expect(body.backendLabel).toBe('CLIProxy');
+    expect(body.backend).toBe('plus');
+    expect(body.backendLabel).toBe('CLIProxy Plus');
     expect(body.currentVersion).toBe('6.6.80');
     expect(body.latestVersion).toBe('6.6.89');
   });

@@ -29,14 +29,14 @@ export const VERSION_PIN_FILE = '.version-pin';
  * @deprecated Use getGitHubApiUrls(backend) instead
  */
 export const GITHUB_API_LATEST_RELEASE =
-  'https://api.github.com/repos/router-for-me/CLIProxyAPIPlus/releases/latest';
+  'https://api.github.com/repos/kaitranntt/CLIProxyAPIPlus/releases/latest';
 export const GITHUB_API_ALL_RELEASES =
-  'https://api.github.com/repos/router-for-me/CLIProxyAPIPlus/releases';
+  'https://api.github.com/repos/kaitranntt/CLIProxyAPIPlus/releases';
 
 /** GitHub repos per backend */
 export const GITHUB_REPOS = {
   original: 'router-for-me/CLIProxyAPI',
-  plus: 'router-for-me/CLIProxyAPIPlus',
+  plus: 'kaitranntt/CLIProxyAPIPlus',
 } as const;
 
 /** Get GitHub API URLs for specific backend */

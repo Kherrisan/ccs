@@ -148,10 +148,9 @@ export type CLIProxyProvider =
 
 /**
  * CLIProxy backend selection
- * - original: CLIProxyAPI (current default; upstream still maintained)
- * - plus: CLIProxyAPIPlus (expanded provider support; upstream deleted as of
- *   issue #1062 — runtime falls back to `original`. Retained for forward
- *   compatibility once CCS self-maintains its own Plus build.)
+ * - original: CLIProxyAPI (default; upstream maintained by router-for-me)
+ * - plus: CCS-maintained CLIProxyAPIPlus community fork for opt-in providers
+ *   that are not available in the original backend
  */
 export type CLIProxyBackend = 'original' | 'plus';
 

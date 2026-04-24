@@ -20,7 +20,7 @@ describe('Backend Selection', () => {
 
     it('has correct configuration for plus backend', () => {
       const config = platformDetector.BACKEND_CONFIG.plus;
-      assert.strictEqual(config.repo, 'router-for-me/CLIProxyAPIPlus');
+      assert.strictEqual(config.repo, 'kaitranntt/CLIProxyAPIPlus');
       assert.strictEqual(config.binaryPrefix, 'CLIProxyAPIPlus');
       assert.strictEqual(config.executable, 'cli-proxy-api-plus');
       assert(config.fallbackVersion.match(/^\d+\.\d+\.\d+-\d+$/), 'plus version has -0 suffix');
@@ -28,7 +28,7 @@ describe('Backend Selection', () => {
   });
 
   describe('DEFAULT_BACKEND', () => {
-    it('defaults to original backend (Plus upstream deleted, issue #1062)', () => {
+    it('defaults to original backend', () => {
       assert.strictEqual(platformDetector.DEFAULT_BACKEND, 'original');
     });
   });
@@ -45,7 +45,7 @@ describe('Backend Selection', () => {
       assert(info.binaryName.startsWith('CLIProxyAPIPlus_6.6.51-0_'));
     });
 
-    it('uses original backend by default (Plus upstream deleted, issue #1062)', () => {
+    it('uses original backend by default', () => {
       const info = platformDetector.detectPlatform();
       assert(info.binaryName.startsWith('CLIProxyAPI_'));
       assert(!info.binaryName.includes('CLIProxyAPIPlus'));
@@ -77,7 +77,7 @@ describe('Backend Selection', () => {
       assert.strictEqual(name, expected);
     });
 
-    it('defaults to original backend (Plus upstream deleted, issue #1062)', () => {
+    it('defaults to original backend', () => {
       const name = platformDetector.getExecutableName();
       const expected = isWindows ? 'cli-proxy-api.exe' : 'cli-proxy-api';
       assert.strictEqual(name, expected);
@@ -93,10 +93,10 @@ describe('Backend Selection', () => {
 
     it('uses correct repo for plus backend', () => {
       const url = platformDetector.getDownloadUrl('6.6.51-0', 'plus');
-      assert(url.includes('router-for-me/CLIProxyAPIPlus/releases'));
+      assert(url.includes('kaitranntt/CLIProxyAPIPlus/releases'));
     });
 
-    it('defaults to original backend (Plus upstream deleted, issue #1062)', () => {
+    it('defaults to original backend', () => {
       const url = platformDetector.getDownloadUrl();
       assert(url.includes('router-for-me/CLIProxyAPI/releases'));
       assert(!url.includes('CLIProxyAPIPlus'));

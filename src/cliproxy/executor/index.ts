@@ -351,14 +351,14 @@ export async function execClaudeWithCLIProxy(
   }
 
   if (!useRemoteProxy) {
-    localBackend = getConfiguredBackend({ warnOnFallback: true });
+    localBackend = getConfiguredBackend({ notifyOnPlus: true });
 
     for (const p of allProviders) {
       if (localBackend === 'original' && PLUS_ONLY_PROVIDERS.includes(p as CLIProxyProvider)) {
         console.error('');
         console.error(fail(getPlusBackendUnavailableMessage(p)));
         console.error('');
-        throw new Error(`Provider ${p} is temporarily unavailable on local CLIProxy`);
+        throw new Error(`Provider ${p} requires local CLIProxy Plus backend`);
       }
     }
   }

@@ -22,20 +22,19 @@ export const BACKEND_CONFIG = {
     fallbackVersion: '6.8.2',
   },
   plus: {
-    repo: 'router-for-me/CLIProxyAPIPlus',
+    repo: 'kaitranntt/CLIProxyAPIPlus',
     binaryPrefix: 'CLIProxyAPIPlus',
     executable: 'cli-proxy-api-plus',
-    fallbackVersion: '6.8.2-0',
+    fallbackVersion: '6.9.36-0',
   },
 } as const;
 
 /**
  * Default backend
  *
- * Set to 'original' because upstream `router-for-me/CLIProxyAPIPlus` was
- * deleted (issue #1062). The original `router-for-me/CLIProxyAPI` repo is
- * still maintained. Users with existing `backend: plus` configs are migrated
- * at runtime via a 404 fallback in the installer (see binary/installer.ts).
+ * Keep 'original' as the stable default. The Plus backend is available as an
+ * opt-in community-maintained fork for providers that are not available in the
+ * original upstream binary.
  */
 export const DEFAULT_BACKEND: CLIProxyBackend = 'original';
 

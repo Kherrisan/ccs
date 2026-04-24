@@ -79,8 +79,8 @@ export function validateProfileName(name: string): string | null {
 
 /**
  * Validate provider/backend compatibility
- * Returns error message if a provider requires Plus while local CLIProxy is
- * running with the fallbacked original backend.
+ * Returns an error message if a provider requires Plus while local CLIProxy is
+ * configured for the default original backend.
  */
 export function validateProviderBackend(provider: CLIProxyProfileName): string | null {
   // Normalize provider to lowercase for case-insensitive comparison

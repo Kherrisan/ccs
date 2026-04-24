@@ -81,6 +81,12 @@ cliproxy:
     }
   });
 
+  function setConfiguredBackend(backend: 'original' | 'plus'): void {
+    const configPath = path.join(tmpDir, 'config.yaml');
+    const current = fs.readFileSync(configPath, 'utf-8');
+    fs.writeFileSync(configPath, current.replace(/backend: (original|plus)/, `backend: ${backend}`));
+  }
+
   it('rejects provider change without model update', () => {
     const result = updateVariant('demo', { provider: 'codex' });
     expect(result.success).toBe(false);
@@ -96,13 +102,17 @@ cliproxy:
     expect(result.error).toContain('denylist');
   });
 
-  it('reports plus-only providers as temporarily unavailable on local CLIProxy', () => {
+  it('reports plus-only providers as requiring the optional plus backend', () => {
+    setConfiguredBackend('original');
+
     const error = validateProviderBackend('ghcp');
-    expect(error).toContain('currently supports only `backend: original`');
-    expect(error).toContain('issues/1062');
+    expect(error).toContain('`backend: plus`');
+    expect(error).toContain('kaitranntt/CLIProxyAPIPlus');
   });
 
   it('leaves the settings file unchanged when a plus-only provider update is rejected', () => {
+    setConfiguredBackend('original');
+
     const settingsPath = path.join(tmpDir, 'gemini-demo.settings.json');
     const before = fs.readFileSync(settingsPath, 'utf-8');
 

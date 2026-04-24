@@ -19,7 +19,6 @@ import {
   clearPinnedVersion,
   isVersionPinned,
   resolveLocalBackend,
-  syncPlusFallbackStateIfNeeded,
 } from '../binary-manager';
 import { BACKEND_CONFIG, DEFAULT_BACKEND } from '../platform-detector';
 import { CLIProxyBackend } from '../types';
@@ -58,8 +57,7 @@ export interface LatestVersionResult {
 export function getBinaryStatus(backend?: CLIProxyBackend): BinaryStatusResult {
   const configuredBackend =
     backend ?? loadOrCreateUnifiedConfig().cliproxy?.backend ?? DEFAULT_BACKEND;
-  syncPlusFallbackStateIfNeeded(configuredBackend);
-  const effectiveBackend = resolveLocalBackend(configuredBackend, { warnOnFallback: true });
+  const effectiveBackend = resolveLocalBackend(configuredBackend, { notifyOnPlus: true });
   const backendConfig = BACKEND_CONFIG[effectiveBackend];
   return {
     installed: isCLIProxyInstalled(effectiveBackend),
@@ -77,8 +75,7 @@ export function getBinaryStatus(backend?: CLIProxyBackend): BinaryStatusResult {
 export async function checkLatestVersion(backend?: CLIProxyBackend): Promise<LatestVersionResult> {
   const configuredBackend =
     backend ?? loadOrCreateUnifiedConfig().cliproxy?.backend ?? DEFAULT_BACKEND;
-  syncPlusFallbackStateIfNeeded(configuredBackend);
-  const effectiveBackend = resolveLocalBackend(configuredBackend, { warnOnFallback: true });
+  const effectiveBackend = resolveLocalBackend(configuredBackend, { notifyOnPlus: true });
 
   try {
     // Use checkCliproxyUpdate which is backend-aware (uses correct GitHub repo)
@@ -127,8 +124,7 @@ export async function installVersion(
 
   const configuredBackend =
     backend ?? loadOrCreateUnifiedConfig().cliproxy?.backend ?? DEFAULT_BACKEND;
-  syncPlusFallbackStateIfNeeded(configuredBackend);
-  const effectiveBackend = resolveLocalBackend(configuredBackend, { warnOnFallback: true });
+  const effectiveBackend = resolveLocalBackend(configuredBackend, { notifyOnPlus: true });
 
   try {
     await installCliproxyVersion(version, verbose, effectiveBackend);
@@ -157,8 +153,7 @@ export async function installLatest(
 ): Promise<InstallResult> {
   const configuredBackend =
     backend ?? loadOrCreateUnifiedConfig().cliproxy?.backend ?? DEFAULT_BACKEND;
-  syncPlusFallbackStateIfNeeded(configuredBackend);
-  const effectiveBackend = resolveLocalBackend(configuredBackend, { warnOnFallback: true });
+  const effectiveBackend = resolveLocalBackend(configuredBackend, { notifyOnPlus: true });
 
   try {
     const latestVersion = await fetchLatestCliproxyVersion(effectiveBackend);
@@ -196,8 +191,7 @@ export async function installLatest(
 export function isPinned(backend?: CLIProxyBackend): boolean {
   const configuredBackend =
     backend ?? loadOrCreateUnifiedConfig().cliproxy?.backend ?? DEFAULT_BACKEND;
-  syncPlusFallbackStateIfNeeded(configuredBackend);
-  const effectiveBackend = resolveLocalBackend(configuredBackend, { warnOnFallback: true });
+  const effectiveBackend = resolveLocalBackend(configuredBackend, { notifyOnPlus: true });
   return isVersionPinned(effectiveBackend);
 }
 
@@ -207,8 +201,7 @@ export function isPinned(backend?: CLIProxyBackend): boolean {
 export function getPinned(backend?: CLIProxyBackend): string | null {
   const configuredBackend =
     backend ?? loadOrCreateUnifiedConfig().cliproxy?.backend ?? DEFAULT_BACKEND;
-  syncPlusFallbackStateIfNeeded(configuredBackend);
-  const effectiveBackend = resolveLocalBackend(configuredBackend, { warnOnFallback: true });
+  const effectiveBackend = resolveLocalBackend(configuredBackend, { notifyOnPlus: true });
   return getPinnedVersion(effectiveBackend);
 }
 
@@ -218,7 +211,6 @@ export function getPinned(backend?: CLIProxyBackend): string | null {
 export function clearPin(backend?: CLIProxyBackend): void {
   const configuredBackend =
     backend ?? loadOrCreateUnifiedConfig().cliproxy?.backend ?? DEFAULT_BACKEND;
-  syncPlusFallbackStateIfNeeded(configuredBackend);
-  const effectiveBackend = resolveLocalBackend(configuredBackend, { warnOnFallback: true });
+  const effectiveBackend = resolveLocalBackend(configuredBackend, { notifyOnPlus: true });
   clearPinnedVersion(effectiveBackend);
 }
