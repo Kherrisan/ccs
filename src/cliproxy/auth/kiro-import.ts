@@ -29,7 +29,7 @@ export async function tryKiroImport(tokenDir: string, verbose = false): Promise<
 
   try {
     log('Ensuring CLIProxy binary is available...');
-    const binaryPath = await ensureCLIProxyBinary(verbose);
+    const binaryPath = await ensureCLIProxyBinary(verbose, { skipAutoUpdate: true });
     const configPath = generateConfig('kiro');
 
     log(`Binary: ${binaryPath}`);

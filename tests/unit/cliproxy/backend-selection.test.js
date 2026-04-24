@@ -20,7 +20,7 @@ describe('Backend Selection', () => {
 
     it('has correct configuration for plus backend', () => {
       const config = platformDetector.BACKEND_CONFIG.plus;
-      assert.strictEqual(config.repo, 'router-for-me/CLIProxyAPIPlus');
+      assert.strictEqual(config.repo, 'kaitranntt/CLIProxyAPIPlus');
       assert.strictEqual(config.binaryPrefix, 'CLIProxyAPIPlus');
       assert.strictEqual(config.executable, 'cli-proxy-api-plus');
       assert(config.fallbackVersion.match(/^\d+\.\d+\.\d+-\d+$/), 'plus version has -0 suffix');
@@ -28,8 +28,8 @@ describe('Backend Selection', () => {
   });
 
   describe('DEFAULT_BACKEND', () => {
-    it('defaults to plus backend for backward compatibility', () => {
-      assert.strictEqual(platformDetector.DEFAULT_BACKEND, 'plus');
+    it('defaults to original backend', () => {
+      assert.strictEqual(platformDetector.DEFAULT_BACKEND, 'original');
     });
   });
 
@@ -45,9 +45,10 @@ describe('Backend Selection', () => {
       assert(info.binaryName.startsWith('CLIProxyAPIPlus_6.6.51-0_'));
     });
 
-    it('uses plus backend by default', () => {
+    it('uses original backend by default', () => {
       const info = platformDetector.detectPlatform();
-      assert(info.binaryName.includes('CLIProxyAPIPlus'));
+      assert(info.binaryName.startsWith('CLIProxyAPI_'));
+      assert(!info.binaryName.includes('CLIProxyAPIPlus'));
     });
 
     it('uses fallback version when version not specified', () => {
@@ -76,9 +77,10 @@ describe('Backend Selection', () => {
       assert.strictEqual(name, expected);
     });
 
-    it('defaults to plus backend', () => {
+    it('defaults to original backend', () => {
       const name = platformDetector.getExecutableName();
-      assert(name.includes('cli-proxy-api-plus'));
+      const expected = isWindows ? 'cli-proxy-api.exe' : 'cli-proxy-api';
+      assert.strictEqual(name, expected);
     });
   });
 
@@ -91,12 +93,13 @@ describe('Backend Selection', () => {
 
     it('uses correct repo for plus backend', () => {
       const url = platformDetector.getDownloadUrl('6.6.51-0', 'plus');
-      assert(url.includes('router-for-me/CLIProxyAPIPlus/releases'));
+      assert(url.includes('kaitranntt/CLIProxyAPIPlus/releases'));
     });
 
-    it('defaults to plus backend', () => {
+    it('defaults to original backend', () => {
       const url = platformDetector.getDownloadUrl();
-      assert(url.includes('CLIProxyAPIPlus'));
+      assert(url.includes('router-for-me/CLIProxyAPI/releases'));
+      assert(!url.includes('CLIProxyAPIPlus'));
     });
   });
 
@@ -119,6 +122,13 @@ describe('Backend Selection', () => {
 
     it('includes ghcp as plus-only provider', () => {
       assert(types.PLUS_ONLY_PROVIDERS.includes('ghcp'));
+    });
+
+    it('includes the newer CLIProxyAPIPlus providers as plus-only', () => {
+      assert(types.PLUS_ONLY_PROVIDERS.includes('cursor'));
+      assert(types.PLUS_ONLY_PROVIDERS.includes('gitlab'));
+      assert(types.PLUS_ONLY_PROVIDERS.includes('codebuddy'));
+      assert(types.PLUS_ONLY_PROVIDERS.includes('kilo'));
     });
 
     it('does not include gemini as plus-only provider', () => {

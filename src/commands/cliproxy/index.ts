@@ -6,14 +6,13 @@
  */
 
 import { CLIProxyBackend } from '../../cliproxy/types';
-import { DEFAULT_BACKEND } from '../../cliproxy/platform-detector';
+import { getStoredConfiguredBackend } from '../../cliproxy/binary-manager';
 import {
   type QuotaSupportedProvider,
   QUOTA_PROVIDER_HELP_TEXT,
   mapExternalProviderName,
   isQuotaSupportedProvider,
 } from '../../cliproxy/provider-capabilities';
-import { loadOrCreateUnifiedConfig } from '../../config/unified-config-loader';
 import { handleSync } from '../cliproxy-sync-handler';
 import { extractOption, hasAnyFlag } from '../arg-extractor';
 
@@ -35,10 +34,12 @@ import {
 } from './proxy-lifecycle-subcommand';
 import { showStatus, handleInstallVersion, handleInstallLatest } from './install-subcommand';
 import { showHelp } from './help-subcommand';
+import { handleRoutingStatus, handleRoutingExplain, handleRoutingSet } from './routing-subcommand';
 import {
   handleCatalogStatus,
   handleCatalogRefresh,
   handleCatalogReset,
+  handleCatalogJson,
 } from './catalog-subcommand';
 
 /**
@@ -69,12 +70,10 @@ function parseBackendArg(args: string[]): {
 }
 
 /**
- * Get effective backend (CLI flag > config.yaml > default)
+ * Get selected backend input (CLI flag > config.yaml > default)
  */
 function getEffectiveBackend(cliBackend?: CLIProxyBackend): CLIProxyBackend {
-  if (cliBackend) return cliBackend;
-  const config = loadOrCreateUnifiedConfig();
-  return config.cliproxy?.backend ?? DEFAULT_BACKEND;
+  return cliBackend ?? getStoredConfiguredBackend();
 }
 
 /**
@@ -145,6 +144,12 @@ export async function handleCliproxyCommand(args: string[]): Promise<void> {
 
   // Catalog commands
   if (command === 'catalog') {
+    // --json takes priority over subcommands (refresh/reset) — it always
+    // outputs the current resolved catalog regardless of other arguments.
+    if (hasAnyFlag(remainingArgs, ['--json'])) {
+      handleCatalogJson();
+      return;
+    }
     const subcommand = remainingArgs[1];
     if (subcommand === 'refresh') {
       await handleCatalogRefresh(verbose);
@@ -171,6 +176,20 @@ export async function handleCliproxyCommand(args: string[]): Promise<void> {
       return;
     }
     await handleQuotaStatus(verbose, providerFilter);
+    return;
+  }
+
+  if (command === 'routing') {
+    const subcommand = remainingArgs[1];
+    if (subcommand === 'set') {
+      await handleRoutingSet(remainingArgs.slice(2));
+      return;
+    }
+    if (subcommand === 'explain') {
+      await handleRoutingExplain();
+      return;
+    }
+    await handleRoutingStatus();
     return;
   }
 

@@ -144,9 +144,10 @@ export function OverviewTab({ parsed }: { parsed: ParsedErrorLog }) {
 
 /** Headers tab content */
 export function HeadersTab({ headers }: { headers: Record<string, string> }) {
+  const { t } = useTranslation();
   const entries = Object.entries(headers);
   if (entries.length === 0) {
-    return <div className="p-4 text-xs text-muted-foreground">No headers available</div>;
+    return <div className="p-4 text-xs text-muted-foreground">{t('errorLogs.noHeaders')}</div>;
   }
 
   return (

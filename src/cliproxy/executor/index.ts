@@ -17,8 +17,12 @@ import * as path from 'path';
 import { ProgressIndicator } from '../../utils/progress-indicator';
 import { ok, fail, info, warn } from '../../utils/ui';
 import { getCcsDir } from '../../utils/config-manager';
-import { escapeShellArg } from '../../utils/shell-executor';
-import { ensureCLIProxyBinary } from '../binary-manager';
+import { escapeShellArg, getWindowsEscapedCommandShell } from '../../utils/shell-executor';
+import {
+  ensureCLIProxyBinary,
+  getConfiguredBackend,
+  getPlusBackendUnavailableMessage,
+} from '../binary-manager';
 import {
   generateConfig,
   getProviderConfig,
@@ -30,10 +34,16 @@ import {
 import { checkRemoteProxy } from '../remote-proxy-client';
 import { isAuthenticated } from '../auth-handler';
 import { CLIProxyProvider, CLIProxyBackend, PLUS_ONLY_PROVIDERS, ExecutorConfig } from '../types';
-import { DEFAULT_BACKEND } from '../platform-detector';
 import { configureProviderModel, getCurrentModel } from '../model-config';
+import { reconcileCodexModelForActivePlan } from '../codex-plan-compatibility';
 import { resolveProxyConfig, PROXY_CLI_FLAGS } from '../proxy-config-resolver';
-import { supportsModelConfig, isModelBroken, getModelIssueUrl, findModel } from '../model-catalog';
+import {
+  supportsModelConfig,
+  isModelBroken,
+  getModelIssueUrl,
+  findModel,
+  getSuggestedReplacementModel,
+} from '../model-catalog';
 import { CodexReasoningProxy } from '../codex-reasoning-proxy';
 import { ToolSanitizationProxy } from '../tool-sanitization-proxy';
 import {
@@ -44,20 +54,52 @@ import {
   renameAccount,
   getDefaultAccount,
 } from '../account-manager';
+import { formatAccountDisplayName } from '../accounts/email-account-identity';
 import {
-  ensureMcpWebSearch,
-  installWebSearchHook,
+  ensureWebSearchMcpOrThrow,
   displayWebSearchStatus,
+  appendThirdPartyWebSearchToolArgs,
+  createWebSearchTraceContext,
 } from '../../utils/websearch-manager';
-import { loadOrCreateUnifiedConfig, getThinkingConfig } from '../../config/unified-config-loader';
-import { installImageAnalyzerHook } from '../../utils/hooks';
+import {
+  ensureImageAnalysisMcpOrThrow,
+  syncImageAnalysisMcpToConfigDir,
+  appendThirdPartyImageAnalysisToolArgs,
+} from '../../utils/image-analysis';
+import {
+  appendBrowserToolArgs,
+  type BrowserLaunchOverride,
+  ensureBrowserMcpOrThrow,
+  getBlockedBrowserOverrideWarning,
+  getEffectiveClaudeBrowserAttachConfig,
+  resolveBrowserExposure,
+  resolveBrowserLaunchFlagResolution,
+  resolveOptionalBrowserAttachRuntime,
+  syncBrowserMcpToConfigDir,
+} from '../../utils/browser';
+import {
+  getBrowserConfig,
+  loadOrCreateUnifiedConfig,
+  getThinkingConfig,
+} from '../../config/unified-config-loader';
 import { HttpsTunnelProxy } from '../https-tunnel-proxy';
-import { isKiroAuthMethod, KiroAuthMethod, normalizeKiroAuthMethod } from '../auth/auth-types';
+import {
+  isKiroAuthMethod,
+  isKiroIDCFlow,
+  KiroAuthMethod,
+  KiroIDCFlow,
+  normalizeKiroAuthMethod,
+  normalizeKiroIDCFlow,
+} from '../auth/auth-types';
 import { resolveProfileContinuityInheritance } from '../../auth/profile-continuity-inheritance';
 
 // Import modular components
 import { waitForProxyReadyWithSpinner, spawnProxy } from './lifecycle-manager';
-import { buildClaudeEnvironment, logEnvironment } from './env-resolver';
+import {
+  buildClaudeEnvironment,
+  logEnvironment,
+  resolveCliproxyImageAnalysisEnv,
+} from './env-resolver';
 import {
   isNetworkError,
   handleNetworkError,
@@ -84,6 +126,7 @@ import {
   resolveRuntimeThinkingOverride,
   shouldDisableCodexReasoning,
 } from './thinking-override-resolver';
+import { shouldStartHttpsTunnel } from './https-tunnel-policy';
 
 /** Default executor configuration */
 const DEFAULT_CONFIG: ExecutorConfig = {
@@ -92,6 +135,42 @@ const DEFAULT_CONFIG: ExecutorConfig = {
   verbose: false,
   pollInterval: 100,
 };
+
+export function readOptionValue(
+  args: string[],
+  flag: string
+): { present: boolean; value?: string; missingValue: boolean } {
+  const inlinePrefix = `${flag}=`;
+  const inlineArg = args.find((arg) => arg.startsWith(inlinePrefix));
+  if (inlineArg !== undefined) {
+    const value = inlineArg.slice(inlinePrefix.length).trim();
+    return {
+      present: true,
+      value: value.length > 0 ? value : undefined,
+      missingValue: value.length === 0,
+    };
+  }
+
+  const index = args.indexOf(flag);
+  if (index === -1) {
+    return { present: false, missingValue: false };
+  }
+
+  const next = args[index + 1];
+  if (!next || next.startsWith('-')) {
+    return { present: true, missingValue: true };
+  }
+
+  return { present: true, value: next.trim(), missingValue: false };
+}
+
+export function hasGitLabTokenLoginFlag(args: string[]): boolean {
+  return args.includes('--gitlab-token-login') || args.includes('--token-login');
+}
+
+function getGitLabTokenLoginFlagName(args: string[]): '--gitlab-token-login' | '--token-login' {
+  return args.includes('--gitlab-token-login') ? '--gitlab-token-login' : '--token-login';
+}
 
 /**
  * Execute Claude CLI with CLIProxy (main entry point)
@@ -136,23 +215,8 @@ export async function execClaudeWithCLIProxy(
   // 0. Resolve proxy configuration (CLI > ENV > config.yaml > defaults)
   const unifiedConfig = loadOrCreateUnifiedConfig();
 
-  // 0a. Runtime backend/provider validation
-  const backend: CLIProxyBackend = unifiedConfig.cliproxy?.backend ?? DEFAULT_BACKEND;
-
   // Collect all providers to validate (default + composite tiers)
   const allProviders = [provider, ...compositeProviders];
-  for (const p of allProviders) {
-    if (backend === 'original' && PLUS_ONLY_PROVIDERS.includes(p as CLIProxyProvider)) {
-      console.error('');
-      console.error(fail(`${p} requires CLIProxyAPIPlus backend`));
-      console.error('');
-      console.error('To use this provider, either:');
-      console.error('  1. Set `cliproxy.backend: plus` in ~/.ccs/config.yaml');
-      console.error('  2. Use --backend=plus flag: ccs ' + p + ' --backend=plus');
-      console.error('');
-      throw new Error(`Provider ${p} requires Plus backend`);
-    }
-  }
 
   const cliproxyServerConfig = unifiedConfig.cliproxy_server;
   const { config: proxyConfig, remainingArgs: argsWithoutProxy } = resolveProxyConfig(args, {
@@ -163,6 +227,7 @@ export async function execClaudeWithCLIProxy(
           port: cliproxyServerConfig.remote.port,
           protocol: cliproxyServerConfig.remote.protocol,
           auth_token: cliproxyServerConfig.remote.auth_token,
+          management_key: cliproxyServerConfig.remote.management_key,
           timeout: cliproxyServerConfig.remote.timeout,
         }
       : undefined,
@@ -173,6 +238,33 @@ export async function execClaudeWithCLIProxy(
         }
       : undefined,
   });
+  let browserLaunchOverride: BrowserLaunchOverride | undefined;
+  let argsWithoutBrowserFlags = argsWithoutProxy;
+  try {
+    const browserLaunchFlags = resolveBrowserLaunchFlagResolution(argsWithoutProxy);
+    browserLaunchOverride = browserLaunchFlags.override;
+    argsWithoutBrowserFlags = browserLaunchFlags.argsWithoutFlags;
+  } catch (error) {
+    console.error(fail((error as Error).message));
+    process.exit(1);
+    return;
+  }
+  const browserConfig = getBrowserConfig();
+  const browserAttachConfig = getEffectiveClaudeBrowserAttachConfig(browserConfig);
+  const claudeBrowserExposure = resolveBrowserExposure(
+    {
+      enabled: browserAttachConfig.enabled,
+      policy: browserConfig.claude.policy,
+    },
+    browserLaunchOverride
+  );
+  const blockedBrowserOverrideWarning = getBlockedBrowserOverrideWarning(
+    'Claude Browser Attach',
+    claudeBrowserExposure
+  );
+  if (blockedBrowserOverrideWarning) {
+    console.error(warn(blockedBrowserOverrideWarning));
+  }
 
   // Port resolution and validation
   if (cfg.port && cfg.port !== CLIPROXY_DEFAULT_PORT) {
@@ -189,13 +281,21 @@ export async function execClaudeWithCLIProxy(
     log(`Remote host: ${proxyConfig.host}:${proxyConfig.port} (${proxyConfig.protocol})`);
   }
 
-  // Setup WebSearch hooks
-  ensureMcpWebSearch();
-  installWebSearchHook();
+  // Setup first-class CCS WebSearch runtime
+  ensureWebSearchMcpOrThrow();
+  const imageAnalysisMcpReady = ensureImageAnalysisMcpOrThrow();
+  const browserAttachRuntime =
+    browserAttachConfig.enabled && claudeBrowserExposure.exposeForLaunch
+      ? await resolveOptionalBrowserAttachRuntime(browserAttachConfig)
+      : undefined;
+  const browserRuntimeEnv = browserAttachRuntime?.runtimeEnv;
+  if (browserAttachRuntime?.warning) {
+    process.stderr.write(`${warn(browserAttachRuntime.warning)}\n`);
+  }
+  if (browserRuntimeEnv) {
+    ensureBrowserMcpOrThrow();
+  }
   displayWebSearchStatus();
-
-  // Sync image analyzer hook from npm package to ~/.ccs/hooks/
-  installImageAnalyzerHook();
 
   const providerConfig = getProviderConfig(provider);
   log(`Provider: ${providerConfig.displayName}`);
@@ -203,6 +303,7 @@ export async function execClaudeWithCLIProxy(
 
   // Check remote proxy if configured
   let useRemoteProxy = false;
+  let localBackend: CLIProxyBackend = 'original';
   if (proxyConfig.mode === 'remote' && proxyConfig.host) {
     const status = await checkRemoteProxy({
       host: proxyConfig.host,
@@ -250,6 +351,19 @@ export async function execClaudeWithCLIProxy(
     }
   }
 
+  if (!useRemoteProxy) {
+    localBackend = getConfiguredBackend({ notifyOnPlus: true });
+
+    for (const p of allProviders) {
+      if (localBackend === 'original' && PLUS_ONLY_PROVIDERS.includes(p as CLIProxyProvider)) {
+        console.error('');
+        console.error(fail(getPlusBackendUnavailableMessage(p)));
+        console.error('');
+        throw new Error(`Provider ${p} requires local CLIProxy Plus backend`);
+      }
+    }
+  }
+
   // Variables for local proxy mode
   let binaryPath: string | undefined;
   let sessionId: string | undefined;
@@ -260,7 +374,7 @@ export async function execClaudeWithCLIProxy(
     spinner.start();
 
     try {
-      binaryPath = await ensureCLIProxyBinary(verbose);
+      binaryPath = await ensureCLIProxyBinary(verbose, { skipAutoUpdate: true });
       spinner.succeed('CLIProxy binary ready');
     } catch (error) {
       spinner.fail('Failed to prepare CLIProxy');
@@ -292,6 +406,7 @@ export async function execClaudeWithCLIProxy(
   const addAccount = argsWithoutProxy.includes('--add');
   const showAccounts = argsWithoutProxy.includes('--accounts');
   const forceImport = argsWithoutProxy.includes('--import');
+  const gitlabTokenLogin = hasGitLabTokenLoginFlag(argsWithoutProxy);
   const acceptAgyRisk = hasAntigravityRiskAcceptanceFlag(argsWithoutProxy);
 
   const incognitoFlag = argsWithoutProxy.includes('--incognito');
@@ -324,27 +439,127 @@ export async function execClaudeWithCLIProxy(
 
   // Parse --kiro-auth-method flag
   let kiroAuthMethod: KiroAuthMethod | undefined;
-  const kiroMethodIdx = argsWithoutProxy.indexOf('--kiro-auth-method');
-  if (kiroMethodIdx !== -1) {
-    const rawMethod = argsWithoutProxy[kiroMethodIdx + 1];
-    if (!rawMethod || rawMethod.startsWith('-')) {
+  const kiroMethodValue = readOptionValue(argsWithoutProxy, '--kiro-auth-method');
+  if (kiroMethodValue.present) {
+    const rawMethod = kiroMethodValue.value;
+    if (kiroMethodValue.missingValue || !rawMethod) {
       console.error(fail('--kiro-auth-method requires a value'));
-      console.error('    Supported values: aws, aws-authcode, google, github');
+      console.error('    Supported values: aws, aws-authcode, google, github, idc');
       process.exitCode = 1;
       return;
     }
     const normalized = rawMethod.trim().toLowerCase();
     if (!isKiroAuthMethod(normalized)) {
       console.error(fail(`Invalid --kiro-auth-method value: ${rawMethod}`));
-      console.error('    Supported values: aws, aws-authcode, google, github');
+      console.error('    Supported values: aws, aws-authcode, google, github, idc');
       process.exitCode = 1;
       return;
     }
     kiroAuthMethod = normalizeKiroAuthMethod(normalized);
   }
 
+  let kiroIDCStartUrl: string | undefined;
+  const kiroIDCStartUrlValue = readOptionValue(argsWithoutProxy, '--kiro-idc-start-url');
+  if (kiroIDCStartUrlValue.present && kiroIDCStartUrlValue.value) {
+    kiroIDCStartUrl = kiroIDCStartUrlValue.value;
+  } else if (kiroIDCStartUrlValue.present) {
+    console.error(fail('--kiro-idc-start-url requires a value'));
+    process.exitCode = 1;
+    return;
+  }
+
+  let kiroIDCRegion: string | undefined;
+  const kiroIDCRegionValue = readOptionValue(argsWithoutProxy, '--kiro-idc-region');
+  if (kiroIDCRegionValue.present && kiroIDCRegionValue.value) {
+    kiroIDCRegion = kiroIDCRegionValue.value;
+  } else if (kiroIDCRegionValue.present) {
+    console.error(fail('--kiro-idc-region requires a value'));
+    process.exitCode = 1;
+    return;
+  }
+
+  let kiroIDCFlow: KiroIDCFlow | undefined;
+  const kiroIDCFlowValue = readOptionValue(argsWithoutProxy, '--kiro-idc-flow');
+  if (kiroIDCFlowValue.present) {
+    const rawFlow = kiroIDCFlowValue.value;
+    if (kiroIDCFlowValue.missingValue || !rawFlow) {
+      console.error(fail('--kiro-idc-flow requires a value'));
+      console.error('    Supported values: authcode, device');
+      process.exitCode = 1;
+      return;
+    }
+    const normalized = rawFlow.trim().toLowerCase();
+    if (!isKiroIDCFlow(normalized)) {
+      console.error(fail(`Invalid --kiro-idc-flow value: ${rawFlow}`));
+      console.error('    Supported values: authcode, device');
+      process.exitCode = 1;
+      return;
+    }
+    kiroIDCFlow = normalizeKiroIDCFlow(normalized);
+  }
+
+  let gitlabBaseUrl: string | undefined;
+  const gitlabBaseUrlValue = readOptionValue(argsWithoutProxy, '--gitlab-url');
+  if (gitlabBaseUrlValue.present && gitlabBaseUrlValue.value) {
+    gitlabBaseUrl = gitlabBaseUrlValue.value.trim();
+  } else if (gitlabBaseUrlValue.present) {
+    console.error(fail('--gitlab-url requires a value'));
+    process.exitCode = 1;
+    return;
+  }
+
   if (kiroAuthMethod && provider !== 'kiro' && !compositeProviders.includes('kiro')) {
     console.error(fail('--kiro-auth-method is only valid for ccs kiro'));
+    process.exitCode = 1;
+    return;
+  }
+
+  if (
+    (kiroIDCStartUrl || kiroIDCRegion || kiroIDCFlow) &&
+    provider !== 'kiro' &&
+    !compositeProviders.includes('kiro')
+  ) {
+    console.error(
+      fail(
+        '--kiro-idc-start-url, --kiro-idc-region, and --kiro-idc-flow are only valid for ccs kiro'
+      )
+    );
+    process.exitCode = 1;
+    return;
+  }
+
+  if (!kiroAuthMethod && (kiroIDCStartUrl || kiroIDCRegion || kiroIDCFlow)) {
+    kiroAuthMethod = 'idc';
+  }
+
+  if (kiroAuthMethod === 'idc' && !kiroIDCStartUrl) {
+    console.error(fail('Kiro IDC login requires --kiro-idc-start-url'));
+    console.error(
+      '    Example: ccs kiro --auth --kiro-auth-method idc --kiro-idc-start-url https://d-xxx.awsapps.com/start'
+    );
+    process.exitCode = 1;
+    return;
+  }
+
+  if (
+    kiroAuthMethod &&
+    kiroAuthMethod !== 'idc' &&
+    (kiroIDCStartUrl || kiroIDCRegion || kiroIDCFlow)
+  ) {
+    console.error(
+      fail(
+        '--kiro-idc-start-url, --kiro-idc-region, and --kiro-idc-flow require --kiro-auth-method idc'
+      )
+    );
+    process.exitCode = 1;
+    return;
+  }
+
+  if ((gitlabTokenLogin || gitlabBaseUrl) && provider !== 'gitlab') {
+    const flagName = gitlabTokenLogin
+      ? getGitLabTokenLoginFlagName(argsWithoutProxy)
+      : '--gitlab-url';
+    console.error(fail(`${flagName} is only valid for ccs gitlab`));
     process.exitCode = 1;
     return;
   }
@@ -360,7 +575,7 @@ export async function execClaudeWithCLIProxy(
       console.error('    Alias: --thinking xhigh (same behavior)');
     } else {
       console.error('    Examples: --thinking low, --thinking 8192, --thinking off');
-      console.error('    Levels: minimal, low, medium, high, xhigh, auto');
+      console.error('    Levels: minimal, low, medium, high, xhigh, max, auto');
     }
 
     process.exit(1);
@@ -415,9 +630,9 @@ export async function execClaudeWithCLIProxy(
       for (const acct of accounts) {
         const defaultMark = acct.isDefault ? ' (default)' : '';
         const nickname = acct.nickname ? `[${acct.nickname}]` : '';
-        console.log(`  ${nickname.padEnd(12)} ${acct.email || acct.id}${defaultMark}`);
+        console.log(`  ${nickname.padEnd(12)} ${formatAccountDisplayName(acct)}${defaultMark}`);
       }
-      console.log(`\n  Use "ccs ${provider} --use <nickname>" to switch accounts`);
+      console.log(`\n  Use "ccs ${provider} --use <nickname-or-id>" to switch accounts`);
     }
     process.exit(0);
   }
@@ -431,14 +646,19 @@ export async function execClaudeWithCLIProxy(
       if (accounts.length > 0) {
         console.error(`    Available accounts:`);
         for (const acct of accounts) {
-          console.error(`      - ${acct.nickname || acct.id} (${acct.email || 'no email'})`);
+          const displayName = formatAccountDisplayName(acct);
+          const label = acct.nickname ? `${acct.nickname} (${displayName})` : displayName;
+          console.error(`      - ${label}`);
         }
       }
       process.exit(1);
     }
     setDefaultAccount(provider, account.id);
     touchAccount(provider, account.id);
-    console.log(ok(`Switched to account: ${account.nickname || account.email || account.id}`));
+    const switchedLabel = account.nickname
+      ? `${account.nickname} (${formatAccountDisplayName(account)})`
+      : formatAccountDisplayName(account);
+    console.log(ok(`Switched to account: ${switchedLabel}`));
   }
 
   // Handle --nickname (rename account)
@@ -513,6 +733,9 @@ export async function execClaudeWithCLIProxy(
       verbose,
       import: true,
       ...(kiroAuthMethod ? { kiroMethod: kiroAuthMethod } : {}),
+      ...(kiroIDCStartUrl ? { kiroIDCStartUrl } : {}),
+      ...(kiroIDCRegion ? { kiroIDCRegion } : {}),
+      ...(kiroIDCFlow ? { kiroIDCFlow } : {}),
       ...(setNickname ? { nickname: setNickname } : {}),
     });
     if (!authSuccess) {
@@ -577,6 +800,11 @@ export async function execClaudeWithCLIProxy(
             add: addAccount,
             ...(acceptAgyRisk ? { acceptAgyRisk: true } : {}),
             ...(kiroAuthMethod && p === 'kiro' ? { kiroMethod: kiroAuthMethod } : {}),
+            ...(kiroIDCStartUrl && p === 'kiro' ? { kiroIDCStartUrl } : {}),
+            ...(kiroIDCRegion && p === 'kiro' ? { kiroIDCRegion } : {}),
+            ...(kiroIDCFlow && p === 'kiro' ? { kiroIDCFlow } : {}),
+            ...(gitlabTokenLogin && p === 'gitlab' ? { gitlabAuthMode: 'pat' as const } : {}),
+            ...(gitlabBaseUrl && p === 'gitlab' ? { gitlabBaseUrl } : {}),
             ...(forceHeadless ? { headless: true } : {}),
             ...(setNickname ? { nickname: setNickname } : {}),
             ...(noIncognito ? { noIncognito: true } : {}),
@@ -619,6 +847,11 @@ export async function execClaudeWithCLIProxy(
         add: addAccount,
         ...(acceptAgyRisk ? { acceptAgyRisk: true } : {}),
         ...(kiroAuthMethod ? { kiroMethod: kiroAuthMethod } : {}),
+        ...(kiroIDCStartUrl ? { kiroIDCStartUrl } : {}),
+        ...(kiroIDCRegion ? { kiroIDCRegion } : {}),
+        ...(kiroIDCFlow ? { kiroIDCFlow } : {}),
+        ...(gitlabTokenLogin ? { gitlabAuthMode: 'pat' as const } : {}),
+        ...(gitlabBaseUrl ? { gitlabBaseUrl } : {}),
         ...(forceHeadless ? { headless: true } : {}),
         ...(setNickname ? { nickname: setNickname } : {}),
         ...(noIncognito ? { noIncognito: true } : {}),
@@ -713,9 +946,14 @@ export async function execClaudeWithCLIProxy(
     if (currentModel && isModelBroken(provider, currentModel)) {
       const modelEntry = findModel(provider, currentModel);
       const issueUrl = getModelIssueUrl(provider, currentModel);
+      const replacementModel = getSuggestedReplacementModel(provider, currentModel);
       console.error('');
       console.error(warn(`${modelEntry?.name || currentModel} has known issues with Claude Code`));
-      console.error('    Tool calls will fail. Use "gemini-3-pro-preview" instead.');
+      if (replacementModel) {
+        console.error(`    Tool calls will fail. Use "${replacementModel}" instead.`);
+      } else {
+        console.error('    Tool calls will fail. Consider changing the model in config.yaml.');
+      }
       if (issueUrl) {
         console.error(`    Tracking: ${issueUrl}`);
       }
@@ -730,6 +968,13 @@ export async function execClaudeWithCLIProxy(
 
   // 6. Ensure user settings file exists
   ensureProviderSettings(provider);
+
+  if (provider === 'codex' && !cfg.isComposite && !skipLocalAuth) {
+    await reconcileCodexModelForActivePlan({
+      currentModel: getCurrentModel(provider, cfg.customSettingsPath),
+      verbose,
+    });
+  }
 
   // Local proxy mode: generate config, spawn/join proxy, track session
   let proxy: ChildProcess | null = null;
@@ -758,13 +1003,13 @@ export async function execClaudeWithCLIProxy(
         cfg.port,
         cfg.timeout,
         cfg.pollInterval,
-        backend,
+        localBackend,
         configPath
       );
 
       // Register session
       if (proxy.pid) {
-        sessionId = registerProxySession(cfg.port, proxy.pid, backend, verbose);
+        sessionId = registerProxySession(cfg.port, proxy.pid, localBackend, verbose);
       }
     }
   }
@@ -773,7 +1018,15 @@ export async function execClaudeWithCLIProxy(
   let httpsTunnel: HttpsTunnelProxy | null = null;
   let tunnelPort: number | null = null;
 
-  if (useRemoteProxy && proxyConfig.protocol === 'https' && proxyConfig.host) {
+  const useHttpsTunnel = shouldStartHttpsTunnel({
+    provider,
+    useRemoteProxy,
+    protocol: proxyConfig.protocol,
+    host: proxyConfig.host,
+    isComposite: cfg.isComposite,
+  });
+
+  if (useHttpsTunnel && proxyConfig.host) {
     try {
       httpsTunnel = new HttpsTunnelProxy({
         remoteHost: proxyConfig.host,
@@ -784,14 +1037,52 @@ export async function execClaudeWithCLIProxy(
       });
       tunnelPort = await httpsTunnel.start();
       log(
-        `HTTPS tunnel started on port ${tunnelPort} → https://${proxyConfig.host}:${proxyConfig.port}`
+        `HTTPS tunnel started on port ${tunnelPort} -> https://${proxyConfig.host}:${proxyConfig.port}`
       );
     } catch (error) {
       const err = error as Error;
       console.error(warn(`Failed to start HTTPS tunnel: ${err.message}`));
       throw new Error(`HTTPS tunnel startup failed: ${err.message}`);
     }
+  } else if (useRemoteProxy && proxyConfig.protocol === 'https' && provider === 'codex') {
+    log('HTTPS tunnel skipped for Codex; local proxy chain will connect to remote HTTPS directly');
   }
+
+  const imageAnalysisProxyTarget =
+    useRemoteProxy && proxyConfig.host
+      ? {
+          host: proxyConfig.host,
+          port: proxyConfig.port,
+          protocol: proxyConfig.protocol,
+          authToken: proxyConfig.authToken,
+          managementKey: proxyConfig.managementKey,
+          allowSelfSigned: proxyConfig.allowSelfSigned,
+          isRemote: true as const,
+        }
+      : {
+          host: '127.0.0.1',
+          port: cfg.port,
+          protocol: 'http' as const,
+          isRemote: false as const,
+        };
+  const imageAnalysisResolution = await resolveCliproxyImageAnalysisEnv({
+    profileName: cfg.profileName || provider,
+    provider,
+    profileSettingsPath: cfg.customSettingsPath,
+    isComposite: cfg.isComposite,
+    proxyTarget: imageAnalysisProxyTarget,
+    tunnelPort,
+    proxyReachable: true,
+  });
+  const imageAnalysisProvisioningFailed =
+    !imageAnalysisMcpReady && imageAnalysisResolution.env.CCS_IMAGE_ANALYSIS_ENABLED === '1';
+  const imageAnalysisEnv = {
+    ...imageAnalysisResolution.env,
+    CCS_IMAGE_ANALYSIS_SKIP_HOOK: imageAnalysisMcpReady ? '1' : '0',
+  };
+  const imageAnalysisWarning = imageAnalysisProvisioningFailed
+    ? 'ImageAnalysis MCP provisioning failed. This session will use compatibility fallback when available.'
+    : imageAnalysisResolution.warning;
 
   // 9. Setup tool sanitization proxy
   let toolSanitizationProxy: ToolSanitizationProxy | null = null;
@@ -810,6 +1101,17 @@ export async function execClaudeWithCLIProxy(
         `Continuity inheritance active: profile "${cfg.profileName}" -> account "${continuityInheritance.sourceAccount}"`
       );
     }
+  }
+
+  syncImageAnalysisMcpToConfigDir(inheritedClaudeConfigDir);
+  if (
+    browserRuntimeEnv &&
+    inheritedClaudeConfigDir &&
+    !syncBrowserMcpToConfigDir(inheritedClaudeConfigDir)
+  ) {
+    throw new Error(
+      'Browser MCP is enabled, but CCS could not sync the browser MCP config into the inherited Claude instance.'
+    );
   }
 
   // Build initial env vars to get ANTHROPIC_BASE_URL
@@ -835,6 +1137,7 @@ export async function execClaudeWithCLIProxy(
     compositeTiers: cfg.compositeTiers,
     compositeDefaultTier: cfg.compositeDefaultTier,
     claudeConfigDir: inheritedClaudeConfigDir,
+    imageAnalysisEnv,
   });
 
   if (initialEnvVars.ANTHROPIC_BASE_URL) {
@@ -843,6 +1146,7 @@ export async function execClaudeWithCLIProxy(
         upstreamBaseUrl: initialEnvVars.ANTHROPIC_BASE_URL,
         verbose,
         warnOnSanitize: true,
+        allowSelfSigned: useRemoteProxy ? (proxyConfig.allowSelfSigned ?? false) : false,
       });
       toolSanitizationPort = await toolSanitizationProxy.start();
       log(`Tool sanitization proxy active on port ${toolSanitizationPort}`);
@@ -881,6 +1185,7 @@ export async function execClaudeWithCLIProxy(
           defaultEffort: 'medium',
           disableEffort: codexThinkingOff,
           traceFilePath: traceEnabled ? path.join(getCcsDir(), 'codex-reasoning-proxy.log') : '',
+          allowSelfSigned: useRemoteProxy ? (proxyConfig.allowSelfSigned ?? false) : false,
           modelMap: {
             defaultModel: initialEnvVars.ANTHROPIC_MODEL,
             opusModel: initialEnvVars.ANTHROPIC_DEFAULT_OPUS_MODEL,
@@ -931,6 +1236,8 @@ export async function execClaudeWithCLIProxy(
     compositeTiers: cfg.compositeTiers,
     compositeDefaultTier: cfg.compositeDefaultTier,
     claudeConfigDir: inheritedClaudeConfigDir,
+    imageAnalysisEnv,
+    browserRuntimeEnv,
   });
 
   if (cfg.isComposite && cfg.compositeTiers && cfg.compositeDefaultTier) {
@@ -946,7 +1253,18 @@ export async function execClaudeWithCLIProxy(
   }
 
   const webSearchEnv = getWebSearchHookEnv();
+  if (process.env.CCS_DEBUG) {
+    console.error(
+      `[cliproxy-browser-debug] keys=${Object.keys(env)
+        .filter((key) => key.startsWith('CCS_BROWSER_'))
+        .sort()
+        .join(',')} ws=${env.CCS_BROWSER_DEVTOOLS_WS_URL || ''}`
+    );
+  }
   logEnvironment(env, webSearchEnv, verbose);
+  if (imageAnalysisWarning) {
+    console.error(info(imageAnalysisWarning));
+  }
 
   // 11b. Print thinking status feedback (TTY only, non-piped sessions)
   if (process.stderr.isTTY) {
@@ -973,6 +1291,9 @@ export async function execClaudeWithCLIProxy(
     '--use',
     '--nickname',
     '--kiro-auth-method',
+    '--kiro-idc-start-url',
+    '--kiro-idc-region',
+    '--kiro-idc-flow',
     '--thinking',
     '--effort',
     '--1m',
@@ -985,17 +1306,24 @@ export async function execClaudeWithCLIProxy(
     '--settings',
     ...PROXY_CLI_FLAGS,
   ];
-  const claudeArgs = argsWithoutProxy.filter((arg, idx) => {
+  const claudeArgs = argsWithoutBrowserFlags.filter((arg, idx) => {
     if (ccsFlags.includes(arg)) return false;
+    if (arg.startsWith('--kiro-auth-method=')) return false;
+    if (arg.startsWith('--kiro-idc-start-url=')) return false;
+    if (arg.startsWith('--kiro-idc-region=')) return false;
+    if (arg.startsWith('--kiro-idc-flow=')) return false;
     if (arg.startsWith('--thinking=')) return false;
     if (arg.startsWith('--effort=')) return false;
     if (arg.startsWith('--1m=') || arg.startsWith('--no-1m=')) return false;
     if (
-      argsWithoutProxy[idx - 1] === '--use' ||
-      argsWithoutProxy[idx - 1] === '--nickname' ||
-      argsWithoutProxy[idx - 1] === '--kiro-auth-method' ||
-      argsWithoutProxy[idx - 1] === '--thinking' ||
-      argsWithoutProxy[idx - 1] === '--effort'
+      argsWithoutBrowserFlags[idx - 1] === '--use' ||
+      argsWithoutBrowserFlags[idx - 1] === '--nickname' ||
+      argsWithoutBrowserFlags[idx - 1] === '--kiro-auth-method' ||
+      argsWithoutBrowserFlags[idx - 1] === '--kiro-idc-start-url' ||
+      argsWithoutBrowserFlags[idx - 1] === '--kiro-idc-region' ||
+      argsWithoutBrowserFlags[idx - 1] === '--kiro-idc-flow' ||
+      argsWithoutBrowserFlags[idx - 1] === '--thinking' ||
+      argsWithoutBrowserFlags[idx - 1] === '--effort'
     )
       return false;
     return true;
@@ -1009,21 +1337,39 @@ export async function execClaudeWithCLIProxy(
     : getProviderSettingsPath(provider);
 
   let claude: ChildProcess;
+  const imageAnalysisArgs = imageAnalysisMcpReady
+    ? appendThirdPartyImageAnalysisToolArgs(claudeArgs)
+    : claudeArgs;
+  const browserArgs = browserRuntimeEnv
+    ? appendBrowserToolArgs(imageAnalysisArgs)
+    : imageAnalysisArgs;
+  const launchArgs = [
+    '--settings',
+    settingsPath,
+    ...appendThirdPartyWebSearchToolArgs(browserArgs),
+  ];
+  const traceEnv = createWebSearchTraceContext({
+    launcher: 'cliproxy.executor',
+    args: launchArgs,
+    profile: cfg.profileName || provider,
+    profileType: 'cliproxy',
+    settingsPath,
+    claudeConfigDir: inheritedClaudeConfigDir,
+  });
+  const tracedEnv = { ...env, ...traceEnv };
   if (needsShell) {
-    const cmdString = [claudeCli, '--settings', settingsPath, ...claudeArgs]
-      .map(escapeShellArg)
-      .join(' ');
+    const cmdString = [claudeCli, ...launchArgs].map(escapeShellArg).join(' ');
     claude = spawn(cmdString, {
       stdio: 'inherit',
       windowsHide: true,
-      shell: true,
-      env,
+      shell: getWindowsEscapedCommandShell(),
+      env: tracedEnv,
     });
   } else {
-    claude = spawn(claudeCli, ['--settings', settingsPath, ...claudeArgs], {
+    claude = spawn(claudeCli, launchArgs, {
       stdio: 'inherit',
       windowsHide: true,
-      env,
+      env: tracedEnv,
     });
   }
 

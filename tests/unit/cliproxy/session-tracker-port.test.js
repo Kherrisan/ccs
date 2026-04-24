@@ -15,7 +15,10 @@ const testHome = path.join(
   os.tmpdir(),
   `ccs-test-session-port-${Date.now()}-${Math.random().toString(36).slice(2)}`
 );
+const originalCcsHome = process.env.CCS_HOME;
+const originalCcsDir = process.env.CCS_DIR;
 process.env.CCS_HOME = testHome;
+delete process.env.CCS_DIR;
 
 const {
   getExistingProxy,
@@ -28,6 +31,7 @@ const {
   deleteSessionLockForPort,
 } = require('../../../dist/cliproxy/session-tracker');
 const { CLIPROXY_DEFAULT_PORT } = require('../../../dist/cliproxy/config-generator');
+const { setGlobalConfigDir } = require('../../../dist/utils/config-manager');
 
 describe('Session Tracker Port-Specific', function () {
   const variantPort1 = 8318;
@@ -35,6 +39,11 @@ describe('Session Tracker Port-Specific', function () {
   let cliproxyDir;
 
   beforeEach(function () {
+    // Reassert test isolation because other files mutate CCS_DIR/CCS_HOME in the same Bun process.
+    process.env.CCS_HOME = testHome;
+    delete process.env.CCS_DIR;
+    setGlobalConfigDir(undefined);
+
     // Create test directories
     cliproxyDir = path.join(testHome, '.ccs', 'cliproxy');
     fs.mkdirSync(cliproxyDir, { recursive: true });
@@ -49,6 +58,8 @@ describe('Session Tracker Port-Specific', function () {
   });
 
   afterEach(function () {
+    setGlobalConfigDir(undefined);
+
     // Clean up session files
     try {
       const files = fs.readdirSync(cliproxyDir);
@@ -69,7 +80,11 @@ describe('Session Tracker Port-Specific', function () {
     } catch {
       // Ignore cleanup errors
     }
-    delete process.env.CCS_HOME;
+    if (originalCcsHome !== undefined) process.env.CCS_HOME = originalCcsHome;
+    else delete process.env.CCS_HOME;
+    if (originalCcsDir !== undefined) process.env.CCS_DIR = originalCcsDir;
+    else delete process.env.CCS_DIR;
+    setGlobalConfigDir(undefined);
   });
 
   describe('Session Lock Path', function () {

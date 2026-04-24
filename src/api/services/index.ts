@@ -14,8 +14,12 @@ export {
   type CliproxyVariantInfo,
   type ApiListResult,
   type CreateApiProfileResult,
+  type CreateCliproxyBridgeProfileResult,
   type RemoveApiProfileResult,
   type UpdateApiProfileTargetResult,
+  type CliproxyBridgeProviderInfo,
+  type CliproxyBridgeMetadata,
+  type ResolvedCliproxyBridgeProfile,
   type ProfileValidationIssue,
   type ProfileValidationSummary,
   type ApiProfileOrphanCandidate,
@@ -38,6 +42,14 @@ export {
 
 // Profile write operations
 export { createApiProfile, removeApiProfile, updateApiProfileTarget } from './profile-writer';
+export { createCliproxyBridgeProfile } from './profile-writer';
+export {
+  getDefaultCliproxyBridgeName,
+  listCliproxyBridgeProviders,
+  resolveCliproxyBridgeMetadata,
+  resolveCliproxyBridgeProfile,
+  suggestCliproxyBridgeName,
+} from './cliproxy-profile-bridge';
 
 // Lifecycle validation and operations
 export { validateApiProfileSettingsPayload } from './profile-lifecycle-validation';
@@ -52,6 +64,12 @@ export {
 // OpenRouter catalog and picker
 export { isOpenRouterUrl, fetchOpenRouterModels, type OpenRouterModel } from './openrouter-catalog';
 export { pickOpenRouterModel, type OpenRouterSelection } from './openrouter-picker';
+export {
+  getLocalRuntimeReadiness,
+  type LocalRuntimeId,
+  type LocalRuntimeReadiness,
+  type LocalRuntimeStatus,
+} from './local-runtime-readiness';
 
 // Provider presets for CLI
 export {

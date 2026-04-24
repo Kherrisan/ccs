@@ -17,6 +17,12 @@ import {
   type AccountTier,
 } from './account-manager';
 import { sanitizeEmail, isTokenExpired } from './auth-utils';
+import {
+  buildProviderEntitlementEvidence,
+  getProviderTierLabel,
+  normalizeProviderTierId,
+} from './provider-entitlement-evidence';
+import type { ProviderEntitlementEvidence } from './provider-entitlement-types';
 import { buildManagementHeaders, buildProxyUrl, getProxyTarget } from './proxy-target-resolver';
 
 /** Individual model quota info */
@@ -67,6 +73,8 @@ export interface QuotaResult {
   projectId?: string;
   /** Detected account tier based on model access */
   tier?: AccountTier;
+  /** Richer provider entitlement evidence derived from live/runtime signals */
+  entitlement?: ProviderEntitlementEvidence;
 }
 
 /** Google Cloud Code API endpoints */
@@ -175,6 +183,9 @@ interface ManagedResponse {
 interface ProjectLookupResult {
   projectId: string | null;
   tier?: AccountTier;
+  rawTierId?: string | null;
+  rawTierLabel?: string | null;
+  entitlement?: ProviderEntitlementEvidence;
   error?: string;
   errorCode?: string;
   errorDetail?: string;
@@ -209,7 +220,14 @@ function buildAntigravityFailure(
   bodyText?: string
 ): Pick<
   QuotaResult,
-  'error' | 'errorCode' | 'errorDetail' | 'actionHint' | 'retryable' | 'httpStatus' | 'needsReauth'
+  | 'error'
+  | 'errorCode'
+  | 'errorDetail'
+  | 'actionHint'
+  | 'retryable'
+  | 'httpStatus'
+  | 'needsReauth'
+  | 'entitlement'
 > & { isForbidden?: boolean } {
   const detail = normalizeErrorDetail(bodyText || '');
 
@@ -222,6 +240,13 @@ function buildAntigravityFailure(
         'Re-authenticate this account. If CLIProxy is running, retry after the proxy finishes refreshing the token.',
       needsReauth: true,
       errorDetail: detail,
+      entitlement: buildProviderEntitlementEvidence({
+        normalizedTier: 'unknown',
+        source: 'runtime_inference',
+        confidence: 'medium',
+        accessState: 'unknown',
+        capacityState: 'unknown',
+      }),
     };
   }
 
@@ -233,6 +258,13 @@ function buildAntigravityFailure(
       actionHint: 'This account does not have Gemini Code Assist quota access.',
       isForbidden: true,
       errorDetail: detail,
+      entitlement: buildProviderEntitlementEvidence({
+        normalizedTier: 'unknown',
+        source: 'runtime_inference',
+        confidence: 'medium',
+        accessState: 'not_entitled',
+        capacityState: 'unknown',
+      }),
     };
   }
 
@@ -244,6 +276,13 @@ function buildAntigravityFailure(
       actionHint: 'Retry later. This looks temporary.',
       retryable: true,
       errorDetail: detail,
+      entitlement: buildProviderEntitlementEvidence({
+        normalizedTier: 'unknown',
+        source: 'runtime_inference',
+        confidence: 'low',
+        accessState: 'unknown',
+        capacityState: 'rate_limited',
+      }),
     };
   }
 
@@ -255,6 +294,13 @@ function buildAntigravityFailure(
       actionHint: 'Retry later. This looks temporary.',
       retryable: true,
       errorDetail: detail,
+      entitlement: buildProviderEntitlementEvidence({
+        normalizedTier: 'unknown',
+        source: 'runtime_inference',
+        confidence: 'low',
+        accessState: 'unknown',
+        capacityState: 'temporarily_unavailable',
+      }),
     };
   }
 
@@ -266,6 +312,13 @@ function buildAntigravityFailure(
       actionHint: 'Retry later. The provider appears unavailable.',
       retryable: true,
       errorDetail: detail,
+      entitlement: buildProviderEntitlementEvidence({
+        normalizedTier: 'unknown',
+        source: 'runtime_inference',
+        confidence: 'low',
+        accessState: 'unknown',
+        capacityState: 'temporarily_unavailable',
+      }),
     };
   }
 
@@ -275,6 +328,13 @@ function buildAntigravityFailure(
       error: `API error: ${status}`,
       errorCode: 'quota_request_failed',
       errorDetail: detail,
+      entitlement: buildProviderEntitlementEvidence({
+        normalizedTier: 'unknown',
+        source: 'runtime_inference',
+        confidence: 'low',
+        accessState: 'unknown',
+        capacityState: 'unknown',
+      }),
     };
   }
 
@@ -282,7 +342,36 @@ function buildAntigravityFailure(
     error: 'Quota request failed',
     errorCode: 'quota_request_failed',
     errorDetail: detail,
+    entitlement: buildProviderEntitlementEvidence({
+      normalizedTier: 'unknown',
+      source: 'runtime_inference',
+      confidence: 'low',
+      accessState: 'unknown',
+      capacityState: 'unknown',
+    }),
   };
+}
+
+function mergeAntigravityTierEvidence(
+  entitlement: ProviderEntitlementEvidence | undefined,
+  tier: AccountTier,
+  rawTierId: string | null,
+  rawTierLabel: string | null
+): ProviderEntitlementEvidence | undefined {
+  if (tier === 'unknown' && !entitlement) {
+    return undefined;
+  }
+
+  return buildProviderEntitlementEvidence({
+    normalizedTier: tier,
+    rawTierId,
+    rawTierLabel,
+    source: rawTierId ? 'runtime_api' : (entitlement?.source ?? 'runtime_inference'),
+    confidence: rawTierId ? 'high' : (entitlement?.confidence ?? 'medium'),
+    accessState: entitlement?.accessState ?? 'unknown',
+    capacityState: entitlement?.capacityState ?? 'unknown',
+    notes: entitlement?.notes ?? null,
+  });
 }
 
 async function readManagedResponse(
@@ -518,21 +607,6 @@ function readAuthData(provider: CLIProxyProvider, accountId: string): AuthData |
  * API returns: "g1-ultra-tier", "g1-pro-tier", "standard-tier", etc.
  * Priority: ultra > pro > free
  */
-function mapTierString(tierStr: string | undefined): AccountTier {
-  if (!tierStr) return 'unknown';
-  const normalized = tierStr.toLowerCase();
-  // Match "g1-ultra-tier" or "ultra" anywhere in string
-  if (normalized.includes('ultra')) return 'ultra';
-  // Match "g1-pro-tier" or "pro" anywhere in string
-  if (normalized.includes('pro')) return 'pro';
-  // Match free/legacy tiers
-  if (normalized.includes('free') || normalized.includes('legacy')) {
-    return 'free';
-  }
-  // "standard-tier" and other unknown values = unknown
-  return 'unknown';
-}
-
 /**
  * Get project ID and tier via loadCodeAssist endpoint
  * Uses paidTier.id for accurate tier detection (g1-ultra-tier, g1-pro-tier)
@@ -568,6 +642,14 @@ async function getProjectId(accountId: string, accessToken: string): Promise<Pro
       error: 'Invalid quota response from provider',
       errorCode: 'provider_unavailable',
       retryable: true,
+      entitlement: buildProviderEntitlementEvidence({
+        normalizedTier: 'unknown',
+        source: 'runtime_inference',
+        confidence: 'low',
+        accessState: 'unknown',
+        capacityState: 'temporarily_unavailable',
+        notes: 'Provider returned a 2xx response with an empty or invalid project payload.',
+      }),
     };
   }
 
@@ -586,14 +668,27 @@ async function getProjectId(accountId: string, accessToken: string): Promise<Pro
       errorCode: 'account_unprovisioned',
       actionHint: 'Complete sign-in in the Antigravity app, then retry quota refresh.',
       isUnprovisioned: true,
+      entitlement: buildProviderEntitlementEvidence({
+        normalizedTier: 'unknown',
+        source: 'runtime_inference',
+        confidence: 'medium',
+        accessState: 'unknown',
+        capacityState: 'unknown',
+        notes: 'Project provisioning is incomplete for this account.',
+      }),
     };
   }
 
   // Extract tier - paidTier reflects actual subscription status, takes priority
-  const tierStr = data.paidTier?.id || data.currentTier?.id;
-  const tier = mapTierString(tierStr);
+  const rawTierId = (data.paidTier?.id || data.currentTier?.id || '').trim() || null;
+  const tier = normalizeProviderTierId(rawTierId);
 
-  return { projectId: projectId.trim(), tier };
+  return {
+    projectId: projectId.trim(),
+    tier,
+    rawTierId,
+    rawTierLabel: getProviderTierLabel(rawTierId),
+  };
 }
 
 /**
@@ -633,6 +728,14 @@ async function fetchAvailableModels(
       error: 'Invalid quota response from provider',
       errorCode: 'provider_unavailable',
       retryable: true,
+      entitlement: buildProviderEntitlementEvidence({
+        normalizedTier: 'unknown',
+        source: 'runtime_inference',
+        confidence: 'low',
+        accessState: 'unknown',
+        capacityState: 'temporarily_unavailable',
+        notes: 'Provider returned a 2xx response with an empty or invalid quota payload.',
+      }),
     };
   }
 
@@ -727,6 +830,8 @@ export async function fetchAccountQuota(
   // Get project ID and tier - prefer stored project ID, but always call API for tier
   let projectId = authData.projectId;
   let apiTier: AccountTier = 'unknown';
+  let rawTierId: string | null = null;
+  let rawTierLabel: string | null = null;
 
   // Always call loadCodeAssist to get accurate tier from API.
   // If the file token is stale, the helper retries through CLIProxy management auth.
@@ -747,6 +852,7 @@ export async function fetchAccountQuota(
       httpStatus: lastProjectResult.httpStatus,
       needsReauth: lastProjectResult.needsReauth,
       isUnprovisioned: lastProjectResult.isUnprovisioned,
+      entitlement: lastProjectResult.entitlement,
       isExpired: authData.isExpired,
       expiresAt: authData.expiresAt || undefined,
     };
@@ -755,6 +861,8 @@ export async function fetchAccountQuota(
   // Use API project ID if available, else fallback to stored
   projectId = lastProjectResult.projectId || projectId;
   apiTier = lastProjectResult.tier || 'unknown';
+  rawTierId = lastProjectResult.rawTierId || null;
+  rawTierLabel = lastProjectResult.rawTierLabel || null;
 
   if (verbose) console.error(`[i] Project ID: ${projectId || 'not found'}`);
 
@@ -769,12 +877,27 @@ export async function fetchAccountQuota(
   if (result.success) {
     const finalTier = apiTier !== 'unknown' ? apiTier : 'unknown';
     result.tier = finalTier;
+    result.entitlement = buildProviderEntitlementEvidence({
+      normalizedTier: finalTier,
+      rawTierId,
+      rawTierLabel,
+      source: rawTierId ? 'runtime_api' : 'runtime_inference',
+      confidence: rawTierId ? 'high' : 'medium',
+      accessState: 'entitled',
+      capacityState: 'available',
+    });
     if (finalTier !== 'unknown') {
       setAccountTier(provider, accountId, finalTier);
     }
   } else {
     result.isExpired = authData.isExpired;
     result.expiresAt = authData.expiresAt || undefined;
+    result.entitlement = mergeAntigravityTierEvidence(
+      result.entitlement,
+      apiTier,
+      rawTierId,
+      rawTierLabel
+    );
   }
 
   if (verbose && result.error) {
@@ -867,6 +990,10 @@ export async function fetchAllProviderQuotas(
 
   return results;
 }
+
+export const __testExports = {
+  buildAntigravityFailure,
+};
 
 /**
  * Find available account with remaining quota

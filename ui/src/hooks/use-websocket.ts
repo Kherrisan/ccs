@@ -7,6 +7,7 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 
 interface WSMessage {
   type: string;
@@ -17,6 +18,7 @@ interface WSMessage {
 type ConnectionStatus = 'connecting' | 'connected' | 'disconnected';
 
 export function useWebSocket() {
+  const { t } = useTranslation();
   const [status, setStatus] = useState<ConnectionStatus>('disconnected');
   const [isReconnecting, setIsReconnecting] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
@@ -36,17 +38,17 @@ export function useWebSocket() {
         case 'config-changed':
           queryClient.invalidateQueries({ queryKey: ['profiles'] });
           queryClient.invalidateQueries({ queryKey: ['cliproxy'] });
-          toast.info('Configuration updated externally');
+          toast.info(t('toasts.configUpdatedExternally'));
           break;
 
         case 'settings-changed':
           queryClient.invalidateQueries({ queryKey: ['profiles'] });
-          toast.info('Settings file updated');
+          toast.info(t('toasts.settingsFileUpdated'));
           break;
 
         case 'profiles-changed':
           queryClient.invalidateQueries({ queryKey: ['accounts'] });
-          toast.info('Accounts updated');
+          toast.info(t('toasts.accountsUpdated'));
           break;
 
         case 'proxy-status-changed':
@@ -61,7 +63,7 @@ export function useWebSocket() {
           console.log(`[WS] Unknown message: ${message.type}`);
       }
     },
-    [queryClient]
+    [queryClient, t]
   );
 
   const connect = useCallback(() => {
@@ -71,7 +73,7 @@ export function useWebSocket() {
 
     setStatus('connecting');
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const ws = new WebSocket(`${protocol}//${window.location.host}`);
+    const ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
     wsRef.current = ws;
 
     ws.onopen = () => {

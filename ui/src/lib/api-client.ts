@@ -4,9 +4,17 @@
  */
 
 import type { CLIProxyProvider } from './provider-config';
+import type {
+  AiProviderFamilyId,
+  ListAiProvidersResult,
+  UpsertAiProviderEntryInput,
+} from '../../../src/cliproxy/ai-providers';
+import type { ProviderEntitlementEvidence } from '../../../src/cliproxy/provider-entitlement-types';
+import type { BrowserRuntimeEnv } from '../../../src/utils/browser/chrome-reuse';
 
 export const API_BASE_URL = '/api';
 export const API_CONFLICT_ERROR_CODE = 'CONFLICT';
+export type { ProviderEntitlementEvidence };
 
 export class ApiConflictError extends Error {
   readonly code = API_CONFLICT_ERROR_CODE;
@@ -94,13 +102,233 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
 }
 
 // Types
-export type CliTarget = 'claude' | 'droid';
+export type CliTarget = 'claude' | 'droid' | 'codex';
+
+export interface CliproxyBridgeMetadata {
+  provider: CLIProxyProvider;
+  providerDisplayName: string;
+  routePath: string;
+  currentBaseUrl: string;
+  source: 'local' | 'remote';
+  usesCurrentTarget: boolean;
+  usesCurrentAuthToken: boolean;
+}
+
+export interface ImageAnalysisStatus {
+  enabled: boolean;
+  supported: boolean;
+  status: 'active' | 'mapped' | 'attention' | 'disabled' | 'skipped' | 'hook-missing';
+  backendId: string | null;
+  backendDisplayName: string | null;
+  model: string | null;
+  resolutionSource:
+    | 'cliproxy-provider'
+    | 'cliproxy-variant'
+    | 'cliproxy-composite'
+    | 'copilot-alias'
+    | 'cliproxy-bridge'
+    | 'profile-backend'
+    | 'fallback-backend'
+    | 'native-compatible'
+    | 'disabled'
+    | 'unsupported-profile'
+    | 'unresolved'
+    | 'missing-model';
+  reason: string | null;
+  shouldPersistHook: boolean;
+  persistencePath: string | null;
+  runtimePath: string | null;
+  usesCurrentTarget: boolean | null;
+  usesCurrentAuthToken: boolean | null;
+  hookInstalled: boolean | null;
+  sharedHookInstalled: boolean | null;
+  authReadiness: 'not-needed' | 'ready' | 'missing' | 'unknown';
+  authProvider: string | null;
+  authDisplayName: string | null;
+  authReason: string | null;
+  proxyReadiness: 'not-needed' | 'ready' | 'remote' | 'stopped' | 'unavailable' | 'unknown';
+  proxyReason: string | null;
+  effectiveRuntimeMode: 'cliproxy-image-analysis' | 'native-read';
+  effectiveRuntimeReason: string | null;
+  profileModel: string | null;
+  nativeReadPreference: boolean;
+  nativeImageCapable: boolean | null;
+  nativeImageReason: string | null;
+}
+
+export interface ImageAnalysisSettingsConfig {
+  enabled: boolean;
+  timeout: number;
+  providerModels: Record<string, string>;
+  fallbackBackend: string | null;
+  profileBackends: Record<string, string>;
+}
+
+export interface ImageAnalysisDashboardSummary {
+  state: 'ready' | 'partial' | 'needs_setup' | 'disabled';
+  title: string;
+  detail: string;
+  backendCount: number;
+  mappedProfileCount: number;
+  activeProfileCount: number;
+  bypassedProfileCount: number;
+  nativeProfileCount: number;
+}
+
+export interface ImageAnalysisDashboardBackend {
+  backendId: string;
+  displayName: string;
+  model: string;
+  state: 'ready' | 'starts_on_launch' | 'needs_auth' | 'needs_proxy' | 'review';
+  authReadiness: ImageAnalysisStatus['authReadiness'];
+  authReason: string | null;
+  proxyReadiness: ImageAnalysisStatus['proxyReadiness'];
+  proxyReason: string | null;
+  profilesUsing: number;
+}
+
+export interface ImageAnalysisDashboardProfile {
+  name: string;
+  kind: 'profile' | 'variant';
+  target: CliTarget;
+  configured: boolean;
+  settingsPath: string | null;
+  backendId: string | null;
+  backendDisplayName: string | null;
+  resolutionSource: ImageAnalysisStatus['resolutionSource'];
+  status: ImageAnalysisStatus['status'];
+  effectiveRuntimeMode: ImageAnalysisStatus['effectiveRuntimeMode'];
+  effectiveRuntimeReason: string | null;
+  currentTargetMode:
+    | 'active'
+    | 'bypassed'
+    | 'fallback'
+    | 'setup'
+    | 'disabled'
+    | 'native'
+    | 'unresolved';
+  profileModel: string | null;
+  nativeReadPreference: boolean;
+  nativeImageCapable: boolean | null;
+  nativeImageReason: string | null;
+}
+
+export interface ImageAnalysisDashboardCatalog {
+  knownBackends: string[];
+  profileNames: string[];
+}
+
+export interface ImageAnalysisDashboardData {
+  config: ImageAnalysisSettingsConfig;
+  summary: ImageAnalysisDashboardSummary;
+  backends: ImageAnalysisDashboardBackend[];
+  profiles: ImageAnalysisDashboardProfile[];
+  catalog: ImageAnalysisDashboardCatalog;
+}
+
+export interface UpdateImageAnalysisSettingsPayload {
+  enabled?: boolean;
+  timeout?: number;
+  providerModels?: Record<string, string | null>;
+  fallbackBackend?: string | null;
+  profileBackends?: Record<string, string>;
+}
+
+export type BrowserToolPolicy = 'auto' | 'manual';
+export type BrowserEvalMode = 'disabled' | 'readonly' | 'readwrite';
+
+export interface BrowserSettingsConfig {
+  claude: {
+    enabled: boolean;
+    policy: BrowserToolPolicy;
+    userDataDir: string;
+    devtoolsPort: number;
+    evalMode: BrowserEvalMode;
+  };
+  codex: {
+    enabled: boolean;
+    policy: BrowserToolPolicy;
+    evalMode: BrowserEvalMode;
+  };
+}
+
+export interface BrowserLaunchCommands {
+  darwin: string;
+  linux: string;
+  win32: string;
+}
+
+export interface ClaudeBrowserStatus {
+  enabled: boolean;
+  policy: BrowserToolPolicy;
+  source: 'config' | 'CCS_BROWSER_USER_DATA_DIR' | 'CCS_BROWSER_PROFILE_DIR';
+  overrideActive: boolean;
+  state: 'disabled' | 'path_missing' | 'browser_not_running' | 'endpoint_unreachable' | 'ready';
+  title: string;
+  detail: string;
+  nextStep: string;
+  effectiveUserDataDir: string;
+  recommendedUserDataDir: string;
+  devtoolsPort: number;
+  evalMode: BrowserEvalMode;
+  managedMcpServerName: string;
+  managedMcpServerPath: string;
+  launchCommands: BrowserLaunchCommands;
+  runtimeEnv?: BrowserRuntimeEnv;
+}
+
+export interface CodexBrowserStatus {
+  enabled: boolean;
+  policy: BrowserToolPolicy;
+  state: 'disabled' | 'enabled' | 'unsupported_build';
+  title: string;
+  detail: string;
+  nextStep: string;
+  serverName: string;
+  evalMode: BrowserEvalMode;
+  supportsConfigOverrides: boolean;
+  binaryPath: string | null;
+  version?: string;
+}
+
+export interface BrowserStatusPayload {
+  claude: ClaudeBrowserStatus;
+  codex: CodexBrowserStatus;
+}
+
+export interface BrowserDashboardPayload {
+  config: BrowserSettingsConfig;
+  status: BrowserStatusPayload;
+}
+
+export interface UpdateBrowserSettingsPayload {
+  claude?: Partial<BrowserSettingsConfig['claude']>;
+  codex?: Partial<BrowserSettingsConfig['codex']>;
+}
 
 export interface Profile {
   name: string;
   settingsPath: string;
   configured: boolean;
   target?: CliTarget;
+  cliproxyBridge?: CliproxyBridgeMetadata | null;
+}
+
+export type LocalRuntimeStatus = 'ready' | 'missing-model' | 'offline';
+
+export interface LocalRuntimeReadiness {
+  id: 'ollama' | 'llamacpp';
+  name: string;
+  endpoint: string;
+  status: LocalRuntimeStatus;
+  commandHint: string;
+  recommendedModel: string | null;
+  recommendedModelInstalled: boolean;
+  detectedModelCount: number;
+}
+
+export interface LocalRuntimeReadinessResponse {
+  runtimes: LocalRuntimeReadiness[];
 }
 
 export interface CreateProfile {
@@ -277,6 +505,20 @@ export interface AuthStatus {
   defaultAccount?: string;
 }
 
+export type RoutingStrategy = 'round-robin' | 'fill-first';
+
+export interface CliproxyRoutingState {
+  strategy: RoutingStrategy;
+  source: 'live' | 'config';
+  target: 'local' | 'remote';
+  reachable: boolean;
+  message?: string;
+}
+
+export interface CliproxyRoutingApplyResult extends CliproxyRoutingState {
+  applied: 'live' | 'live-and-config' | 'config-only';
+}
+
 /** Auth file info for Config tab */
 export interface AuthFile {
   name: string;
@@ -296,6 +538,67 @@ export interface CliproxyModelsResponse {
   models: CliproxyModel[];
   byCategory: Record<string, CliproxyModel[]>;
   totalCount: number;
+}
+
+export interface CliproxyCatalogPresetMapping {
+  default: string;
+  opus: string;
+  sonnet: string;
+  haiku: string;
+}
+
+export interface CliproxyCatalogModel {
+  id: string;
+  name: string;
+  tier?: 'free' | 'paid';
+  description?: string;
+  broken?: boolean;
+  issueUrl?: string;
+  deprecated?: boolean;
+  deprecationReason?: string;
+  extendedContext?: boolean;
+  presetMapping?: CliproxyCatalogPresetMapping;
+}
+
+export interface CliproxyModelRoutingHint {
+  modelId: string;
+  modelName: string;
+  prefix: string;
+  pinnedModelId: string;
+  recommendedModelId: string;
+  pinnedAvailable: boolean;
+  unprefixedStatus: 'safe' | 'shadowed' | 'prefix-only';
+  effectiveProvider: string | null;
+  effectiveDisplayName: string | null;
+  effectiveOwnedBy: string | null;
+  summary: string;
+}
+
+export interface CliproxyProviderRoutingHints {
+  provider: string;
+  displayName: string;
+  prefix: string;
+  safeCount: number;
+  shadowedCount: number;
+  prefixOnlyCount: number;
+  models: CliproxyModelRoutingHint[];
+}
+
+export interface CliproxyProviderCatalog {
+  provider: string;
+  displayName: string;
+  models: CliproxyCatalogModel[];
+  defaultModel: string;
+}
+
+export interface CliproxyCatalogResponse {
+  catalogs: Partial<Record<string, CliproxyProviderCatalog>>;
+  routing?: Partial<Record<string, CliproxyProviderRoutingHints>>;
+  source: 'live' | 'cache' | 'static';
+  cache: {
+    synced: boolean;
+    age: string | null;
+  };
 }
 
 /** Individual model quota info from Google Cloud Code API */
@@ -334,6 +637,8 @@ export interface QuotaResult {
   retryable?: boolean;
   /** True if token is expired and needs re-authentication */
   needsReauth?: boolean;
+  /** Richer provider entitlement evidence derived from live/runtime signals */
+  entitlement?: ProviderEntitlementEvidence;
 }
 
 /** Codex rate limit window */
@@ -378,8 +683,8 @@ export interface CodexQuotaResult {
   windows: CodexQuotaWindow[];
   /** Explicit core usage windows (5h + weekly) for easier reset display */
   coreUsage?: CodexCoreUsageSummary;
-  /** Plan type: free, plus, team, or null if unknown */
-  planType: 'free' | 'plus' | 'team' | null;
+  /** Plan type: free, plus, pro, team, or null if unknown */
+  planType: 'free' | 'plus' | 'pro' | 'team' | null;
   /** Timestamp of fetch */
   lastUpdated: number;
   /** Upstream HTTP status when available */
@@ -475,6 +780,8 @@ export interface GeminiCliBucket {
   remainingFraction: number;
   /** Remaining quota as percentage (0-100) */
   remainingPercent: number;
+  /** Remaining quota count when the upstream API provides it */
+  remainingAmount?: number | null;
   /** ISO timestamp when quota resets, null if unknown */
   resetTime: string | null;
   /** Model IDs in this bucket */
@@ -489,6 +796,14 @@ export interface GeminiCliQuotaResult {
   buckets: GeminiCliBucket[];
   /** GCP project ID for this account */
   projectId: string | null;
+  /** Human-readable Gemini tier label when available */
+  tierLabel?: string | null;
+  /** Stable Gemini tier identifier when available */
+  tierId?: string | null;
+  /** Available Google One AI credits when reported by the API */
+  creditBalance?: number | null;
+  /** Richer provider entitlement evidence derived from live/runtime signals */
+  entitlement?: ProviderEntitlementEvidence;
   /** Timestamp of fetch */
   lastUpdated: number;
   /** Upstream HTTP status when available */
@@ -589,11 +904,59 @@ export interface Account {
   displayName?: string;
 }
 
+export interface PlainCcsLane {
+  kind: 'native' | 'account-default' | 'account-inherited' | 'profile-default' | 'ambient';
+  label: string;
+  account_name?: string | null;
+  profile_name?: string | null;
+  project_count: number;
+}
+
 export interface UpdateAccountContext {
   context_mode: 'isolated' | 'shared';
   context_group?: string;
   continuity_mode?: 'standard' | 'deeper';
 }
+
+export type LogsLevel = 'debug' | 'info' | 'warn' | 'error';
+
+export interface LogsConfig {
+  enabled: boolean;
+  level: LogsLevel;
+  rotate_mb: number;
+  retain_days: number;
+  redact: boolean;
+  live_buffer_size: number;
+}
+
+export interface LogsSource {
+  source: string;
+  label: string;
+  kind: 'native' | 'legacy';
+  count: number;
+  lastTimestamp: string | null;
+}
+
+export interface LogsEntry {
+  id: string;
+  timestamp: string;
+  level: LogsLevel;
+  source: string;
+  event: string;
+  message: string;
+  processId: number | null;
+  runId: string | null;
+  context?: unknown;
+}
+
+export interface LogsEntriesParams {
+  source?: string;
+  level?: LogsLevel;
+  search?: string;
+  limit?: number;
+}
+
+export type UpdateLogsConfigPayload = Partial<LogsConfig>;
 
 // Unified config types
 export interface ConfigFormat {
@@ -757,6 +1120,8 @@ export interface CliproxyRestartResult {
 export const api = {
   profiles: {
     list: () => request<{ profiles: Profile[] }>('/profiles'),
+    getLocalRuntimeReadiness: () =>
+      request<LocalRuntimeReadinessResponse>('/profiles/local-runtime-readiness'),
     create: (data: CreateProfile) =>
       request('/profiles', {
         method: 'POST',
@@ -789,6 +1154,54 @@ export const api = {
         method: 'POST',
         body: JSON.stringify(data),
       }),
+  },
+  imageAnalysis: {
+    get: () => request<ImageAnalysisDashboardData>('/image-analysis'),
+    update: (data: UpdateImageAnalysisSettingsPayload) =>
+      request<ImageAnalysisDashboardData>('/image-analysis', {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      }),
+  },
+  browser: {
+    get: () => request<BrowserDashboardPayload>('/browser'),
+    getStatus: () => request<BrowserStatusPayload>('/browser/status'),
+    update: (data: UpdateBrowserSettingsPayload) =>
+      request<{ success: boolean; browser: BrowserDashboardPayload }>('/browser', {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      }),
+  },
+  logs: {
+    getConfig: () => request<{ logging: LogsConfig }>('/logs/config'),
+    updateConfig: (data: UpdateLogsConfigPayload) =>
+      request<{ success: boolean; logging: LogsConfig }>('/logs/config', {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      }),
+    getSources: () => request<{ sources: LogsSource[] }>('/logs/sources'),
+    getEntries: ({ source, level, search, limit }: LogsEntriesParams = {}) => {
+      const params = new URLSearchParams();
+
+      if (source) {
+        params.set('source', source);
+      }
+
+      if (level) {
+        params.set('level', level);
+      }
+
+      if (search) {
+        params.set('search', search);
+      }
+
+      if (typeof limit === 'number') {
+        params.set('limit', String(limit));
+      }
+
+      const query = params.toString();
+      return request<{ entries: LogsEntry[] }>(`/logs/entries${query ? `?${query}` : ''}`);
+    },
   },
   cliproxy: {
     list: () => request<{ variants: Variant[] }>('/cliproxy'),
@@ -825,12 +1238,42 @@ export const api = {
 
     // Stats and models for Overview tab
     stats: () => request<{ usage: Record<string, unknown> }>('/cliproxy/usage'),
+    catalog: () => request<CliproxyCatalogResponse>('/cliproxy/catalog'),
     models: () => request<CliproxyModelsResponse>('/cliproxy/models'),
     updateModel: (provider: string, model: string) =>
       request(`/cliproxy/models/${provider}`, {
         method: 'PUT',
         body: JSON.stringify({ model }),
       }),
+    getRoutingStrategy: () => request<CliproxyRoutingState>('/cliproxy/routing/strategy'),
+    updateRoutingStrategy: (strategy: RoutingStrategy) =>
+      request<CliproxyRoutingApplyResult>('/cliproxy/routing/strategy', {
+        method: 'PUT',
+        body: JSON.stringify({ value: strategy }),
+      }),
+    aiProviders: {
+      list: () => request<ListAiProvidersResult>('/cliproxy/ai-providers'),
+      create: (family: AiProviderFamilyId, data: UpsertAiProviderEntryInput) =>
+        request(`/cliproxy/ai-providers/${encodeURIComponent(family)}`, {
+          method: 'POST',
+          body: JSON.stringify(data),
+        }),
+      update: (family: AiProviderFamilyId, entryId: string, data: UpsertAiProviderEntryInput) =>
+        request(
+          `/cliproxy/ai-providers/${encodeURIComponent(family)}/${encodeURIComponent(entryId)}`,
+          {
+            method: 'PUT',
+            body: JSON.stringify(data),
+          }
+        ),
+      delete: (family: AiProviderFamilyId, entryId: string) =>
+        request(
+          `/cliproxy/ai-providers/${encodeURIComponent(family)}/${encodeURIComponent(entryId)}`,
+          {
+            method: 'DELETE',
+          }
+        ),
+    },
 
     // Config YAML for Config tab
     getConfigYaml: async (): Promise<string> => {
@@ -873,15 +1316,17 @@ export const api = {
           body: JSON.stringify({ accountId }),
         }),
       remove: (provider: string, accountId: string) =>
-        request(`/cliproxy/auth/accounts/${provider}/${accountId}`, { method: 'DELETE' }),
+        request(`/cliproxy/auth/accounts/${provider}/${encodeURIComponent(accountId)}`, {
+          method: 'DELETE',
+        }),
       pause: (provider: string, accountId: string) =>
         request<{ provider: string; accountId: string; paused: boolean }>(
-          `/cliproxy/auth/accounts/${provider}/${accountId}/pause`,
+          `/cliproxy/auth/accounts/${provider}/${encodeURIComponent(accountId)}/pause`,
           { method: 'POST' }
         ),
       resume: (provider: string, accountId: string) =>
         request<{ provider: string; accountId: string; paused: boolean }>(
-          `/cliproxy/auth/accounts/${provider}/${accountId}/resume`,
+          `/cliproxy/auth/accounts/${provider}/${encodeURIComponent(accountId)}/resume`,
           { method: 'POST' }
         ),
       /** Solo mode: activate one account, pause all others */
@@ -943,7 +1388,10 @@ export const api = {
     },
   },
   accounts: {
-    list: () => request<{ accounts: Account[]; default: string | null }>('/accounts'),
+    list: () =>
+      request<{ accounts: Account[]; default: string | null; plain_ccs_lane?: PlainCcsLane }>(
+        '/accounts'
+      ),
     setDefault: (name: string) =>
       request('/accounts/default', {
         method: 'POST',

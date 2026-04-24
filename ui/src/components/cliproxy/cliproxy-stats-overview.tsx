@@ -29,12 +29,14 @@ import { cn } from '@/lib/utils';
 import { useCliproxyStats, useCliproxyStatus } from '@/hooks/use-cliproxy-stats';
 import { useCliproxyUpdateCheck } from '@/hooks/use-cliproxy';
 import { usePrivacy, PRIVACY_BLUR_CLASS } from '@/contexts/privacy-context';
+import { useTranslation } from 'react-i18next';
 
 interface CliproxyStatsOverviewProps {
   className?: string;
 }
 
 export function CliproxyStatsOverview({ className }: CliproxyStatsOverviewProps) {
+  const { t } = useTranslation();
   const { privacyMode } = usePrivacy();
   const { data: status, isLoading: statusLoading } = useCliproxyStatus();
   const { data: stats, isLoading: statsLoading, error } = useCliproxyStats(status?.running);
@@ -71,15 +73,15 @@ export function CliproxyStatsOverview({ className }: CliproxyStatsOverviewProps)
           <div>
             <h2 className="text-lg font-semibold tracking-tight flex items-center gap-2">
               <Activity className="h-5 w-5" />
-              Session Statistics
+              {t('cliproxyStatsOverview.sessionStatistics')}
             </h2>
             <p className="text-sm text-muted-foreground">
-              Real-time usage metrics from {backendLabel}
+              {t('cliproxyStatsOverview.realTimeMetrics', { backend: backendLabel })}
             </p>
           </div>
           <Badge variant="secondary" className="w-fit gap-1.5">
             <ZapOff className="h-3.5 w-3.5" />
-            Offline
+            {t('cliproxyStatsOverview.offline')}
           </Badge>
         </div>
 
@@ -88,13 +90,9 @@ export function CliproxyStatsOverview({ className }: CliproxyStatsOverviewProps)
             <div className="p-4 rounded-full bg-muted/50 mb-4">
               <Server className="h-8 w-8 text-muted-foreground" />
             </div>
-            <h3 className="font-medium mb-1">No Active Session</h3>
+            <h3 className="font-medium mb-1">{t('cliproxyStatsOverview.noActiveSession')}</h3>
             <p className="text-sm text-muted-foreground max-w-md">
-              Start a CLIProxy session using{' '}
-              <code className="px-1.5 py-0.5 bg-muted rounded text-xs font-mono">ccs gemini</code>,{' '}
-              <code className="px-1.5 py-0.5 bg-muted rounded text-xs font-mono">ccs codex</code>,
-              or <code className="px-1.5 py-0.5 bg-muted rounded text-xs font-mono">ccs agy</code>{' '}
-              to view real-time statistics.
+              {t('cliproxyStatsOverview.noActiveSessionHint')}
             </p>
           </CardContent>
         </Card>
@@ -110,7 +108,7 @@ export function CliproxyStatsOverview({ className }: CliproxyStatsOverviewProps)
           <CardContent className="flex items-center gap-4 py-6">
             <XCircle className="h-8 w-8 text-destructive shrink-0" />
             <div>
-              <h3 className="font-medium">Failed to Load Statistics</h3>
+              <h3 className="font-medium">{t('cliproxyStatsOverview.failedLoadStats')}</h3>
               <p className="text-sm text-muted-foreground">{error.message}</p>
             </div>
           </CardContent>
@@ -147,10 +145,10 @@ export function CliproxyStatsOverview({ className }: CliproxyStatsOverviewProps)
         <div>
           <h2 className="text-lg font-semibold tracking-tight flex items-center gap-2">
             <Activity className="h-5 w-5" />
-            Session Statistics
+            {t('cliproxyStatsOverview.sessionStatistics')}
           </h2>
           <p className="text-sm text-muted-foreground">
-            Real-time usage metrics from {backendLabel}
+            {t('cliproxyStatsOverview.realTimeMetrics', { backend: backendLabel })}
           </p>
         </div>
         <Badge
@@ -158,7 +156,7 @@ export function CliproxyStatsOverview({ className }: CliproxyStatsOverviewProps)
           className="w-fit gap-1.5 text-green-600 border-green-200 bg-green-50 dark:bg-green-900/10 dark:border-green-800"
         >
           <Zap className="h-3.5 w-3.5" />
-          Running
+          {t('cliproxyStatsOverview.running')}
         </Badge>
       </div>
 
@@ -169,11 +167,15 @@ export function CliproxyStatsOverview({ className }: CliproxyStatsOverviewProps)
           <CardContent className="p-4">
             <div className="flex items-start justify-between">
               <div className="space-y-1">
-                <p className="text-xs font-medium text-muted-foreground">Total Requests</p>
+                <p className="text-xs font-medium text-muted-foreground">
+                  {t('cliproxyStatsOverview.totalRequests')}
+                </p>
                 <p className="text-2xl font-bold">{formatNumber(totalRequests)}</p>
                 <div className="flex items-center gap-1.5 text-[10px]">
                   <CheckCircle2 className="h-3 w-3 text-green-500" />
-                  <span className="text-muted-foreground">{successRequests} success</span>
+                  <span className="text-muted-foreground">
+                    {t('cliproxyStatsOverview.successCount', { count: successRequests })}
+                  </span>
                 </div>
               </div>
               <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/20">
@@ -188,7 +190,9 @@ export function CliproxyStatsOverview({ className }: CliproxyStatsOverviewProps)
           <CardContent className="p-4">
             <div className="flex items-start justify-between">
               <div className="space-y-1 flex-1">
-                <p className="text-xs font-medium text-muted-foreground">Success Rate</p>
+                <p className="text-xs font-medium text-muted-foreground">
+                  {t('cliproxyStatsOverview.successRate')}
+                </p>
                 <p className="text-2xl font-bold">{successRate}%</p>
                 <div className="h-1.5 mt-2 bg-muted/50 rounded-full overflow-hidden">
                   <div
@@ -223,7 +227,9 @@ export function CliproxyStatsOverview({ className }: CliproxyStatsOverviewProps)
           <CardContent className="p-4">
             <div className="flex items-start justify-between">
               <div className="space-y-1">
-                <p className="text-xs font-medium text-muted-foreground">Total Tokens</p>
+                <p className="text-xs font-medium text-muted-foreground">
+                  {t('cliproxyStatsOverview.totalTokens')}
+                </p>
                 <p className={cn('text-2xl font-bold', privacyMode && PRIVACY_BLUR_CLASS)}>
                   {formatNumber(totalTokens)}
                 </p>
@@ -233,7 +239,9 @@ export function CliproxyStatsOverview({ className }: CliproxyStatsOverviewProps)
                     privacyMode && PRIVACY_BLUR_CLASS
                   )}
                 >
-                  ~${estimateCost(totalTokens).toFixed(2)} estimated
+                  {t('cliproxyStatsOverview.estimatedCost', {
+                    cost: estimateCost(totalTokens).toFixed(2),
+                  })}
                 </p>
               </div>
               <div className="p-2 rounded-lg bg-purple-100 dark:bg-purple-900/20">
@@ -248,7 +256,9 @@ export function CliproxyStatsOverview({ className }: CliproxyStatsOverviewProps)
           <CardContent className="p-4">
             <div className="flex items-start justify-between">
               <div className="space-y-1">
-                <p className="text-xs font-medium text-muted-foreground">Models Used</p>
+                <p className="text-xs font-medium text-muted-foreground">
+                  {t('cliproxyStatsOverview.modelsUsed')}
+                </p>
                 <p className="text-2xl font-bold">{models.length}</p>
                 <p className="text-[10px] text-muted-foreground">
                   {models.length > 0 ? formatModelName(models[0][0]) : 'None'}
@@ -268,7 +278,7 @@ export function CliproxyStatsOverview({ className }: CliproxyStatsOverviewProps)
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium flex items-center gap-2">
               <Cpu className="h-4 w-4" />
-              Model Usage Distribution
+              {t('cliproxyStatsOverview.modelUsageDistribution')}
             </CardTitle>
           </CardHeader>
           <CardContent className="pt-0">
@@ -289,7 +299,7 @@ export function CliproxyStatsOverview({ className }: CliproxyStatsOverviewProps)
                         </span>
                       </div>
                       <div className="flex items-center gap-3 text-muted-foreground shrink-0">
-                        <span>{count} requests</span>
+                        <span>{t('cliproxyStatsOverview.requestCount', { count })}</span>
                         <span className="text-xs font-medium w-10 text-right">{percentage}%</span>
                       </div>
                     </div>

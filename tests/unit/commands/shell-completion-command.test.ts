@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
 import { describe, it, expect, beforeAll, beforeEach, afterEach, mock } from 'bun:test';
 
 type ShellTarget = 'bash' | 'zsh' | 'fish' | 'powershell' | null;
@@ -138,5 +141,16 @@ describe('shell-completion command', () => {
     expect(plainErrorLines.some((line) => line.includes('ccs --shell-completion --zsh'))).toBe(
       true
     );
+  });
+
+  it('fish completion strips a duplicated partial token before delegating to __complete', () => {
+    const fishScript = readFileSync(
+      join(import.meta.dir, '../../../scripts/completion/ccs.fish'),
+      'utf8'
+    );
+
+    expect(fishScript).toContain('set -l current (commandline -ct)');
+    expect(fishScript).toContain('test "$tokens_before_current[-1]" = "$current"');
+    expect(fishScript).toContain('set -e tokens_before_current[-1]');
   });
 });

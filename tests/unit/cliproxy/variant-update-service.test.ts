@@ -6,7 +6,10 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
-import { updateVariant } from '../../../src/cliproxy/services/variant-service';
+import {
+  updateVariant,
+  validateProviderBackend,
+} from '../../../src/cliproxy/services/variant-service';
 import { loadOrCreateUnifiedConfig } from '../../../src/config/unified-config-loader';
 
 describe('updateVariant - provider/model consistency', () => {
@@ -50,6 +53,7 @@ preferences:
   telemetry: false
   auto_update: true
 cliproxy:
+  backend: plus
   oauth_accounts: {}
   providers:
     - gemini
@@ -77,6 +81,12 @@ cliproxy:
     }
   });
 
+  function setConfiguredBackend(backend: 'original' | 'plus'): void {
+    const configPath = path.join(tmpDir, 'config.yaml');
+    const current = fs.readFileSync(configPath, 'utf-8');
+    fs.writeFileSync(configPath, current.replace(/backend: (original|plus)/, `backend: ${backend}`));
+  }
+
   it('rejects provider change without model update', () => {
     const result = updateVariant('demo', { provider: 'codex' });
     expect(result.success).toBe(false);
@@ -92,6 +102,29 @@ cliproxy:
     expect(result.error).toContain('denylist');
   });
 
+  it('reports plus-only providers as requiring the optional plus backend', () => {
+    setConfiguredBackend('original');
+
+    const error = validateProviderBackend('ghcp');
+    expect(error).toContain('`backend: plus`');
+    expect(error).toContain('kaitranntt/CLIProxyAPIPlus');
+  });
+
+  it('leaves the settings file unchanged when a plus-only provider update is rejected', () => {
+    setConfiguredBackend('original');
+
+    const settingsPath = path.join(tmpDir, 'gemini-demo.settings.json');
+    const before = fs.readFileSync(settingsPath, 'utf-8');
+
+    const result = updateVariant('demo', {
+      provider: 'ghcp',
+      model: 'gpt-5.4-mini',
+    });
+
+    expect(result.success).toBe(false);
+    expect(fs.readFileSync(settingsPath, 'utf-8')).toBe(before);
+  });
+
   it('updates provider and regenerates provider-specific core env in same settings file', () => {
     const result = updateVariant('demo', {
       provider: 'codex',
@@ -100,7 +133,7 @@ cliproxy:
 
     expect(result.success).toBe(true);
     expect(result.variant?.provider).toBe('codex');
-    expect(result.variant?.model).toBe('gpt-5.1-codex-mini');
+    expect(result.variant?.model).toBe('gpt-5.4-mini');
 
     const settingsPath = path.join(tmpDir, 'gemini-demo.settings.json');
     const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as {
@@ -109,10 +142,10 @@ cliproxy:
     };
 
     expect(settings.env.ANTHROPIC_BASE_URL).toContain('/api/provider/codex');
-    expect(settings.env.ANTHROPIC_MODEL).toBe('gpt-5.1-codex-mini');
-    expect(settings.env.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe('gpt-5.1-codex-mini');
-    expect(settings.env.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe('gpt-5.1-codex-mini');
-    expect(settings.env.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe('gpt-5.1-codex-mini');
+    expect(settings.env.ANTHROPIC_MODEL).toBe('gpt-5.4-mini');
+    expect(settings.env.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe('gpt-5.4-mini');
+    expect(settings.env.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe('gpt-5.4-mini');
+    expect(settings.env.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe('gpt-5.4-mini');
     expect(settings.env.CUSTOM_FLAG).toBe('keep-me');
     expect(settings.hooks.PreToolUse.length).toBe(1);
 
@@ -134,7 +167,7 @@ cliproxy:
     expect(settings.env.ANTHROPIC_MODEL).toBe('gpt-5.3-codex');
     expect(settings.env.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe('gpt-5.3-codex');
     expect(settings.env.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe('gpt-5.3-codex');
-    expect(settings.env.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe('gpt-5.1-codex-mini');
+    expect(settings.env.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe('gpt-5.4-mini');
 
     const modelOnly = updateVariant('demo', { model: 'gpt-5.3-codex' });
     expect(modelOnly.success).toBe(true);
@@ -145,6 +178,6 @@ cliproxy:
     expect(settings.env.ANTHROPIC_MODEL).toBe('gpt-5.3-codex');
     expect(settings.env.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe('gpt-5.3-codex');
     expect(settings.env.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe('gpt-5.3-codex');
-    expect(settings.env.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe('gpt-5.1-codex-mini');
+    expect(settings.env.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe('gpt-5.4-mini');
   });
 });

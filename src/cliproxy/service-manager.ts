@@ -216,7 +216,10 @@ export async function ensureCliproxyService(
     // 1. Ensure binary exists
     let binaryPath: string;
     try {
-      binaryPath = await ensureCLIProxyBinary(verbose);
+      binaryPath = await ensureCLIProxyBinary(verbose, {
+        allowInstall: false,
+        skipAutoUpdate: true,
+      });
       log(`Binary ready: ${binaryPath}`);
     } catch (error) {
       const err = error as Error;

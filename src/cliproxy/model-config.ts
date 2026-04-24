@@ -9,29 +9,21 @@ import * as fs from 'fs';
 import * as os from 'os';
 import { InteractivePrompt } from '../utils/prompt';
 import { getProviderCatalog, supportsModelConfig, ModelEntry } from './model-catalog';
-import { getProviderSettingsPath, getClaudeEnvVars } from './config-generator';
+import { getClaudeEnvVars, resolveProviderSettingsPath } from './config-generator';
 import { CLIProxyProvider } from './types';
 import { initUI, color, bold, dim, ok, info, header } from '../utils/ui';
 import { getCcsDir } from '../utils/config-manager';
 import { normalizeModelIdForProvider } from './model-id-normalizer';
 
-const CODEX_EFFORT_SUFFIX_REGEX = /-(xhigh|high|medium)$/i;
-
-function stripCodexEffortSuffix(model: string, provider: CLIProxyProvider): string {
-  if (provider !== 'codex') return model;
-  return model.replace(CODEX_EFFORT_SUFFIX_REGEX, '');
-}
-
 function canonicalizeModelForProvider(provider: CLIProxyProvider, model: string): string {
-  const withoutCodexSuffix = stripCodexEffortSuffix(model, provider);
-  return normalizeModelIdForProvider(withoutCodexSuffix, provider);
+  return normalizeModelIdForProvider(model, provider);
 }
 
 /**
  * Check if provider has user settings configured
  */
 export function hasUserSettings(provider: CLIProxyProvider): boolean {
-  const settingsPath = getProviderSettingsPath(provider);
+  const settingsPath = resolveProviderSettingsPath(provider);
   return fs.existsSync(settingsPath);
 }
 
@@ -46,7 +38,7 @@ export function getCurrentModel(
 ): string | undefined {
   const settingsPath = customSettingsPath
     ? customSettingsPath.replace(/^~/, os.homedir())
-    : getProviderSettingsPath(provider);
+    : resolveProviderSettingsPath(provider);
   if (!fs.existsSync(settingsPath)) return undefined;
 
   try {
@@ -116,7 +108,7 @@ export async function configureProviderModel(
   // Use custom settings path for CLIProxy variants, otherwise use default provider path
   const settingsPath = customSettingsPath
     ? customSettingsPath.replace(/^~/, os.homedir())
-    : getProviderSettingsPath(provider);
+    : resolveProviderSettingsPath(provider);
 
   // Skip if already configured with a model (unless --config flag).
   // A settings file can exist without model env keys (e.g., hook-only writes).
@@ -146,9 +138,7 @@ export async function configureProviderModel(
   console.error(header(`Configure ${catalog.displayName} Model`));
   console.error('');
   console.error(dim('    Select which model to use for this provider.'));
-  console.error(
-    dim('    Models marked [Paid Tier] require a paid Google account (not free tier).')
-  );
+  console.error(dim('    Models marked [Pro]/[Ultra] require a paid provider plan.'));
   console.error(dim('    Models marked [DEPRECATED] are not recommended for use.'));
   console.error('');
 
@@ -251,7 +241,7 @@ export async function showCurrentConfig(provider: CLIProxyProvider): Promise<voi
   await initUI();
 
   const currentModel = getCurrentModel(provider);
-  const settingsPath = getProviderSettingsPath(provider);
+  const settingsPath = resolveProviderSettingsPath(provider);
   const normalizedCurrentModel = currentModel
     ? canonicalizeModelForProvider(provider, currentModel)
     : undefined;
@@ -274,7 +264,7 @@ export async function showCurrentConfig(provider: CLIProxyProvider): Promise<voi
 
   console.error('');
   console.error(bold('Available models:'));
-  console.error(dim('  [Paid Tier] = Requires paid Google account (not free tier)'));
+  console.error(dim('  [Pro]/[Ultra] = Requires a paid provider plan'));
   console.error(dim('  [DEPRECATED] = Not recommended for use'));
   console.error('');
   catalog.models.forEach((m) => {

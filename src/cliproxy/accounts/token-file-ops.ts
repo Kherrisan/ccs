@@ -5,6 +5,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { getCliproxyDir, getAuthDir } from '../config-generator';
+import type { CLIProxyProvider } from '../types';
 import { AccountInfo } from './types';
 
 /**
@@ -12,6 +13,16 @@ import { AccountInfo } from './types';
  */
 export function getAccountsRegistryPath(): string {
   return path.join(getCliproxyDir(), 'accounts.json');
+}
+
+export interface RecoverableTokenFile {
+  tokenFile: string;
+  filePath: string;
+  paused: boolean;
+}
+
+interface ListRecoverableTokenFilesOptions {
+  includePaused?: boolean;
 }
 
 /**
@@ -25,6 +36,43 @@ export function getAccountsRegistryPath(): string {
  */
 export function getPausedDir(): string {
   return path.join(getCliproxyDir(), 'auth-paused');
+}
+
+/**
+ * List token files that can be used to rebuild the accounts registry.
+ * Active auth tokens win over paused duplicates with the same filename.
+ */
+export function listRecoverableTokenFiles(
+  options: ListRecoverableTokenFilesOptions = {}
+): RecoverableTokenFile[] {
+  const tokenFiles: RecoverableTokenFile[] = [];
+  const seen = new Set<string>();
+  const sources = [{ dir: getAuthDir(), paused: false }];
+
+  if (options.includePaused) {
+    sources.push({ dir: getPausedDir(), paused: true });
+  }
+
+  for (const source of sources) {
+    if (!fs.existsSync(source.dir)) {
+      continue;
+    }
+
+    for (const tokenFile of fs.readdirSync(source.dir)) {
+      if (!tokenFile.endsWith('.json') || seen.has(tokenFile)) {
+        continue;
+      }
+
+      tokenFiles.push({
+        tokenFile,
+        filePath: path.join(source.dir, tokenFile),
+        paused: source.paused,
+      });
+      seen.add(tokenFile);
+    }
+  }
+
+  return tokenFiles;
 }
 
 /**
@@ -92,16 +140,17 @@ export function moveTokenFromPaused(tokenFile: string): boolean {
  * Delete token file from both auth and paused directories
  * Idempotent
  */
-export function deleteTokenFile(tokenFile: string): void {
+export function deleteTokenFile(tokenFile: string): boolean {
   const tokenPath = path.join(getAuthDir(), tokenFile);
   const pausedPath = path.join(getPausedDir(), tokenFile);
+  let success = true;
 
   // Delete from auth directory
   if (fs.existsSync(tokenPath)) {
     try {
       fs.unlinkSync(tokenPath);
     } catch {
-      // Ignore deletion errors
+      success = false;
     }
   }
 
@@ -110,9 +159,11 @@ export function deleteTokenFile(tokenFile: string): void {
     try {
       fs.unlinkSync(pausedPath);
     } catch {
-      // Ignore deletion errors
+      success = false;
     }
   }
+
+  return success;
 }
 
 /**
@@ -141,6 +192,50 @@ export function extractAccountIdFromTokenFile(filename: string, email?: string):
   if (match) return match[1];
 
   return 'default';
+}
+
+/**
+ * Derive a collision-safe internal account ID for providers that may not expose email.
+ * Reuses the existing entry when the token file is already known, otherwise prefers the
+ * filename-derived ID before falling back to provider-scoped sequential IDs.
+ */
+export function deriveNoEmailProviderAccountId(
+  provider: CLIProxyProvider,
+  tokenFile: string,
+  existingAccounts: Record<string, Pick<AccountInfo, 'tokenFile' | 'nickname'>>
+): string {
+  const existingEntries = Object.entries(existingAccounts);
+  const existingEntry = existingEntries.find(([, account]) => account.tokenFile === tokenFile);
+  if (existingEntry) {
+    return existingEntry[0];
+  }
+
+  const extractedId = extractAccountIdFromTokenFile(tokenFile);
+  const lowerExtractedId = extractedId.toLowerCase();
+
+  if (
+    extractedId !== 'default' &&
+    !existingEntries.some(
+      ([existingId, account]) =>
+        existingId.toLowerCase() === lowerExtractedId ||
+        account.nickname?.toLowerCase() === lowerExtractedId
+    )
+  ) {
+    return extractedId;
+  }
+
+  let index = 1;
+  while (
+    existingEntries.some(
+      ([existingId, account]) =>
+        existingId.toLowerCase() === `${provider}-${index}` ||
+        account.nickname?.toLowerCase() === `${provider}-${index}`
+    )
+  ) {
+    index++;
+  }
+
+  return `${provider}-${index}`;
 }
 
 /**
@@ -179,4 +274,45 @@ export function validateNickname(nickname: string): string | null {
     return 'Nickname cannot match reserved pattern (kiro-N, ghcp-N)';
   }
   return null;
+}
+
+/**
+ * Check whether a nickname would collide with any existing account ID or nickname.
+ */
+export function hasAccountNameConflict(
+  accounts: Array<Pick<AccountInfo, 'id' | 'nickname'>>,
+  candidateName: string,
+  excludeAccountId?: string
+): boolean {
+  const normalizedCandidate = candidateName.toLowerCase();
+  const normalizedExcludedId = excludeAccountId?.toLowerCase();
+
+  return accounts.some((account) => {
+    if (normalizedExcludedId && account.id.toLowerCase() === normalizedExcludedId) {
+      return false;
+    }
+
+    return (
+      account.id.toLowerCase() === normalizedCandidate ||
+      account.nickname?.toLowerCase() === normalizedCandidate
+    );
+  });
+}
+
+/**
+ * Find the existing account that already owns the supplied id/nickname.
+ */
+export function findAccountNameMatch(
+  accounts: Array<Pick<AccountInfo, 'id' | 'nickname'>>,
+  candidateName: string
+): Pick<AccountInfo, 'id' | 'nickname'> | null {
+  const normalizedCandidate = candidateName.toLowerCase();
+
+  return (
+    accounts.find(
+      (account) =>
+        account.id.toLowerCase() === normalizedCandidate ||
+        account.nickname?.toLowerCase() === normalizedCandidate
+    ) || null
+  );
 }

@@ -246,13 +246,13 @@ export interface TieredModel {
 export function getTierLabel(tier: ModelTier): string {
   switch (tier) {
     case 'primary':
-      return 'Claude & GPT';
+      return i18n.t('utils.tierPrimary');
     case 'gemini-3':
-      return 'Gemini 3';
+      return i18n.t('utils.tierGemini3');
     case 'gemini-2':
-      return 'Gemini 2.5';
+      return i18n.t('utils.tierGemini2');
     case 'other':
-      return 'Other';
+      return i18n.t('utils.tierOther');
   }
 }
 
@@ -405,16 +405,16 @@ export function getCodexWindowDisplayLabel(
 
   switch (getCodexWindowKind(label)) {
     case 'usage-5h':
-      return '5h usage limit';
+      return i18n.t('quotaTooltip.fiveHourLimit');
     case 'usage-weekly':
-      return 'Weekly usage limit';
+      return i18n.t('quotaTooltip.weeklyLimit');
     case 'code-review-5h':
     case 'code-review-weekly':
     case 'code-review': {
       const inferred = inferCodeReviewCadence(currentWindow, context);
-      if (inferred === '5h') return 'Code review (5h)';
-      if (inferred === 'weekly') return 'Code review (weekly)';
-      return 'Code review';
+      if (inferred === '5h') return i18n.t('utils.codeReview5h');
+      if (inferred === 'weekly') return i18n.t('utils.codeReviewWeekly');
+      return i18n.t('utils.codeReview');
     }
     case 'unknown':
       return label;
@@ -771,6 +771,25 @@ export function getQuotaFailureInfo(
   const technicalDetail = buildQuotaTechnicalDetail(quota);
   const rawDetail = buildQuotaRawDetail(quota, summary, technicalDetail);
   const lowerSummary = summary.toLowerCase();
+  const entitlement = 'entitlement' in quota ? quota.entitlement : undefined;
+
+  if (
+    quota.errorCode === 'capacity_exhausted' ||
+    entitlement?.capacityState === 'capacity_exhausted' ||
+    lowerSummary.includes('no capacity available') ||
+    lowerSummary.includes('capacity exhausted')
+  ) {
+    return {
+      label: 'Capacity',
+      summary,
+      actionHint:
+        actionHint ||
+        'Retry later or switch to another model. This is a temporary provider capacity issue.',
+      technicalDetail,
+      rawDetail,
+      tone: 'warning',
+    };
+  }
 
   if (
     quota.needsReauth ||
@@ -808,6 +827,7 @@ export function getQuotaFailureInfo(
   }
 
   if (
+    entitlement?.accessState === 'not_entitled' ||
     quota.isForbidden ||
     quota.httpStatus === 403 ||
     errorCode === 'quota_api_forbidden' ||

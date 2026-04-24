@@ -5,6 +5,7 @@
 
 import type { ModelPreset } from './types';
 
+// TODO i18n: missing keys for preset descriptions ("Free tier - no premium usage", etc.)
 // Note: ALL Claude models require paid Copilot subscription
 export const FREE_PRESETS: ModelPreset[] = [
   {
@@ -23,16 +24,9 @@ export const FREE_PRESETS: ModelPreset[] = [
     sonnet: 'gpt-5-mini',
     haiku: 'gpt-5-mini',
   },
-  {
-    name: 'Raptor Mini (Free)',
-    description: 'Free tier - fine-tuned for coding',
-    default: 'raptor-mini',
-    opus: 'raptor-mini',
-    sonnet: 'raptor-mini',
-    haiku: 'raptor-mini',
-  },
 ];
 
+// TODO i18n: missing keys for paid preset descriptions
 export const PAID_PRESETS: ModelPreset[] = [
   {
     name: 'Claude Opus 4.5',

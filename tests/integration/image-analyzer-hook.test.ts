@@ -52,12 +52,19 @@ function invokeHook(env: Record<string, string> = {}): Promise<HookResult> {
     const child = spawn('node', [HOOK_PATH], {
       env: {
         ...process.env,
+        CCS_IMAGE_ANALYSIS_SKIP: '', // clear any inherited skip flag
+        CCS_IMAGE_ANALYSIS_SKIP_HOOK: '', // clear any inherited MCP-ready bypass
+        CCS_IMAGE_ANALYSIS_MODEL: '', // let each test control explicit model fallback behavior
+        CCS_IMAGE_ANALYSIS_BACKEND_ID: '',
+        CCS_IMAGE_ANALYSIS_RUNTIME_PATH: '',
+        CCS_IMAGE_ANALYSIS_RUNTIME_BASE_URL: '',
         CCS_CLIPROXY_API_KEY: CLIPROXY_API_KEY,
         CCS_CLIPROXY_PORT: String(mockPort),
         CCS_IMAGE_ANALYSIS_ENABLED: '1',
         CCS_PROFILE_TYPE: 'cliproxy',
         CCS_CURRENT_PROVIDER: 'codex',
-        CCS_IMAGE_ANALYSIS_PROVIDER_MODELS: 'codex:gpt-5.1-codex-mini,agy:gemini-2.5-flash',
+        CCS_IMAGE_ANALYSIS_PROVIDER_MODELS:
+          'codex:gpt-5.1-codex-mini,agy:gemini-3-1-flash-preview',
         ...env,
       },
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -194,7 +201,7 @@ describe('image analyzer hook regression coverage', () => {
   it('skips analysis before contacting CLIProxy when the current provider has no mapped vision model', async () => {
     const result = await invokeHook({
       CCS_CURRENT_PROVIDER: 'unknown-provider',
-      CCS_IMAGE_ANALYSIS_PROVIDER_MODELS: 'agy:gemini-2.5-flash',
+      CCS_IMAGE_ANALYSIS_PROVIDER_MODELS: 'agy:gemini-3-1-flash-preview',
     });
 
     expect(result.code).toBe(0);

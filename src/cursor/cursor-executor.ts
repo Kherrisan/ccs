@@ -6,10 +6,20 @@
 import type { IncomingHttpHeaders } from 'http';
 import { generateCursorBody, extractTextFromResponse } from './cursor-protobuf.js';
 import { buildCursorRequest } from './cursor-translator.js';
-import type { CursorTool, CursorApiCredentials } from './cursor-protobuf-schema.js';
+import {
+  isEndStreamConnectFrame,
+  type CursorTool,
+  type CursorApiCredentials,
+} from './cursor-protobuf-schema.js';
 import { buildCursorConnectHeaders, generateCursorChecksum } from './cursor-client-policy.js';
 
-import { StreamingFrameParser, decompressPayload } from './cursor-stream-parser.js';
+import {
+  CursorConnectFrameError,
+  type FrameResult,
+  StreamingFrameParser,
+  decompressPayload,
+  mapCursorConnectError,
+} from './cursor-stream-parser.js';
 
 /** Executor parameters */
 interface ExecutorParams {
@@ -41,6 +51,13 @@ interface Http2Response {
   body: Buffer;
 }
 
+interface CursorExecutorErrorPayload {
+  message: string;
+  status: number;
+  errorType: string;
+  code: string;
+}
+
 /** Lazy import http2 */
 let http2Module: typeof import('http2') | null = null;
 async function getHttp2() {
@@ -59,34 +76,63 @@ async function getHttp2() {
 /**
  * Create error response from JSON error
  */
-function createErrorResponse(jsonError: {
+function toCursorErrorPayloadFromJson(jsonError: {
   error?: {
     code?: string;
     message?: string;
     details?: Array<{ debug?: { details?: { title?: string; detail?: string }; error?: string } }>;
   };
-}): Response {
+}): CursorExecutorErrorPayload {
   const errorMsg =
     jsonError?.error?.details?.[0]?.debug?.details?.title ||
     jsonError?.error?.details?.[0]?.debug?.details?.detail ||
     jsonError?.error?.message ||
     'API Error';
 
-  const isRateLimit = jsonError?.error?.code === 'resource_exhausted';
+  const mappedError = mapCursorConnectError(jsonError?.error?.code);
 
-  return new Response(
-    JSON.stringify({
-      error: {
-        message: errorMsg,
-        type: isRateLimit ? 'rate_limit_error' : 'api_error',
-        code: jsonError?.error?.details?.[0]?.debug?.error || 'unknown',
-      },
-    }),
-    {
-      status: isRateLimit ? 429 : 400,
-      headers: { 'Content-Type': 'application/json' },
-    }
-  );
+  return {
+    message: errorMsg,
+    status: mappedError.status,
+    errorType: mappedError.errorType,
+    code: jsonError?.error?.details?.[0]?.debug?.error || 'unknown',
+  };
+}
+
+function buildCursorErrorEnvelope(error: CursorExecutorErrorPayload): string {
+  return JSON.stringify({
+    error: {
+      message: error.message,
+      type: error.errorType,
+      code: error.code,
+      status: error.status,
+    },
+  });
+}
+
+function createCursorErrorResponse(error: CursorExecutorErrorPayload): Response {
+  return new Response(buildCursorErrorEnvelope(error), {
+    status: error.status,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+function toCursorExecutorErrorPayload(error: unknown): CursorExecutorErrorPayload {
+  if (error instanceof CursorConnectFrameError) {
+    return {
+      message: error.message,
+      status: error.status,
+      errorType: error.errorType,
+      code: 'cursor_protocol_error',
+    };
+  }
+
+  return {
+    message: error instanceof Error ? error.message : 'Cursor streaming failed.',
+    status: 502,
+    errorType: 'server_error',
+    code: 'cursor_error',
+  };
 }
 
 export class CursorExecutor {
@@ -413,180 +459,243 @@ export class CursorExecutor {
             index: number;
           }
         >();
+        const pendingPackets: string[] = [];
         let chunkCount = 0;
         let toolCallCount = 0;
+        let streamResponseResolved = false;
+
+        const flushPendingPackets = () => {
+          if (!streamController || pendingPackets.length === 0 || streamClosed) return;
+          for (const packet of pendingPackets.splice(0)) {
+            streamController.enqueue(enc.encode(packet));
+          }
+        };
+
+        const queuePacket = (packet: string) => {
+          if (streamClosed) return;
+          if (streamController) {
+            streamController.enqueue(enc.encode(packet));
+            return;
+          }
+          pendingPackets.push(packet);
+        };
+
+        const emitSSE = (data: string) => {
+          queuePacket(`data: ${data}\n\n`);
+        };
+
+        const emitSSEEvent = (event: string, data: string) => {
+          queuePacket(`event: ${event}\ndata: ${data}\n\n`);
+        };
 
         const readable = new ReadableStream<Uint8Array>({
           start(controller) {
             streamController = controller;
-
-            const emitSSE = (data: string) => {
-              if (streamClosed) return;
-              controller.enqueue(enc.encode(`data: ${data}\n\n`));
-            };
-
-            const closeStream = () => {
-              if (streamClosed) return;
-              streamClosed = true;
-              try {
-                controller.close();
-              } catch {
-                /* already closed */
-              }
-              client.close();
-            };
-
-            const buildChunk = (delta: Record<string, unknown>, finishReason: string | null) =>
-              JSON.stringify({
-                id: responseId,
-                object: 'chat.completion.chunk',
-                created,
-                model,
-                choices: [{ index: 0, delta, finish_reason: finishReason }],
-              });
-
-            req.on('data', (chunk: Buffer) => {
-              if (streamClosed) return;
-              for (const frame of parser.push(chunk)) {
-                if (frame.type === 'error') {
-                  emitSSE(
-                    JSON.stringify({
-                      error: { message: frame.message, type: frame.errorType, code: '' },
-                    })
-                  );
-                  emitSSE('[DONE]');
-                  closeStream();
-                  return;
-                }
-
-                if (frame.type === 'toolCall') {
-                  const tc = frame.toolCall;
-
-                  // Emit role chunk on first content
-                  if (chunkCount === 0) {
-                    emitSSE(buildChunk({ role: 'assistant', content: '' }, null));
-                    chunkCount++;
-                  }
-
-                  if (toolCallsMap.has(tc.id)) {
-                    const existing = toolCallsMap.get(tc.id);
-                    if (!existing) continue;
-                    existing.function.arguments += tc.function.arguments;
-                    existing.isLast = tc.isLast;
-                    if (tc.function.arguments) {
-                      emitSSE(
-                        buildChunk(
-                          {
-                            tool_calls: [
-                              {
-                                index: existing.index,
-                                id: tc.id,
-                                type: 'function',
-                                function: {
-                                  name: tc.function.name,
-                                  arguments: tc.function.arguments,
-                                },
-                              },
-                            ],
-                          },
-                          null
-                        )
-                      );
-                      chunkCount++;
-                    }
-                  } else {
-                    const idx = toolCallCount++;
-                    toolCallsMap.set(tc.id, { ...tc, index: idx });
-                    emitSSE(
-                      buildChunk(
-                        {
-                          tool_calls: [
-                            {
-                              index: idx,
-                              id: tc.id,
-                              type: 'function',
-                              function: {
-                                name: tc.function.name,
-                                arguments: tc.function.arguments,
-                              },
-                            },
-                          ],
-                        },
-                        null
-                      )
-                    );
-                    chunkCount++;
-                  }
-                }
-
-                if (frame.type === 'text') {
-                  const delta =
-                    chunkCount === 0 && toolCallCount === 0
-                      ? { role: 'assistant', content: frame.text }
-                      : { content: frame.text };
-                  emitSSE(buildChunk(delta, null));
-                  chunkCount++;
-                }
-
-                if (frame.type === 'thinking') {
-                  const delta =
-                    chunkCount === 0 && toolCallCount === 0
-                      ? { role: 'assistant', reasoning_content: frame.text }
-                      : { reasoning_content: frame.text };
-                  emitSSE(buildChunk(delta, null));
-                  chunkCount++;
-                }
-              }
-            });
-
-            req.on('end', () => {
-              if (streamClosed) return;
-              if (chunkCount === 0 && toolCallCount === 0) {
-                emitSSE(buildChunk({ role: 'assistant', content: '' }, null));
-              }
-              emitSSE(
-                JSON.stringify({
-                  id: responseId,
-                  object: 'chat.completion.chunk',
-                  created,
-                  model,
-                  choices: [
-                    {
-                      index: 0,
-                      delta: {},
-                      finish_reason: toolCallCount > 0 ? 'tool_calls' : 'stop',
-                    },
-                  ],
-                  usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
-                })
-              );
-              emitSSE('[DONE]');
-              closeStream();
-            });
-
-            req.on('error', (err) => {
-              if (!streamClosed) {
-                try {
-                  controller.error(err);
-                } catch {
-                  /* already closed */
-                }
-              }
-              client.close();
-            });
+            flushPendingPackets();
           },
         });
 
-        resolveOnce(
-          new Response(readable, {
-            status: 200,
-            headers: {
-              'Content-Type': 'text/event-stream',
-              'Cache-Control': 'no-cache',
-              Connection: 'keep-alive',
-            },
-          })
-        );
+        const resolveStreamingResponse = () => {
+          if (streamResponseResolved || settled) return;
+          streamResponseResolved = true;
+          resolveOnce(
+            new Response(readable, {
+              status: 200,
+              headers: {
+                'Content-Type': 'text/event-stream',
+                'Cache-Control': 'no-cache',
+                Connection: 'keep-alive',
+              },
+            })
+          );
+          flushPendingPackets();
+        };
+
+        const closeStream = () => {
+          if (streamClosed) return;
+          streamClosed = true;
+          if (streamController) {
+            try {
+              streamController.close();
+            } catch {
+              /* already closed */
+            }
+          }
+          client.close();
+        };
+
+        const buildChunk = (delta: Record<string, unknown>, finishReason: string | null) =>
+          JSON.stringify({
+            id: responseId,
+            object: 'chat.completion.chunk',
+            created,
+            model,
+            choices: [{ index: 0, delta, finish_reason: finishReason }],
+          });
+
+        const handleFrameError = (frame: Extract<FrameResult, { type: 'error' }>) => {
+          const errorPayload = buildCursorErrorEnvelope({
+            message: frame.message,
+            status: frame.status,
+            errorType: frame.errorType,
+            code: frame.errorType === 'rate_limit_error' ? 'rate_limited' : 'cursor_error',
+          });
+
+          if (!streamResponseResolved && chunkCount === 0 && toolCallCount === 0) {
+            streamClosed = true;
+            req.close();
+            client.close();
+            resolveOnce(
+              new Response(errorPayload, {
+                status: frame.status,
+                headers: { 'Content-Type': 'application/json' },
+              })
+            );
+            return;
+          }
+
+          resolveStreamingResponse();
+          emitSSEEvent('error', errorPayload);
+          closeStream();
+        };
+
+        req.on('data', (chunk: Buffer) => {
+          if (streamClosed) return;
+          for (const frame of parser.push(chunk)) {
+            if (frame.type === 'error') {
+              handleFrameError(frame);
+              return;
+            }
+
+            resolveStreamingResponse();
+
+            if (frame.type === 'toolCall') {
+              const tc = frame.toolCall;
+
+              // Emit role chunk on first content
+              if (chunkCount === 0) {
+                emitSSE(buildChunk({ role: 'assistant', content: '' }, null));
+                chunkCount++;
+              }
+
+              if (toolCallsMap.has(tc.id)) {
+                const existing = toolCallsMap.get(tc.id);
+                if (!existing) continue;
+                existing.function.arguments += tc.function.arguments;
+                existing.isLast = tc.isLast;
+                if (tc.function.arguments) {
+                  emitSSE(
+                    buildChunk(
+                      {
+                        tool_calls: [
+                          {
+                            index: existing.index,
+                            id: tc.id,
+                            type: 'function',
+                            function: {
+                              name: tc.function.name,
+                              arguments: tc.function.arguments,
+                            },
+                          },
+                        ],
+                      },
+                      null
+                    )
+                  );
+                  chunkCount++;
+                }
+              } else {
+                const idx = toolCallCount++;
+                toolCallsMap.set(tc.id, { ...tc, index: idx });
+                emitSSE(
+                  buildChunk(
+                    {
+                      tool_calls: [
+                        {
+                          index: idx,
+                          id: tc.id,
+                          type: 'function',
+                          function: {
+                            name: tc.function.name,
+                            arguments: tc.function.arguments,
+                          },
+                        },
+                      ],
+                    },
+                    null
+                  )
+                );
+                chunkCount++;
+              }
+            }
+
+            if (frame.type === 'text') {
+              const delta =
+                chunkCount === 0 && toolCallCount === 0
+                  ? { role: 'assistant', content: frame.text }
+                  : { content: frame.text };
+              emitSSE(buildChunk(delta, null));
+              chunkCount++;
+            }
+
+            if (frame.type === 'thinking') {
+              const delta =
+                chunkCount === 0 && toolCallCount === 0
+                  ? { role: 'assistant', reasoning_content: frame.text }
+                  : { reasoning_content: frame.text };
+              emitSSE(buildChunk(delta, null));
+              chunkCount++;
+            }
+          }
+        });
+
+        req.on('end', () => {
+          if (streamClosed) return;
+          for (const frame of parser.finish()) {
+            if (frame.type === 'error') {
+              handleFrameError(frame);
+              return;
+            }
+          }
+          resolveStreamingResponse();
+          if (chunkCount === 0 && toolCallCount === 0) {
+            emitSSE(buildChunk({ role: 'assistant', content: '' }, null));
+          }
+          emitSSE(
+            JSON.stringify({
+              id: responseId,
+              object: 'chat.completion.chunk',
+              created,
+              model,
+              choices: [
+                {
+                  index: 0,
+                  delta: {},
+                  finish_reason: toolCallCount > 0 ? 'tool_calls' : 'stop',
+                },
+              ],
+              usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+            })
+          );
+          emitSSE('[DONE]');
+          closeStream();
+        });
+
+        req.on('error', (err) => {
+          client.close();
+          if (!streamResponseResolved) {
+            rejectOnce(err instanceof Error ? err : new Error(String(err)));
+            return;
+          }
+
+          if (!streamClosed) {
+            try {
+              streamController?.error(err);
+            } catch {
+              /* already closed */
+            }
+          }
+        });
       });
 
       req.on('error', (err) => {
@@ -604,7 +713,7 @@ export class CursorExecutor {
    * Shared logic between JSON and SSE transformers.
    */
   private *parseProtobufFrames(buffer: Buffer): Generator<
-    | { type: 'error'; response: Response }
+    | { type: 'error'; error: CursorExecutorErrorPayload }
     | { type: 'text'; text: string }
     | { type: 'thinking'; text: string }
     | {
@@ -630,13 +739,54 @@ export class CursorExecutor {
       let payload = buffer.slice(offset + 5, offset + 5 + length);
       offset += 5 + length;
 
-      payload = decompressPayload(payload, flags);
+      try {
+        payload = decompressPayload(payload, flags);
+      } catch (error) {
+        yield { type: 'error', error: toCursorExecutorErrorPayload(error) };
+        return;
+      }
+
+      if (isEndStreamConnectFrame(flags)) {
+        try {
+          const json = JSON.parse(payload.toString('utf-8')) as {
+            error?: {
+              code?: string;
+              message?: string;
+              details?: Array<{
+                debug?: { details?: { title?: string; detail?: string }; error?: string };
+              }>;
+            };
+          };
+
+          const msg =
+            json?.error?.details?.[0]?.debug?.details?.title ||
+            json?.error?.details?.[0]?.debug?.details?.detail ||
+            json?.error?.message;
+
+          if (msg) {
+            const mappedError = mapCursorConnectError(json?.error?.code);
+            yield {
+              type: 'error',
+              error: {
+                message: msg,
+                status: mappedError.status,
+                errorType: mappedError.errorType,
+                code: json?.error?.code || 'cursor_error',
+              },
+            };
+            return;
+          }
+        } catch {
+          // Ignore successful end-stream metadata trailers.
+        }
+        continue;
+      }
 
       // Check for JSON error format
       try {
         const text = payload.toString('utf-8');
         if (text.startsWith('{') && text.includes('"error"')) {
-          yield { type: 'error', response: createErrorResponse(JSON.parse(text)) };
+          yield { type: 'error', error: toCursorErrorPayloadFromJson(JSON.parse(text)) };
           return;
         }
       } catch (err) {
@@ -656,19 +806,12 @@ export class CursorExecutor {
           errorLower.includes('too many requests');
         yield {
           type: 'error',
-          response: new Response(
-            JSON.stringify({
-              error: {
-                message: result.error,
-                type: isRateLimit ? 'rate_limit_error' : 'server_error',
-                code: isRateLimit ? 'rate_limited' : 'cursor_error',
-              },
-            }),
-            {
-              status: isRateLimit ? 429 : 400,
-              headers: { 'Content-Type': 'application/json' },
-            }
-          ),
+          error: {
+            message: result.error,
+            status: isRateLimit ? 429 : 502,
+            errorType: isRateLimit ? 'rate_limit_error' : 'server_error',
+            code: isRateLimit ? 'rate_limited' : 'cursor_error',
+          },
         };
         return;
       }
@@ -684,6 +827,18 @@ export class CursorExecutor {
       if (result.thinking) {
         yield { type: 'thinking', text: result.thinking };
       }
+    }
+
+    if (offset !== buffer.length) {
+      yield {
+        type: 'error',
+        error: {
+          message: 'Truncated Cursor ConnectRPC frame.',
+          status: 502,
+          errorType: 'server_error',
+          code: 'cursor_protocol_error',
+        },
+      };
     }
   }
 
@@ -711,7 +866,7 @@ export class CursorExecutor {
 
     for (const frame of this.parseProtobufFrames(buffer)) {
       if (frame.type === 'error') {
-        return frame.response;
+        return createCursorErrorResponse(frame.error);
       }
 
       if (frame.type === 'toolCall') {
@@ -840,7 +995,19 @@ export class CursorExecutor {
 
     for (const frame of this.parseProtobufFrames(buffer)) {
       if (frame.type === 'error') {
-        return frame.response;
+        if (chunks.length === 0 && toolCalls.length === 0) {
+          return createCursorErrorResponse(frame.error);
+        }
+
+        chunks.push(`event: error\ndata: ${buildCursorErrorEnvelope(frame.error)}\n\n`);
+        return new Response(chunks.join(''), {
+          status: 200,
+          headers: {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache',
+            Connection: 'keep-alive',
+          },
+        });
       }
 
       if (frame.type === 'toolCall') {

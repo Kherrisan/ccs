@@ -2,7 +2,13 @@
  * Type definitions for ProviderEditor components
  */
 
-import type { AuthStatus, OAuthAccount, CliTarget } from '@/lib/api-client';
+import type { ReactNode } from 'react';
+import type {
+  AuthStatus,
+  OAuthAccount,
+  CliTarget,
+  CliproxyProviderRoutingHints,
+} from '@/lib/api-client';
 import type { ProviderCatalog } from '../provider-model-selector';
 
 export interface SettingsResponse {
@@ -19,6 +25,7 @@ export interface ProviderEditorProps {
   displayName: string;
   authStatus: AuthStatus;
   catalog?: ProviderCatalog;
+  routing?: CliproxyProviderRoutingHints;
   /** Provider type for logo display (defaults to provider) */
   logoProvider?: string;
   /** Base provider for model filtering (defaults to provider). For variants, this is the parent provider. */
@@ -29,6 +36,8 @@ export interface ProviderEditorProps {
   port?: number;
   /** Default execution target for this profile/variant */
   defaultTarget?: CliTarget;
+  /** Optional contextual notice shown directly under the editor header */
+  topNotice?: ReactNode;
   onAddAccount: () => void;
   onSetDefault: (accountId: string) => void;
   onRemoveAccount: (accountId: string) => void;
@@ -89,6 +98,7 @@ export interface CustomPresetDialogProps {
   isSaving?: boolean;
   catalog?: ProviderCatalog;
   allModels: { id: string; owned_by: string }[];
+  routing?: CliproxyProviderRoutingHints;
 }
 
 export interface RawEditorSectionProps {
@@ -115,6 +125,7 @@ export interface ModelConfigSectionProps {
   sonnetModel?: string;
   haikuModel?: string;
   providerModels: Array<{ id: string; owned_by: string }>;
+  routing?: CliproxyProviderRoutingHints;
   /** Provider name for display */
   provider: string;
   /** Whether extended context (1M tokens) is enabled */

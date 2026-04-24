@@ -4,6 +4,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 
 /** Sync status response */
 export interface SyncStatus {
@@ -151,6 +152,7 @@ export function useSyncPreview() {
  */
 export function useExecuteSync() {
   const queryClient = useQueryClient();
+  const { t } = useTranslation();
 
   return useMutation({
     mutationFn: executeSync,
@@ -161,15 +163,16 @@ export function useExecuteSync() {
 
       // Show success toast with synced count
       if (data.syncedCount === 0) {
-        toast.info('No profiles to sync');
+        toast.info(t('toasts.noProfilesToSync'));
       } else {
+        // TODO i18n: missing key for 'Synced {{count}} profile(s) to CLIProxy'
         toast.success(
           `Synced ${data.syncedCount} profile${data.syncedCount === 1 ? '' : 's'} to CLIProxy`
         );
       }
     },
     onError: (error: Error) => {
-      toast.error(`Sync failed: ${error.message}`);
+      toast.error(t('toasts.syncFailed', { error: error.message }));
     },
   });
 }

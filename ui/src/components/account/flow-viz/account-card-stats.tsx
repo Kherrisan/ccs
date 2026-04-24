@@ -4,6 +4,7 @@
 
 import { cn } from '@/lib/utils';
 import { CheckCircle2, XCircle } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 interface AccountCardStatsProps {
   success: number;
@@ -12,6 +13,7 @@ interface AccountCardStatsProps {
 }
 
 export function AccountCardStats({ success, failure, showDetails }: AccountCardStatsProps) {
+  const { t } = useTranslation();
   const total = success + failure;
   const successRate = total > 0 ? (success / total) * 100 : 100;
 
@@ -21,7 +23,7 @@ export function AccountCardStats({ success, failure, showDetails }: AccountCardS
       <div className="flex items-end justify-between px-0.5">
         <div className="flex flex-col">
           <span className="text-[8px] text-muted-foreground/70 uppercase font-bold tracking-tight">
-            Success Rate
+            {t('authMonitorLive.successRate')}
           </span>
           <span
             className={cn(
@@ -37,6 +39,7 @@ export function AccountCardStats({ success, failure, showDetails }: AccountCardS
           </span>
         </div>
         <div className="flex flex-col items-end">
+          {/* TODO i18n: missing key for "Volume" */}
           <span className="text-[8px] text-muted-foreground/70 uppercase font-bold tracking-tight">
             Volume
           </span>

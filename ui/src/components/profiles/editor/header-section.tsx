@@ -13,6 +13,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Save, Loader2, Trash2, RefreshCw } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { OpenRouterBadge } from '@/components/profiles/openrouter-badge';
 import { isOpenRouterProfile } from './utils';
 import type { Settings } from './types';
@@ -49,6 +50,7 @@ export function HeaderSection({
   onDelete,
   onSave,
 }: HeaderSectionProps) {
+  const { t } = useTranslation();
   const isMutating = isSaving || isTargetSaving;
   const disableHeaderActions = isLoading || isMutating;
 
@@ -66,11 +68,11 @@ export function HeaderSection({
         </div>
         {data && (
           <p className="text-xs text-muted-foreground mt-0.5">
-            Last modified: {new Date(data.mtime).toLocaleString()}
+            {t('profileEditor.lastModified')}: {new Date(data.mtime).toLocaleString()}
           </p>
         )}
         <div className="mt-2 flex items-center gap-2">
-          <span className="text-xs text-muted-foreground">Default target:</span>
+          <span className="text-xs text-muted-foreground">{t('profileEditor.defaultTarget')}:</span>
           <Select
             value={target}
             onValueChange={(value) => {
@@ -83,8 +85,9 @@ export function HeaderSection({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="claude">Claude Code</SelectItem>
-              <SelectItem value="droid">Factory Droid</SelectItem>
+              <SelectItem value="claude">{t('profileEditor.targetClaude')}</SelectItem>
+              <SelectItem value="droid">{t('profileEditor.targetDroid')}</SelectItem>
+              <SelectItem value="codex">{t('profileEditor.targetCodex')}</SelectItem>
             </SelectContent>
           </Select>
           {isTargetSaving && <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />}
@@ -103,12 +106,12 @@ export function HeaderSection({
           {isSaving ? (
             <>
               <Loader2 className="w-4 h-4 mr-1 animate-spin" />
-              Saving...
+              {t('profileEditor.saving')}
             </>
           ) : (
             <>
               <Save className="w-4 h-4 mr-1" />
-              Save
+              {t('settingsAuth.save')}
             </>
           )}
         </Button>

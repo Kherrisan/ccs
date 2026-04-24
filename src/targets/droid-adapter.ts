@@ -12,7 +12,11 @@ import { getDroidBinaryInfo, detectDroidCli, checkDroidVersion } from './droid-d
 import type { ProfileType } from '../types/profile';
 import { upsertCcsModel } from './droid-config-manager';
 import { resolveDroidProvider } from './droid-provider';
-import { escapeShellArg } from '../utils/shell-executor';
+import {
+  escapeShellArg,
+  getWindowsEscapedCommandShell,
+  stripAnthropicEnv,
+} from '../utils/shell-executor';
 import { wireChildProcessSignals } from '../utils/signal-forwarder';
 import { runCleanup } from '../errors';
 
@@ -74,10 +78,11 @@ export class DroidAdapter implements TargetAdapter {
   }
 
   /**
-   * Droid uses config file for credentials — minimal env needed.
+   * Droid uses config file for credentials — keep parent env, but strip stale
+   * ANTHROPIC_* values so prior CCS/CLIProxy sessions do not leak into Droid.
    */
   buildEnv(_creds: TargetCredentials, _profileType: ProfileType): NodeJS.ProcessEnv {
-    return { ...process.env };
+    return { ...stripAnthropicEnv(process.env) };
   }
 
   exec(
@@ -133,7 +138,7 @@ export class DroidAdapter implements TargetAdapter {
       child = spawn(cmdString, {
         stdio: 'inherit',
         windowsHide: true,
-        shell: true,
+        shell: getWindowsEscapedCommandShell(),
         env,
       });
     } else {

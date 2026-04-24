@@ -106,10 +106,34 @@ describe('unified-config-types', () => {
       expect(config.preferences.auto_update).toBe(true);
     });
 
+    it('should default Official Channels to disabled and attended mode', () => {
+      const config = createEmptyUnifiedConfig();
+      expect(config.channels?.selected).toEqual([]);
+      expect(config.channels?.unattended).toBe(false);
+    });
+
     it('should have CLIProxy providers list', () => {
       const config = createEmptyUnifiedConfig();
       expect(config.cliproxy.providers).toContain('gemini');
       expect(config.cliproxy.providers).toContain('codex');
+    });
+
+    it('should default browser automation to disabled and manual for both lanes', () => {
+      const config = createEmptyUnifiedConfig();
+      expect(config.browser).toEqual({
+        claude: {
+          enabled: false,
+          policy: 'manual',
+          user_data_dir: '',
+          devtools_port: 9222,
+          eval_mode: 'readonly',
+        },
+        codex: {
+          enabled: false,
+          policy: 'manual',
+          eval_mode: 'readonly',
+        },
+      });
     });
   });
 
@@ -202,13 +226,7 @@ describe('continuity-inheritance-config', () => {
 
     fs.writeFileSync(
       path.join(ccsDir, 'config.yaml'),
-      [
-        'version: 8',
-        'continuity_inherit_from_account:',
-        '  glm: pro',
-        '  empty: ""',
-        '',
-      ].join('\n')
+      ['version: 8', 'continuity_inherit_from_account:', '  glm: pro', '  empty: ""', ''].join('\n')
     );
 
     process.env.CCS_HOME = tempHome;
@@ -255,6 +273,159 @@ describe('continuity-inheritance-config', () => {
         glm: 'team-a',
         copilot: 'work',
         km: 'account-kimi',
+      });
+    } finally {
+      if (originalCcsHome === undefined) {
+        delete process.env.CCS_HOME;
+      } else {
+        process.env.CCS_HOME = originalCcsHome;
+      }
+      fs.rmSync(tempHome, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('official-channels-config', () => {
+  it('keeps explicit channels.selected empty even when legacy discord_channels.enabled is true', () => {
+    const originalCcsHome = process.env.CCS_HOME;
+    const tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'ccs-official-channels-home-'));
+    const ccsDir = path.join(tempHome, '.ccs');
+    fs.mkdirSync(ccsDir, { recursive: true });
+
+    fs.writeFileSync(
+      path.join(ccsDir, 'config.yaml'),
+      [
+        'version: 12',
+        'channels:',
+        '  selected: []',
+        '  unattended: false',
+        'discord_channels:',
+        '  enabled: true',
+        '  unattended: true',
+        '',
+      ].join('\n')
+    );
+
+    process.env.CCS_HOME = tempHome;
+    try {
+      const config = loadOrCreateUnifiedConfig();
+      expect(config.channels?.selected).toEqual([]);
+      expect(config.channels?.unattended).toBe(false);
+    } finally {
+      if (originalCcsHome === undefined) {
+        delete process.env.CCS_HOME;
+      } else {
+        process.env.CCS_HOME = originalCcsHome;
+      }
+      fs.rmSync(tempHome, { recursive: true, force: true });
+    }
+  });
+
+  it('treats the canonical channels section as authoritative even without selected', () => {
+    const originalCcsHome = process.env.CCS_HOME;
+    const tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'ccs-official-channels-canonical-'));
+    const ccsDir = path.join(tempHome, '.ccs');
+    fs.mkdirSync(ccsDir, { recursive: true });
+
+    fs.writeFileSync(
+      path.join(ccsDir, 'config.yaml'),
+      [
+        'version: 12',
+        'channels:',
+        '  unattended: false',
+        'discord_channels:',
+        '  enabled: true',
+        '  unattended: true',
+        '',
+      ].join('\n')
+    );
+
+    process.env.CCS_HOME = tempHome;
+    try {
+      const config = loadOrCreateUnifiedConfig();
+      expect(config.channels?.selected).toEqual([]);
+      expect(config.channels?.unattended).toBe(false);
+    } finally {
+      if (originalCcsHome === undefined) {
+        delete process.env.CCS_HOME;
+      } else {
+        process.env.CCS_HOME = originalCcsHome;
+      }
+      fs.rmSync(tempHome, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('browser-config', () => {
+  it('fills in safe browser defaults when the browser section is missing on older configs', () => {
+    const originalCcsHome = process.env.CCS_HOME;
+    const tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'ccs-browser-defaults-home-'));
+    const ccsDir = path.join(tempHome, '.ccs');
+    fs.mkdirSync(ccsDir, { recursive: true });
+
+    fs.writeFileSync(
+      path.join(ccsDir, 'config.yaml'),
+      ['version: 12', 'websearch:', '  enabled: false', ''].join('\n')
+    );
+
+    process.env.CCS_HOME = tempHome;
+    try {
+      const config = loadOrCreateUnifiedConfig();
+      expect(config.browser).toMatchObject({
+        claude: {
+          enabled: false,
+          policy: 'manual',
+        },
+        codex: {
+          enabled: false,
+          policy: 'manual',
+        },
+      });
+    } finally {
+      if (originalCcsHome === undefined) {
+        delete process.env.CCS_HOME;
+      } else {
+        process.env.CCS_HOME = originalCcsHome;
+      }
+      fs.rmSync(tempHome, { recursive: true, force: true });
+    }
+  });
+
+  it('preserves explicit browser enablement while defaulting missing policies to manual', () => {
+    const originalCcsHome = process.env.CCS_HOME;
+    const tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'ccs-browser-policy-home-'));
+    const ccsDir = path.join(tempHome, '.ccs');
+    fs.mkdirSync(ccsDir, { recursive: true });
+
+    fs.writeFileSync(
+      path.join(ccsDir, 'config.yaml'),
+      [
+        'version: 12',
+        'browser:',
+        '  claude:',
+        '    enabled: true',
+        '    user_data_dir: "/tmp/claude-browser"',
+        '    devtools_port: 9333',
+        '  codex:',
+        '    enabled: true',
+        '',
+      ].join('\n')
+    );
+
+    process.env.CCS_HOME = tempHome;
+    try {
+      const config = loadOrCreateUnifiedConfig();
+      expect(config.browser).toMatchObject({
+        claude: {
+          enabled: true,
+          policy: 'manual',
+          user_data_dir: '/tmp/claude-browser',
+          devtools_port: 9333,
+        },
+        codex: {
+          enabled: true,
+          policy: 'manual',
+        },
       });
     } finally {
       if (originalCcsHome === undefined) {

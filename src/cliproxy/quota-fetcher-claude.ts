@@ -1,7 +1,7 @@
 /**
  * Quota Fetcher for Claude (Anthropic) Accounts
  *
- * Fetches policy limits from Claude API and normalizes 5h + weekly windows.
+ * Fetches OAuth usage windows from Claude API and normalizes 5h + weekly windows.
  */
 
 import * as path from 'node:path';
@@ -17,11 +17,10 @@ import {
 
 export { buildClaudeQuotaWindows, buildClaudeCoreUsageSummary };
 
-export const CLAUDE_POLICY_LIMITS_URL = 'https://api.anthropic.com/api/claude_code/policy_limits';
+export const CLAUDE_OAUTH_USAGE_URL = 'https://api.anthropic.com/api/oauth/usage';
 const CLAUDE_QUOTA_TIMEOUT_MS = 10000;
 const CLAUDE_QUOTA_MAX_ATTEMPTS = 2;
-const CLAUDE_USER_AGENT = 'ccs-cli/claude-quota';
-const CLAUDE_OAUTH_UNSUPPORTED_MESSAGE = 'oauth authentication is currently not supported';
+const CLAUDE_OAUTH_BETA_HEADER = 'oauth-2025-04-20';
 
 interface ClaudeAuthData {
   accessToken: string;
@@ -193,16 +192,6 @@ function buildEmptyResult(
   };
 }
 
-function buildPolicyUnavailableResult(accountId: string): ClaudeQuotaResult {
-  return {
-    success: true,
-    windows: [],
-    coreUsage: { fiveHour: null, weekly: null },
-    lastUpdated: Date.now(),
-    accountId,
-  };
-}
-
 /**
  * Fetch quota for a single Claude account.
  */
@@ -230,46 +219,43 @@ export async function fetchClaudeQuota(
     const timeoutId = setTimeout(() => controller.abort(), CLAUDE_QUOTA_TIMEOUT_MS);
 
     try {
-      const response = await fetch(CLAUDE_POLICY_LIMITS_URL, {
+      const response = await fetch(CLAUDE_OAUTH_USAGE_URL, {
         method: 'GET',
         signal: controller.signal,
         headers: {
           Authorization: `Bearer ${authData.accessToken}`,
           Accept: 'application/json',
-          'User-Agent': CLAUDE_USER_AGENT,
+          'Content-Type': 'application/json',
+          'anthropic-beta': CLAUDE_OAUTH_BETA_HEADER,
         },
       });
 
       clearTimeout(timeoutId);
       if (verbose) {
-        console.error(`[i] Claude policy limits status: ${response.status} (attempt ${attempt})`);
+        console.error(`[i] Claude OAuth usage status: ${response.status} (attempt ${attempt})`);
       }
 
       if (response.status === 401) {
         const errorMessage = await readResponseErrorMessage(response);
-        if (errorMessage && errorMessage.toLowerCase().includes(CLAUDE_OAUTH_UNSUPPORTED_MESSAGE)) {
-          if (verbose) {
-            console.error(
-              '[i] Claude policy limits endpoint does not support OAuth tokens; treating quota as unavailable'
-            );
-          }
-          return buildPolicyUnavailableResult(accountId);
-        }
-
-        return buildEmptyResult('Authentication required for policy limits', accountId, true);
+        return buildEmptyResult(
+          errorMessage || 'Authentication required for Claude OAuth usage',
+          accountId,
+          true
+        );
       }
 
       if (response.status === 404) {
-        // Some accounts may not expose policy limits; treat as unavailable but successful.
-        return buildPolicyUnavailableResult(accountId);
+        return buildEmptyResult('Claude OAuth usage endpoint not found', accountId);
       }
 
       if (response.status === 403) {
-        return buildEmptyResult('Not authorized for policy limits', accountId);
+        return buildEmptyResult('Not authorized for Claude OAuth usage', accountId);
       }
 
       if (!response.ok) {
-        lastError = `Policy limits API error: ${response.status}`;
+        lastError =
+          (await readResponseErrorMessage(response)) ||
+          `Claude OAuth usage API error: ${response.status}`;
         if (
           attempt < CLAUDE_QUOTA_MAX_ATTEMPTS &&
           (response.status === 429 || response.status >= 500)
@@ -283,11 +269,11 @@ export async function fetchClaudeQuota(
       try {
         payload = await response.json();
       } catch {
-        return buildEmptyResult('Invalid policy limits format', accountId);
+        return buildEmptyResult('Invalid Claude OAuth usage format', accountId);
       }
 
       if (!toObject(payload)) {
-        return buildEmptyResult('Invalid policy limits format', accountId);
+        return buildEmptyResult('Invalid Claude OAuth usage format', accountId);
       }
 
       const windows = buildClaudeQuotaWindows(payload as Record<string, unknown>);
@@ -304,7 +290,7 @@ export async function fetchClaudeQuota(
       clearTimeout(timeoutId);
       lastError =
         error instanceof Error && error.name === 'AbortError'
-          ? 'Policy limits request timeout'
+          ? 'Claude OAuth usage request timeout'
           : error instanceof Error
             ? error.message
             : 'Unknown error';
@@ -313,7 +299,7 @@ export async function fetchClaudeQuota(
         const errorDetails =
           error instanceof Error ? (error.stack ?? error.message) : JSON.stringify(error);
         console.error(
-          `[!] Claude policy limits failed (attempt ${attempt}): ${lastError}${errorDetails ? `\n${errorDetails}` : ''}`
+          `[!] Claude OAuth usage failed (attempt ${attempt}): ${lastError}${errorDetails ? `\n${errorDetails}` : ''}`
         );
       }
 

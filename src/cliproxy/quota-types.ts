@@ -5,6 +5,8 @@
  * Supports Antigravity, Codex, Claude, Gemini CLI, and GitHub Copilot OAuth providers.
  */
 
+import type { ProviderEntitlementEvidence } from './provider-entitlement-types';
+
 /** Supported quota providers */
 export type QuotaProvider = 'agy' | 'codex' | 'claude' | 'gemini' | 'ghcp';
 
@@ -72,8 +74,8 @@ export interface CodexQuotaResult extends QuotaErrorMetadata {
   windows: CodexQuotaWindow[];
   /** Explicit core usage windows (5h + weekly) for easier reset display */
   coreUsage?: CodexCoreUsageSummary;
-  /** Plan type: free, plus, team, or null if unknown */
-  planType: 'free' | 'plus' | 'team' | null;
+  /** Plan type: free, plus, pro, team, or null if unknown */
+  planType: 'free' | 'plus' | 'pro' | 'team' | null;
   /** Timestamp of fetch */
   lastUpdated: number;
   /** Error message if fetch failed */
@@ -176,6 +178,8 @@ export interface GeminiCliBucket {
   remainingFraction: number;
   /** Remaining quota as percentage (0-100) */
   remainingPercent: number;
+  /** Remaining quota count when the upstream API provides it */
+  remainingAmount?: number | null;
   /** ISO timestamp when quota resets, null if unknown */
   resetTime: string | null;
   /** Model IDs in this bucket */
@@ -192,6 +196,14 @@ export interface GeminiCliQuotaResult extends QuotaErrorMetadata {
   buckets: GeminiCliBucket[];
   /** GCP project ID for this account */
   projectId: string | null;
+  /** Human-readable Gemini tier label when available */
+  tierLabel?: string | null;
+  /** Stable Gemini tier identifier when available */
+  tierId?: string | null;
+  /** Available Google One AI credits when reported by the API */
+  creditBalance?: number | null;
+  /** Richer provider entitlement evidence derived from live/runtime signals */
+  entitlement?: ProviderEntitlementEvidence;
   /** Timestamp of fetch */
   lastUpdated: number;
   /** Error message if fetch failed */

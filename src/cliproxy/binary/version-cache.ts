@@ -33,6 +33,23 @@ export function getVersionPinPath(backend: CLIProxyBackend = DEFAULT_BACKEND): s
  * Read version cache if still valid (backend-specific)
  */
 export function readVersionCache(backend: CLIProxyBackend = DEFAULT_BACKEND): VersionCache | null {
+  return readVersionCacheInternal(backend, false);
+}
+
+/**
+ * Read version cache even if expired.
+ * Used as a resilience fallback when GitHub release lookups fail.
+ */
+export function readStaleVersionCache(
+  backend: CLIProxyBackend = DEFAULT_BACKEND
+): VersionCache | null {
+  return readVersionCacheInternal(backend, true);
+}
+
+function readVersionCacheInternal(
+  backend: CLIProxyBackend,
+  allowExpired: boolean
+): VersionCache | null {
   const cachePath = getVersionCachePath(backend);
   if (!fs.existsSync(cachePath)) {
     return null;
@@ -42,8 +59,8 @@ export function readVersionCache(backend: CLIProxyBackend = DEFAULT_BACKEND): Ve
     const content = fs.readFileSync(cachePath, 'utf8');
     const cache: VersionCache = JSON.parse(content);
 
-    // Check if cache is still valid
-    if (Date.now() - cache.checkedAt < VERSION_CACHE_DURATION_MS) {
+    // Check if cache is still valid, unless caller explicitly allows stale fallback.
+    if (allowExpired || Date.now() - cache.checkedAt < VERSION_CACHE_DURATION_MS) {
       return cache;
     }
 
@@ -193,6 +210,23 @@ export function getVersionListCachePath(backend: CLIProxyBackend = DEFAULT_BACKE
 export function readVersionListCache(
   backend: CLIProxyBackend = DEFAULT_BACKEND
 ): VersionListCache | null {
+  return readVersionListCacheInternal(backend, false);
+}
+
+/**
+ * Read version list cache even if expired.
+ * Used as a resilience fallback when GitHub release lookups fail.
+ */
+export function readStaleVersionListCache(
+  backend: CLIProxyBackend = DEFAULT_BACKEND
+): VersionListCache | null {
+  return readVersionListCacheInternal(backend, true);
+}
+
+function readVersionListCacheInternal(
+  backend: CLIProxyBackend,
+  allowExpired: boolean
+): VersionListCache | null {
   const cachePath = getVersionListCachePath(backend);
   if (!fs.existsSync(cachePath)) {
     return null;
@@ -202,8 +236,8 @@ export function readVersionListCache(
     const content = fs.readFileSync(cachePath, 'utf8');
     const cache: VersionListCache = JSON.parse(content);
 
-    // Check if cache is still valid (1 hour)
-    if (Date.now() - cache.checkedAt < VERSION_CACHE_DURATION_MS) {
+    // Check if cache is still valid, unless caller explicitly allows stale fallback.
+    if (allowExpired || Date.now() - cache.checkedAt < VERSION_CACHE_DURATION_MS) {
       return cache;
     }
 

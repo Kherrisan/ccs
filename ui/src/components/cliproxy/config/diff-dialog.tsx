@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { useTranslation } from 'react-i18next';
 
 interface DiffDialogProps {
   open: boolean;
@@ -30,6 +31,7 @@ export function DiffDialog({
   onConfirmSave,
   isSaving,
 }: DiffDialogProps) {
+  const { t } = useTranslation();
   const originalLines = original.split('\n');
   const modifiedLines = modified.split('\n');
 
@@ -63,13 +65,13 @@ export function DiffDialog({
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="max-w-4xl max-h-[80vh]">
         <DialogHeader>
-          <DialogTitle>Review Changes</DialogTitle>
+          <DialogTitle>{t('cliproxyConfig.reviewChanges')}</DialogTitle>
         </DialogHeader>
 
         <div className="border rounded-lg overflow-hidden">
           <div className="grid grid-cols-2 text-xs font-medium bg-muted p-2 border-b">
-            <div className="text-red-600">Original</div>
-            <div className="text-green-600 border-l pl-2">Modified</div>
+            <div className="text-red-600">{t('cliproxyConfig.original')}</div>
+            <div className="text-green-600 border-l pl-2">{t('cliproxyConfig.modified')}</div>
           </div>
           <ScrollArea className="h-[400px]">
             <div className="divide-y">{renderDiff()}</div>
@@ -78,10 +80,13 @@ export function DiffDialog({
 
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>
+            {/* TODO i18n: missing key for "Cancel" in diff context */}
             Cancel
           </Button>
           <Button onClick={onConfirmSave} disabled={isSaving}>
-            {isSaving ? 'Saving...' : 'Save Changes'}
+            {isSaving
+              ? /* TODO i18n: missing key */ 'Saving...'
+              : /* TODO i18n: missing key */ 'Save Changes'}
           </Button>
         </DialogFooter>
       </DialogContent>

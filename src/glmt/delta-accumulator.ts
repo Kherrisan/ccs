@@ -40,6 +40,7 @@ interface ToolCall {
     name: string;
     arguments: string;
   };
+  blockIndex: number;
 }
 
 interface ToolCallDelta {
@@ -240,7 +241,6 @@ export class DeltaAccumulator {
   addToolCallDelta(toolCallDelta: ToolCallDelta): void {
     const index = toolCallDelta.index;
 
-    // Initialize tool call if not exists
     if (!this.toolCallsIndex[index]) {
       const toolCall: ToolCall = {
         index: index,
@@ -250,6 +250,7 @@ export class DeltaAccumulator {
           name: '',
           arguments: '',
         },
+        blockIndex: -1,
       };
       this.toolCalls.push(toolCall);
       this.toolCallsIndex[index] = toolCall;
@@ -257,25 +258,40 @@ export class DeltaAccumulator {
 
     const toolCall = this.toolCallsIndex[index];
 
-    // Update id if present
     if (toolCallDelta.id) {
       toolCall.id = toolCallDelta.id;
     }
 
-    // Update type if present
     if (toolCallDelta.type) {
       toolCall.type = toolCallDelta.type;
     }
 
-    // Update function name if present
     if (toolCallDelta.function?.name) {
       toolCall.function.name += toolCallDelta.function.name;
     }
 
-    // Update function arguments if present
     if (toolCallDelta.function?.arguments) {
       toolCall.function.arguments += toolCallDelta.function.arguments;
     }
+  }
+
+  setToolCallBlockIndex(toolCallIndex: number, blockIndex: number): void {
+    const toolCall = this.toolCallsIndex[toolCallIndex];
+    if (toolCall) {
+      toolCall.blockIndex = blockIndex;
+    }
+  }
+
+  getToolCallBlockIndex(toolCallIndex: number): number {
+    const toolCall = this.toolCallsIndex[toolCallIndex];
+    if (!toolCall || toolCall.blockIndex < 0) {
+      throw new Error(`Tool call ${toolCallIndex} does not have an assigned content block`);
+    }
+    return toolCall.blockIndex;
+  }
+
+  getUnstoppedBlocks(): ContentBlock[] {
+    return this.contentBlocks.filter((b) => !b.stopped);
   }
 
   /**

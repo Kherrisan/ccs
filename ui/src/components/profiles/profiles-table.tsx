@@ -23,6 +23,7 @@ import {
 import { MoreHorizontal, Trash2, Edit } from 'lucide-react';
 import { useDeleteProfile } from '@/hooks/use-profiles';
 import type { Profile } from '@/lib/api-client';
+import { useTranslation } from 'react-i18next';
 
 interface ProfilesTableProps {
   data: Profile[];
@@ -31,20 +32,21 @@ interface ProfilesTableProps {
 
 export function ProfilesTable({ data, onEditSettings }: ProfilesTableProps) {
   const deleteMutation = useDeleteProfile();
+  const { t } = useTranslation();
 
   const columns: ColumnDef<Profile>[] = [
     {
       accessorKey: 'name',
-      header: 'Name',
+      header: t('profilesTable.name'),
       size: 200,
     },
     {
       accessorKey: 'settingsPath',
-      header: 'Settings Path',
+      header: t('profileEditor.filePath'),
     },
     {
       accessorKey: 'configured',
-      header: 'Status',
+      header: t('cliproxyTable.status'),
       size: 100,
       cell: ({ row }) => (
         <span className={row.original.configured ? 'text-green-600' : 'text-yellow-600'}>
@@ -54,7 +56,7 @@ export function ProfilesTable({ data, onEditSettings }: ProfilesTableProps) {
     },
     {
       id: 'actions',
-      header: 'Actions',
+      header: t('profilesTable.actions'),
       size: 100,
       cell: ({ row }) => (
         <DropdownMenu>
@@ -67,7 +69,7 @@ export function ProfilesTable({ data, onEditSettings }: ProfilesTableProps) {
             {onEditSettings && (
               <DropdownMenuItem onClick={() => onEditSettings(row.original)}>
                 <Edit className="w-4 h-4 mr-2" />
-                Edit
+                {t('profilesTable.edit')}
               </DropdownMenuItem>
             )}
             <DropdownMenuSeparator />
@@ -76,7 +78,7 @@ export function ProfilesTable({ data, onEditSettings }: ProfilesTableProps) {
               onClick={() => deleteMutation.mutate(row.original.name)}
             >
               <Trash2 className="w-4 h-4 mr-2" />
-              Delete
+              {t('apiProfiles.delete')}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -93,9 +95,7 @@ export function ProfilesTable({ data, onEditSettings }: ProfilesTableProps) {
 
   if (data.length === 0) {
     return (
-      <div className="text-center py-8 text-muted-foreground">
-        No profiles found. Create one to get started.
-      </div>
+      <div className="text-center py-8 text-muted-foreground">{t('apiProfiles.noProfilesYet')}</div>
     );
   }
 

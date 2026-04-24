@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { CopyIcon, PlayIcon, TerminalIcon } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 interface Command {
   id: string;
@@ -13,62 +14,64 @@ interface Command {
   category: string;
 }
 
-const commonCommands: Command[] = [
-  {
-    id: '1',
-    command: 'ccs config',
-    description: 'Open configuration interface',
-    category: 'Config',
-  },
-  {
-    id: '2',
-    command: 'ccs profile create --name my-profile',
-    description: 'Create a new profile',
-    category: 'Profile',
-  },
-  {
-    id: '3',
-    command: 'ccs profile switch --name my-profile',
-    description: 'Switch to a profile',
-    category: 'Profile',
-  },
-  {
-    id: '4',
-    command: 'ccs doctor',
-    description: 'Check system health',
-    category: 'Diagnostics',
-  },
-  {
-    id: '5',
-    command: 'ccs cliproxy list',
-    description: 'List available CLIProxy providers',
-    category: 'CLIProxy',
-  },
-  {
-    id: '6',
-    command: 'ccs cliproxy add --provider gemini --token YOUR_TOKEN',
-    description: 'Add CLIProxy provider',
-    category: 'CLIProxy',
-  },
-];
-
 export function CommandBuilder() {
+  const { t } = useTranslation();
   const [command, setCommand] = useState('');
-  const [filteredCommands, setFilteredCommands] = useState(commonCommands);
 
-  const handleCommandChange = (value: string) => {
-    setCommand(value);
-    const filtered = commonCommands.filter(
+  const commonCommands = useMemo<Command[]>(
+    () => [
+      {
+        id: '1',
+        command: 'ccs config',
+        description: t('commandBuilder.cmdConfig'),
+        category: 'Config',
+      },
+      {
+        id: '2',
+        command: 'ccs profile create --name my-profile',
+        description: t('commandBuilder.cmdCreateProfile'),
+        category: 'Profile',
+      },
+      {
+        id: '3',
+        command: 'ccs profile switch --name my-profile',
+        description: t('commandBuilder.cmdSwitchProfile'),
+        category: 'Profile',
+      },
+      {
+        id: '4',
+        command: 'ccs doctor',
+        description: t('commandBuilder.cmdDoctor'),
+        category: 'Diagnostics',
+      },
+      {
+        id: '5',
+        command: 'ccs cliproxy list',
+        description: t('commandBuilder.cmdListProviders'),
+        category: 'CLIProxy',
+      },
+      {
+        id: '6',
+        command: 'ccs cliproxy add --provider gemini --token YOUR_TOKEN',
+        description: t('commandBuilder.cmdAddProvider'),
+        category: 'CLIProxy',
+      },
+    ],
+    [t]
+  );
+
+  // Derive filtered commands from command input and translated commonCommands
+  const filteredCommands = useMemo(() => {
+    if (!command) return commonCommands;
+    return commonCommands.filter(
       (cmd) =>
-        cmd.command.toLowerCase().includes(value.toLowerCase()) ||
-        cmd.description.toLowerCase().includes(value.toLowerCase())
+        cmd.command.toLowerCase().includes(command.toLowerCase()) ||
+        cmd.description.toLowerCase().includes(command.toLowerCase())
     );
-    setFilteredCommands(filtered);
-  };
+  }, [commonCommands, command]);
 
   const handleCommandSelect = (cmd: string) => {
     setCommand(cmd);
-    setFilteredCommands(commonCommands);
   };
 
   const handleCopy = () => {
@@ -86,25 +89,25 @@ export function CommandBuilder() {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <TerminalIcon className="w-5 h-5" />
-          Command Builder
+          {t('commandBuilder.title')}
         </CardTitle>
       </CardHeader>
       <CardContent className="flex-1 flex flex-col space-y-4">
         <div className="space-y-2">
           <Input
-            placeholder="Type or select a command..."
+            placeholder={t('commandBuilder.searchPlaceholder')}
             value={command}
-            onChange={(e) => handleCommandChange(e.target.value)}
+            onChange={(e) => setCommand(e.target.value)}
             className="font-mono"
           />
           <div className="flex gap-2">
             <Button variant="outline" size="sm" onClick={handleCopy} disabled={!command}>
               <CopyIcon className="w-4 h-4 mr-1" />
-              Copy
+              {t('commandBuilder.copy')}
             </Button>
             <Button size="sm" onClick={handleRun} disabled={!command}>
               <PlayIcon className="w-4 h-4 mr-1" />
-              Run
+              {t('commandBuilder.run')}
             </Button>
           </div>
         </div>

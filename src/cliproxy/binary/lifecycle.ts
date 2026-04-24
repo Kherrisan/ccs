@@ -26,6 +26,10 @@ function log(message: string, verbose: boolean): void {
   if (verbose) console.error(`[cliproxy] ${message}`);
 }
 
+function getBackendLabel(backend: CLIProxyBackend): string {
+  return backend === 'plus' ? 'CLIProxy Plus' : 'CLIProxy';
+}
+
 /**
  * Check if version is above max stable (known unstable)
  */
@@ -52,7 +56,7 @@ function clampToMaxStable(version: string | undefined, verbose: boolean): string
 /** Handle auto-update when binary exists */
 async function handleAutoUpdate(config: BinaryManagerConfig, verbose: boolean): Promise<void> {
   const backend: CLIProxyBackend = config.backend ?? DEFAULT_BACKEND;
-  const backendLabel = backend === 'plus' ? 'CLIProxy Plus' : 'CLIProxy';
+  const backendLabel = getBackendLabel(backend);
   const updateResult = await checkForUpdates(config.binPath, config.version, verbose, backend);
   const currentVersion = updateResult.currentVersion;
   const latestVersion = updateResult.latestVersion;
@@ -112,6 +116,11 @@ export async function ensureBinary(config: BinaryManagerConfig): Promise<string>
       return binaryPath;
     }
 
+    if (config.skipAutoUpdate) {
+      log('Runtime bootstrap mode: skipping auto-update check', verbose);
+      return binaryPath;
+    }
+
     try {
       await handleAutoUpdate(config, verbose);
     } catch (error) {
@@ -124,6 +133,13 @@ export async function ensureBinary(config: BinaryManagerConfig): Promise<string>
 
   // Binary missing - download
   log('Binary not found, downloading...', verbose);
+
+  if (!config.allowInstall) {
+    throw new Error(
+      `${getBackendLabel(backend)} binary is not installed locally. ` +
+        'Run "ccs cliproxy install" when you have network access.'
+    );
+  }
 
   if (!config.forceVersion) {
     try {

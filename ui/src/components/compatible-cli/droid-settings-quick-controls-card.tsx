@@ -1,4 +1,5 @@
 import { SlidersHorizontal } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -123,12 +124,14 @@ export function DroidSettingsQuickControlsCard({
   onBooleanSettingChange,
   onNumberSettingChange,
 }: DroidSettingsQuickControlsCardProps) {
+  const { t } = useTranslation();
+
   return (
     <Card>
       <CardHeader className="pb-2">
         <CardTitle className="text-base flex items-center gap-2">
           <SlidersHorizontal className="h-4 w-4" />
-          Quick Settings
+          {t('droidSettings.quickControls')}
           <Badge variant="outline" className="text-[10px] font-normal">
             settings.json
           </Badge>
@@ -140,6 +143,7 @@ export function DroidSettingsQuickControlsCard({
         <div className="grid gap-3 sm:grid-cols-2">
           {enumFieldConfig.map((field) => (
             <div key={field.key} className="space-y-1">
+              {/* TODO i18n: missing keys for droidSettings enum/boolean/number field labels */}
               <p className="text-xs font-medium">{field.label}</p>
               <Select
                 value={values[field.key] ?? UNSET_VALUE}
@@ -149,10 +153,10 @@ export function DroidSettingsQuickControlsCard({
                 disabled={disabled}
               >
                 <SelectTrigger className="h-8 text-xs">
-                  <SelectValue placeholder="Use default" />
+                  <SelectValue placeholder={t('codex.useDefault')} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value={UNSET_VALUE}>Use default</SelectItem>
+                  <SelectItem value={UNSET_VALUE}>{t('codex.useDefault')}</SelectItem>
                   {field.options.map((option) => (
                     <SelectItem key={option.value} value={option.value}>
                       {option.label}
@@ -166,6 +170,7 @@ export function DroidSettingsQuickControlsCard({
 
           {numberFieldConfig.map((field) => (
             <div key={field.key} className="space-y-1">
+              {/* TODO i18n: missing keys for droidSettings number field labels */}
               <p className="text-xs font-medium">{field.label}</p>
               <Input
                 type="number"
@@ -190,6 +195,7 @@ export function DroidSettingsQuickControlsCard({
 
           {booleanFieldConfig.map((field) => (
             <div key={field.key} className="space-y-1">
+              {/* TODO i18n: missing keys for droidSettings boolean field labels */}
               <p className="text-xs font-medium">{field.label}</p>
               <Select
                 value={toBooleanSelectValue(values[field.key])}
@@ -197,10 +203,10 @@ export function DroidSettingsQuickControlsCard({
                 disabled={disabled}
               >
                 <SelectTrigger className="h-8 text-xs">
-                  <SelectValue placeholder="Use default" />
+                  <SelectValue placeholder={t('codex.useDefault')} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value={UNSET_VALUE}>Use default</SelectItem>
+                  <SelectItem value={UNSET_VALUE}>{t('codex.useDefault')}</SelectItem>
                   <SelectItem value="true">true</SelectItem>
                   <SelectItem value="false">false</SelectItem>
                 </SelectContent>

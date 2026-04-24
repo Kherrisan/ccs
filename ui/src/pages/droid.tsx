@@ -34,6 +34,7 @@ import {
   extractDroidByokModels,
 } from '@/lib/droid-byok-custom-models';
 
+// TODO i18n: missing keys for DEFAULT_DROID_FACTORY_DOC_LINKS labels and descriptions
 const DEFAULT_DROID_FACTORY_DOC_LINKS = [
   {
     id: 'droid-cli-overview',
@@ -55,6 +56,7 @@ const DEFAULT_DROID_FACTORY_DOC_LINKS = [
   },
 ];
 
+// TODO i18n: missing keys for DEFAULT_DROID_PROVIDER_DOC_LINKS labels and apiFormat
 const DEFAULT_DROID_PROVIDER_DOC_LINKS = [
   {
     provider: 'anthropic',
@@ -112,7 +114,7 @@ function renderTextWithLinks(text: string): ReactNode[] {
 }
 
 function formatTimestamp(value: number | null | undefined): string {
-  if (!value || !Number.isFinite(value)) return 'N/A';
+  if (!value || !Number.isFinite(value)) return /* TODO i18n: missing key for "N/A" */ 'N/A';
   return new Date(value).toLocaleString();
 }
 
@@ -129,7 +131,11 @@ function parseJsonObjectText(
   try {
     const parsed = JSON.parse(text);
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      return { valid: false, error: 'JSON root must be an object.' };
+      return {
+        valid: false,
+        /* TODO i18n: missing key for "JSON root must be an object." */ error:
+          'JSON root must be an object.',
+      };
     }
     return { valid: true, value: parsed as Record<string, unknown> };
   } catch (error) {
@@ -354,17 +360,26 @@ export function DroidPage() {
                     />
                     <DetailRow
                       label={t('droidPage.installDirectory')}
-                      value={diagnostics.binary.installDir || 'N/A'}
+                      value={
+                        diagnostics.binary.installDir ||
+                        /* TODO i18n: missing key for "N/A" */ 'N/A'
+                      }
                       mono
                     />
                     <DetailRow
                       label={t('droidPage.version')}
-                      value={diagnostics.binary.version || 'Unknown'}
+                      value={
+                        diagnostics.binary.version ||
+                        /* TODO i18n: missing key for "Unknown" */ 'Unknown'
+                      }
                       mono
                     />
                     <DetailRow
                       label={t('droidPage.overridePath')}
-                      value={diagnostics.binary.overridePath || 'Not set'}
+                      value={
+                        diagnostics.binary.overridePath ||
+                        /* TODO i18n: missing key for "Not set" */ 'Not set'
+                      }
                       mono
                     />
                   </CardContent>
@@ -443,7 +458,7 @@ export function DroidPage() {
                   disabledReason={
                     rawEditorParsed.valid
                       ? null
-                      : `Quick settings disabled: ${rawEditorParsed.error}`
+                      : /* TODO i18n: missing key for "Quick settings disabled: " */ `Quick settings disabled: ${rawEditorParsed.error}`
                   }
                   onEnumSettingChange={(key, value) => {
                     updateSettingsField(key, value);
@@ -512,7 +527,10 @@ export function DroidPage() {
                   <CardContent className="space-y-2">
                     <DetailRow
                       label={t('droidPage.activeModelSelector')}
-                      value={diagnostics.byok.activeModelSelector || 'Not set'}
+                      value={
+                        diagnostics.byok.activeModelSelector ||
+                        /* TODO i18n: missing key for "Not set" */ 'Not set'
+                      }
                       mono
                     />
                     <DetailRow
@@ -582,7 +600,8 @@ export function DroidPage() {
                               <div className="min-w-0">
                                 <p className="truncate">{model.provider}</p>
                                 <p className="text-muted-foreground">
-                                  {model.apiKeyPreview || 'no-key'}
+                                  {model.apiKeyPreview ||
+                                    /* TODO i18n: missing key for "no-key" */ 'no-key'}
                                 </p>
                               </div>
                               <div className="min-w-0">
@@ -694,7 +713,7 @@ export function DroidPage() {
   };
 
   return (
-    <div className="h-[calc(100vh-100px)] overflow-hidden">
+    <div className="h-full min-h-0 overflow-hidden">
       <PanelGroup direction="horizontal" className="h-full">
         <Panel defaultSize={45} minSize={35}>
           <div className="h-full border-r bg-muted/20">{renderOverview()}</div>

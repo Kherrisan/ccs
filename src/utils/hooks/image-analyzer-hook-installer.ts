@@ -14,6 +14,7 @@ import { getImageAnalyzerHookPath } from './image-analyzer-hook-configuration';
 import { getCcsHooksDir } from '../config-manager';
 import { getImageAnalysisConfig } from '../../config/unified-config-loader';
 import { removeMigrationMarker } from './image-analyzer-profile-hook-injector';
+import { installImageAnalysisPrompts } from '../image-analysis/hook-installer';
 
 // Re-export from hook-configuration for backward compatibility
 export {
@@ -23,12 +24,65 @@ export {
 
 // Hook file name
 const IMAGE_ANALYZER_HOOK = 'image-analyzer-transformer.cjs';
+const IMAGE_ANALYSIS_RUNTIME = 'image-analysis-runtime.cjs';
+
+function getImageAnalysisRuntimeHookPath(): string {
+  return path.join(getCcsHooksDir(), IMAGE_ANALYSIS_RUNTIME);
+}
+
+function getHookArtifacts(): Array<{ fileName: string; destinationPath: string }> {
+  return [
+    { fileName: IMAGE_ANALYZER_HOOK, destinationPath: getImageAnalyzerHookPath() },
+    {
+      fileName: IMAGE_ANALYSIS_RUNTIME,
+      destinationPath: getImageAnalysisRuntimeHookPath(),
+    },
+  ];
+}
+
+function resolveHookSourceBasePath(
+  artifacts: Array<{ fileName: string; destinationPath: string }>
+): string | null {
+  const possibleBasePaths = [
+    path.join(__dirname, '..', '..', '..', 'lib', 'hooks'),
+    path.join(__dirname, '..', '..', 'lib', 'hooks'),
+    path.join(__dirname, '..', 'lib', 'hooks'),
+  ];
+
+  for (const basePath of possibleBasePaths) {
+    if (artifacts.every(({ fileName }) => fs.existsSync(path.join(basePath, fileName)))) {
+      return basePath;
+    }
+  }
+
+  return null;
+}
+
+function artifactsMatch(sourcePath: string, destinationPath: string): boolean {
+  try {
+    return fs.readFileSync(sourcePath).equals(fs.readFileSync(destinationPath));
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Check if image analyzer hook is installed
  */
 export function hasImageAnalyzerHook(): boolean {
-  return fs.existsSync(getImageAnalyzerHookPath());
+  const artifacts = getHookArtifacts();
+  if (!artifacts.every(({ destinationPath }) => fs.existsSync(destinationPath))) {
+    return false;
+  }
+
+  const sourceBasePath = resolveHookSourceBasePath(artifacts);
+  if (!sourceBasePath) {
+    return true;
+  }
+
+  return artifacts.every(({ fileName, destinationPath }) =>
+    artifactsMatch(path.join(sourceBasePath, fileName), destinationPath)
+  );
 }
 
 /**
@@ -56,38 +110,25 @@ export function installImageAnalyzerHook(): boolean {
       fs.mkdirSync(hooksDir, { recursive: true, mode: 0o700 });
     }
 
-    const hookPath = getImageAnalyzerHookPath();
+    const artifacts = getHookArtifacts();
+    const sourceBasePath = resolveHookSourceBasePath(artifacts);
 
-    // Find the bundled hook script
-    // In npm package: node_modules/ccs/lib/hooks/
-    // In development: lib/hooks/
-    const possiblePaths = [
-      path.join(__dirname, '..', '..', '..', 'lib', 'hooks', IMAGE_ANALYZER_HOOK),
-      path.join(__dirname, '..', '..', 'lib', 'hooks', IMAGE_ANALYZER_HOOK),
-      path.join(__dirname, '..', 'lib', 'hooks', IMAGE_ANALYZER_HOOK),
-    ];
-
-    let sourcePath: string | null = null;
-    for (const p of possiblePaths) {
-      if (fs.existsSync(p)) {
-        sourcePath = p;
-        break;
-      }
-    }
-
-    if (!sourcePath) {
+    if (!sourceBasePath) {
       if (process.env.CCS_DEBUG) {
         console.error(warn(`Image analyzer hook source not found: ${IMAGE_ANALYZER_HOOK}`));
       }
       return false;
     }
 
-    // Copy hook to ~/.ccs/hooks/
-    fs.copyFileSync(sourcePath, hookPath);
-    fs.chmodSync(hookPath, 0o755);
+    for (const { fileName, destinationPath } of artifacts) {
+      fs.copyFileSync(path.join(sourceBasePath, fileName), destinationPath);
+      fs.chmodSync(destinationPath, 0o755);
+    }
+
+    installImageAnalysisPrompts();
 
     if (process.env.CCS_DEBUG) {
-      console.error(info(`Installed image analyzer hook: ${hookPath}`));
+      console.error(info(`Installed image analyzer hook runtime: ${hooksDir}`));
     }
 
     // Note: Hook registration is handled by ensureProfileHooks() in image-analyzer-profile-injector.ts
@@ -113,12 +154,14 @@ export function installImageAnalyzerHook(): boolean {
  */
 export function uninstallImageAnalyzerHook(): boolean {
   try {
-    const hookPath = getImageAnalyzerHookPath();
+    const artifactPaths = [getImageAnalyzerHookPath(), getImageAnalysisRuntimeHookPath()];
 
-    if (fs.existsSync(hookPath)) {
-      fs.unlinkSync(hookPath);
-      if (process.env.CCS_DEBUG) {
-        console.error(info(`Uninstalled image analyzer hook: ${hookPath}`));
+    for (const artifactPath of artifactPaths) {
+      if (fs.existsSync(artifactPath)) {
+        fs.unlinkSync(artifactPath);
+        if (process.env.CCS_DEBUG) {
+          console.error(info(`Uninstalled image analyzer artifact: ${artifactPath}`));
+        }
       }
     }
 

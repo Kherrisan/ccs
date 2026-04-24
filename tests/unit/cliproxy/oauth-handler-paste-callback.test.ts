@@ -1,5 +1,9 @@
-import { afterEach, describe, expect, it } from 'bun:test';
+import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import type { ProxyTarget } from '../../../src/cliproxy/proxy-target-resolver';
+import { InteractivePrompt } from '../../../src/utils/prompt';
 import { getCapturedFetchRequests, mockFetch, restoreFetch } from '../../mocks';
 
 const remoteTarget: ProxyTarget = {
@@ -39,11 +43,10 @@ describe('requestPasteCallbackStart', () => {
     expect(request.headers['Content-Type']).toBeUndefined();
   });
 
-  it('keeps kiro on the legacy start route with POST', async () => {
+  it('uses the Kiro management auth-url route for paste-callback compatible methods', async () => {
     mockFetch([
       {
-        url: /\/oauth\/kiro\/start$/,
-        method: 'POST',
+        url: /\/v0\/management\/kiro-auth-url\?is_webui=true&method=aws$/,
         response: { auth_url: 'https://auth.example.com/kiro' },
       },
     ]);
@@ -51,15 +54,43 @@ describe('requestPasteCallbackStart', () => {
     const { requestPasteCallbackStart } = await import(
       `../../../src/cliproxy/auth/oauth-handler?request-kiro-start=${Date.now()}`
     );
-    const startData = await requestPasteCallbackStart('kiro', remoteTarget);
+    const startData = await requestPasteCallbackStart('kiro', remoteTarget, {
+      kiroMethod: 'aws',
+    });
 
     expect(startData.auth_url).toBe('https://auth.example.com/kiro');
 
     const [request] = getCapturedFetchRequests();
-    expect(request.url).toBe('https://proxy.example.com:8317/oauth/kiro/start');
-    expect(request.method).toBe('POST');
+    expect(request.url).toBe(
+      'https://proxy.example.com:8317/v0/management/kiro-auth-url?is_webui=true&method=aws'
+    );
+    expect(request.method).toBe('GET');
     expect(request.headers['Authorization']).toBe('Bearer test-mgmt-key');
-    expect(request.headers['Content-Type']).toBe('application/json');
+    expect(request.headers['Content-Type']).toBeUndefined();
+  });
+
+  it('throws for Kiro methods that require the local callback server flow', async () => {
+    const { requestPasteCallbackStart } = await import(
+      `../../../src/cliproxy/auth/oauth-handler?request-kiro-authcode-start=${Date.now()}`
+    );
+
+    await expect(
+      requestPasteCallbackStart('kiro', remoteTarget, { kiroMethod: 'aws-authcode' })
+    ).rejects.toThrow(/paste-callback start is not available/i);
+  });
+});
+
+describe('usesKiroLocalCallbackReplay', () => {
+  it('limits local callback replay to CLI auth-code flows', async () => {
+    const { usesKiroLocalCallbackReplay } = await import(
+      `../../../src/cliproxy/auth/oauth-handler?kiro-local-callback-mode=${Date.now()}`
+    );
+
+    expect(usesKiroLocalCallbackReplay('aws-authcode', 'authcode')).toBe(true);
+    expect(usesKiroLocalCallbackReplay('idc', 'authcode')).toBe(true);
+    expect(usesKiroLocalCallbackReplay('idc', 'device')).toBe(false);
+    expect(usesKiroLocalCallbackReplay('google', 'authcode')).toBe(false);
+    expect(usesKiroLocalCallbackReplay('aws', 'authcode')).toBe(false);
   });
 });
 
@@ -100,5 +131,168 @@ describe('resolvePasteCallbackAuthUrl', () => {
     );
     expect(request.method).toBe('GET');
     expect(request.headers['Authorization']).toBe('Bearer test-mgmt-key');
+  });
+});
+
+describe('findNewTokenSnapshotForManualAuth', () => {
+  it('detects newly created provider token files', async () => {
+    const tokenDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ccs-kiro-manual-auth-'));
+    const existingFile = path.join(tokenDir, 'kiro-existing.json');
+    fs.writeFileSync(existingFile, JSON.stringify({ type: 'kiro', email: 'existing@example.com' }));
+    const existingMtimeMs = fs.statSync(existingFile).mtimeMs;
+
+    const { findNewTokenSnapshotForManualAuth } = await import(
+      `../../../src/cliproxy/auth/oauth-handler?manual-auth-new-token=${Date.now()}`
+    );
+
+    const newFile = path.join(tokenDir, 'kiro-new.json');
+    fs.writeFileSync(newFile, JSON.stringify({ type: 'kiro', email: 'new@example.com' }));
+
+    const snapshot = findNewTokenSnapshotForManualAuth(
+      'kiro',
+      tokenDir,
+      [{ file: 'kiro-existing.json', mtimeMs: existingMtimeMs }]
+    );
+
+    expect(snapshot?.file).toBe('kiro-new.json');
+    fs.rmSync(tokenDir, { recursive: true, force: true });
+  });
+
+  it('treats a modified existing token as the new token during reauth', async () => {
+    const tokenDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ccs-kiro-reauth-'));
+    const tokenFile = path.join(tokenDir, 'kiro-existing.json');
+    fs.writeFileSync(tokenFile, JSON.stringify({ type: 'kiro', email: 'existing@example.com' }));
+    const existingMtimeMs = fs.statSync(tokenFile).mtimeMs;
+
+    const { findNewTokenSnapshotForManualAuth } = await import(
+      `../../../src/cliproxy/auth/oauth-handler?manual-auth-updated-token=${Date.now()}`
+    );
+
+    fs.writeFileSync(tokenFile, JSON.stringify({ type: 'kiro', email: 'existing@example.com', refreshed: true }));
+    const bumpedTime = new Date(existingMtimeMs + 10_000);
+    fs.utimesSync(tokenFile, bumpedTime, bumpedTime);
+
+    const snapshot = findNewTokenSnapshotForManualAuth(
+      'kiro',
+      tokenDir,
+      [{ file: 'kiro-existing.json', mtimeMs: existingMtimeMs }],
+      'kiro-existing.json'
+    );
+
+    expect(snapshot?.file).toBe('kiro-existing.json');
+    fs.rmSync(tokenDir, { recursive: true, force: true });
+  });
+});
+
+describe('getCliAuthNicknameError', () => {
+  it('allows omitted nicknames for no-email providers', async () => {
+    const { getCliAuthNicknameError } = await import(
+      `../../../src/cliproxy/auth/oauth-handler?cli-nickname-empty=${Date.now()}`
+    );
+
+    expect(getCliAuthNicknameError('kiro', undefined, [])).toBeNull();
+    expect(getCliAuthNicknameError('ghcp', undefined, [])).toBeNull();
+  });
+
+  it('rejects invalid supplied nicknames before OAuth starts', async () => {
+    const { getCliAuthNicknameError } = await import(
+      `../../../src/cliproxy/auth/oauth-handler?cli-nickname-invalid=${Date.now()}`
+    );
+
+    expect(getCliAuthNicknameError('kiro', 'bad nickname', [])).toBe(
+      'Nickname cannot contain whitespace'
+    );
+  });
+
+  it('rejects supplied nicknames that collide with existing ids or nicknames', async () => {
+    const { getCliAuthNicknameError } = await import(
+      `../../../src/cliproxy/auth/oauth-handler?cli-nickname-conflict=${Date.now()}`
+    );
+    const existingAccounts = [
+      { id: 'github-ABC123', nickname: 'work' },
+      { id: 'ghcp-2', nickname: 'personal' },
+    ];
+
+    expect(getCliAuthNicknameError('ghcp', 'github-ABC123', existingAccounts)).toBe(
+      'Nickname "github-ABC123" is already in use. Choose a different one.'
+    );
+    expect(getCliAuthNicknameError('ghcp', 'work', existingAccounts)).toBe(
+      'Nickname "work" is already in use. Choose a different one.'
+    );
+  });
+
+  it('allows reauth when the supplied nickname already belongs to the same account', async () => {
+    const { getCliAuthNicknameError } = await import(
+      `../../../src/cliproxy/auth/oauth-handler?cli-nickname-reauth=${Date.now()}`
+    );
+    const existingAccounts = [
+      { id: 'github-ABC123', nickname: 'work' },
+      { id: 'amazon-XYZ789', nickname: 'personal' },
+    ];
+
+    expect(getCliAuthNicknameError('kiro', 'work', existingAccounts, 'github-ABC123')).toBeNull();
+    expect(getCliAuthNicknameError('kiro', 'github-ABC123', existingAccounts, 'github-ABC123')).toBeNull();
+  });
+});
+
+describe('promptGitLabPersonalAccessToken', () => {
+  it('uses the masked password prompt and trims the token', async () => {
+    const passwordSpy = spyOn(InteractivePrompt, 'password').mockImplementation(
+      mock(async () => '  glpat-secret-token  ')
+    );
+
+    const { promptGitLabPersonalAccessToken } = await import(
+      `../../../src/cliproxy/auth/oauth-handler?gitlab-pat-prompt=${Date.now()}`
+    );
+
+    await expect(promptGitLabPersonalAccessToken()).resolves.toBe('glpat-secret-token');
+    expect(passwordSpy).toHaveBeenCalledWith('GitLab Personal Access Token');
+  });
+
+  it('returns null when the masked prompt is left blank', async () => {
+    const passwordSpy = spyOn(InteractivePrompt, 'password').mockImplementation(
+      mock(async () => '   ')
+    );
+
+    const { promptGitLabPersonalAccessToken } = await import(
+      `../../../src/cliproxy/auth/oauth-handler?gitlab-pat-prompt-blank=${Date.now()}`
+    );
+
+    await expect(promptGitLabPersonalAccessToken()).resolves.toBeNull();
+    expect(passwordSpy).toHaveBeenCalledWith('GitLab Personal Access Token');
+  });
+});
+
+describe('normalizeGitLabBaseUrl', () => {
+  it('returns undefined for blank values', async () => {
+    const { normalizeGitLabBaseUrl } = await import(
+      `../../../src/cliproxy/auth/oauth-handler?gitlab-url-empty=${Date.now()}`
+    );
+
+    expect(normalizeGitLabBaseUrl(undefined)).toBeUndefined();
+    expect(normalizeGitLabBaseUrl('   ')).toBeUndefined();
+  });
+
+  it('normalizes whitespace and trailing slashes for self-hosted URLs', async () => {
+    const { normalizeGitLabBaseUrl } = await import(
+      `../../../src/cliproxy/auth/oauth-handler?gitlab-url-normalize=${Date.now()}`
+    );
+
+    expect(normalizeGitLabBaseUrl(' https://gitlab.example.com/custom/ ')).toBe(
+      'https://gitlab.example.com/custom'
+    );
+  });
+
+  it('rejects malformed or scheme-less URLs before hitting CLIProxy', async () => {
+    const { normalizeGitLabBaseUrl } = await import(
+      `../../../src/cliproxy/auth/oauth-handler?gitlab-url-invalid=${Date.now()}`
+    );
+
+    expect(() => normalizeGitLabBaseUrl('gitlab.example.com')).toThrow(
+      'GitLab URL must be a valid http:// or https:// URL'
+    );
+    expect(() => normalizeGitLabBaseUrl('ftp://gitlab.example.com')).toThrow(
+      'GitLab URL must use http:// or https://'
+    );
   });
 });

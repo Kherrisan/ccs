@@ -9,8 +9,10 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useCopilot } from '@/hooks/use-copilot';
 import { CheckCircle2, XCircle, AlertTriangle, Loader2, Download } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 export function CopilotStatusCard() {
+  const { t } = useTranslation();
   const {
     status,
     statusLoading,
@@ -28,7 +30,7 @@ export function CopilotStatusCard() {
     return (
       <Card>
         <CardHeader>
-          <CardTitle>GitHub Copilot Status</CardTitle>
+          <CardTitle>{t('copilotPage.status')}</CardTitle>
         </CardHeader>
         <CardContent className="flex items-center justify-center py-8">
           <Loader2 className="h-6 w-6 animate-spin" />
@@ -41,10 +43,10 @@ export function CopilotStatusCard() {
     return (
       <Card>
         <CardHeader>
-          <CardTitle>GitHub Copilot Status</CardTitle>
+          <CardTitle>{t('copilotPage.status')}</CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-muted-foreground">Failed to load status</p>
+          <p className="text-muted-foreground">{t('copilotConfigForm.failedLoadStatus')}</p>
         </CardContent>
       </Card>
     );
@@ -54,21 +56,21 @@ export function CopilotStatusCard() {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          GitHub Copilot Status
+          {t('copilotPage.status')}
           {status.enabled ? (
-            <Badge variant="default">Enabled</Badge>
+            <Badge variant="default">{t('copilotPage.enabled')}</Badge>
           ) : (
-            <Badge variant="secondary">Disabled</Badge>
+            <Badge variant="secondary">{t('copilotPage.disabled')}</Badge>
           )}
         </CardTitle>
-        <CardDescription>Use your GitHub Copilot subscription with Claude Code</CardDescription>
+        <CardDescription>{t('copilotConfigForm.useWithClaudeCode')}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Warning Banner */}
         <div className="flex items-start gap-2 rounded-md border border-yellow-500/20 bg-yellow-500/10 p-3">
           <AlertTriangle className="h-5 w-5 text-yellow-500 shrink-0 mt-0.5" />
           <p className="text-sm text-yellow-700 dark:text-yellow-300">
-            This uses a reverse-engineered API. Excessive usage may trigger GitHub abuse detection.
+            {t('copilotPage.unofficialItem2')}
           </p>
         </div>
 
@@ -82,7 +84,7 @@ export function CopilotStatusCard() {
               <XCircle className="h-5 w-5 text-red-500" />
             )}
             <span className="text-sm">
-              copilot-api {status.installed ? `v${status.version}` : 'Not Installed'}
+              copilot-api {status.installed ? `v${status.version}` : t('copilotPage.missing')}
             </span>
           </div>
 
@@ -94,7 +96,7 @@ export function CopilotStatusCard() {
               <XCircle className="h-5 w-5 text-red-500" />
             )}
             <span className="text-sm">
-              {status.authenticated ? 'Authenticated' : 'Not Authenticated'}
+              {status.authenticated ? t('copilotPage.connected') : t('copilotPage.notConnected')}
             </span>
           </div>
 
@@ -105,15 +107,25 @@ export function CopilotStatusCard() {
             ) : (
               <XCircle className="h-5 w-5 text-muted-foreground" />
             )}
-            <span className="text-sm">Daemon {status.daemon_running ? 'Running' : 'Stopped'}</span>
+            <span className="text-sm">
+              {t('copilotPage.daemon')}{' '}
+              {status.daemon_running ? t('copilotPage.running') : t('copilotPage.stopped')}
+            </span>
           </div>
         </div>
 
         {/* Quick Info */}
         <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
-          <span>Port: {status.port}</span>
-          <span>Model: {status.model}</span>
-          <span>Auto-start: {status.auto_start ? 'Yes' : 'No'}</span>
+          <span>
+            {t('copilotPage.port')}: {status.port}
+          </span>
+          <span>
+            {t('providerEditor.modelMapping')}: {status.model}
+          </span>
+          <span>
+            {/* TODO i18n: missing key for 'Auto-start' */}
+            Auto-start: {status.auto_start ? t('copilotPage.yes') : t('copilotPage.no')}
+          </span>
         </div>
 
         {/* Actions */}
@@ -123,12 +135,12 @@ export function CopilotStatusCard() {
               {isInstalling ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Installing...
+                  {t('copilotPage.installing')}
                 </>
               ) : (
                 <>
                   <Download className="mr-2 h-4 w-4" />
-                  Install copilot-api
+                  {t('copilotPage.installCopilotApi')}
                 </>
               )}
             </Button>
@@ -143,10 +155,10 @@ export function CopilotStatusCard() {
               {isAuthenticating ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Authenticating...
+                  {t('copilotPage.authenticating')}
                 </>
               ) : (
-                'Authenticate with GitHub'
+                t('copilotPage.authenticate')
               )}
             </Button>
           )}
@@ -161,10 +173,10 @@ export function CopilotStatusCard() {
               {isStoppingDaemon ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Stopping...
+                  {t('copilotPage.stopping')}
                 </>
               ) : (
-                'Stop Daemon'
+                t('copilotPage.stop')
               )}
             </Button>
           ) : (
@@ -177,10 +189,10 @@ export function CopilotStatusCard() {
               {isStartingDaemon ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Starting...
+                  {t('copilotPage.starting')}
                 </>
               ) : (
-                'Start Daemon'
+                t('copilotPage.start')
               )}
             </Button>
           )}

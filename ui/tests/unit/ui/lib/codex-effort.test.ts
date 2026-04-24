@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { getCodexEffortDisplay, parseCodexEffort } from '@/lib/codex-effort';
+import {
+  applyCodexEffortSuffix,
+  getCodexEffortDisplay,
+  getCodexEffortVariants,
+  parseCodexEffort,
+  stripCodexEffortSuffix,
+} from '@/lib/codex-effort';
 
 describe('parseCodexEffort', () => {
   it('parses lowercase suffixes', () => {
@@ -36,5 +42,27 @@ describe('getCodexEffortDisplay', () => {
 
   it('returns null for empty input', () => {
     expect(getCodexEffortDisplay(undefined)).toBeNull();
+  });
+});
+
+describe('codex effort helpers', () => {
+  it('strips and reapplies codex effort suffixes', () => {
+    expect(stripCodexEffortSuffix('gpt-5.3-codex-high')).toBe('gpt-5.3-codex');
+    expect(applyCodexEffortSuffix('gpt-5.3-codex-high', 'xhigh')).toBe('gpt-5.3-codex-xhigh');
+    expect(applyCodexEffortSuffix('gpt-5.3-codex', undefined)).toBe('gpt-5.3-codex');
+  });
+
+  it('builds ordered codex effort variants up to the supported max level', () => {
+    expect(getCodexEffortVariants('gpt-5.3-codex', 'xhigh')).toEqual([
+      'gpt-5.3-codex',
+      'gpt-5.3-codex-medium',
+      'gpt-5.3-codex-high',
+      'gpt-5.3-codex-xhigh',
+    ]);
+    expect(getCodexEffortVariants('gpt-5.4-mini', 'high')).toEqual([
+      'gpt-5.4-mini',
+      'gpt-5.4-mini-medium',
+      'gpt-5.4-mini-high',
+    ]);
   });
 });

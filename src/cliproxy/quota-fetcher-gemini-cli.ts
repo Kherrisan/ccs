@@ -8,45 +8,40 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { getAuthDir } from './config-generator';
-import { getProviderAccounts, getPausedDir } from './account-manager';
-import { sanitizeEmail, isTokenExpired } from './auth-utils';
-import { refreshGeminiToken } from './auth/gemini-token-refresh';
+import { getProviderAccounts, getPausedDir, setAccountTier } from './account-manager';
+import { getTokenExpiryTimestamp, sanitizeEmail, isTokenExpired } from './auth-utils';
+import {
+  buildGeminiCliBucketsFromParsedBuckets,
+  type GeminiCliParsedBucket,
+} from './gemini-cli-quota-normalizer';
+import { mapExternalProviderName } from './provider-capabilities';
+import { buildManagementHeaders, buildProxyUrl, getProxyTarget } from './proxy-target-resolver';
 import type { GeminiCliQuotaResult, GeminiCliBucket } from './quota-types';
+import {
+  buildProviderEntitlementEvidence,
+  getProviderTierLabel,
+  isModelCapacityExhausted,
+  normalizeProviderTierId,
+} from './provider-entitlement-evidence';
+import type { ProviderEntitlementEvidence } from './provider-entitlement-types';
 
 /** Google Cloud Code API endpoints */
 const GEMINI_CLI_API_BASE = 'https://cloudcode-pa.googleapis.com';
 const GEMINI_CLI_API_VERSION = 'v1internal';
-
-/**
- * Model groups for quota consolidation.
- * Update when Google releases new Gemini models to include them in quota display.
- */
-const GEMINI_CLI_GROUPS: Record<
-  string,
-  {
-    label: string;
-    models: string[];
-  }
-> = {
-  'gemini-flash-series': {
-    label: 'Gemini Flash Series',
-    models: ['gemini-3-flash-preview', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'],
-  },
-  'gemini-pro-series': {
-    label: 'Gemini Pro Series',
-    models: ['gemini-3-pro-preview', 'gemini-2.5-pro'],
-  },
-};
-
-/** Models to ignore in quota display (deprecated) */
-const IGNORED_MODEL_PREFIXES = ['gemini-2.0-flash'];
+const GEMINI_CLI_QUOTA_URL = `${GEMINI_CLI_API_BASE}/${GEMINI_CLI_API_VERSION}:retrieveUserQuota`;
+const GEMINI_CLI_CODE_ASSIST_URL = `${GEMINI_CLI_API_BASE}/${GEMINI_CLI_API_VERSION}:loadCodeAssist`;
+const GEMINI_CLI_ERROR_DETAIL_MAX_LENGTH = 320;
+const GEMINI_CLI_ERROR_DETAIL_TRUNCATION_SUFFIX = '...[truncated]';
+const GEMINI_CLI_G1_CREDIT_TYPE = 'GOOGLE_ONE_AI';
+const MANAGEMENT_API_TIMEOUT_MS = 5000;
+const SECONDARY_REQUEST_TIMEOUT_MS = 2000;
 
 /** Auth data extracted from Gemini CLI auth file */
 interface GeminiCliAuthData {
   accessToken: string;
   projectId: string | null;
   isExpired: boolean;
-  expiresAt: string | null;
+  expiresAt: string | number | null;
 }
 
 /** Raw bucket from API response */
@@ -66,6 +61,77 @@ interface RawGeminiCliBucket {
 /** Raw API response structure */
 interface GeminiCliQuotaResponse {
   buckets?: RawGeminiCliBucket[];
+}
+
+interface GeminiCliCredits {
+  creditType?: string;
+  credit_type?: string;
+  creditAmount?: string | number;
+  credit_amount?: string | number;
+}
+
+interface GeminiCliUserTier {
+  id?: string;
+  availableCredits?: GeminiCliCredits[];
+  available_credits?: GeminiCliCredits[];
+}
+
+interface GeminiCliCodeAssistResponse {
+  currentTier?: GeminiCliUserTier | null;
+  current_tier?: GeminiCliUserTier | null;
+  paidTier?: GeminiCliUserTier | null;
+  paid_tier?: GeminiCliUserTier | null;
+}
+
+interface ParsedGeminiCliErrorBody {
+  errorCode?: string;
+  errorDetail?: string;
+  message?: string;
+}
+
+interface GeminiCliSupplementaryInfo {
+  tierLabel: string | null;
+  tierId: string | null;
+  creditBalance: number | null;
+  normalizedTier: 'free' | 'pro' | 'ultra' | 'unknown';
+}
+
+interface ManagementAuthFile {
+  auth_index?: string | number;
+  provider?: string;
+  type?: string;
+  email?: string;
+  name?: string;
+}
+
+interface ManagementApiCallResponse {
+  status_code?: number;
+  body?: string;
+}
+
+interface ManagedResponse {
+  status: number;
+  bodyText: string;
+  json: unknown;
+  viaManagement: boolean;
+}
+
+interface ManagedGeminiAuthContext {
+  authIndexLookupPromise?: Promise<ManagedGeminiAuthLookupResult>;
+}
+
+interface ManagedGeminiAuthLookupResult {
+  authIndex: string | number | null;
+  unavailable: boolean;
+}
+
+interface ManagedGeminiRequestResult {
+  response: ManagedResponse | null;
+  unavailable: boolean;
+}
+
+function getRemainingTimeoutMs(deadlineMs: number): number {
+  return Math.max(1, deadlineMs - Date.now());
 }
 
 /**
@@ -106,15 +172,21 @@ function extractAccessToken(data: Record<string, unknown>): string | null {
  * Extract expiry from Gemini auth file data
  * Handles both flat (expired) and nested (token.expiry) structures
  */
-function extractExpiry(data: Record<string, unknown>): string | null {
+function extractExpiry(data: Record<string, unknown>): string | number | null {
   // Flat structure: { expired: "..." }
   if (typeof data.expired === 'string') {
+    return data.expired;
+  }
+  if (typeof data.expired === 'number') {
     return data.expired;
   }
   // Nested structure: { token: { expiry: "..." } }
   if (data.token && typeof data.token === 'object') {
     const token = data.token as Record<string, unknown>;
     if (typeof token.expiry === 'string') {
+      return token.expiry;
+    }
+    if (typeof token.expiry === 'number') {
       return token.expiry;
     }
   }
@@ -134,6 +206,244 @@ function isGeminiAuthFile(filename: string): boolean {
   // Check if contains @ (email pattern) - will verify type inside
   if (filename.includes('@')) return true;
   return false;
+}
+
+function safeParseJson(bodyText: string): unknown {
+  try {
+    return JSON.parse(bodyText);
+  } catch {
+    return null;
+  }
+}
+
+async function readManagedResponse(
+  response: Response,
+  viaManagement: boolean
+): Promise<ManagedResponse> {
+  const bodyText = await response.text();
+  return {
+    status: response.status,
+    bodyText,
+    json: safeParseJson(bodyText),
+    viaManagement,
+  };
+}
+
+function isGeminiAuthFileForAccount(file: ManagementAuthFile, accountId: string): boolean {
+  const rawProvider = normalizeStringValue(file.provider ?? file.type);
+  if (!rawProvider || mapExternalProviderName(rawProvider) !== 'gemini') {
+    return false;
+  }
+
+  const email = normalizeStringValue(file.email);
+  const normalizedAccountId = accountId.trim().toLowerCase();
+  if (email?.toLowerCase() === normalizedAccountId) {
+    return true;
+  }
+
+  const normalizedName = normalizeStringValue(file.name);
+  if (!normalizedName) {
+    return false;
+  }
+
+  const normalizedFileName = normalizedName.toLowerCase();
+  const sanitizedAccount = sanitizeEmail(accountId).toLowerCase();
+  return (
+    normalizedFileName === `gemini-${sanitizedAccount}.json` ||
+    normalizedFileName.startsWith(`${normalizedAccountId}-gen-lang-client-`) ||
+    normalizedFileName.includes(sanitizedAccount)
+  );
+}
+
+async function findManagedGeminiAuthIndex(
+  accountId: string,
+  timeoutMs: number
+): Promise<ManagedGeminiAuthLookupResult> {
+  const target = getProxyTarget();
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(buildProxyUrl(target, '/v0/management/auth-files'), {
+      signal: controller.signal,
+      headers: buildManagementHeaders(target),
+    });
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      return { authIndex: null, unavailable: true };
+    }
+
+    const data = (await response.json()) as { files?: ManagementAuthFile[] };
+    const match = data.files?.find((file) => isGeminiAuthFileForAccount(file, accountId));
+    return { authIndex: match?.auth_index ?? null, unavailable: false };
+  } catch {
+    clearTimeout(timeoutId);
+    return { authIndex: null, unavailable: true };
+  }
+}
+
+async function getManagedGeminiAuthIndex(
+  accountId: string,
+  timeoutMs: number,
+  context?: ManagedGeminiAuthContext
+): Promise<ManagedGeminiAuthLookupResult> {
+  if (!context) {
+    return await findManagedGeminiAuthIndex(accountId, timeoutMs);
+  }
+
+  context.authIndexLookupPromise ??= findManagedGeminiAuthIndex(accountId, timeoutMs);
+  return await context.authIndexLookupPromise;
+}
+
+class GeminiManagedAuthUnavailableError extends Error {
+  constructor() {
+    super('CLIProxy managed Gemini auth is temporarily unavailable');
+    this.name = 'GeminiManagedAuthUnavailableError';
+  }
+}
+
+async function performManagedGeminiRequest(
+  accountId: string,
+  url: string,
+  body: string,
+  timeoutMs: number,
+  authContext?: ManagedGeminiAuthContext
+): Promise<ManagedGeminiRequestResult> {
+  const deadlineMs = Date.now() + timeoutMs;
+  const lookupResult = await getManagedGeminiAuthIndex(
+    accountId,
+    getRemainingTimeoutMs(deadlineMs),
+    authContext
+  );
+  if (lookupResult.unavailable) {
+    return { response: null, unavailable: true };
+  }
+
+  const authIndex = lookupResult.authIndex;
+  if (authIndex === null || authIndex === undefined) {
+    return { response: null, unavailable: false };
+  }
+
+  const target = getProxyTarget();
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), getRemainingTimeoutMs(deadlineMs));
+
+  try {
+    const response = await fetch(buildProxyUrl(target, '/v0/management/api-call'), {
+      method: 'POST',
+      signal: controller.signal,
+      headers: buildManagementHeaders(target, {
+        'Content-Type': 'application/json',
+      }),
+      body: JSON.stringify({
+        auth_index: authIndex,
+        method: 'POST',
+        url,
+        header: {
+          Authorization: 'Bearer $TOKEN$',
+          'Content-Type': 'application/json',
+        },
+        data: body,
+      }),
+    });
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      return { response: null, unavailable: true };
+    }
+
+    const apiResponse = (await response.json()) as ManagementApiCallResponse;
+    const bodyText = typeof apiResponse.body === 'string' ? apiResponse.body : '';
+    return {
+      response: {
+        status: typeof apiResponse.status_code === 'number' ? apiResponse.status_code : 500,
+        bodyText,
+        json: safeParseJson(bodyText),
+        viaManagement: true,
+      },
+      unavailable: false,
+    };
+  } catch {
+    clearTimeout(timeoutId);
+    return { response: null, unavailable: true };
+  }
+}
+
+async function performGeminiCliRequest(
+  accountId: string,
+  accessToken: string,
+  url: string,
+  body: string,
+  preferManagement = false,
+  authContext?: ManagedGeminiAuthContext
+): Promise<ManagedResponse> {
+  let managementAttempted = false;
+  let managementUnavailable = false;
+
+  if (preferManagement) {
+    managementAttempted = true;
+    const managedResult = await performManagedGeminiRequest(
+      accountId,
+      url,
+      body,
+      MANAGEMENT_API_TIMEOUT_MS,
+      authContext
+    );
+    managementUnavailable = managedResult.unavailable;
+    if (managedResult.response) {
+      return managedResult.response;
+    }
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(
+    () => controller.abort(),
+    managementAttempted ? SECONDARY_REQUEST_TIMEOUT_MS : MANAGEMENT_API_TIMEOUT_MS
+  );
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body,
+    });
+    clearTimeout(timeoutId);
+
+    const directResult = await readManagedResponse(response, false);
+    if (directResult.status !== 401) {
+      return directResult;
+    }
+
+    if (managementAttempted) {
+      if (managementUnavailable) {
+        throw new GeminiManagedAuthUnavailableError();
+      }
+      return directResult;
+    }
+
+    const managedResult = await performManagedGeminiRequest(
+      accountId,
+      url,
+      body,
+      SECONDARY_REQUEST_TIMEOUT_MS,
+      authContext
+    );
+    if (managedResult.response) {
+      return managedResult.response;
+    }
+    if (managedResult.unavailable) {
+      throw new GeminiManagedAuthUnavailableError();
+    }
+    return directResult;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    throw error;
+  }
 }
 
 /**
@@ -221,23 +531,373 @@ function readGeminiCliAuthData(accountId: string): GeminiCliAuthData | null {
   return null;
 }
 
-/**
- * Find which group a model belongs to
- */
-function findModelGroup(modelId: string): { groupId: string; label: string } | null {
-  for (const [groupId, group] of Object.entries(GEMINI_CLI_GROUPS)) {
-    if (group.models.includes(modelId)) {
-      return { groupId, label: group.label };
+function normalizeStringValue(value: unknown): string | null {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+}
+
+function normalizeNumberValue(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === 'string' && value.trim().length > 0) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) {
+      return parsed;
     }
   }
   return null;
 }
 
-/**
- * Check if model should be ignored
- */
-function shouldIgnoreModel(modelId: string): boolean {
-  return IGNORED_MODEL_PREFIXES.some((prefix) => modelId.startsWith(prefix));
+function resolveGeminiCliTierId(payload: GeminiCliCodeAssistResponse | null): string | null {
+  if (!payload) return null;
+  const currentTier = payload.currentTier ?? payload.current_tier;
+  const paidTier = payload.paidTier ?? payload.paid_tier;
+  const rawId = normalizeStringValue(paidTier?.id) ?? normalizeStringValue(currentTier?.id);
+  return rawId ? rawId.toLowerCase() : null;
+}
+
+function resolveGeminiCliTierLabel(payload: GeminiCliCodeAssistResponse | null): string | null {
+  const tierId = resolveGeminiCliTierId(payload);
+  return getProviderTierLabel(tierId);
+}
+
+function resolveGeminiCliCreditBalance(payload: GeminiCliCodeAssistResponse | null): number | null {
+  if (!payload) return null;
+
+  const paidTier = payload.paidTier ?? payload.paid_tier;
+  const currentTier = payload.currentTier ?? payload.current_tier;
+  const tier = paidTier ?? currentTier;
+  if (!tier) return null;
+
+  const credits = tier.availableCredits ?? tier.available_credits ?? [];
+  let total = 0;
+  let found = false;
+  for (const credit of credits) {
+    const creditType = normalizeStringValue(credit.creditType ?? credit.credit_type);
+    if (creditType !== GEMINI_CLI_G1_CREDIT_TYPE) continue;
+
+    const amount = normalizeNumberValue(credit.creditAmount ?? credit.credit_amount);
+    if (amount !== null) {
+      total += amount;
+      found = true;
+    }
+  }
+
+  return found ? total : null;
+}
+
+async function fetchGeminiCliSupplementary(
+  accountId: string,
+  accessToken: string,
+  projectId: string,
+  verbose: boolean,
+  authContext?: ManagedGeminiAuthContext
+): Promise<GeminiCliSupplementaryInfo> {
+  const requestBody = JSON.stringify({
+    cloudaicompanionProject: projectId,
+    metadata: {
+      ideType: 'IDE_UNSPECIFIED',
+      platform: 'PLATFORM_UNSPECIFIED',
+      pluginType: 'GEMINI',
+      duetProject: projectId,
+    },
+  });
+
+  try {
+    const response = await performGeminiCliRequest(
+      accountId,
+      accessToken,
+      GEMINI_CLI_CODE_ASSIST_URL,
+      requestBody,
+      false,
+      authContext
+    );
+
+    if (response.status !== 200) {
+      if (verbose) {
+        const source = response.viaManagement ? 'managed' : 'direct';
+        console.error(
+          `[i] Gemini CLI supplementary metadata unavailable via ${source}: HTTP ${response.status}`
+        );
+      }
+      return { tierLabel: null, tierId: null, creditBalance: null, normalizedTier: 'unknown' };
+    }
+
+    const payload = response.json as GeminiCliCodeAssistResponse | null;
+    return {
+      tierLabel: resolveGeminiCliTierLabel(payload),
+      tierId: resolveGeminiCliTierId(payload),
+      creditBalance: resolveGeminiCliCreditBalance(payload),
+      normalizedTier: normalizeProviderTierId(resolveGeminiCliTierId(payload)),
+    };
+  } catch (error) {
+    if (verbose) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      console.error(`[i] Gemini CLI supplementary metadata skipped: ${message}`);
+    }
+    return { tierLabel: null, tierId: null, creditBalance: null, normalizedTier: 'unknown' };
+  }
+}
+
+function buildGeminiCliFailureResult(
+  accountId: string,
+  projectId: string | null,
+  options: {
+    error: string;
+    httpStatus?: number;
+    errorCode?: string;
+    errorDetail?: string;
+    actionHint?: string;
+    retryable?: boolean;
+    needsReauth?: boolean;
+    isForbidden?: boolean;
+    entitlement?: ProviderEntitlementEvidence;
+  }
+): GeminiCliQuotaResult {
+  return {
+    success: false,
+    buckets: [],
+    projectId,
+    tierLabel: null,
+    tierId: null,
+    creditBalance: null,
+    lastUpdated: Date.now(),
+    accountId,
+    error: options.error,
+    httpStatus: options.httpStatus,
+    errorCode: options.errorCode,
+    errorDetail: options.errorDetail,
+    actionHint: options.actionHint,
+    retryable: options.retryable,
+    needsReauth: options.needsReauth,
+    isForbidden: options.isForbidden,
+    entitlement: options.entitlement,
+  };
+}
+
+function sanitizeGeminiCliErrorDetail(bodyText: string): string | undefined {
+  const trimmed = bodyText.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  if (/^<!doctype html/i.test(trimmed) || /^<html/i.test(trimmed) || /^<[^>]+>/.test(trimmed)) {
+    return '[HTML error response omitted]';
+  }
+
+  let sanitized = trimmed
+    .replace(
+      /"(access[_-]?token|refresh[_-]?token|authorization|cookie|set-cookie|api[_-]?key|session[_-]?token|token)"\s*:\s*"[^"]*"/gi,
+      '"$1":"[redacted]"'
+    )
+    .replace(/Bearer\s+[A-Za-z0-9._-]+/g, 'Bearer [redacted]')
+    .replace(/\s+/g, ' ');
+
+  if (sanitized.length > GEMINI_CLI_ERROR_DETAIL_MAX_LENGTH) {
+    sanitized = `${sanitized.slice(
+      0,
+      GEMINI_CLI_ERROR_DETAIL_MAX_LENGTH - GEMINI_CLI_ERROR_DETAIL_TRUNCATION_SUFFIX.length
+    )}${GEMINI_CLI_ERROR_DETAIL_TRUNCATION_SUFFIX}`;
+  }
+
+  return sanitized;
+}
+
+function extractGeminiCliNestedMessage(value: unknown): string | undefined {
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      const nested = extractGeminiCliNestedMessage(entry);
+      if (nested) return nested;
+    }
+    return undefined;
+  }
+
+  if (!value || typeof value !== 'object') {
+    return undefined;
+  }
+
+  const record = value as Record<string, unknown>;
+  const directMessage = [
+    record.message,
+    record.localizedMessage,
+    record.description,
+    record.reason,
+    record.error,
+  ].find(
+    (candidate): candidate is string => typeof candidate === 'string' && candidate.trim().length > 0
+  );
+  if (directMessage) {
+    return directMessage;
+  }
+
+  return undefined;
+}
+
+function parseGeminiCliErrorBody(bodyText: string): ParsedGeminiCliErrorBody {
+  const trimmed = bodyText.trim();
+  if (!trimmed) {
+    return {};
+  }
+
+  const sanitizedDetail = sanitizeGeminiCliErrorDetail(trimmed);
+
+  try {
+    const parsed = JSON.parse(trimmed) as Record<string, unknown>;
+    const topLevelMessage = [parsed.message, parsed.error].find(
+      (candidate): candidate is string =>
+        typeof candidate === 'string' && candidate.trim().length > 0
+    );
+    const topLevelCode = [parsed.code, parsed.status].find(
+      (candidate): candidate is string =>
+        typeof candidate === 'string' && candidate.trim().length > 0
+    );
+
+    if (parsed.error && typeof parsed.error === 'object') {
+      const error = parsed.error as Record<string, unknown>;
+      return {
+        errorCode:
+          [error.status, error.code, topLevelCode].find(
+            (candidate): candidate is string =>
+              typeof candidate === 'string' && candidate.trim().length > 0
+          ) || undefined,
+        errorDetail: sanitizedDetail,
+        message:
+          [
+            error.message,
+            error.error,
+            extractGeminiCliNestedMessage(error.details),
+            topLevelMessage,
+          ].find(
+            (candidate): candidate is string =>
+              typeof candidate === 'string' && candidate.trim().length > 0
+          ) || undefined,
+      };
+    }
+
+    return {
+      errorCode: topLevelCode,
+      errorDetail: sanitizedDetail,
+      message:
+        [topLevelMessage, extractGeminiCliNestedMessage(parsed.details)].find(
+          (candidate): candidate is string =>
+            typeof candidate === 'string' && candidate.trim().length > 0
+        ) || undefined,
+    };
+  } catch {
+    return {
+      errorDetail: sanitizedDetail,
+      message: sanitizedDetail === '[HTML error response omitted]' ? undefined : trimmed,
+    };
+  }
+}
+
+function buildGeminiCliForbiddenActionHint(parsed: ParsedGeminiCliErrorBody): string {
+  const combined = `${parsed.message || ''} ${parsed.errorDetail || ''}`.toLowerCase();
+  if (combined.includes('verify') || combined.includes('verification')) {
+    return 'Complete the Google account verification mentioned above, then retry quota refresh.';
+  }
+  if (combined.includes('project')) {
+    return 'Confirm this Google project still has Gemini CLI quota access, then retry.';
+  }
+  return 'Check the Google account or workspace access shown above, then retry quota refresh.';
+}
+
+function buildGeminiCliHttpFailureResult(
+  accountId: string,
+  projectId: string | null,
+  status: number,
+  bodyText: string
+): GeminiCliQuotaResult {
+  const parsed = parseGeminiCliErrorBody(bodyText);
+
+  if (status === 401) {
+    return buildGeminiCliFailureResult(accountId, projectId, {
+      error: parsed.message || 'Token expired or invalid',
+      httpStatus: 401,
+      errorCode: parsed.errorCode || 'reauth_required',
+      errorDetail: parsed.errorDetail,
+      actionHint: 'Run ccs gemini --auth to reconnect this account.',
+      needsReauth: true,
+      retryable: false,
+    });
+  }
+
+  if (status === 403) {
+    return buildGeminiCliFailureResult(accountId, projectId, {
+      error: parsed.message || 'Quota access forbidden for this account',
+      httpStatus: 403,
+      errorCode: parsed.errorCode || 'quota_api_forbidden',
+      errorDetail: parsed.errorDetail,
+      actionHint: buildGeminiCliForbiddenActionHint(parsed),
+      isForbidden: true,
+      retryable: false,
+      entitlement: buildProviderEntitlementEvidence({
+        normalizedTier: 'unknown',
+        source: 'runtime_inference',
+        confidence: 'medium',
+        accessState: 'not_entitled',
+        capacityState: 'unknown',
+      }),
+    });
+  }
+
+  if (status === 429) {
+    if (isModelCapacityExhausted(parsed.message, parsed.errorDetail, parsed.errorCode)) {
+      return buildGeminiCliFailureResult(accountId, projectId, {
+        error: parsed.message || 'Model capacity exhausted for this account right now',
+        httpStatus: 429,
+        errorCode: 'capacity_exhausted',
+        errorDetail: parsed.errorDetail,
+        actionHint:
+          'Retry later or switch to another Gemini model. This indicates temporary model capacity, not an authentication failure.',
+        retryable: true,
+        entitlement: buildProviderEntitlementEvidence({
+          normalizedTier: 'unknown',
+          source: 'runtime_inference',
+          confidence: 'medium',
+          accessState: 'entitled',
+          capacityState: 'capacity_exhausted',
+          notes: 'Upstream returned MODEL_CAPACITY_EXHAUSTED for this model.',
+        }),
+      });
+    }
+
+    return buildGeminiCliFailureResult(accountId, projectId, {
+      error: parsed.message || 'Rate limited - try again later',
+      httpStatus: 429,
+      errorCode: parsed.errorCode || 'rate_limited',
+      errorDetail: parsed.errorDetail,
+      actionHint: 'Retry after a short delay.',
+      retryable: true,
+      entitlement: buildProviderEntitlementEvidence({
+        normalizedTier: 'unknown',
+        source: 'runtime_inference',
+        confidence: 'low',
+        accessState: 'unknown',
+        capacityState: 'rate_limited',
+      }),
+    });
+  }
+
+  if (status >= 500) {
+    return buildGeminiCliFailureResult(accountId, projectId, {
+      error: parsed.message || `Gemini quota service unavailable (HTTP ${status})`,
+      httpStatus: status,
+      errorCode: parsed.errorCode || 'provider_unavailable',
+      errorDetail: parsed.errorDetail,
+      actionHint: 'Retry later. This looks like a temporary Google upstream problem.',
+      retryable: true,
+    });
+  }
+
+  return buildGeminiCliFailureResult(accountId, projectId, {
+    error: parsed.message || `Gemini quota request failed (HTTP ${status})`,
+    httpStatus: status,
+    errorCode: parsed.errorCode || 'quota_request_failed',
+    errorDetail: parsed.errorDetail,
+    actionHint: 'Inspect the upstream response details and retry if appropriate.',
+    retryable: false,
+  });
 }
 
 /**
@@ -245,81 +905,38 @@ function shouldIgnoreModel(modelId: string): boolean {
  * Groups buckets by model series and token type
  */
 function buildGeminiCliBuckets(rawBuckets: RawGeminiCliBucket[]): GeminiCliBucket[] {
-  // Group buckets by groupId::tokenType
-  const grouped = new Map<
-    string,
-    {
-      label: string;
-      tokenType: string | null;
-      remainingFraction: number;
-      resetTime: string | null;
-      modelIds: string[];
-    }
-  >();
+  const parsedBuckets = rawBuckets
+    .map((bucket): GeminiCliParsedBucket | null => {
+      const modelId = normalizeStringValue(bucket.model_id ?? bucket.modelId);
+      if (!modelId) return null;
 
-  for (const bucket of rawBuckets) {
-    const modelId = bucket.model_id || bucket.modelId || '';
-    if (!modelId) continue;
+      const tokenType = normalizeStringValue(bucket.token_type ?? bucket.tokenType);
+      const remainingFractionRaw = normalizeNumberValue(
+        bucket.remaining_fraction ?? bucket.remainingFraction
+      );
+      const remainingAmount = normalizeNumberValue(
+        bucket.remaining_amount ?? bucket.remainingAmount
+      );
+      const resetTime = normalizeStringValue(bucket.reset_time ?? bucket.resetTime);
 
-    // Skip ignored models
-    if (shouldIgnoreModel(modelId)) continue;
-
-    const tokenType = bucket.token_type ?? bucket.tokenType ?? null;
-    // Clamp remainingFraction to [0, 1] range
-    const rawRemainingFraction = bucket.remaining_fraction ?? bucket.remainingFraction ?? 1;
-    const remainingFraction = Math.max(0, Math.min(1, rawRemainingFraction));
-    const resetTime = bucket.reset_time ?? bucket.resetTime ?? null;
-
-    // Find group for this model
-    const group = findModelGroup(modelId);
-    const groupId = group?.groupId || 'other';
-    const label = group?.label || 'Other Models';
-
-    // Create compound key for grouping
-    const key = `${groupId}::${tokenType || 'combined'}`;
-
-    const existing = grouped.get(key);
-    if (existing) {
-      // Merge: take the minimum remaining fraction (most limiting)
-      existing.remainingFraction = Math.min(existing.remainingFraction, remainingFraction);
-      // Keep earliest reset time if available
-      if (resetTime && (!existing.resetTime || resetTime < existing.resetTime)) {
-        existing.resetTime = resetTime;
+      let fallbackFraction: number | null = null;
+      if (remainingAmount !== null) {
+        fallbackFraction = remainingAmount <= 0 ? 0 : null;
+      } else if (resetTime) {
+        fallbackFraction = 0;
       }
-      existing.modelIds.push(modelId);
-    } else {
-      grouped.set(key, {
-        label,
+
+      return {
+        modelId,
         tokenType,
-        remainingFraction,
+        remainingFraction: remainingFractionRaw ?? fallbackFraction ?? 1,
+        remainingAmount,
         resetTime,
-        modelIds: [modelId],
-      });
-    }
-  }
+      };
+    })
+    .filter((bucket): bucket is GeminiCliParsedBucket => bucket !== null);
 
-  // Convert to array
-  const buckets: GeminiCliBucket[] = [];
-  for (const [key, data] of grouped.entries()) {
-    buckets.push({
-      id: key,
-      label: data.label,
-      tokenType: data.tokenType,
-      remainingFraction: data.remainingFraction,
-      remainingPercent: Math.round(data.remainingFraction * 100),
-      resetTime: data.resetTime,
-      modelIds: data.modelIds,
-    });
-  }
-
-  // Sort by label then token type
-  buckets.sort((a, b) => {
-    const labelCompare = a.label.localeCompare(b.label);
-    if (labelCompare !== 0) return labelCompare;
-    return (a.tokenType || '').localeCompare(b.tokenType || '');
-  });
-
-  return buckets;
+  return buildGeminiCliBucketsFromParsedBuckets(parsedBuckets);
 }
 
 /**
@@ -334,95 +951,89 @@ async function fetchWithAuthData(
   if (!authData.projectId) {
     const error = 'Cannot resolve project ID from auth file';
     if (verbose) console.error(`[!] Error: ${error}`);
-    return {
-      success: false,
-      buckets: [],
-      projectId: null,
-      lastUpdated: Date.now(),
+    return buildGeminiCliFailureResult(accountId, null, {
       error,
-      accountId,
-    };
+      errorCode: 'missing_project_id',
+      actionHint: 'Run ccs gemini --auth to reconnect this account and recover the project ID.',
+      retryable: false,
+    });
   }
 
-  const url = `${GEMINI_CLI_API_BASE}/${GEMINI_CLI_API_VERSION}:retrieveUserQuota`;
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 5000);
+  const authContext: ManagedGeminiAuthContext = {};
+  const supplementaryPromise = fetchGeminiCliSupplementary(
+    accountId,
+    authData.accessToken,
+    authData.projectId,
+    verbose,
+    authContext
+  );
+  const requestBody = JSON.stringify({ project: authData.projectId });
 
   try {
-    const response = await fetch(url, {
-      method: 'POST',
-      signal: controller.signal,
-      headers: {
-        Authorization: `Bearer ${authData.accessToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ project: authData.projectId }),
-    });
+    const response = await performGeminiCliRequest(
+      accountId,
+      authData.accessToken,
+      GEMINI_CLI_QUOTA_URL,
+      requestBody,
+      authData.isExpired,
+      authContext
+    );
 
-    clearTimeout(timeoutId);
-
-    if (verbose) console.error(`[i] Gemini CLI API status: ${response.status}`);
-
-    if (response.status === 401) {
-      return {
-        success: false,
-        buckets: [],
-        projectId: authData.projectId,
-        lastUpdated: Date.now(),
-        error: 'Token expired or invalid',
-        accountId,
-        needsReauth: true,
-      };
+    if (verbose) {
+      const source = response.viaManagement ? 'managed' : 'direct';
+      console.error(`[i] Gemini CLI API status via ${source}: ${response.status}`);
     }
 
-    if (response.status === 403) {
-      return {
-        success: false,
-        buckets: [],
-        projectId: authData.projectId,
-        lastUpdated: Date.now(),
-        error: 'Quota access forbidden for this account',
+    if (response.status !== 200) {
+      return buildGeminiCliHttpFailureResult(
         accountId,
-      };
+        authData.projectId,
+        response.status,
+        response.bodyText
+      );
     }
 
-    if (response.status === 429) {
-      return {
-        success: false,
-        buckets: [],
-        projectId: authData.projectId,
-        lastUpdated: Date.now(),
-        error: 'Rate limited - try again later',
-        accountId,
-      };
-    }
-
-    if (!response.ok) {
-      return {
-        success: false,
-        buckets: [],
-        projectId: authData.projectId,
-        lastUpdated: Date.now(),
-        error: `API error: ${response.status}`,
-        accountId,
-      };
-    }
-
-    const data = (await response.json()) as GeminiCliQuotaResponse;
-    const rawBuckets = data.buckets || [];
+    const data = response.json as GeminiCliQuotaResponse | null;
+    const rawBuckets = data?.buckets || [];
     const buckets = buildGeminiCliBuckets(rawBuckets);
+    const supplementary = await supplementaryPromise;
 
     if (verbose) console.error(`[i] Gemini CLI buckets found: ${buckets.length}`);
+
+    if (supplementary.normalizedTier !== 'unknown') {
+      setAccountTier('gemini', accountId, supplementary.normalizedTier);
+    }
 
     return {
       success: true,
       buckets,
       projectId: authData.projectId,
+      tierLabel: supplementary.tierLabel,
+      tierId: supplementary.tierId,
+      creditBalance: supplementary.creditBalance,
+      entitlement: buildProviderEntitlementEvidence({
+        normalizedTier: supplementary.normalizedTier,
+        rawTierId: supplementary.tierId,
+        rawTierLabel: supplementary.tierLabel,
+        source: supplementary.tierId ? 'runtime_api' : 'runtime_inference',
+        confidence: supplementary.tierId ? 'high' : 'medium',
+        accessState: 'entitled',
+        capacityState: 'available',
+      }),
       lastUpdated: Date.now(),
       accountId,
     };
   } catch (err) {
-    clearTimeout(timeoutId);
+    if (err instanceof GeminiManagedAuthUnavailableError) {
+      return buildGeminiCliFailureResult(accountId, authData.projectId, {
+        error: 'Gemini delegated auth refresh is temporarily unavailable',
+        errorCode: 'managed_auth_unavailable',
+        errorDetail: err.message,
+        actionHint: 'Retry later. CLIProxy management could not refresh this Gemini account.',
+        retryable: true,
+      });
+    }
+
     const errorMsg =
       err instanceof Error && err.name === 'AbortError'
         ? 'Request timeout'
@@ -432,14 +1043,14 @@ async function fetchWithAuthData(
 
     if (verbose) console.error(`[!] Gemini CLI quota error: ${errorMsg}`);
 
-    return {
-      success: false,
-      buckets: [],
-      projectId: authData.projectId,
-      lastUpdated: Date.now(),
+    return buildGeminiCliFailureResult(accountId, authData.projectId, {
       error: errorMsg,
-      accountId,
-    };
+      errorCode:
+        err instanceof Error && err.name === 'AbortError' ? 'network_timeout' : 'network_error',
+      actionHint: 'Retry later. This looks temporary.',
+      retryable: true,
+      httpStatus: err instanceof Error && err.name === 'AbortError' ? 408 : undefined,
+    });
   }
 }
 
@@ -456,76 +1067,27 @@ export async function fetchGeminiCliQuota(
 ): Promise<GeminiCliQuotaResult> {
   if (verbose) console.error(`[i] Fetching Gemini CLI quota for ${accountId}...`);
 
-  let authData = readGeminiCliAuthData(accountId);
+  const authData = readGeminiCliAuthData(accountId);
   if (!authData) {
     const error = 'Auth file not found for Gemini account';
     if (verbose) console.error(`[!] Error: ${error}`);
-    return {
-      success: false,
-      buckets: [],
-      projectId: null,
-      lastUpdated: Date.now(),
+    return buildGeminiCliFailureResult(accountId, null, {
       error,
-      accountId,
-    };
+      errorCode: 'auth_file_missing',
+      actionHint: 'Run ccs gemini --auth to reconnect this account.',
+      retryable: false,
+    });
   }
 
-  // Proactive refresh: refresh if expired OR expiring within 5 minutes
-  const REFRESH_LEAD_TIME_MS = 5 * 60 * 1000;
-  const shouldRefresh =
-    authData.isExpired ||
-    !authData.expiresAt ||
-    new Date(authData.expiresAt).getTime() - Date.now() < REFRESH_LEAD_TIME_MS;
-
-  if (shouldRefresh) {
-    if (verbose)
-      console.error(
-        authData.isExpired
-          ? '[i] Token expired, refreshing...'
-          : '[i] Token expiring soon, proactive refresh...'
-      );
-    const refreshResult = await refreshGeminiToken();
-
-    if (refreshResult.success) {
-      if (verbose) console.error('[i] Token refreshed successfully');
-      // Re-read auth data after successful refresh
-      const refreshedAuthData = readGeminiCliAuthData(accountId);
-      if (refreshedAuthData) {
-        authData = refreshedAuthData;
-      }
-    } else if (authData.isExpired) {
-      // Only fail if token is actually expired (not just expiring soon)
-      const error = refreshResult.error || 'Token refresh failed';
-      if (verbose) console.error(`[!] Refresh failed: ${error}`);
-      return {
-        success: false,
-        buckets: [],
-        projectId: null,
-        lastUpdated: Date.now(),
-        error,
-        accountId,
-        needsReauth: true,
-      };
-    }
-    // If proactive refresh fails but token isn't expired yet, continue with existing token
+  if (authData.isExpired && verbose) {
+    const expiresAt = getTokenExpiryTimestamp(authData.expiresAt);
+    const expiryLabel = expiresAt ? new Date(expiresAt).toISOString() : 'unknown';
+    console.error(
+      `[i] Gemini access token is expired (${expiryLabel}); quota requests will defer to managed auth when available.`
+    );
   }
 
-  // First attempt with current token
-  const result = await fetchWithAuthData(authData, accountId, verbose);
-
-  // If 401 error and we haven't refreshed yet, try refresh and retry
-  if (result.needsReauth && result.error?.includes('expired')) {
-    if (verbose) console.error('[i] Got 401, attempting refresh and retry...');
-    const refreshResult = await refreshGeminiToken();
-    if (refreshResult.success) {
-      const refreshedAuthData = readGeminiCliAuthData(accountId);
-      if (refreshedAuthData) {
-        return await fetchWithAuthData(refreshedAuthData, accountId, verbose);
-      }
-    }
-  }
-
-  return result;
+  return await fetchWithAuthData(authData, accountId, verbose);
 }
 
 /**
@@ -552,6 +1114,13 @@ export async function fetchAllGeminiCliQuotas(
 
   return results;
 }
+
+export const __testExports = {
+  sanitizeGeminiCliErrorDetail,
+  extractGeminiCliNestedMessage,
+  parseGeminiCliErrorBody,
+  buildGeminiCliForbiddenActionHint,
+};
 
 // Export for testing
 export { resolveGeminiCliProjectId, buildGeminiCliBuckets };

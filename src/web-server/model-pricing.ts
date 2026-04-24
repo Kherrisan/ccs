@@ -228,6 +228,13 @@ const PRICING_REGISTRY: Record<string, ModelPricing> = {
     cacheCreationPerMillion: 6.25,
     cacheReadPerMillion: 0.5,
   },
+  // Claude 4.7 Opus ($5/$25)
+  'claude-opus-4-7': {
+    inputPerMillion: 5.0,
+    outputPerMillion: 25.0,
+    cacheCreationPerMillion: 6.25,
+    cacheReadPerMillion: 0.5,
+  },
 
   // ---------------------------------------------------------------------------
   // OpenAI Models - Source: better-ccusage
@@ -718,6 +725,16 @@ const MODEL_PRICING_ALIASES: Record<string, string> = {
   'qwen3-235b': 'qwen3-max',
   'qwen3-vl-plus': 'qwen3.5-plus',
   'qwen3-32b': 'qwen3.5-plus',
+  'gemini-3-flash-preview': 'gemini-2.5-flash',
+  'gemini-3-flash-preview-customtools': 'gemini-2.5-flash',
+  'gemini-3.1-pro-preview': 'gemini-3-pro-preview',
+  'gemini-3.1-flash-preview': 'gemini-2.5-flash',
+  'gemini-3.1-pro-preview-customtools': 'gemini-3-pro-preview',
+  'gemini-3.1-flash-preview-customtools': 'gemini-2.5-flash',
+  'gemini-3-1-pro-preview': 'gemini-3-pro-preview',
+  'gemini-3-1-flash-preview': 'gemini-2.5-flash',
+  'gemini-3-1-pro-preview-customtools': 'gemini-3-pro-preview',
+  'gemini-3-1-flash-preview-customtools': 'gemini-2.5-flash',
 };
 
 // Default pricing for unknown models

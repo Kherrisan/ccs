@@ -3,6 +3,7 @@
  * Visual indicator for OpenRouter-configured profiles
  */
 
+import { useTranslation } from 'react-i18next';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
@@ -13,6 +14,8 @@ interface OpenRouterBadgeProps {
 }
 
 export function OpenRouterBadge({ className, showTooltip = true }: OpenRouterBadgeProps) {
+  const { t } = useTranslation();
+
   const badge = (
     <Badge
       variant="outline"
@@ -33,7 +36,7 @@ export function OpenRouterBadge({ className, showTooltip = true }: OpenRouterBad
     <Tooltip>
       <TooltipTrigger asChild>{badge}</TooltipTrigger>
       <TooltipContent>
-        <p>Access 349+ models via OpenRouter</p>
+        <p>{t('openrouterBadge.integration')}</p>
       </TooltipContent>
     </Tooltip>
   );

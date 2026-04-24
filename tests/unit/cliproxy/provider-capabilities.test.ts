@@ -21,7 +21,9 @@ import {
 import {
   DEFAULT_KIRO_AUTH_METHOD,
   getKiroCallbackPort,
+  getKiroCLIAuthArgs,
   getKiroCLIAuthFlag,
+  normalizeKiroIDCFlow,
   normalizeKiroAuthMethod,
   OAUTH_CALLBACK_PORTS as AUTH_CALLBACK_PORTS,
   toKiroManagementMethod,
@@ -39,24 +41,38 @@ describe('provider-capabilities', () => {
       'ghcp',
       'claude',
       'kimi',
+      'cursor',
+      'gitlab',
+      'codebuddy',
+      'kilo',
     ]);
   });
 
   it('validates provider IDs', () => {
     expect(isCLIProxyProvider('gemini')).toBe(true);
     expect(isCLIProxyProvider('ghcp')).toBe(true);
+    expect(isCLIProxyProvider('gitlab')).toBe(true);
     expect(isCLIProxyProvider('not-a-provider')).toBe(false);
     expect(isCLIProxyProvider('Gemini')).toBe(false);
   });
 
   it('returns providers by OAuth flow capability', () => {
-    expect(getProvidersByOAuthFlow('device_code')).toEqual(['qwen', 'kiro', 'ghcp', 'kimi']);
+    expect(getProvidersByOAuthFlow('device_code')).toEqual([
+      'qwen',
+      'kiro',
+      'ghcp',
+      'kimi',
+      'cursor',
+      'codebuddy',
+      'kilo',
+    ]);
     expect(getProvidersByOAuthFlow('authorization_code')).toEqual([
       'gemini',
       'codex',
       'agy',
       'iflow',
       'claude',
+      'gitlab',
     ]);
   });
 
@@ -67,6 +83,8 @@ describe('provider-capabilities', () => {
     expect(mapExternalProviderName('github-copilot')).toBe('ghcp');
     expect(mapExternalProviderName('copilot')).toBe('ghcp');
     expect(mapExternalProviderName('anthropic')).toBe('claude');
+    expect(mapExternalProviderName('gitlab-duo')).toBe('gitlab');
+    expect(mapExternalProviderName('tencent')).toBe('codebuddy');
     expect(mapExternalProviderName('  COPILOT  ')).toBe('ghcp');
     expect(mapExternalProviderName('')).toBeNull();
     expect(mapExternalProviderName('unknown-provider')).toBeNull();
@@ -97,8 +115,12 @@ describe('provider-capabilities', () => {
   it('exposes callback port and display name capabilities', () => {
     expect(getOAuthCallbackPort('qwen')).toBeNull();
     expect(getOAuthCallbackPort('kiro')).toBeNull();
+    expect(getOAuthCallbackPort('cursor')).toBeNull();
+    expect(getOAuthCallbackPort('gitlab')).toBe(17171);
     expect(getOAuthCallbackPort('gemini')).toBe(8085);
+    expect(PROVIDER_CAPABILITIES.gemini.refreshOwnership).toBe('cliproxy');
     expect(getProviderDisplayName('agy')).toBe('Antigravity');
+    expect(getProviderDisplayName('kilo')).toBe('Kilo AI');
   });
 
   it('throws when provider aliases collide across providers', () => {
@@ -136,20 +158,30 @@ describe('provider-capabilities', () => {
     expect(DEFAULT_KIRO_AUTH_METHOD).toBe('aws');
     expect(normalizeKiroAuthMethod()).toBe('aws');
     expect(normalizeKiroAuthMethod('GOOGLE')).toBe('google');
+    expect(normalizeKiroAuthMethod('IDC')).toBe('idc');
     expect(normalizeKiroAuthMethod('not-valid')).toBe('aws');
+    expect(normalizeKiroIDCFlow()).toBe('authcode');
+    expect(normalizeKiroIDCFlow('DEVICE')).toBe('device');
 
     expect(getKiroCLIAuthFlag('aws')).toBe('--kiro-aws-login');
     expect(getKiroCLIAuthFlag('aws-authcode')).toBe('--kiro-aws-authcode');
     expect(getKiroCLIAuthFlag('google')).toBe('--kiro-google-login');
+    expect(getKiroCLIAuthFlag('idc')).toBe('--kiro-idc-login');
+    expect(getKiroCLIAuthArgs('idc', { idcStartUrl: 'https://d-123.awsapps.com/start' })).toEqual(
+      ['--kiro-idc-login', '--kiro-idc-start-url', 'https://d-123.awsapps.com/start', '--kiro-idc-flow', 'authcode']
+    );
 
     expect(getKiroCallbackPort('aws')).toBeNull();
     expect(getKiroCallbackPort('google')).toBe(9876);
     expect(getKiroCallbackPort('github')).toBe(9876);
     expect(getKiroCallbackPort('aws-authcode')).toBe(9876);
+    expect(getKiroCallbackPort('idc')).toBe(9876);
+    expect(getKiroCallbackPort('idc', { idcFlow: 'device' })).toBeNull();
 
     expect(toKiroManagementMethod('aws')).toBe('aws');
     expect(toKiroManagementMethod('aws-authcode')).toBe('aws');
     expect(toKiroManagementMethod('google')).toBe('google');
     expect(toKiroManagementMethod('github')).toBe('github');
+    expect(toKiroManagementMethod('idc')).toBeNull();
   });
 });

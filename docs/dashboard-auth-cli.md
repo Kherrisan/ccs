@@ -1,14 +1,24 @@
 # Dashboard Authentication CLI
 
-Last Updated: 2026-02-26
+Last Updated: 2026-04-06
 
 CLI commands for managing CCS dashboard authentication.
 
 ## Overview
 
-The CCS dashboard (`ccs config`) can be protected with username/password authentication. This is useful when running the dashboard on a network-accessible machine.
+The CCS dashboard (`ccs config`) can be protected with username/password authentication. This is useful whenever the dashboard is reachable from another device, including when the runtime's default bind is network-accessible or when you explicitly bind it beyond loopback with `ccs config --host 0.0.0.0`.
 
 Authentication is **disabled by default** for backward compatibility. Use the CLI to configure and enable it.
+
+CCS does **not** ship a default dashboard username or password. When someone opens the dashboard from a non-loopback/IP address before auth is enabled, the UI now shows a setup state instead of an ambiguous login form. The host owner must run `ccs config auth setup`, or the user should switch back to the localhost URL if they are on the same machine.
+
+Docker note: the integrated `ccs docker` stack stores its config inside the running container volume, not in the outer shell's `~/.ccs`. For Docker deployments, run auth setup inside the container:
+
+```bash
+docker exec -it ccs-cliproxy ccs config auth setup
+```
+
+When auth stays disabled, CCS now applies a localhost-only fallback on sensitive management endpoints. Remote devices can still open the dashboard UI when you intentionally bind it beyond loopback, but write-capable routes such as AI Provider management and CLIProxy auth/status helpers reject non-loopback requests until you enable dashboard auth.
 
 ## Account Context Modes (Related Feature)
 
@@ -180,13 +190,16 @@ dashboard_auth:
 1. **Bcrypt hashing**: Passwords are hashed with bcrypt (10 rounds) before storage
 2. **Session cookies**: Sessions use HTTP-only cookies (not accessible via JavaScript)
 3. **Rate limiting**: Login attempts are rate-limited (5 per 15 minutes)
-4. **File permissions**: Config file is created with 0o600 permissions
+4. **Fail-closed remote writes**: When auth is disabled, sensitive management routes allow localhost only
+5. **File permissions**: Config file is created with 0o600 permissions
 
 ## Troubleshooting
 
 ### "Authentication not configured"
 
 Run `ccs config auth setup` to configure credentials.
+
+If you are using the integrated Docker stack, run that command inside `ccs-cliproxy`. Running it on the outer host shell updates a different config directory and will not unlock the running dashboard.
 
 ### Forgot password
 

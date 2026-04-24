@@ -1,12 +1,23 @@
 const assert = require('assert');
+const fs = require('fs');
 const { execSync } = require('child_process');
 const path = require('path');
 const { createTestEnvironment } = require('../shared/fixtures/test-environment');
 
 describe('npm CLI', () => {
-  const ccsPath = path.join(__dirname, '..', '..', 'dist', 'ccs.js');
+  const distCcsPath = path.join(__dirname, '..', '..', 'dist', 'ccs.js');
+  const srcCcsPath = path.join(__dirname, '..', '..', 'src', 'ccs.ts');
   let testEnv;
   let testCcsHome;
+
+  function buildCliCommand(args = '') {
+    if (fs.existsSync(distCcsPath)) {
+      return `node "${distCcsPath}" ${args}`;
+    }
+
+    // Some test files rebuild or clean dist during the same Bun process.
+    return `bun "${srcCcsPath}" ${args}`;
+  }
 
   beforeAll(() => {
     // Create isolated test environment
@@ -30,7 +41,7 @@ describe('npm CLI', () => {
 
   // Helper to run CLI with test environment
   function runCli(args, options = {}) {
-    return execSync(`node "${ccsPath}" ${args}`, {
+    return execSync(buildCliCommand(args), {
       ...options,
       env: { ...process.env, CCS_HOME: testCcsHome }
     });
@@ -74,11 +85,45 @@ describe('npm CLI', () => {
         assert(!output.includes("Profile '--verbose' not found"), 'Should not treat flags as profiles');
       }
     });
+
+    it('routes cursor probe through the cursor command handler', function() {
+      let output = '';
+      try {
+        output = execSync(`bun "${srcCcsPath}" cursor probe`, {
+          encoding: 'utf8',
+          stdio: 'pipe',
+          timeout: 3000,
+          env: { ...process.env, CCS_HOME: testCcsHome }
+        });
+      } catch (e) {
+        output = e.stderr?.toString() || e.stdout?.toString() || '';
+      }
+      assert(!output.includes("Profile 'cursor' not found"), 'Should not fall through to profile lookup');
+      assert(
+        output.includes('Cursor Live Probe') || output.includes('legacy cursor probe'),
+        'Should route through the legacy cursor compatibility handler'
+      );
+    });
+
+    it('routes gitlab --help to provider shortcut help instead of starting auth', function() {
+      const output = execSync(`bun "${srcCcsPath}" gitlab --help`, {
+        encoding: 'utf8',
+        timeout: 3000,
+        env: { ...process.env, CCS_HOME: testCcsHome }
+      });
+
+      assert(output.includes('CCS gitlab Shortcut Help'), 'Should render provider shortcut help');
+      assert(output.includes('--gitlab-token-login'), 'Should document canonical GitLab PAT flag');
+      assert(output.includes('--token-login'), 'Should document legacy GitLab PAT alias');
+      assert(output.includes('--gitlab-url <url>'), 'Should document self-hosted GitLab URL flag');
+      assert(!output.includes('Starting GitLab Duo OAuth'), 'Should not start OAuth when help is requested');
+    });
   });
 
   describe('Profile handling', () => {
-    // Note: GLM/GLMT/Kimi profiles are no longer auto-created (v6.0)
-    // Users create these via UI presets or CLI: ccs api create --preset glm
+    // Note: GLM/Kimi profiles are no longer auto-created (v6.0).
+    // Legacy GLMT files may still exist, but new supported API profiles are created
+    // via UI presets or CLI: ccs api create --preset glm
 
     it('shows helpful error for non-existent profile', function() {
       try {

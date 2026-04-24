@@ -90,6 +90,54 @@ describe('management-api-client', () => {
       });
     });
 
+    describe('routing strategy helpers', () => {
+      it('reads the routing strategy from the management endpoint', async () => {
+        const client = new ManagementApiClient(config);
+        const originalFetch = global.fetch;
+        const fetchMock = mock(() =>
+          Promise.resolve(
+            new Response(JSON.stringify({ strategy: 'fill-first' }), {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            })
+          )
+        );
+        global.fetch = fetchMock as typeof global.fetch;
+
+        const strategy = await client.getRoutingStrategy();
+
+        expect(strategy).toBe('fill-first');
+        expect(fetchMock).toHaveBeenCalled();
+        global.fetch = originalFetch;
+      });
+
+      it('writes the routing strategy using the expected payload shape', async () => {
+        const client = new ManagementApiClient(config);
+        const originalFetch = global.fetch;
+        const fetchMock = mock(() =>
+          Promise.resolve(
+            new Response(JSON.stringify({ ok: true }), {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            })
+          )
+        );
+        global.fetch = fetchMock as typeof global.fetch;
+
+        const strategy = await client.putRoutingStrategy('round-robin');
+
+        expect(strategy).toBe('round-robin');
+        expect(fetchMock).toHaveBeenCalledWith(
+          'http://localhost:8317/routing/strategy',
+          expect.objectContaining({
+            method: 'PUT',
+            body: JSON.stringify({ value: 'round-robin' }),
+          })
+        );
+        global.fetch = originalFetch;
+      });
+    });
+
     describe('error code mapping', () => {
       it('should map ENOTFOUND to DNS_FAILED', () => {
         const error = new Error('getaddrinfo ENOTFOUND example.com') as NodeJS.ErrnoException;

@@ -8,6 +8,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import { getDeviceCodeProviderDisplayName } from '@/lib/provider-config';
 
 export interface DeviceCodePrompt {
@@ -33,6 +34,7 @@ function coerceProvider(value: unknown): string {
 }
 
 export function useDeviceCode() {
+  const { t } = useTranslation();
   const [state, setState] = useState<DeviceCodeState>({
     isOpen: false,
     prompt: null,
@@ -48,7 +50,7 @@ export function useDeviceCode() {
         console.log('[DeviceCode] Received prompt:', data.sessionId);
         const provider = coerceProvider(data.provider);
         const displayName = getDeviceCodeProviderDisplayName(provider);
-        toast.info(`${displayName} authorization required`);
+        toast.info(t('toasts.authRequired', { provider: displayName }));
 
         setState({
           isOpen: true,
@@ -66,7 +68,7 @@ export function useDeviceCode() {
         setState((prev) => {
           if (prev.prompt && prev.prompt.sessionId === data.sessionId) {
             const displayName = getDeviceCodeProviderDisplayName(prev.prompt.provider);
-            toast.success(`${displayName} authentication successful!`);
+            toast.success(t('toasts.authSuccess', { provider: displayName }));
             return { isOpen: false, prompt: null, error: null };
           }
           return prev;
@@ -76,7 +78,7 @@ export function useDeviceCode() {
         setState((prev) => {
           if (prev.prompt && prev.prompt.sessionId === data.sessionId) {
             const displayName = getDeviceCodeProviderDisplayName(prev.prompt.provider);
-            toast.error(`${displayName} authentication failed`);
+            toast.error(t('toasts.authFailed', { provider: displayName }));
             return { isOpen: false, prompt: null, error: data.error as string };
           }
           return prev;
@@ -85,7 +87,7 @@ export function useDeviceCode() {
         console.log('[DeviceCode] Code expired:', data.sessionId);
         setState((prev) => {
           if (prev.prompt?.sessionId === data.sessionId) {
-            toast.error('Device code expired. Please try again.');
+            toast.error(t('toasts.deviceCodeExpired'));
             return { isOpen: false, prompt: null, error: 'Device code expired' };
           }
           return prev;
@@ -99,7 +101,7 @@ export function useDeviceCode() {
     return () => {
       window.removeEventListener('ws-message', handleMessage as EventListener);
     };
-  }, []);
+  }, [t]);
 
   const handleClose = useCallback(() => {
     setState({ isOpen: false, prompt: null, error: null });
@@ -115,12 +117,12 @@ export function useDeviceCode() {
     if (state.prompt?.userCode) {
       try {
         await navigator.clipboard.writeText(state.prompt.userCode);
-        toast.success('Code copied to clipboard');
+        toast.success(t('toasts.codeCopied'));
       } catch {
-        toast.error('Failed to copy code');
+        toast.error(t('toasts.failedCopy'));
       }
     }
-  }, [state.prompt]);
+  }, [state.prompt, t]);
 
   return useMemo(
     () => ({

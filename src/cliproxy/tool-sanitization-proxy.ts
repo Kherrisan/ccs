@@ -26,6 +26,7 @@ import {
 } from './model-id-normalizer';
 import { getModelMaxLevel } from './model-catalog';
 import { getCcsDir } from '../utils/config-manager';
+import { createLogger } from '../services/logging';
 
 export interface ToolSanitizationProxyConfig {
   /** Upstream CLIProxy URL */
@@ -36,6 +37,8 @@ export interface ToolSanitizationProxyConfig {
   warnOnSanitize?: boolean;
   /** Request timeout in milliseconds */
   timeoutMs?: number;
+  /** Skip TLS certificate validation for self-signed remote HTTPS proxies */
+  allowSelfSigned?: boolean;
 }
 
 /**
@@ -153,6 +156,7 @@ export class ToolSanitizationProxy {
   private readonly config: Required<ToolSanitizationProxyConfig>;
   private readonly logFilePath: string;
   private readonly debugMode: boolean;
+  private readonly logger = createLogger('cliproxy:tool-sanitization-proxy');
 
   constructor(config: ToolSanitizationProxyConfig) {
     this.config = {
@@ -160,6 +164,7 @@ export class ToolSanitizationProxy {
       verbose: config.verbose ?? false,
       warnOnSanitize: config.warnOnSanitize ?? true,
       timeoutMs: config.timeoutMs ?? 120000,
+      allowSelfSigned: config.allowSelfSigned ?? false,
     };
     this.debugMode = process.env.CCS_DEBUG === '1';
     this.logFilePath = this.initLogFile();
@@ -207,6 +212,11 @@ export class ToolSanitizationProxy {
     if (this.debugMode) {
       console.error(`${prefix} ${message}`);
     }
+
+    this.logger[level](level, message, {
+      debugMode: this.debugMode,
+      logFilePath: this.logFilePath,
+    });
   }
 
   private log(message: string): void {
@@ -462,6 +472,38 @@ export class ToolSanitizationProxy {
     return url.protocol === 'https:' ? https.request : http.request;
   }
 
+  private startResponseTimeout(upstreamReq: http.ClientRequest): () => void {
+    const deadline = setTimeout(() => {
+      upstreamReq.destroy(new Error('Upstream request timeout'));
+    }, this.config.timeoutMs);
+    upstreamReq.setTimeout(this.config.timeoutMs, () => {
+      upstreamReq.destroy(new Error('Upstream request timeout'));
+    });
+    return () => clearTimeout(deadline);
+  }
+
+  private buildRequestOptions(
+    upstreamUrl: URL,
+    method: string | undefined,
+    headers: http.OutgoingHttpHeaders
+  ): https.RequestOptions {
+    const options: https.RequestOptions = {
+      protocol: upstreamUrl.protocol,
+      hostname: upstreamUrl.hostname,
+      port: upstreamUrl.port,
+      path: upstreamUrl.pathname + upstreamUrl.search,
+      method,
+      timeout: this.config.timeoutMs,
+      headers,
+    };
+
+    if (upstreamUrl.protocol === 'https:' && this.config.allowSelfSigned) {
+      options.rejectUnauthorized = false;
+    }
+
+    return options;
+  }
+
   private forwardRaw(
     originalReq: http.IncomingMessage,
     clientRes: http.ServerResponse,
@@ -469,17 +511,15 @@ export class ToolSanitizationProxy {
   ): Promise<void> {
     return new Promise((resolve, reject) => {
       const requestFn = this.getRequestFn(upstreamUrl);
+      let clearResponseTimeout: () => void = () => undefined;
       const upstreamReq = requestFn(
-        {
-          protocol: upstreamUrl.protocol,
-          hostname: upstreamUrl.hostname,
-          port: upstreamUrl.port,
-          path: upstreamUrl.pathname + upstreamUrl.search,
-          method: originalReq.method,
-          timeout: this.config.timeoutMs,
-          headers: this.buildForwardHeaders(originalReq.headers),
-        },
+        this.buildRequestOptions(
+          upstreamUrl,
+          originalReq.method,
+          this.buildForwardHeaders(originalReq.headers)
+        ),
         (upstreamRes) => {
+          clearResponseTimeout();
           clientRes.writeHead(upstreamRes.statusCode || 200, upstreamRes.headers);
           upstreamRes.pipe(clientRes);
           upstreamRes.on('end', () => resolve());
@@ -487,8 +527,12 @@ export class ToolSanitizationProxy {
         }
       );
 
+      clearResponseTimeout = this.startResponseTimeout(upstreamReq);
       upstreamReq.on('timeout', () => upstreamReq.destroy(new Error('Upstream request timeout')));
-      upstreamReq.on('error', reject);
+      upstreamReq.on('error', (err) => {
+        clearResponseTimeout();
+        reject(err);
+      });
       originalReq.pipe(upstreamReq);
     });
   }
@@ -506,17 +550,15 @@ export class ToolSanitizationProxy {
     return new Promise((resolve, reject) => {
       const bodyString = JSON.stringify(body);
       const requestFn = this.getRequestFn(upstreamUrl);
+      let clearResponseTimeout: () => void = () => undefined;
       const upstreamReq = requestFn(
-        {
-          protocol: upstreamUrl.protocol,
-          hostname: upstreamUrl.hostname,
-          port: upstreamUrl.port,
-          path: upstreamUrl.pathname + upstreamUrl.search,
-          method: originalReq.method,
-          timeout: this.config.timeoutMs,
-          headers: this.buildForwardHeaders(originalReq.headers, bodyString),
-        },
+        this.buildRequestOptions(
+          upstreamUrl,
+          originalReq.method,
+          this.buildForwardHeaders(originalReq.headers, bodyString)
+        ),
         (upstreamRes) => {
+          clearResponseTimeout();
           const chunks: Buffer[] = [];
 
           upstreamRes.on('data', (chunk: Buffer) => chunks.push(chunk));
@@ -559,8 +601,12 @@ export class ToolSanitizationProxy {
         }
       );
 
+      clearResponseTimeout = this.startResponseTimeout(upstreamReq);
       upstreamReq.on('timeout', () => upstreamReq.destroy(new Error('Upstream request timeout')));
-      upstreamReq.on('error', reject);
+      upstreamReq.on('error', (err) => {
+        clearResponseTimeout();
+        reject(err);
+      });
       upstreamReq.write(bodyString);
       upstreamReq.end();
     });
@@ -580,17 +626,15 @@ export class ToolSanitizationProxy {
     return new Promise((resolve, reject) => {
       const bodyString = JSON.stringify(body);
       const requestFn = this.getRequestFn(upstreamUrl);
+      let clearResponseTimeout: () => void = () => undefined;
       const upstreamReq = requestFn(
-        {
-          protocol: upstreamUrl.protocol,
-          hostname: upstreamUrl.hostname,
-          port: upstreamUrl.port,
-          path: upstreamUrl.pathname + upstreamUrl.search,
-          method: originalReq.method,
-          timeout: this.config.timeoutMs,
-          headers: this.buildForwardHeaders(originalReq.headers, bodyString),
-        },
+        this.buildRequestOptions(
+          upstreamUrl,
+          originalReq.method,
+          this.buildForwardHeaders(originalReq.headers, bodyString)
+        ),
         (upstreamRes) => {
+          clearResponseTimeout();
           clientRes.writeHead(upstreamRes.statusCode || 200, upstreamRes.headers);
 
           // Track upstream SSE lifecycle events (guards against empty proxy responses)
@@ -708,8 +752,12 @@ export class ToolSanitizationProxy {
         }
       );
 
+      clearResponseTimeout = this.startResponseTimeout(upstreamReq);
       upstreamReq.on('timeout', () => upstreamReq.destroy(new Error('Upstream request timeout')));
-      upstreamReq.on('error', reject);
+      upstreamReq.on('error', (err) => {
+        clearResponseTimeout();
+        reject(err);
+      });
       upstreamReq.write(bodyString);
       upstreamReq.end();
     });

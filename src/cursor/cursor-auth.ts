@@ -21,6 +21,13 @@ import * as os from 'os';
 import type { CursorCredentials, CursorAuthStatus, AutoDetectResult } from './types';
 import { getCcsDir } from '../utils/config-manager';
 
+const ACCESS_TOKEN_KEYS = ['cursorAuth/accessToken', 'cursorAuth/token'] as const;
+const MACHINE_ID_KEYS = [
+  'storage.serviceMachineId',
+  'storage.machineId',
+  'telemetry.machineId',
+] as const;
+
 /**
  * Resolve home directory from environment first for deterministic testability,
  * then fall back to os.homedir() when env vars are unavailable.
@@ -36,98 +43,247 @@ function resolveHomeDir(): string {
 /**
  * Get platform-specific path to Cursor's state.vscdb
  */
-export function getTokenStoragePath(): string {
+export function getTokenStorageCandidates(): string[] {
   const platform = process.platform;
   const home = resolveHomeDir();
 
   if (platform === 'win32') {
     const appData = process.env.APPDATA || path.join(home, 'AppData', 'Roaming');
-    return path.join(appData, 'Cursor', 'User', 'globalStorage', 'state.vscdb');
-  } else if (platform === 'darwin') {
-    return path.join(
-      home,
-      'Library',
-      'Application Support',
-      'Cursor',
-      'User',
-      'globalStorage',
-      'state.vscdb'
-    );
-  } else {
-    // Linux
-    return path.join(home, '.config', 'Cursor', 'User', 'globalStorage', 'state.vscdb');
+    const localAppData = process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local');
+
+    return [
+      path.join(appData, 'Cursor', 'User', 'globalStorage', 'state.vscdb'),
+      path.join(appData, 'Cursor - Insiders', 'User', 'globalStorage', 'state.vscdb'),
+      path.join(localAppData, 'Cursor', 'User', 'globalStorage', 'state.vscdb'),
+      path.join(localAppData, 'Programs', 'Cursor', 'User', 'globalStorage', 'state.vscdb'),
+    ];
   }
+
+  if (platform === 'darwin') {
+    return [
+      path.join(
+        home,
+        'Library',
+        'Application Support',
+        'Cursor',
+        'User',
+        'globalStorage',
+        'state.vscdb'
+      ),
+      path.join(
+        home,
+        'Library',
+        'Application Support',
+        'Cursor - Insiders',
+        'User',
+        'globalStorage',
+        'state.vscdb'
+      ),
+    ];
+  }
+
+  return [
+    path.join(home, '.config', 'Cursor', 'User', 'globalStorage', 'state.vscdb'),
+    path.join(home, '.config', 'cursor', 'User', 'globalStorage', 'state.vscdb'),
+  ];
+}
+
+export function getTokenStoragePath(): string {
+  return getTokenStorageCandidates()[0];
+}
+
+function normalizeStateValue(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return trimmed;
+
+  try {
+    const parsed = JSON.parse(trimmed);
+    return typeof parsed === 'string' ? parsed : trimmed;
+  } catch {
+    return trimmed;
+  }
+}
+
+function getSqliteBinary(): string {
+  return process.env.CCS_CURSOR_SQLITE_BIN || 'sqlite3';
 }
 
 /**
  * Query Cursor's SQLite database using sqlite3 CLI
  */
-function queryStateDb(dbPath: string, key: string): string | null {
+function queryStateDb(
+  dbPath: string,
+  key: string
+): { value: string | null; sqliteAvailable: boolean; queryFailed: boolean } {
   try {
     // Escape single quotes to prevent SQL injection
     const sanitizedKey = key.replace(/'/g, "''");
     const result = execFileSync(
-      'sqlite3',
+      getSqliteBinary(),
       [dbPath, `SELECT value FROM itemTable WHERE key='${sanitizedKey}'`],
       { encoding: 'utf8', timeout: 5000, stdio: ['pipe', 'pipe', 'ignore'] }
-    ).trim();
-    return result || null;
+    );
+
+    return {
+      value: normalizeStateValue(result) || null,
+      sqliteAvailable: true,
+      queryFailed: false,
+    };
   } catch (err) {
     // Check if sqlite3 is not installed
     if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
-      // sqlite3 not found - could log this if needed
-      return null;
+      return { value: null, sqliteAvailable: false, queryFailed: false };
     }
-    return null;
+    return { value: null, sqliteAvailable: true, queryFailed: true };
   }
+}
+
+function queryStateDbKeys(
+  dbPath: string,
+  keys: readonly string[]
+): { value: string | null; sqliteAvailable: boolean; queryFailed: boolean } {
+  for (const key of keys) {
+    const result = queryStateDb(dbPath, key);
+    if (!result.sqliteAvailable || result.queryFailed) return result;
+    if (result.value) return result;
+  }
+
+  return { value: null, sqliteAvailable: true, queryFailed: false };
 }
 
 /**
  * Auto-detect tokens from Cursor's SQLite database
  */
 export function autoDetectTokens(): AutoDetectResult {
-  // sqlite3 CLI is not bundled with Windows
-  if (process.platform === 'win32') {
+  const checkedPaths = getTokenStorageCandidates();
+  const existingPaths = checkedPaths.filter((candidate) => fs.existsSync(candidate));
+
+  if (existingPaths.length === 0) {
     return {
       found: false,
+      checkedPaths,
+      reason: 'db_not_found',
+      error: `Cursor state database not found. Checked:\n${checkedPaths.join('\n')}`,
+    };
+  }
+
+  let sawSqliteUnavailable = false;
+  let sawQueryFailure = false;
+  let sawTokenMissing = false;
+  let sawMachineIdMissing = false;
+  let sawInvalidCredentials = false;
+  let firstQueryFailurePath: string | undefined;
+  let firstInvalidCredentialsPath: string | undefined;
+
+  for (const dbPath of existingPaths) {
+    const accessTokenResult = queryStateDbKeys(dbPath, ACCESS_TOKEN_KEYS);
+    if (!accessTokenResult.sqliteAvailable) {
+      sawSqliteUnavailable = true;
+      continue;
+    }
+    if (accessTokenResult.queryFailed) {
+      sawQueryFailure = true;
+      firstQueryFailurePath ??= dbPath;
+      continue;
+    }
+
+    if (!accessTokenResult.value) {
+      sawTokenMissing = true;
+      continue;
+    }
+
+    const machineIdResult = queryStateDbKeys(dbPath, MACHINE_ID_KEYS);
+    if (!machineIdResult.sqliteAvailable) {
+      sawSqliteUnavailable = true;
+      continue;
+    }
+    if (machineIdResult.queryFailed) {
+      sawQueryFailure = true;
+      firstQueryFailurePath ??= dbPath;
+      continue;
+    }
+
+    if (!machineIdResult.value) {
+      sawMachineIdMissing = true;
+      continue;
+    }
+
+    if (!validateToken(accessTokenResult.value, machineIdResult.value)) {
+      sawInvalidCredentials = true;
+      firstInvalidCredentialsPath ??= dbPath;
+      continue;
+    }
+
+    return {
+      found: true,
+      accessToken: accessTokenResult.value,
+      machineId: machineIdResult.value,
+      dbPath,
+      checkedPaths,
+    };
+  }
+
+  if (sawSqliteUnavailable) {
+    return {
+      found: false,
+      checkedPaths,
+      dbPath: existingPaths[0],
+      reason: 'sqlite_unavailable',
       error:
-        'Auto-detection is not supported on Windows. Please import tokens manually using ccs cursor auth --manual.',
+        'Cursor state database was found, but sqlite3 is not available in PATH. Install sqlite3 or use manual import.',
     };
   }
 
-  const dbPath = getTokenStoragePath();
-
-  // Check if database exists
-  if (!fs.existsSync(dbPath)) {
+  if (sawQueryFailure) {
     return {
       found: false,
+      checkedPaths,
+      dbPath: firstQueryFailurePath ?? existingPaths[0],
+      reason: 'db_query_failed',
       error:
-        'Cursor state database not found. Make sure Cursor IDE is installed and you are logged in.',
+        'Cursor state database was found, but CCS could not query it. The database may be locked, corrupted, or use an unexpected schema.',
     };
   }
 
-  // Try to query access token
-  const accessToken = queryStateDb(dbPath, 'cursorAuth/accessToken');
-  if (!accessToken) {
+  if (sawInvalidCredentials) {
     return {
       found: false,
-      error: 'Access token not found in database. Please log in to Cursor IDE first.',
+      checkedPaths,
+      dbPath: firstInvalidCredentialsPath ?? existingPaths[0],
+      reason: 'invalid_token_format',
+      error:
+        'Cursor credentials were found, but the access token or machine ID format was invalid. Re-authenticate in Cursor IDE or use manual import.',
     };
   }
 
-  // Try to query machine ID
-  const machineId = queryStateDb(dbPath, 'storage.serviceMachineId');
-  if (!machineId) {
+  if (sawMachineIdMissing) {
     return {
       found: false,
-      error: 'Machine ID not found in database.',
+      checkedPaths,
+      dbPath: existingPaths[0],
+      reason: 'machine_id_not_found',
+      error:
+        'Cursor access token was found, but the machine ID was not present in the database. Re-open Cursor IDE or use manual import.',
+    };
+  }
+
+  if (sawTokenMissing) {
+    return {
+      found: false,
+      checkedPaths,
+      dbPath: existingPaths[0],
+      reason: 'access_token_not_found',
+      error:
+        'Access token not found in Cursor state database. Make sure you are logged in to Cursor IDE first.',
     };
   }
 
   return {
-    found: true,
-    accessToken,
-    machineId,
+    found: false,
+    checkedPaths,
+    dbPath: existingPaths[0],
+    reason: 'db_not_found',
+    error: 'Cursor credentials could not be detected from the discovered database paths.',
   };
 }
 

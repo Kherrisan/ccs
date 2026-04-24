@@ -34,13 +34,16 @@ import {
 import { useOpenRouterModels } from '@/hooks/use-openrouter-models';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import type { ApiProfileExportBundle, Profile } from '@/lib/api-client';
+import type { ProviderPreset } from '@/lib/provider-presets';
 import { cn } from '@/lib/utils';
 import { CopyButton } from '@/components/ui/copy-button';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
+import { useNavigate } from 'react-router-dom';
 
 export function ApiPage() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const { data, isLoading, isError, refetch } = useProfiles();
   const deleteMutation = useDeleteProfile();
   const discoverOrphansMutation = useDiscoverProfileOrphans();
@@ -51,9 +54,7 @@ export function ApiPage() {
   const [selectedProfile, setSelectedProfile] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [isCreateDialogOpen, setCreateDialogOpen] = useState(false);
-  const [createMode, setCreateMode] = useState<'normal' | 'openrouter' | 'alibaba-coding-plan'>(
-    'normal'
-  );
+  const [createMode, setCreateMode] = useState<ProviderPreset['id'] | 'normal'>('normal');
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [editorHasChanges, setEditorHasChanges] = useState(false);
   const [pendingSwitch, setPendingSwitch] = useState<string | null>(null);
@@ -115,21 +116,29 @@ export function ApiPage() {
     try {
       const result = await discoverOrphansMutation.mutateAsync();
       if (result.orphans.length === 0) {
-        toast.success('No orphan profile settings found');
+        toast.success(t('apiProfiles.noOrphansFound'));
         return;
       }
 
       const validCount = result.orphans.filter((orphan) => orphan.validation.valid).length;
       const shouldRegister = window.confirm(
-        `Found ${result.orphans.length} orphan settings file(s). Register ${validCount} valid profile(s) now?`
+        t('apiProfiles.confirmRegisterOrphans', {
+          total: result.orphans.length,
+          valid: validCount,
+        })
       );
 
       if (!shouldRegister) return;
 
       const registration = await registerOrphansMutation.mutateAsync({});
       const skippedMessage =
-        registration.skipped.length > 0 ? `, skipped ${registration.skipped.length}` : '';
-      toast.success(`Registered ${registration.registered.length} profile(s)${skippedMessage}`);
+        registration.skipped.length > 0
+          ? t('apiProfiles.registeredWithSkipped', { count: registration.skipped.length })
+          : '';
+      toast.success(
+        t('apiProfiles.registeredProfiles', { count: registration.registered.length }) +
+          skippedMessage
+      );
     } catch (error) {
       toast.error((error as Error).message);
     }
@@ -138,13 +147,13 @@ export function ApiPage() {
   const handleCopySelectedProfile = async () => {
     if (!selectedProfileData) return;
     const destinationInput = window.prompt(
-      `Copy profile "${selectedProfileData.name}" to new profile name:`,
+      t('apiProfiles.copyPrompt', { name: selectedProfileData.name }),
       `${selectedProfileData.name}-copy`
     );
     if (!destinationInput) return;
     const destination = destinationInput.trim();
     if (!destination) {
-      toast.error('Destination profile name cannot be empty');
+      toast.error(t('apiProfiles.destinationEmpty'));
       return;
     }
 
@@ -168,11 +177,9 @@ export function ApiPage() {
       const result = await exportProfileMutation.mutateAsync({ name: selectedProfileData.name });
       triggerDownload(`${selectedProfileData.name}.ccs-profile.json`, result.bundle);
       if (result.redacted) {
-        toast.info(
-          'Export created with redacted token. Use include-secrets flow in CLI if needed.'
-        );
+        toast.info(t('apiProfiles.exportRedacted'));
       } else {
-        toast.success('Profile export downloaded');
+        toast.success(t('apiProfiles.exportDownloaded'));
       }
     } catch (error) {
       toast.error((error as Error).message);
@@ -199,29 +206,31 @@ export function ApiPage() {
         toast.info(result.warnings.join('\n'));
       }
     } catch (error) {
-      toast.error((error as Error).message || 'Failed to import profile bundle');
+      toast.error((error as Error).message || t('apiProfiles.importFailed'));
     }
   };
 
   return (
-    <div className="h-[calc(100vh-100px)] flex flex-col">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden">
       <OpenRouterBanner onCreateClick={() => setCreateDialogOpen(true)} />
-      <div className="flex-1 flex min-h-0">
+      <div className="flex-1 flex min-h-0 overflow-hidden">
         <div className="w-80 border-r flex flex-col bg-muted/30">
           <div className="p-4 border-b bg-background">
-            <div className="flex items-center justify-between mb-3">
+            <div className="mb-3 flex items-start justify-between gap-3">
               <div className="flex items-center gap-2">
                 <Server className="w-5 h-5 text-primary" />
-                <h1 className="font-semibold">{t('apiProfiles.title')}</h1>
+                <div className="min-w-0">
+                  <h1 className="font-semibold">{t('apiProfiles.sidebarTitle')}</h1>
+                </div>
               </div>
-              <div className="flex items-center gap-1">
+              <div className="flex shrink-0 items-center gap-1">
                 <Button
                   size="sm"
                   variant="outline"
                   onClick={() => void handleDiscoverOrphans()}
                   disabled={discoverOrphansMutation.isPending || registerOrphansMutation.isPending}
-                  aria-label="Discover orphan profiles"
-                  title="Discover orphan profiles"
+                  aria-label={t('apiProfiles.discoverOrphans')}
+                  title={t('apiProfiles.discoverOrphans')}
                 >
                   <RefreshCw
                     className={`w-4 h-4 ${discoverOrphansMutation.isPending ? 'animate-spin' : ''}`}
@@ -232,8 +241,8 @@ export function ApiPage() {
                   variant="outline"
                   onClick={handleImportClick}
                   disabled={importProfileMutation.isPending}
-                  aria-label="Import profile bundle"
-                  title="Import profile bundle"
+                  aria-label={t('apiProfiles.importProfileBundle')}
+                  title={t('apiProfiles.importProfileBundle')}
                 >
                   <Upload className="w-4 h-4" />
                 </Button>
@@ -249,6 +258,10 @@ export function ApiPage() {
               </div>
             </div>
 
+            <p className="mb-3 text-xs leading-4 text-muted-foreground">
+              {t('apiProfiles.sidebarSubtitle')}
+            </p>
+
             <div className="relative">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
@@ -260,7 +273,7 @@ export function ApiPage() {
             </div>
           </div>
 
-          <ScrollArea className="flex-1">
+          <ScrollArea className="flex-1 min-h-0">
             {isLoading ? (
               <div className="p-4 text-sm text-muted-foreground">
                 {t('apiProfiles.loadingProfiles')}
@@ -352,7 +365,7 @@ export function ApiPage() {
           />
         </div>
 
-        <div className="flex-1 flex flex-col min-w-0">
+        <div className="flex min-h-0 flex-1 flex-col min-w-0 overflow-hidden">
           {selectedProfileData ? (
             <>
               <div className="px-4 py-2 border-b bg-background flex items-center justify-end gap-2">
@@ -385,12 +398,25 @@ export function ApiPage() {
             </>
           ) : (
             <OpenRouterQuickStart
+              hasProfiles={profiles.length > 0}
+              profileCount={profiles.length}
+              onCliproxyClick={() => {
+                navigate('/cliproxy/ai-providers');
+              }}
               onOpenRouterClick={() => {
                 setCreateMode('openrouter');
                 setCreateDialogOpen(true);
               }}
               onAlibabaCodingPlanClick={() => {
                 setCreateMode('alibaba-coding-plan');
+                setCreateDialogOpen(true);
+              }}
+              onOllamaClick={() => {
+                setCreateMode('ollama');
+                setCreateDialogOpen(true);
+              }}
+              onLlamacppClick={() => {
+                setCreateMode('llamacpp');
                 setCreateDialogOpen(true);
               }}
               onCustomClick={() => {

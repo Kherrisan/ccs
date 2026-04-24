@@ -3,6 +3,7 @@ import { BellRing, ExternalLink } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { formatCatalogDate, getLatestSupportNotice } from '@/lib/support-updates-catalog';
 import { cn } from '@/lib/utils';
+import { useTranslation } from 'react-i18next';
 
 export function UpdatesSpotlight({
   className,
@@ -12,6 +13,7 @@ export function UpdatesSpotlight({
   compact?: boolean;
 }) {
   const latest = getLatestSupportNotice();
+  const { t } = useTranslation();
   if (!latest) {
     return null;
   }
@@ -35,7 +37,7 @@ export function UpdatesSpotlight({
             to="/updates"
             className="inline-flex items-center gap-1 font-medium text-blue-700 hover:underline dark:text-blue-300"
           >
-            Open Updates Center
+            {t('updatesSpotlight.openUpdatesCenter')}
             <ExternalLink className="h-3.5 w-3.5" />
           </Link>
 

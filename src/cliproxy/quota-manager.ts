@@ -286,6 +286,9 @@ export async function findHealthyAccount(
     return null;
   }
 
+  const { restoreExpiredQuotaPauses } = await import('./account-safety');
+  restoreExpiredQuotaPauses();
+
   const config = loadOrCreateUnifiedConfig();
   const tierPriority = config.quota_management?.auto?.tier_priority ?? ['ultra', 'pro', 'free'];
   const threshold = config.quota_management?.auto?.exhaustion_threshold ?? 5;
@@ -388,6 +391,11 @@ export async function preflightCheck(provider: CLIProxyProvider): Promise<Prefli
     return { proceed: true, accountId: defaultAccount?.id || '' };
   }
 
+  const { pauseAccountForQuotaCooldown, restoreExpiredQuotaPauses } = await import(
+    './account-safety'
+  );
+  restoreExpiredQuotaPauses();
+
   const config = loadOrCreateUnifiedConfig();
   const quotaConfig = config.quota_management;
 
@@ -442,13 +450,32 @@ export async function preflightCheck(provider: CLIProxyProvider): Promise<Prefli
   const threshold = quotaConfig.auto?.exhaustion_threshold ?? 5;
 
   if (avgQuota < threshold) {
-    // Apply cooldown to exhausted account
     applyCooldown(provider, defaultAccount.id, quotaConfig.auto?.cooldown_minutes ?? 5);
-    return await findAndSwitch(
+
+    const alternative = await findHealthyAccount(provider, [defaultAccount.id]);
+    if (!alternative) {
+      return {
+        proceed: true,
+        accountId: defaultAccount.id,
+        reason: `Quota exhausted (${avgQuota.toFixed(1)}%), no alternatives available`,
+        quotaPercent,
+      };
+    }
+
+    pauseAccountForQuotaCooldown(
       provider,
       defaultAccount.id,
-      `Quota exhausted (${avgQuota.toFixed(1)}%)`
+      quotaConfig.auto?.cooldown_minutes ?? 5
     );
+    setDefaultAccount(provider, alternative.id);
+    touchAccount(provider, alternative.id);
+    return {
+      proceed: true,
+      accountId: alternative.id,
+      switchedFrom: defaultAccount.id,
+      reason: `Quota exhausted (${avgQuota.toFixed(1)}%)`,
+      quotaPercent: alternative.lastQuota,
+    };
   }
 
   return {
@@ -471,6 +498,9 @@ export async function getQuotaStatus(provider: CLIProxyProvider): Promise<{
     isDefault: boolean;
   }>;
 }> {
+  const { restoreExpiredQuotaPauses } = await import('./account-safety');
+  restoreExpiredQuotaPauses();
+
   const accounts = getProviderAccounts(provider);
   const defaultAccount = getDefaultAccount(provider);
 

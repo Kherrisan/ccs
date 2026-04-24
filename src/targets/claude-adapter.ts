@@ -9,9 +9,16 @@ import { spawn, ChildProcess } from 'child_process';
 import { TargetAdapter, TargetBinaryInfo, TargetCredentials, TargetType } from './target-adapter';
 import { detectClaudeCli, getClaudeCliInfo } from '../utils/claude-detector';
 import type { ProfileType } from '../types/profile';
-import { escapeShellArg, stripAnthropicEnv, stripClaudeCodeEnv } from '../utils/shell-executor';
+import {
+  escapeShellArg,
+  getWindowsEscapedCommandShell,
+  stripBrowserEnv,
+  stripAnthropicEnv,
+  stripClaudeCodeEnv,
+} from '../utils/shell-executor';
 import { ErrorManager } from '../utils/error-manager';
 import { getWebSearchHookEnv } from '../utils/websearch-manager';
+import { appendBrowserToolArgs } from '../utils/browser';
 import { wireChildProcessSignals } from '../utils/signal-forwarder';
 import { runCleanup } from '../errors';
 
@@ -32,8 +39,16 @@ export class ClaudeAdapter implements TargetAdapter {
     // No-op: Claude receives credentials via environment variables
   }
 
-  buildArgs(_profile: string, userArgs: string[]): string[] {
-    return userArgs;
+  buildArgs(
+    _profile: string,
+    userArgs: string[],
+    options?: {
+      creds?: TargetCredentials;
+      profileType?: ProfileType;
+      binaryInfo?: TargetBinaryInfo;
+    }
+  ): string[] {
+    return options?.creds?.browserRuntimeEnv ? appendBrowserToolArgs(userArgs) : userArgs;
   }
 
   buildEnv(creds: TargetCredentials, profileType: ProfileType): NodeJS.ProcessEnv {
@@ -46,10 +61,13 @@ export class ClaudeAdapter implements TargetAdapter {
         ? stripAnthropicEnv(process.env)
         : process.env;
 
-    const env: NodeJS.ProcessEnv = { ...baseEnv, ...webSearchEnv };
+    const env: NodeJS.ProcessEnv = { ...stripBrowserEnv(baseEnv), ...webSearchEnv };
 
     if (creds.envVars) {
-      Object.assign(env, creds.envVars);
+      Object.assign(env, stripBrowserEnv(creds.envVars));
+    }
+    if (creds.browserRuntimeEnv) {
+      Object.assign(env, creds.browserRuntimeEnv);
     }
 
     if (creds.baseUrl) env['ANTHROPIC_BASE_URL'] = creds.baseUrl;
@@ -99,7 +117,7 @@ export class ClaudeAdapter implements TargetAdapter {
       child = spawn(cmdString, {
         stdio: 'inherit',
         windowsHide: true,
-        shell: true,
+        shell: getWindowsEscapedCommandShell(),
         env,
       });
     } else {

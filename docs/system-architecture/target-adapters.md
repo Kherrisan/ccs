@@ -1,6 +1,6 @@
 # Target Adapters
 
-Last Updated: 2026-02-16
+Last Updated: 2026-03-28
 
 Detailed documentation of the target adapter pattern and implementations.
 
@@ -20,8 +20,8 @@ Each CLI target implements the `TargetAdapter` contract:
 
 ```typescript
 export interface TargetAdapter {
-  readonly type: TargetType;                               // 'claude' | 'droid'
-  readonly displayName: string;                            // "Claude Code" | "Factory Droid"
+  readonly type: TargetType;                               // 'claude' | 'droid' | 'codex'
+  readonly displayName: string;                            // "Claude Code" | "Factory Droid" | "Codex CLI"
 
   /** Detect if the target CLI binary exists on system */
   detectBinary(): TargetBinaryInfo | null;
@@ -30,7 +30,15 @@ export interface TargetAdapter {
   prepareCredentials(creds: TargetCredentials): Promise<void>;
 
   /** Build spawn arguments for the target CLI */
-  buildArgs(profile: string, userArgs: string[]): string[];
+  buildArgs(
+    profile: string,
+    userArgs: string[],
+    options?: {
+      creds?: TargetCredentials;
+      profileType?: ProfileType;
+      binaryInfo?: TargetBinaryInfo;
+    }
+  ): string[];
 
   /** Build environment variables for the target CLI */
   buildEnv(creds: TargetCredentials, profileType: string): NodeJS.ProcessEnv;
@@ -46,7 +54,7 @@ export interface TargetAdapter {
 ### Type Definitions
 
 ```typescript
-export type TargetType = 'claude' | 'droid';
+export type TargetType = 'claude' | 'droid' | 'codex';
 
 export interface TargetCredentials {
   baseUrl: string;                                         // API endpoint
@@ -59,6 +67,8 @@ export interface TargetCredentials {
 export interface TargetBinaryInfo {
   path: string;                                            // Full path to binary
   needsShell: boolean;                                     // Windows .cmd/.bat/.ps1?
+  version?: string;                                        // Optional version string
+  features?: readonly string[];                            // Capability probes
 }
 ```
 
@@ -73,17 +83,27 @@ CCS resolves which adapter to use via priority-ordered checks:
 ```
 1. --target flag (CLI argument) — highest priority
    └─ ccs --target droid glm
+   └─ ccs --target codex
 
-2. Per-profile config (from ~/.ccs/config.yaml or settings.json)
+2. Explicit runtime entrypoint (`CCS_INTERNAL_ENTRY_TARGET`) — dedicated bin shims
+   └─ ccs-droid / ccsd → droid
+   └─ ccs-codex / ccsx → codex
+   └─ ccsxp → codex, then rewrites argv to `ccs codex --target codex ...`
+
+3. argv[0] detection (runtime alias pattern) — binary name mapping for same-binary/custom aliases
+   └─ ccs-droid (explicit alias) → droid
+   └─ ccsd (legacy shortcut) → droid
+   └─ ccs-codex (explicit alias) → codex
+   └─ ccsx (short alias) → codex
+   └─ ccs (regular command) → default
+
+4. Per-profile config (from ~/.ccs/config.yaml or settings.json)
+   └─ persisted targets are currently only `claude` and `droid`
    └─ profiles:
         glm:
           target: droid
 
-3. argv[0] detection (busybox pattern) — binary name mapping
-   └─ ccsd (symlink/batch file) → droid
-   └─ ccs (regular command) → default
-
-4. Fallback: 'claude' — lowest priority
+5. Fallback: 'claude' — lowest priority
 ```
 
 ### Implementation
@@ -102,18 +122,25 @@ export function resolveTargetType(
     return parsed.targetOverride;
   }
 
-  // 2. Check profile config
-  if (profileConfig?.target) {
-    return profileConfig.target;
+  // 2. Check explicit runtime entrypoint shim
+  const entrypointTarget = resolveEntrypointTarget();
+  if (entrypointTarget) {
+    return entrypointTarget;
   }
 
-  // 3. Check argv[0] (binary name)
+  // 3. Check argv[0] (binary name / custom alias map)
   const binName = path.basename(process.argv[1] || process.argv0 || '').replace(/\.(cmd|bat|ps1|exe)$/i, '');
   if (ARGV0_TARGET_MAP[binName]) {
     return ARGV0_TARGET_MAP[binName];
   }
 
-  // 4. Default to claude
+  // 4. Check profile config
+  if (profileConfig?.target) {
+    // Persisted targets intentionally exclude runtime-only codex.
+    return profileConfig.target;
+  }
+
+  // 5. Default to claude
   return 'claude';
 }
 ```
@@ -221,7 +248,7 @@ export WEBSEARCH_HOOK_ENV=...  # Image analysis, websearch
 
 ```bash
 # Direct invocation
-ccs gemini
+ccs codex
 → claude "args..."
   with ANTHROPIC_BASE_URL, ANTHROPIC_AUTH_TOKEN set
 
@@ -341,8 +368,8 @@ export class DroidAdapter implements TargetAdapter {
 
 ```bash
 # Direct invocation
-ccs gemini
-→ droid -m custom:ccs-gemini "args..."
+ccs codex
+→ droid -m custom:ccs-codex "args..."
   (credentials loaded from ~/.factory/settings.json)
 
 # With --target override
@@ -351,22 +378,155 @@ ccs --target droid glm
   (credentials loaded from ~/.factory/settings.json)
 ```
 
-### Binary Alias Pattern
+### Runtime Alias Pattern
 
 ```bash
-# Create alias/symlink to auto-select droid target
-# Built-in alias: ccsd
-ln -s /path/to/ccs /path/to/ccsd
+# Built-in package bin aliases
+ccs-droid glm
+→ Target: droid (forced by runtime alias)
+→ droid -m custom:ccs-glm "args..."
 
-# Usage
+# Legacy shortcut still works
 ccsd glm
-→ Target: droid (detected from argv[0])
+→ Target: droid (forced by runtime alias)
 → droid -m custom:ccs-glm "args..."
 ```
 
-On Windows, `ccsd.cmd`, `ccsd.bat`, `ccsd.ps1`, and `ccsd.exe` wrappers are also recognized.
+On Windows, `ccs-droid.cmd`, `ccsd.cmd`, `ccsd.bat`, `ccsd.ps1`, and `ccsd.exe` wrappers are also recognized.
 
-Additional alias names can be configured at runtime via `CCS_DROID_ALIASES` (comma-separated). Example: `CCS_DROID_ALIASES=ccs-droid,mydroid`.
+Additional alias names can be configured at runtime after you create a matching
+symlink or another launcher that preserves the invoked basename. Use `CCS_TARGET_ALIASES` (preferred,
+`target=alias1,alias2;...`) or legacy `CCS_DROID_ALIASES` (comma-separated).
+Example:
+
+```bash
+ln -s /path/to/ccs /path/to/mydroid
+CCS_TARGET_ALIASES=droid=mydroid
+```
+
+---
+
+## Codex Adapter
+
+### Implementation
+
+The Codex adapter keeps CCS-backed Codex launches transient. It does not rewrite
+`~/.codex/config.toml`. Instead it:
+
+- passes through native default Codex sessions unchanged
+- probes the installed Codex binary for `--config <key=value>` support
+- injects CCS-backed provider credentials through temporary `-c` overrides
+- stores the routed API key only in process env via `CCS_CODEX_API_KEY`
+
+```typescript
+// src/targets/codex-adapter.ts
+
+export class CodexAdapter implements TargetAdapter {
+  readonly type: TargetType = 'codex';
+  readonly displayName = 'Codex CLI';
+
+  detectBinary(): TargetBinaryInfo | null {
+    return getCodexBinaryInfo();
+  }
+
+  async prepareCredentials(_creds: TargetCredentials): Promise<void> {
+    // No file writes. Codex uses transient -c overrides plus env_key injection.
+  }
+
+  buildArgs(profile: string, userArgs: string[], options?: BuildOptions): string[] {
+    if ((options?.profileType || 'default') === 'default') {
+      return userArgs;
+    }
+
+    if (!codexBinarySupportsConfigOverrides(options?.binaryInfo)) {
+      throw new Error('Upgrade Codex before using CCS-backed Codex profiles.');
+    }
+
+    return [
+      '-c',
+      'model_provider=\"ccs_runtime\"',
+      '-c',
+      'model_providers.ccs_runtime.base_url=\"http://127.0.0.1:8317/api/provider/codex\"',
+      '-c',
+      'model_providers.ccs_runtime.env_key=\"CCS_CODEX_API_KEY\"',
+      '-c',
+      'model_providers.ccs_runtime.wire_api=\"responses\"',
+      ...userArgs,
+    ];
+  }
+
+  buildEnv(creds: TargetCredentials, profileType: string): NodeJS.ProcessEnv {
+    const env = { ...stripAnthropicEnv(process.env) };
+    if (profileType !== 'default') {
+      env['CCS_CODEX_API_KEY'] = creds.apiKey;
+    }
+    return env;
+  }
+}
+```
+
+### Support Matrix
+
+Codex is a real runtime target, but it is intentionally narrower than Claude or Droid in v1:
+
+| Profile Type | Codex Target | Notes |
+|--------------|--------------|-------|
+| `default` | Yes | Uses existing native Codex auth/config |
+| `cliproxy` provider=`codex` | Yes | Routed through CLIProxy Codex Responses bridge |
+| `cliproxy` composite | No | Not proven native-Codex-safe |
+| `settings` with Codex bridge metadata | Yes | Only when the API profile resolves to a Codex CLIProxy bridge |
+| `settings` generic API profile | No | Claude/Droid only |
+| `account` | No | Claude-only account isolation concept |
+| `copilot` | No | Not a native Codex provider path |
+
+### Codex Dashboard Surface
+
+CCS also exposes a dedicated dashboard route at `ccs config` -> `Compatible` -> `Codex CLI`.
+That page is intentionally narrower than the Droid dashboard in overall scope, but it is no
+longer read-mostly:
+
+- reads and writes only the user config layer: `~/.codex/config.toml` or `$CODEX_HOME/config.toml`
+- provides guided controls for top-level settings, project trust, profiles, model providers,
+  MCP servers, and supported feature flags
+- keeps a raw `config.toml` editor as the escape hatch for unsupported or fidelity-sensitive edits
+- shows binary detection, user-layer config summaries, support-matrix guidance, and upstream docs
+- normalizes TOML formatting and drops comments on structured saves
+- keeps structured controls disabled while raw TOML is dirty or invalid, validates project trust
+  paths as absolute or `~/...`, and lets feature flags reset back to Codex defaults
+- warns that transient CCS runtime overrides such as `codex -c key=value` and
+  `CCS_CODEX_API_KEY` can change the effective runtime without persisting into the file editor
+
+This keeps the dashboard honest about Codex's merged configuration model while still giving users
+one place to inspect and manage the user-owned layer safely.
+
+### Runtime Entrypoints and argv[0] Fallback
+
+```bash
+# Built-in package bin entrypoints
+ccs-codex
+→ dist/bin/codex-runtime.js
+→ CCS_INTERNAL_ENTRY_TARGET=codex
+
+ccsx
+→ dist/bin/codex-runtime.js
+→ CCS_INTERNAL_ENTRY_TARGET=codex
+
+ccsxp
+→ dist/bin/ccsxp-runtime.js
+→ CCS_INTERNAL_ENTRY_TARGET=codex
+→ injects built-in codex profile shortcut
+```
+
+If a user launches CCS through a custom shim instead of the built-in package bins, target
+resolution falls back to `argv[0]` aliases from `CCS_TARGET_ALIASES` or legacy
+`CCS_CODEX_ALIASES`:
+
+```bash
+ln -s /path/to/ccs /path/to/mycodex
+CCS_TARGET_ALIASES='codex=mycodex'
+# Legacy fallback:
+CCS_CODEX_ALIASES='mycodex'
+```
 
 ---
 
@@ -405,6 +565,7 @@ At startup, adapters self-register:
 
 registerTarget(new ClaudeAdapter());
 registerTarget(new DroidAdapter());
+registerTarget(new CodexAdapter());
 ```
 
 ---
@@ -512,7 +673,7 @@ export class MyAiAdapter implements TargetAdapter {
 ```typescript
 // src/targets/target-adapter.ts
 
-export type TargetType = 'claude' | 'droid' | 'myai';
+export type TargetType = 'claude' | 'droid' | 'codex' | 'myai';
 ```
 
 ### 3. Register in ccs.ts
@@ -611,8 +772,14 @@ ccs --target claude help
 # Test Droid adapter (if installed)
 ccs --target droid help
 
+# Test Codex adapter (if installed)
+ccs --target codex
+ccs-codex
+ccsxp
+
 # Test argv[0] detection
-ccsd help
+ccs-droid help
+ccsx
 ```
 
 ---

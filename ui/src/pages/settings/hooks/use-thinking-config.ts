@@ -2,6 +2,10 @@
  * Thinking Config Hook
  * Manages thinking budget configuration with direct API calls
  * Includes W4 optimistic locking via lastModified timestamps
+ *
+ * TODO i18n: error messages in this hook cannot use useTranslation
+ * (not a React component). Consumer components should wrap displayed messages
+ * with t() where possible.
  */
 
 import { useCallback, useState, useRef } from 'react';

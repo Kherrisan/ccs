@@ -5,8 +5,10 @@
 
 import { useState, useMemo, useCallback } from 'react';
 import { useCopilot } from '@/hooks/use-copilot';
+import type { CopilotNormalizationWarning } from '@/hooks/use-copilot';
 import { isApiConflictError } from '@/lib/api-client';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import type { ModelPreset } from './types';
 
 /** Required env vars for Copilot settings (informational only - runtime fills defaults) */
@@ -18,7 +20,19 @@ function checkMissingFields(settings: { env?: Record<string, string> } | undefin
   return REQUIRED_ENV_KEYS.filter((key) => !env[key]?.trim());
 }
 
+function dedupeWarnings(
+  warnings: CopilotNormalizationWarning[] | undefined
+): CopilotNormalizationWarning[] {
+  if (!warnings || warnings.length === 0) return [];
+  const unique = new Map<string, CopilotNormalizationWarning>();
+  warnings.forEach((warning) => {
+    unique.set(warning.message, warning);
+  });
+  return [...unique.values()];
+}
+
 export function useCopilotConfigForm() {
+  const { t } = useTranslation();
   const {
     config,
     configLoading,
@@ -79,7 +93,7 @@ export function useCopilotConfigForm() {
       sonnetModel: preset.sonnet,
       haikuModel: preset.haiku,
     }));
-    toast.success(`Applied "${preset.name}" preset`);
+    toast.success(t('toasts.presetApplied', { name: preset.name }));
   };
 
   // Raw JSON content
@@ -128,11 +142,20 @@ export function useCopilotConfigForm() {
     [currentSettingsForValidation]
   );
 
-  const handleSave = async () => {
+  const normalizationWarnings = useMemo(
+    () => dedupeWarnings([...(config?.warnings ?? []), ...(rawSettings?.warnings ?? [])]),
+    [config?.warnings, rawSettings?.warnings]
+  );
+
+  const handleSave = async ({
+    overwriteRawSettings = false,
+  }: { overwriteRawSettings?: boolean } = {}) => {
     try {
+      const saveWarnings: CopilotNormalizationWarning[] = [];
+
       // Save config changes
       if (Object.keys(localOverrides).length > 0) {
-        await updateConfigAsync({
+        const configResult = await updateConfigAsync({
           enabled,
           auto_start: autoStart,
           port,
@@ -144,28 +167,41 @@ export function useCopilotConfigForm() {
           sonnet_model: sonnetModel || undefined,
           haiku_model: haikuModel || undefined,
         });
+        saveWarnings.push(...(configResult.warnings ?? []));
       }
 
       // Save raw JSON changes (no blocking validation - runtime uses defaults)
+      let missing: string[] = [];
       if (rawJsonEdits !== null && isRawJsonValid) {
         const settingsToSave = JSON.parse(rawJsonContent);
-        const missing = checkMissingFields(settingsToSave);
+        missing = checkMissingFields(settingsToSave);
 
-        await saveRawSettingsAsync({
+        const saveResult = await saveRawSettingsAsync({
           settings: settingsToSave,
-          expectedMtime: rawSettings?.mtime,
+          expectedMtime: overwriteRawSettings ? undefined : rawSettings?.mtime,
         });
+        saveWarnings.push(...(saveResult.warnings ?? []));
+      }
 
-        // Show warning if fields missing
-        if (missing.length > 0) {
-          toast.success('Copilot configuration saved', {
-            description: `Missing fields will use defaults: ${missing.join(', ')}`,
-          });
-        } else {
-          toast.success('Copilot configuration saved');
-        }
+      const uniqueWarnings = dedupeWarnings(saveWarnings);
+      const descriptions: string[] = [];
+      if (uniqueWarnings.length > 0) {
+        descriptions.push(uniqueWarnings.map((warning) => warning.message).join(' '));
+      }
+      if (missing.length > 0) {
+        descriptions.push(`Missing fields will use defaults: ${missing.join(', ')}`);
+      }
+
+      if (uniqueWarnings.length > 0) {
+        toast.warning(t('toasts.settingsSavedWithAdjustments'), {
+          description: descriptions.join(' '),
+        });
+      } else if (descriptions.length > 0) {
+        toast.success(t('toasts.settingsSaved'), {
+          description: descriptions.join(' '),
+        });
       } else {
-        toast.success('Copilot configuration saved');
+        toast.success(t('toasts.settingsSaved'));
       }
 
       // Clear local state
@@ -175,7 +211,7 @@ export function useCopilotConfigForm() {
       if (isApiConflictError(error)) {
         setConflictDialog(true);
       } else {
-        toast.error('Failed to save settings');
+        toast.error(t('toasts.failedSaveSettings'));
       }
     }
   };
@@ -183,8 +219,7 @@ export function useCopilotConfigForm() {
   const handleConflictResolve = async (overwrite: boolean) => {
     setConflictDialog(false);
     if (overwrite) {
-      await refetchRawSettings();
-      handleSave();
+      await handleSave({ overwriteRawSettings: true });
     } else {
       setRawJsonEdits(null);
     }
@@ -217,6 +252,7 @@ export function useCopilotConfigForm() {
     haikuModel,
     isRawJsonValid,
     hasChanges,
+    normalizationWarnings,
 
     // Dialog state
     conflictDialog,

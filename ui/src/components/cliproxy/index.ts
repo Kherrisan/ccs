@@ -12,6 +12,7 @@ export { CliproxyTabs } from './cliproxy-tabs';
 export { ControlPanelEmbed } from './control-panel-embed';
 export { ProviderLogo } from './provider-logo';
 export { ProviderModelSelector } from './provider-model-selector';
+export { RoutingGuidanceCard } from './routing-guidance-card';
 
 // Provider editor (from subdirectory)
 export { ProviderEditor } from './provider-editor';

@@ -3,6 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
+import { execFileSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -15,6 +16,7 @@ import {
   checkAuthStatus,
   deleteCredentials,
   autoDetectTokens,
+  getTokenStorageCandidates,
 } from '../../../src/cursor/cursor-auth';
 
 // Test isolation
@@ -403,26 +405,40 @@ describe('deleteCredentials', () => {
 });
 
 describe('autoDetectTokens', () => {
-  it('should return not found for Windows platform', () => {
-    // Save original platform
+  it('should report checked paths when no Windows database exists', () => {
     const originalPlatform = process.platform;
+    const originalUserProfile = process.env.USERPROFILE;
+    const originalAppData = process.env.APPDATA;
+    const originalLocalAppData = process.env.LOCALAPPDATA;
+    const fakeHome = path.join(tempDir, 'win-home');
+    process.env.USERPROFILE = fakeHome;
+    delete process.env.APPDATA;
+    delete process.env.LOCALAPPDATA;
 
-    // Mock Windows platform
     Object.defineProperty(process, 'platform', {
       value: 'win32',
       configurable: true,
     });
 
-    const result = autoDetectTokens();
+    try {
+      const result = autoDetectTokens();
 
-    expect(result.found).toBe(false);
-    expect(result.error).toContain('not supported on Windows');
-
-    // Restore original platform
-    Object.defineProperty(process, 'platform', {
-      value: originalPlatform,
-      configurable: true,
-    });
+      expect(result.found).toBe(false);
+      expect(result.reason).toBe('db_not_found');
+      expect(result.checkedPaths?.length).toBeGreaterThan(0);
+      expect(result.error).toContain('Checked:');
+    } finally {
+      Object.defineProperty(process, 'platform', {
+        value: originalPlatform,
+        configurable: true,
+      });
+      if (originalUserProfile !== undefined) process.env.USERPROFILE = originalUserProfile;
+      else delete process.env.USERPROFILE;
+      if (originalAppData !== undefined) process.env.APPDATA = originalAppData;
+      else delete process.env.APPDATA;
+      if (originalLocalAppData !== undefined) process.env.LOCALAPPDATA = originalLocalAppData;
+      else delete process.env.LOCALAPPDATA;
+    }
   });
 
   it('should return not found when database file does not exist', () => {
@@ -438,9 +454,10 @@ describe('autoDetectTokens', () => {
     try {
       const result = autoDetectTokens();
 
-      // Should fail because isolated test home has no Cursor database
       expect(result.found).toBe(false);
-      expect(result.error).toBeDefined();
+      expect(result.reason).toBe('db_not_found');
+      expect(result.checkedPaths?.length).toBeGreaterThan(0);
+      expect(result.error).toContain('Checked:');
     } finally {
       if (originalHome !== undefined) {
         process.env.HOME = originalHome;
@@ -456,5 +473,153 @@ describe('autoDetectTokens', () => {
     // Verify return type structure
     expect(result).toHaveProperty('found');
     expect(typeof result.found).toBe('boolean');
+  });
+
+  it('should report sqlite_unavailable when database exists but sqlite3 is missing', () => {
+    const originalHome = process.env.HOME;
+    const originalPath = process.env.PATH;
+    const originalSqliteBin = process.env.CCS_CURSOR_SQLITE_BIN;
+    const fakeHome = path.join(tempDir, 'sqlite-missing-home');
+    process.env.HOME = fakeHome;
+    process.env.CCS_CURSOR_SQLITE_BIN = 'definitely-missing-sqlite3';
+
+    try {
+      const dbPath = getTokenStorageCandidates()[0];
+      fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+      fs.writeFileSync(dbPath, '');
+
+      const result = autoDetectTokens();
+      expect(result.found).toBe(false);
+      expect(result.reason).toBe('sqlite_unavailable');
+      expect(result.dbPath).toBe(dbPath);
+    } finally {
+      if (originalHome !== undefined) process.env.HOME = originalHome;
+      else delete process.env.HOME;
+      if (originalPath !== undefined) process.env.PATH = originalPath;
+      else delete process.env.PATH;
+      if (originalSqliteBin !== undefined) process.env.CCS_CURSOR_SQLITE_BIN = originalSqliteBin;
+      else delete process.env.CCS_CURSOR_SQLITE_BIN;
+    }
+  });
+
+  it('should use fallback keys and normalize JSON-encoded sqlite values', () => {
+    if (process.platform === 'win32') return;
+
+    try {
+      execFileSync('sqlite3', ['--version'], { stdio: 'ignore' });
+    } catch {
+      return;
+    }
+
+    const originalHome = process.env.HOME;
+    const fakeHome = path.join(tempDir, 'sqlite-fallback-home');
+    process.env.HOME = fakeHome;
+
+    try {
+      const dbPath = getTokenStorageCandidates()[0];
+      fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+      execFileSync('sqlite3', [
+        dbPath,
+        'CREATE TABLE IF NOT EXISTS itemTable (key TEXT PRIMARY KEY, value TEXT);',
+      ]);
+      execFileSync('sqlite3', [
+        dbPath,
+        `INSERT OR REPLACE INTO itemTable (key, value) VALUES ('cursorAuth/token', '"${'a'.repeat(60)}"');`,
+      ]);
+      execFileSync('sqlite3', [
+        dbPath,
+        `INSERT OR REPLACE INTO itemTable (key, value) VALUES ('storage.machineId', '"1234567890abcdef1234567890abcdef"');`,
+      ]);
+
+      const result = autoDetectTokens();
+      expect(result.found).toBe(true);
+      expect(result.accessToken).toBe('a'.repeat(60));
+      expect(result.machineId).toBe('1234567890abcdef1234567890abcdef');
+    } finally {
+      if (originalHome !== undefined) process.env.HOME = originalHome;
+      else delete process.env.HOME;
+    }
+  });
+
+  it('should continue scanning later database candidates after one invalid credential pair', () => {
+    if (process.platform !== 'darwin') {
+      return;
+    }
+
+    try {
+      execFileSync('sqlite3', ['--version'], { stdio: 'ignore' });
+    } catch {
+      return;
+    }
+
+    const originalHome = process.env.HOME;
+    const fakeHome = path.join(tempDir, 'candidate-scan-home');
+    process.env.HOME = fakeHome;
+
+    try {
+      const [stablePath, insidersPath] = getTokenStorageCandidates();
+      fs.mkdirSync(path.dirname(stablePath), { recursive: true });
+      fs.mkdirSync(path.dirname(insidersPath), { recursive: true });
+
+      execFileSync('sqlite3', [
+        stablePath,
+        'CREATE TABLE IF NOT EXISTS itemTable (key TEXT PRIMARY KEY, value TEXT);',
+      ]);
+      execFileSync('sqlite3', [
+        stablePath,
+        `INSERT OR REPLACE INTO itemTable (key, value) VALUES ('cursorAuth/accessToken', 'short');`,
+      ]);
+      execFileSync('sqlite3', [
+        stablePath,
+        `INSERT OR REPLACE INTO itemTable (key, value) VALUES ('storage.serviceMachineId', 'bad');`,
+      ]);
+
+      execFileSync('sqlite3', [
+        insidersPath,
+        'CREATE TABLE IF NOT EXISTS itemTable (key TEXT PRIMARY KEY, value TEXT);',
+      ]);
+      execFileSync('sqlite3', [
+        insidersPath,
+        `INSERT OR REPLACE INTO itemTable (key, value) VALUES ('cursorAuth/accessToken', '${'a'.repeat(60)}');`,
+      ]);
+      execFileSync('sqlite3', [
+        insidersPath,
+        `INSERT OR REPLACE INTO itemTable (key, value) VALUES ('storage.serviceMachineId', '1234567890abcdef1234567890abcdef');`,
+      ]);
+
+      const result = autoDetectTokens();
+      expect(result.found).toBe(true);
+      expect(result.dbPath).toBe(insidersPath);
+    } finally {
+      if (originalHome !== undefined) process.env.HOME = originalHome;
+      else delete process.env.HOME;
+    }
+  });
+
+  it('should report db_query_failed when the database exists but sqlite cannot query it', () => {
+    if (process.platform === 'win32') return;
+
+    try {
+      execFileSync('sqlite3', ['--version'], { stdio: 'ignore' });
+    } catch {
+      return;
+    }
+
+    const originalHome = process.env.HOME;
+    const fakeHome = path.join(tempDir, 'query-failed-home');
+    process.env.HOME = fakeHome;
+
+    try {
+      const dbPath = getTokenStorageCandidates()[0];
+      fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+      fs.writeFileSync(dbPath, 'not-a-sqlite-database');
+
+      const result = autoDetectTokens();
+      expect(result.found).toBe(false);
+      expect(result.reason).toBe('db_query_failed');
+    } finally {
+      if (originalHome !== undefined) process.env.HOME = originalHome;
+      else delete process.env.HOME;
+    }
   });
 });

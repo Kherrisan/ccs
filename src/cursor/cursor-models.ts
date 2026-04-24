@@ -205,8 +205,10 @@ export async function fetchModelsFromDaemon(port: number): Promise<CursorModel[]
           data += chunk;
           if (data.length > MAX_BODY_SIZE) {
             debugLog('Cursor daemon /v1/models body exceeded 1MB; falling back to defaults');
+            res.destroy();
             req.destroy();
             safeResolve(DEFAULT_CURSOR_MODELS);
+            return;
           }
         });
 
@@ -281,6 +283,48 @@ function getCatalogDefaultModelId(availableModels: CursorModel[]): string {
   return firstAvailable || DEFAULT_CURSOR_MODEL;
 }
 
+function addLookupCandidate(candidates: Set<string>, value: string): void {
+  const normalized = value.trim().toLowerCase();
+  if (normalized) {
+    candidates.add(normalized);
+  }
+}
+
+function buildCursorAnthropicModelLookupCandidates(requestedModel: string): string[] {
+  const candidates = new Set<string>();
+  const raw = requestedModel.trim().toLowerCase();
+  addLookupCandidate(candidates, raw);
+
+  let normalized = raw.replace(/^[a-z0-9_-]+\//, '');
+  addLookupCandidate(candidates, normalized);
+
+  while (true) {
+    const stripped = normalized
+      .replace(/\(\d+\)$/i, '')
+      .replace(/\[1m\]$/i, '')
+      .replace(/-thinking$/i, '')
+      .replace(/-\d{8}$/i, '');
+
+    if (stripped === normalized) {
+      break;
+    }
+
+    normalized = stripped;
+    addLookupCandidate(candidates, normalized);
+  }
+
+  const anthropicAliasMatch = normalized.match(
+    /^claude-(opus|sonnet|haiku)-(\d+)(?:[.-](\d+))?(?:-(1m|fast-mode))?$/i
+  );
+  if (anthropicAliasMatch) {
+    const [, family, major, minor, variant] = anthropicAliasMatch;
+    const cursorModelId = `claude-${major}${minor ? `.${minor}` : ''}-${family.toLowerCase()}${variant ? `-${variant.toLowerCase()}` : ''}`;
+    addLookupCandidate(candidates, cursorModelId);
+  }
+
+  return [...candidates];
+}
+
 export function resolveCursorRequestModel(
   requestedModel: string | null | undefined,
   availableModels: CursorModel[]
@@ -291,8 +335,12 @@ export function resolveCursorRequestModel(
     return fallbackModel;
   }
 
-  if (availableModels.some((model) => model.id === normalizedRequested)) {
-    return normalizedRequested;
+  const lookupCandidates = new Set(buildCursorAnthropicModelLookupCandidates(normalizedRequested));
+  const matchedModel = availableModels.find((model) =>
+    lookupCandidates.has(model.id.toLowerCase())
+  );
+  if (matchedModel) {
+    return matchedModel.id;
   }
 
   return fallbackModel;

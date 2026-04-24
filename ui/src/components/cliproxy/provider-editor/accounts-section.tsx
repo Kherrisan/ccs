@@ -12,6 +12,7 @@ import { User, Plus, Globe } from 'lucide-react';
 import { AccountItem } from './account-item';
 import { BulkActionBar } from './bulk-action-bar';
 import type { OAuthAccount } from '@/lib/api-client';
+import { useTranslation } from 'react-i18next';
 
 interface AccountsSectionProps {
   accounts: OAuthAccount[];
@@ -65,6 +66,7 @@ export function AccountsSection({
   onKiroNoIncognitoChange,
   kiroSettingsLoading,
 }: AccountsSectionProps) {
+  const { t } = useTranslation();
   // Multi-select state - raw selection (may contain stale IDs)
   const [rawSelectedIds, setRawSelectedIds] = useState<Set<string>>(new Set());
 
@@ -140,6 +142,7 @@ export function AccountsSection({
             />
           )}
           <User className="w-4 h-4" />
+          {/* TODO i18n: missing key for "Accounts" */}
           Accounts
           {accounts.length > 0 && (
             <Badge variant="secondary" className="text-xs">
@@ -191,8 +194,8 @@ export function AccountsSection({
       ) : (
         <div className="py-6 text-center text-muted-foreground bg-muted/30 rounded-lg border border-dashed">
           <User className="w-8 h-8 mx-auto mb-2 opacity-50" />
-          <p className="text-sm">No accounts connected</p>
-          <p className="text-xs opacity-70">Add an account to get started</p>
+          <p className="text-sm">{t('providerEditor.noAccountsConnected')}</p>
+          <p className="text-xs opacity-70">{t('providerEditor.addAccountToStart')}</p>
         </div>
       )}
 
@@ -202,7 +205,7 @@ export function AccountsSection({
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Globe className="w-3.5 h-3.5" />
-              <span>Use incognito</span>
+              <span>{t('providerEditor.useIncognito')}</span>
             </div>
             <Switch
               checked={!kiroNoIncognito}

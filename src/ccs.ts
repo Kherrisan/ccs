@@ -1,13 +1,10 @@
 import './utils/fetch-proxy-setup';
 
-import { spawn, ChildProcess } from 'child_process';
-import * as path from 'path';
 import * as fs from 'fs';
 import { detectClaudeCli } from './utils/claude-detector';
 import {
   getSettingsPath,
   loadSettings,
-  getCcsDir,
   setGlobalConfigDir,
   detectCloudSyncPath,
 } from './utils/config-manager';
@@ -27,37 +24,69 @@ import {
 import { getEffectiveEnvVars, getCompositeEnvVars } from './cliproxy/config/env-builder';
 import { CLIPROXY_DEFAULT_PORT } from './cliproxy/config/port-manager';
 import {
-  ensureMcpWebSearch,
+  ensureWebSearchMcpOrThrow,
   displayWebSearchStatus,
   getWebSearchHookEnv,
-  ensureProfileHooks,
+  syncWebSearchMcpToConfigDir,
+  appendThirdPartyWebSearchToolArgs,
+  createWebSearchTraceContext,
 } from './utils/websearch-manager';
-import { getGlobalEnvConfig } from './config/unified-config-loader';
-import { ensureProfileHooks as ensureImageAnalyzerHooks } from './utils/hooks/image-analyzer-profile-hook-injector';
-import { getImageAnalysisHookEnv } from './utils/hooks';
+import {
+  ensureImageAnalysisMcpOrThrow,
+  syncImageAnalysisMcpToConfigDir,
+  appendThirdPartyImageAnalysisToolArgs,
+} from './utils/image-analysis';
+import {
+  appendBrowserToolArgs,
+  ensureBrowserMcpOrThrow,
+  getBlockedBrowserOverrideWarning,
+  getEffectiveClaudeBrowserAttachConfig,
+  resolveBrowserExposure,
+  resolveBrowserLaunchFlagResolution,
+  resolveOptionalBrowserAttachRuntime,
+  syncBrowserMcpToConfigDir,
+} from './utils/browser';
+import {
+  getBrowserConfig,
+  getGlobalEnvConfig,
+  getOfficialChannelsConfig,
+} from './config/unified-config-loader';
+import {
+  ensureProfileHooks as ensureImageAnalyzerHooks,
+  removeImageAnalysisProfileHook,
+} from './utils/hooks/image-analyzer-profile-hook-injector';
+import {
+  applyImageAnalysisRuntimeOverrides,
+  getImageAnalysisHookEnv,
+  installImageAnalyzerHook,
+  prepareImageAnalysisFallbackHook,
+  resolveImageAnalysisRuntimeConnection,
+  resolveImageAnalysisRuntimeStatus,
+} from './utils/hooks';
 import { fail, info, warn } from './utils/ui';
 import { isCopilotSubcommandToken } from './copilot/constants';
+import {
+  buildOfficialChannelsArgs,
+  getOfficialChannelsEnvironmentStatus,
+  officialChannelRequiresMacOS,
+  resolveOfficialChannelsLaunchPlan,
+} from './channels/official-channels-runtime';
+import { getOfficialChannelReadiness } from './channels/official-channels-store';
+import { isCursorSubcommandToken, LEGACY_CURSOR_PROFILE_NAME } from './cursor/constants';
+import { isCLIProxyProvider } from './cliproxy/provider-capabilities';
 
 // Import centralized error handling
 import { handleError, runCleanup } from './errors';
-
-// Import extracted command handlers
-import { handleVersionCommand } from './commands/version-command';
-import { handleHelpCommand } from './commands/help-command';
-import { handleInstallCommand, handleUninstallCommand } from './commands/install-command';
-import { handleDoctorCommand } from './commands/doctor-command';
-import { handleSyncCommand } from './commands/sync-command';
-import { handleShellCompletionCommand } from './commands/shell-completion-command';
-import { handleUpdateCommand } from './commands/update-command';
+import { tryHandleRootCommand } from './commands/root-command-router';
 
 // Import extracted utility functions
-import {
-  execClaude,
-  escapeShellArg,
-  stripClaudeCodeEnv,
-  getClaudeLaunchEnvOverrides,
-} from './utils/shell-executor';
-import { wireChildProcessSignals } from './utils/signal-forwarder';
+import { execClaude, stripAnthropicRoutingEnv, stripBrowserEnv } from './utils/shell-executor';
+import { isDeprecatedGlmtProfileName, normalizeDeprecatedGlmtEnv } from './utils/glmt-deprecation';
+import { maybeWarnAboutResumeLaneMismatch } from './auth/resume-lane-warning';
+import { createLogger } from './services/logging';
+import { buildCodexBrowserMcpOverrides } from './utils/browser-codex-overrides';
+import type { ProfileDetectionResult } from './auth/profile-detector';
+import type { BrowserLaunchOverride } from './utils/browser';
 
 // Import target adapter system
 import {
@@ -65,6 +94,8 @@ import {
   getTarget,
   ClaudeAdapter,
   DroidAdapter,
+  CodexAdapter,
+  evaluateTargetRuntimeCompatibility,
   pruneOrphanedModels,
   resolveDroidProvider,
   type TargetCredentials,
@@ -75,6 +106,12 @@ import {
   resolveDroidReasoningRuntime,
 } from './targets/droid-reasoning-runtime';
 import { DroidCommandRouterError, routeDroidCommandArgs } from './targets/droid-command-router';
+import { resolveCliproxyBridgeMetadata } from './api/services/cliproxy-profile-bridge';
+import {
+  buildOpenAICompatProxyEnv,
+  resolveOpenAICompatProfileConfig,
+  startOpenAICompatProxy,
+} from './proxy';
 
 // Version and Update check utilities
 import { getVersion } from './utils/version';
@@ -93,6 +130,35 @@ interface DetectedProfile {
   remainingArgs: string[];
 }
 
+interface RuntimeReasoningResolution {
+  argsWithoutReasoningFlags: string[];
+  reasoningOverride: string | number | undefined;
+  reasoningSource: 'flag' | 'env' | undefined;
+  sourceDisplay: string | undefined;
+}
+
+const CODEX_RUNTIME_REASONING_LEVELS = new Set(['minimal', 'low', 'medium', 'high', 'xhigh']);
+const CODEX_NATIVE_PASSTHROUGH_FLAGS = new Set(['--help', '-h', '--version', '-v']);
+
+function resolveCodexRuntimeConfigOverrides(
+  target: ReturnType<typeof resolveTargetType>,
+  browserLaunchOverride: BrowserLaunchOverride | undefined
+): string[] {
+  if (target !== 'codex') {
+    return [];
+  }
+
+  const codexBrowserExposure = resolveBrowserExposure(
+    getBrowserConfig().codex,
+    browserLaunchOverride
+  );
+  if (!codexBrowserExposure.exposeForLaunch) {
+    return [];
+  }
+
+  return buildCodexBrowserMcpOverrides();
+}
+
 /**
  * Smart profile detection
  */
@@ -106,196 +172,72 @@ function detectProfile(args: string[]): DetectedProfile {
   }
 }
 
-// ========== GLMT Proxy Execution ==========
-
-/**
- * Execute Claude CLI with embedded proxy (for GLMT profile)
- */
-async function execClaudeWithProxy(
-  claudeCli: string,
-  profileName: string,
-  args: string[],
-  claudeConfigDir?: string
-): Promise<void> {
-  // 1. Read settings to get API key
-  const settingsPath = getSettingsPath(profileName);
-  const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
-  const envData = settings.env;
-  const apiKey = envData['ANTHROPIC_AUTH_TOKEN'];
-
-  if (!apiKey || apiKey === 'YOUR_GLM_API_KEY_HERE') {
-    console.error(fail('GLMT profile requires Z.AI API key'));
-    console.error(`    Edit ${getCcsDir()}/glmt.settings.json and set ANTHROPIC_AUTH_TOKEN`);
-    process.exit(1);
+function normalizeLegacyCursorArgs(args: string[]): string[] {
+  if (args[0] === 'legacy' && args[1] === 'cursor') {
+    return [LEGACY_CURSOR_PROFILE_NAME, ...args.slice(2)];
   }
 
-  // Detect verbose flag
-  const verbose = args.includes('--verbose') || args.includes('-v');
+  return args;
+}
 
-  // 2. Spawn embedded proxy with verbose flag
-  const proxyPath = path.join(__dirname, 'glmt', 'glmt-proxy.js');
-  const proxyArgs = verbose ? ['--verbose'] : [];
-  // Use process.execPath for Windows compatibility (CVE-2024-27980)
-  // Pass environment variables to proxy subprocess (required for auth)
-  const proxy = spawn(process.execPath, [proxyPath, ...proxyArgs], {
-    stdio: ['ignore', 'pipe', verbose ? 'pipe' : 'inherit'],
-    env: {
-      ...process.env,
-      ANTHROPIC_AUTH_TOKEN: apiKey,
-      ANTHROPIC_BASE_URL: envData['ANTHROPIC_BASE_URL'],
-    },
-  });
-  const stopProxy = (): void => {
-    try {
-      if (!proxy.killed) {
-        proxy.kill('SIGTERM');
-      }
-    } catch {
-      // Best-effort cleanup on process teardown.
-    }
-  };
-
-  // 3. Wait for proxy ready signal (with timeout)
-  const { ProgressIndicator } = await import('./utils/progress-indicator');
-  const spinner = new ProgressIndicator('Starting GLMT proxy');
-  spinner.start();
-
-  let port: number;
-  try {
-    port = await new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        reject(new Error('Proxy startup timeout (5s)'));
-      }, 5000);
-
-      proxy.stdout?.on('data', (data: Buffer) => {
-        const match = data.toString().match(/PROXY_READY:(\d+)/);
-        if (match) {
-          clearTimeout(timeout);
-          resolve(parseInt(match[1]));
-        }
-      });
-
-      proxy.on('error', (error) => {
-        clearTimeout(timeout);
-        reject(error);
-      });
-
-      proxy.on('exit', (code) => {
-        if (code !== 0 && code !== null) {
-          clearTimeout(timeout);
-          reject(new Error(`Proxy exited with code ${code}`));
-        }
-      });
-    });
-
-    spinner.succeed(`GLMT proxy ready on port ${port}`);
-  } catch (error) {
-    const err = error as Error;
-    spinner.fail('Failed to start GLMT proxy');
-    console.error(fail(`Error: ${err.message}`));
-    console.error('');
-    console.error('Possible causes:');
-    console.error('  1. Port conflict (unlikely with random port)');
-    console.error('  2. Node.js permission issue');
-    console.error('  3. Firewall blocking localhost');
-    console.error('');
-    console.error('Workarounds:');
-    console.error('  - Use non-thinking mode: ccs glm "prompt"');
-    console.error('  - Enable verbose logging: ccs glmt --verbose "prompt"');
-    console.error(`  - Check proxy logs in ${getCcsDir()}/logs/ (if debug enabled)`);
-    console.error('');
-    stopProxy();
-    runCleanup();
-    process.exit(1);
-  }
-
-  // 4. Spawn Claude CLI with proxy URL
-  // Use model from user's settings (not hardcoded) - fixes issue #358
-  const configuredModel = envData['ANTHROPIC_MODEL'] || 'glm-5';
-  const envVars: NodeJS.ProcessEnv = {
-    ANTHROPIC_BASE_URL: `http://127.0.0.1:${port}`,
-    ANTHROPIC_AUTH_TOKEN: apiKey,
-    ANTHROPIC_MODEL: configuredModel,
-    ...(claudeConfigDir ? { CLAUDE_CONFIG_DIR: claudeConfigDir } : {}),
-  };
-
-  const isWindows = process.platform === 'win32';
-  const isPowerShellScript = isWindows && /\.ps1$/i.test(claudeCli);
-  const needsShell = isWindows && /\.(cmd|bat)$/i.test(claudeCli);
-  const webSearchEnv = getWebSearchHookEnv();
-  const imageAnalysisEnv = getImageAnalysisHookEnv(profileName);
-  const claudeLaunchEnv = getClaudeLaunchEnvOverrides();
-  const env = stripClaudeCodeEnv({
-    ...process.env,
-    ...claudeLaunchEnv,
-    ...envVars,
-    ...webSearchEnv,
-    ...imageAnalysisEnv,
-    CCS_PROFILE_TYPE: 'settings', // Signal to WebSearch hook this is a third-party provider
-  });
-
-  let claude: ChildProcess;
-  if (isPowerShellScript) {
-    claude = spawn(
-      'powershell.exe',
-      ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', claudeCli, ...args],
-      {
-        stdio: 'inherit',
-        windowsHide: true,
-        env,
-      }
-    );
-  } else if (needsShell) {
-    const cmdString = [claudeCli, ...args].map(escapeShellArg).join(' ');
-    claude = spawn(cmdString, {
-      stdio: 'inherit',
-      windowsHide: true,
-      shell: true,
-      env,
-    });
-  } else {
-    claude = spawn(claudeCli, args, {
-      stdio: 'inherit',
-      windowsHide: true,
-      env,
-    });
-  }
-
-  // 5. Shared signal forwarding + proxy cleanup lifecycle
-  wireChildProcessSignals(
-    claude,
-    (err: NodeJS.ErrnoException) => {
-      if (err.code === 'EACCES') {
-        console.error(fail(`Claude CLI is not executable: ${claudeCli}`));
-        console.error('    Check file permissions and executable bit.');
-      } else if (err.code === 'ENOENT') {
-        if (isPowerShellScript) {
-          console.error(
-            fail('PowerShell executable not found (required for .ps1 wrapper launch).')
-          );
-          console.error('    Ensure powershell.exe is available in PATH.');
-        } else if (needsShell) {
-          console.error(fail('Windows command shell not found for Claude wrapper launch.'));
-          console.error('    Ensure cmd.exe is available and accessible.');
-        } else {
-          console.error(fail(`Claude CLI not found: ${claudeCli}`));
-        }
-      } else {
-        console.error(fail(`Claude CLI error: ${err.message}`));
-      }
-      stopProxy();
-      runCleanup();
-      process.exit(1);
-    },
-    (code: number | null, signal: NodeJS.Signals | null) => {
-      stopProxy();
-      if (signal) {
-        process.kill(process.pid, signal);
-      } else {
-        process.exit(code || 0);
-      }
-    }
+function printCursorLegacySubcommandDeprecation(subcommand: string): void {
+  console.error(
+    info(`\`ccs cursor ${subcommand}\` is deprecated for the legacy Cursor IDE bridge.`)
   );
+  console.error(
+    info(
+      `Use \`ccs legacy cursor ${subcommand}\` for the old bridge, or \`ccs cursor --auth|--accounts|--config\` for the CLIProxy provider.`
+    )
+  );
+  console.error('');
+}
+
+function resolveRuntimeReasoningFlags(
+  args: string[],
+  envThinkingValue: string | undefined
+): RuntimeReasoningResolution {
+  const runtime = resolveDroidReasoningRuntime(args, envThinkingValue);
+
+  if (runtime.duplicateDisplays.length > 0) {
+    console.error(
+      warn(
+        `[!] Multiple reasoning flags detected. Using first occurrence: ${runtime.sourceDisplay || '<first-flag>'}`
+      )
+    );
+  }
+
+  return {
+    argsWithoutReasoningFlags: runtime.argsWithoutReasoningFlags,
+    reasoningOverride: runtime.reasoningOverride,
+    reasoningSource: runtime.sourceFlag
+      ? 'flag'
+      : runtime.reasoningOverride !== undefined
+        ? 'env'
+        : undefined,
+    sourceDisplay: runtime.sourceDisplay,
+  };
+}
+
+function normalizeCodexRuntimeReasoningOverride(
+  value: string | number | undefined
+): string | undefined {
+  return typeof value === 'string' && CODEX_RUNTIME_REASONING_LEVELS.has(value) ? value : undefined;
+}
+
+function exitWithRuntimeReasoningFlagError(
+  message: string,
+  options: {
+    codexAliasLevels: string;
+    includeDroidExecExample?: boolean;
+  }
+): never {
+  console.error(fail(message));
+  console.error('    Examples: --thinking low, --thinking 8192, --thinking off');
+  console.error(`    Codex alias: --effort ${options.codexAliasLevels}`);
+  if (options.includeDroidExecExample) {
+    console.error('    Droid exec: --reasoning-effort high');
+  }
+  process.exit(1);
 }
 
 // ========== Main Execution ==========
@@ -338,16 +280,118 @@ async function showCachedUpdateNotification(): Promise<boolean> {
   return false;
 }
 
+function resolveNativeClaudeLaunchArgs(
+  args: string[],
+  profileType: 'default' | 'account',
+  targetConfigDir?: string
+): string[] {
+  const config = getOfficialChannelsConfig();
+  const environment = getOfficialChannelsEnvironmentStatus(
+    targetConfigDir ? { CLAUDE_CONFIG_DIR: targetConfigDir } : undefined
+  );
+  const channelReadiness = {
+    telegram: getOfficialChannelReadiness('telegram'),
+    discord: getOfficialChannelReadiness('discord'),
+    imessage: !officialChannelRequiresMacOS('imessage') || process.platform === 'darwin',
+  };
+  const plan = resolveOfficialChannelsLaunchPlan({
+    args,
+    config,
+    target: 'claude',
+    profileType,
+    environment,
+    channelReadiness,
+  });
+
+  for (const message of plan.skippedMessages) {
+    console.error(warn(message));
+  }
+
+  if (
+    config.selected.length > 0 &&
+    environment.auth.state === 'eligible' &&
+    environment.auth.orgRequirementMessage
+  ) {
+    console.error(warn(environment.auth.orgRequirementMessage));
+  }
+
+  if (!plan.applied) {
+    return args;
+  }
+
+  return buildOfficialChannelsArgs(args, plan.appliedChannels, plan.wantsPermissionBypass);
+}
+
+function shouldPassthroughNativeCodexFlagCommand(args: string[]): boolean {
+  return getNativeCodexPassthroughArgs(args) !== null;
+}
+
+function getNativeCodexPassthroughArgs(args: string[]): string[] | null {
+  const targetArgs = stripTargetFlag(args);
+  if (resolveTargetType(args) !== 'codex' || targetArgs.length === 0) {
+    return null;
+  }
+
+  const firstArg = targetArgs[0] || '';
+  if (CODEX_NATIVE_PASSTHROUGH_FLAGS.has(firstArg)) {
+    return targetArgs;
+  }
+
+  const secondArg = targetArgs[1] || '';
+  if (firstArg === 'codex' && CODEX_NATIVE_PASSTHROUGH_FLAGS.has(secondArg)) {
+    return targetArgs.slice(1);
+  }
+
+  return null;
+}
+
+function execNativeCodexFlagCommand(args: string[]): void {
+  const adapter = getTarget('codex');
+  if (!adapter) {
+    console.error(fail('Target adapter not found for "codex"'));
+    process.exit(1);
+  }
+
+  const binaryInfo = adapter.detectBinary();
+  if (!binaryInfo) {
+    console.error(fail('Codex CLI not found.'));
+    console.error(info('Install a recent @openai/codex build, then retry.'));
+    process.exit(1);
+  }
+
+  const targetArgs = getNativeCodexPassthroughArgs(args);
+  if (!targetArgs) {
+    console.error(fail('Native Codex passthrough args could not be resolved.'));
+    process.exit(1);
+  }
+  const creds: TargetCredentials = {
+    profile: 'default',
+    baseUrl: '',
+    apiKey: '',
+  };
+
+  const builtArgs = adapter.buildArgs('default', targetArgs, {
+    creds,
+    profileType: 'default',
+    binaryInfo,
+  });
+  const targetEnv = adapter.buildEnv(creds, 'default');
+  adapter.exec(builtArgs, targetEnv, { binaryInfo });
+}
+
 async function main(): Promise<void> {
   // Register target adapters
   registerTarget(new ClaudeAdapter());
   registerTarget(new DroidAdapter());
+  registerTarget(new CodexAdapter());
+  const cliLogger = createLogger('cli');
 
-  const args = process.argv.slice(2);
+  let args = process.argv.slice(2);
+  const isCompletionCommand = args[0] === '__complete';
 
   // Initialize UI colors early to ensure consistent colored output
   // Must happen before any status messages (ok, info, fail, etc.)
-  if (process.stdout.isTTY && !process.env['CI']) {
+  if (!isCompletionCommand && process.stdout.isTTY && !process.env['CI']) {
     const { initUI } = await import('./utils/ui');
     await initUI();
   }
@@ -387,7 +431,7 @@ async function main(): Promise<void> {
 
     // Security warning: cloud sync paths expose OAuth tokens
     const cloudService = detectCloudSyncPath(configDirValue);
-    if (cloudService) {
+    if (!isCompletionCommand && cloudService) {
       console.error(warn(`CCS directory is under ${cloudService}.`));
       console.error('    OAuth tokens in cliproxy/auth/ will be synced to cloud.');
       console.error('    Consider: CCS_DIR=/path/outside/cloud ccs ...');
@@ -398,7 +442,7 @@ async function main(): Promise<void> {
   } else if (process.env.CCS_DIR) {
     // Also warn for CCS_DIR env var pointing to cloud sync
     const cloudService = detectCloudSyncPath(process.env.CCS_DIR);
-    if (cloudService) {
+    if (!isCompletionCommand && cloudService) {
       console.error(warn(`CCS directory is under ${cloudService}.`));
       console.error('    OAuth tokens in cliproxy/auth/ will be synced to cloud.');
       console.error('    Consider: CCS_DIR=/path/outside/cloud ccs ...');
@@ -406,11 +450,39 @@ async function main(): Promise<void> {
   } else if (process.env.CCS_HOME) {
     // Also warn for CCS_HOME env var pointing to cloud sync
     const cloudService = detectCloudSyncPath(process.env.CCS_HOME);
-    if (cloudService) {
+    if (!isCompletionCommand && cloudService) {
       console.error(warn(`CCS directory is under ${cloudService}.`));
       console.error('    OAuth tokens in cliproxy/auth/ will be synced to cloud.');
       console.error('    Consider: CCS_DIR=/path/outside/cloud ccs ...');
     }
+  }
+
+  if (isCompletionCommand) {
+    await tryHandleRootCommand(args);
+    return;
+  }
+
+  args = normalizeLegacyCursorArgs(args);
+  let browserLaunchOverride: BrowserLaunchOverride | undefined;
+  try {
+    const browserLaunchFlags = resolveBrowserLaunchFlagResolution(args);
+    browserLaunchOverride = browserLaunchFlags.override;
+    args = browserLaunchFlags.argsWithoutFlags;
+  } catch (error) {
+    console.error(fail((error as Error).message));
+    process.exit(1);
+    return;
+  }
+
+  cliLogger.info('command.start', 'CLI invocation started', {
+    command: args[0] || 'default',
+    argCount: args.length,
+    flags: args.filter((arg) => arg.startsWith('-')).slice(0, 20),
+  });
+
+  if (shouldPassthroughNativeCodexFlagCommand(args)) {
+    execNativeCodexFlagCommand(args);
+    return;
   }
 
   const firstArg = args[0];
@@ -458,123 +530,25 @@ async function main(): Promise<void> {
       recovery.showRecoveryHints();
     }
   } catch (err) {
+    cliLogger.warn('recovery.failed', 'Auto-recovery failed during CLI startup', {
+      message: (err as Error).message,
+    });
     // Recovery is best-effort - don't block basic CLI functionality
     console.warn('[!] Recovery failed:', (err as Error).message);
   }
 
-  // Special case: migrate command
-  if (firstArg === 'migrate' || firstArg === '--migrate') {
-    const { handleMigrateCommand, printMigrateHelp } = await import('./commands/migrate-command');
-    const migrateArgs = args.slice(1);
-
-    if (migrateArgs.includes('--help') || migrateArgs.includes('-h')) {
-      printMigrateHelp();
-      return;
-    }
-
-    await handleMigrateCommand(migrateArgs);
+  if (await tryHandleRootCommand(args)) {
     return;
   }
 
-  // Special case: update command
-  if (firstArg === 'update' || firstArg === '--update') {
-    const updateArgs = args.slice(1);
-
-    // Handle --help for update command
-    if (updateArgs.includes('--help') || updateArgs.includes('-h')) {
-      console.log('');
-      console.log('Usage: ccs update [options]');
-      console.log('');
-      console.log('Options:');
-      console.log('  --force       Force reinstall current version');
-      console.log('  --beta, --dev Install from dev channel (unstable)');
-      console.log('  --help, -h    Show this help message');
-      console.log('');
-      console.log('Examples:');
-      console.log('  ccs update           Update to latest stable');
-      console.log('  ccs update --force   Force reinstall');
-      console.log('  ccs update --beta    Install dev channel');
-      console.log('');
-      return;
-    }
-
-    const forceFlag = updateArgs.includes('--force');
-    const betaFlag = updateArgs.includes('--beta') || updateArgs.includes('--dev');
-    await handleUpdateCommand({ force: forceFlag, beta: betaFlag });
-    return;
-  }
-
-  const commandAliases: Record<string, string> = {
-    '--version': 'version',
-    '-v': 'version',
-    '--help': 'help',
-    '-h': 'help',
-    '--doctor': 'doctor',
-    '--sync': 'sync',
-    '--cleanup': 'cleanup',
-    '--setup': 'setup',
-  };
-
-  const normalizedFirstArg = commandAliases[firstArg] || firstArg;
-
-  const earlyCommandHandlers: Record<string, () => Promise<void>> = {
-    version: async () => handleVersionCommand(),
-    help: async () => handleHelpCommand(),
-    '--install': async () => handleInstallCommand(),
-    '--uninstall': async () => handleUninstallCommand(),
-    '--shell-completion': async () => handleShellCompletionCommand(args.slice(1)),
-    '-sc': async () => handleShellCompletionCommand(args.slice(1)),
-    doctor: async () => handleDoctorCommand(args.slice(1)),
-    sync: async () => handleSyncCommand(),
-    cleanup: async () => {
-      const { handleCleanupCommand } = await import('./commands/cleanup-command');
-      await handleCleanupCommand(args.slice(1));
-    },
-    auth: async () => {
-      const AuthCommandsModule = await import('./auth/auth-commands');
-      const AuthCommands = AuthCommandsModule.default;
-      const authCommands = new AuthCommands();
-      await authCommands.route(args.slice(1));
-    },
-    api: async () => {
-      const { handleApiCommand } = await import('./commands/api-command');
-      await handleApiCommand(args.slice(1));
-    },
-    cliproxy: async () => {
-      const { handleCliproxyCommand } = await import('./commands/cliproxy-command');
-      await handleCliproxyCommand(args.slice(1));
-    },
-    config: async () => {
-      const { handleConfigCommand } = await import('./commands/config-command');
-      await handleConfigCommand(args.slice(1));
-    },
-    tokens: async () => {
-      const { handleTokensCommand } = await import('./commands/tokens-command');
-      const exitCode = await handleTokensCommand(args.slice(1));
-      process.exit(exitCode);
-    },
-    persist: async () => {
-      const { handlePersistCommand } = await import('./commands/persist-command');
-      await handlePersistCommand(args.slice(1));
-    },
-    env: async () => {
-      const { handleEnvCommand } = await import('./commands/env-command');
-      await handleEnvCommand(args.slice(1));
-    },
-    setup: async () => {
-      const { handleSetupCommand } = await import('./commands/setup-command');
-      await handleSetupCommand(args.slice(1));
-    },
-    cursor: async () => {
-      const { handleCursorCommand } = await import('./commands/cursor-command');
-      const exitCode = await handleCursorCommand(args.slice(1));
-      process.exit(exitCode);
-    },
-  };
-
-  const earlyCommandHandler = earlyCommandHandlers[normalizedFirstArg];
-  if (earlyCommandHandler) {
-    await earlyCommandHandler();
+  if (
+    typeof firstArg === 'string' &&
+    isCLIProxyProvider(firstArg) &&
+    args.length > 1 &&
+    (args.includes('--help') || args.includes('-h'))
+  ) {
+    const { showProviderShortcutHelp } = await import('./commands/help-command');
+    await showProviderShortcutHelp(firstArg);
     return;
   }
 
@@ -587,6 +561,30 @@ async function main(): Promise<void> {
     if (shouldRouteToCopilotCommand) {
       const { handleCopilotCommand } = await import('./commands/copilot-command');
       const exitCode = await handleCopilotCommand(args.slice(1));
+      process.exit(exitCode);
+    }
+  }
+
+  // Special case: explicit legacy Cursor bridge namespace.
+  if (firstArg === LEGACY_CURSOR_PROFILE_NAME && args.length > 1) {
+    const { handleCursorCommand } = await import('./commands/cursor-command');
+    const cursorToken = args[1];
+
+    if (isCursorSubcommandToken(cursorToken)) {
+      const exitCode = await handleCursorCommand(args.slice(1));
+      process.exit(exitCode);
+    }
+  }
+
+  // Compatibility shim: old `ccs cursor <subcommand>` still forwards to the legacy bridge
+  // for one migration window, but bare/positional `ccs cursor` now belongs to CLIProxy.
+  if (firstArg === 'cursor' && args.length > 1) {
+    const { handleCursorCommand } = await import('./commands/cursor-command');
+    const cursorToken = args[1];
+
+    if (isCursorSubcommandToken(cursorToken) && cursorToken !== '--help' && cursorToken !== '-h') {
+      printCursorLegacySubcommandDeprecation(cursorToken);
+      const exitCode = await handleCursorCommand(args.slice(1));
       process.exit(exitCode);
     }
   }
@@ -620,7 +618,7 @@ async function main(): Promise<void> {
     // Detect profile (strip --target flags before profile detection)
     const cleanArgs = stripTargetFlag(args);
     const { profile, remainingArgs } = detectProfile(cleanArgs);
-    const profileInfo = detector.detectProfileType(profile);
+    const profileInfo: ProfileDetectionResult = detector.detectProfileType(profile);
     let resolvedTarget: ReturnType<typeof resolveTargetType>;
     try {
       resolvedTarget = resolveTargetType(
@@ -643,6 +641,9 @@ async function main(): Promise<void> {
 
     // Resolve non-claude target adapter once.
     const targetAdapter = resolvedTarget !== 'claude' ? getTarget(resolvedTarget) : null;
+    let resolvedSettingsPath: string | undefined;
+    let resolvedSettings: ReturnType<typeof loadSettings> | undefined;
+    let resolvedCliproxyBridge: ReturnType<typeof resolveCliproxyBridgeMetadata> | undefined;
 
     // Preflight unsupported profile/target combinations BEFORE binary detection,
     // so users get the most actionable error even when the target CLI is not installed.
@@ -652,30 +653,47 @@ async function main(): Promise<void> {
         process.exit(1);
       }
 
-      if (profileInfo.type === 'cliproxy' && !targetAdapter.supportsProfileType('cliproxy')) {
-        console.error(fail(`${targetAdapter.displayName} does not support CLIProxy profiles`));
-        console.error(info('Use a settings-based profile with --target instead'));
-        process.exit(1);
-      }
-
-      if (profileInfo.type === 'copilot' && !targetAdapter.supportsProfileType('copilot')) {
-        console.error(fail(`${targetAdapter.displayName} does not support Copilot profiles`));
-        process.exit(1);
-      }
-
-      if (profileInfo.type === 'account' && !targetAdapter.supportsProfileType('account')) {
-        console.error(fail(`${targetAdapter.displayName} does not support account-based profiles`));
-        console.error(info('Use a settings-based profile with --target instead'));
-        process.exit(1);
-      }
-
-      // GLMT always requires Claude target because it depends on embedded proxy flow.
-      if (profileInfo.type === 'settings' && profileInfo.name === 'glmt') {
-        console.error(fail(`${targetAdapter.displayName} does not support GLMT proxy profiles`));
-        console.error(
-          info('Use --target claude for glmt, or switch to a direct API profile (glm/km)')
-        );
-        process.exit(1);
+      if (profileInfo.type === 'settings') {
+        resolvedSettingsPath = profileInfo.settingsPath
+          ? expandPath(profileInfo.settingsPath)
+          : getSettingsPath(profileInfo.name);
+        resolvedSettings = loadSettings(resolvedSettingsPath);
+        resolvedCliproxyBridge = resolveCliproxyBridgeMetadata(resolvedSettings);
+        const compatibility = evaluateTargetRuntimeCompatibility({
+          target: resolvedTarget,
+          profileType: profileInfo.type,
+          cliproxyBridgeProvider: resolvedCliproxyBridge?.provider ?? null,
+        });
+        if (!compatibility.supported) {
+          console.error(
+            fail(
+              compatibility.reason || `${targetAdapter.displayName} does not support this profile.`
+            )
+          );
+          if (compatibility.suggestion) {
+            console.error(info(compatibility.suggestion));
+          }
+          process.exit(1);
+        }
+      } else {
+        const compatibility = evaluateTargetRuntimeCompatibility({
+          target: resolvedTarget,
+          profileType: profileInfo.type,
+          cliproxyProvider: profileInfo.type === 'cliproxy' ? profileInfo.provider : undefined,
+          isComposite:
+            profileInfo.type === 'cliproxy' ? Boolean(profileInfo.isComposite) : undefined,
+        });
+        if (!compatibility.supported) {
+          console.error(
+            fail(
+              compatibility.reason || `${targetAdapter.displayName} does not support this profile.`
+            )
+          );
+          if (compatibility.suggestion) {
+            console.error(info(compatibility.suggestion));
+          }
+          process.exit(1);
+        }
       }
 
       if (profileInfo.type === 'default') {
@@ -703,11 +721,45 @@ async function main(): Promise<void> {
 
     // For non-claude targets, verify target binary exists once and pass it through.
     const targetBinaryInfo = targetAdapter?.detectBinary() ?? null;
+    const browserConfig = getBrowserConfig();
+    const claudeAttachConfig =
+      resolvedTarget === 'claude'
+        ? getEffectiveClaudeBrowserAttachConfig(browserConfig)
+        : undefined;
+    const codexRuntimeConfigOverrides = resolveCodexRuntimeConfigOverrides(
+      resolvedTarget,
+      browserLaunchOverride
+    );
+    const claudeBrowserExposure =
+      resolvedTarget === 'claude'
+        ? resolveBrowserExposure(
+            {
+              enabled: claudeAttachConfig?.enabled ?? browserConfig.claude.enabled,
+              policy: browserConfig.claude.policy,
+            },
+            browserLaunchOverride
+          )
+        : undefined;
+    const codexBrowserExposure =
+      resolvedTarget === 'codex'
+        ? resolveBrowserExposure(browserConfig.codex, browserLaunchOverride)
+        : undefined;
+    const blockedBrowserOverrideWarning =
+      resolvedTarget === 'claude' && claudeBrowserExposure
+        ? getBlockedBrowserOverrideWarning('Claude Browser Attach', claudeBrowserExposure)
+        : resolvedTarget === 'codex' && codexBrowserExposure
+          ? getBlockedBrowserOverrideWarning('Codex Browser Tools', codexBrowserExposure)
+          : undefined;
+    if (blockedBrowserOverrideWarning) {
+      console.error(warn(blockedBrowserOverrideWarning));
+    }
     if (resolvedTarget !== 'claude' && !targetBinaryInfo) {
       const displayName = targetAdapter?.displayName || resolvedTarget;
       console.error(fail(`${displayName} CLI not found.`));
       if (resolvedTarget === 'droid') {
         console.error(info('Install: npm i -g @factory/cli'));
+      } else if (resolvedTarget === 'codex') {
+        console.error(info('Install a recent @openai/codex build, then retry.'));
       }
       process.exit(1);
     }
@@ -726,24 +778,16 @@ async function main(): Promise<void> {
     }
 
     let targetRemainingArgs = remainingArgs;
-    let droidReasoningOverride: string | number | undefined;
+    let runtimeReasoningOverride: string | number | undefined;
     if (resolvedTarget === 'droid') {
       try {
         const droidRoute = routeDroidCommandArgs(remainingArgs);
         targetRemainingArgs = droidRoute.argsForDroid;
 
         if (droidRoute.mode === 'interactive') {
-          const runtime = resolveDroidReasoningRuntime(remainingArgs, process.env.CCS_THINKING);
+          const runtime = resolveRuntimeReasoningFlags(remainingArgs, process.env.CCS_THINKING);
           targetRemainingArgs = runtime.argsWithoutReasoningFlags;
-          droidReasoningOverride = runtime.reasoningOverride;
-
-          if (runtime.duplicateDisplays.length > 0) {
-            console.error(
-              warn(
-                `[!] Multiple reasoning flags detected. Using first occurrence: ${runtime.sourceDisplay || '<first-flag>'}`
-              )
-            );
-          }
+          runtimeReasoningOverride = runtime.reasoningOverride;
         } else {
           if (droidRoute.duplicateReasoningDisplays.length > 0) {
             console.error(
@@ -760,11 +804,36 @@ async function main(): Promise<void> {
         }
       } catch (error) {
         if (error instanceof DroidReasoningFlagError || error instanceof DroidCommandRouterError) {
-          console.error(fail(error.message));
-          console.error('    Examples: --thinking low, --thinking 8192, --thinking off');
-          console.error('    Codex alias: --effort medium|high|xhigh');
-          console.error('    Droid exec: --reasoning-effort high');
-          process.exit(1);
+          exitWithRuntimeReasoningFlagError(error.message, {
+            codexAliasLevels: 'minimal|low|medium|high|xhigh',
+            includeDroidExecExample: true,
+          });
+        }
+        throw error;
+      }
+    } else if (resolvedTarget === 'codex') {
+      try {
+        const runtime = resolveRuntimeReasoningFlags(remainingArgs, process.env.CCS_THINKING);
+        targetRemainingArgs = runtime.argsWithoutReasoningFlags;
+        const normalizedReasoning = normalizeCodexRuntimeReasoningOverride(
+          runtime.reasoningOverride
+        );
+        if (runtime.reasoningOverride !== undefined && !normalizedReasoning) {
+          if (runtime.reasoningSource === 'flag') {
+            throw new DroidReasoningFlagError(
+              'Codex target supports reasoning levels only: minimal, low, medium, high, xhigh.',
+              '--effort'
+            );
+          }
+          runtimeReasoningOverride = undefined;
+        } else {
+          runtimeReasoningOverride = normalizedReasoning;
+        }
+      } catch (error) {
+        if (error instanceof DroidReasoningFlagError) {
+          exitWithRuntimeReasoningFlagError(error.message, {
+            codexAliasLevels: 'minimal|low|medium|high|xhigh',
+          });
         }
         throw error;
       }
@@ -785,12 +854,30 @@ async function main(): Promise<void> {
 
     if (profileInfo.type === 'cliproxy') {
       // CLIPROXY FLOW: OAuth-based profiles (gemini, codex, agy, qwen) or user-defined variants
-      // Inject WebSearch hook into profile settings before launch
-      ensureProfileHooks(profileInfo.name);
-      // Inject Image Analyzer hook into profile settings before launch
-      ensureImageAnalyzerHooks(profileInfo.name);
-
+      const imageAnalysisMcpReady =
+        resolvedTarget === 'claude' ? ensureImageAnalysisMcpOrThrow() : true;
+      if (resolvedTarget === 'claude') {
+        ensureWebSearchMcpOrThrow();
+      }
       const provider = profileInfo.provider || (profileInfo.name as CLIProxyProvider);
+      const expandedCliproxySettingsPath = profileInfo.settingsPath
+        ? expandPath(profileInfo.settingsPath)
+        : undefined;
+      if (resolvedTarget === 'claude') {
+        if (imageAnalysisMcpReady) {
+          removeImageAnalysisProfileHook(profileInfo.name, expandedCliproxySettingsPath);
+        } else {
+          const imageAnalysisFallbackHookReady = prepareImageAnalysisFallbackHook();
+          ensureImageAnalyzerHooks({
+            profileName: profileInfo.name,
+            profileType: profileInfo.type,
+            cliproxyProvider: provider,
+            isComposite: profileInfo.isComposite,
+            settingsPath: expandedCliproxySettingsPath,
+            sharedHookInstalled: imageAnalysisFallbackHookReady,
+          });
+        }
+      }
       const customSettingsPath = profileInfo.settingsPath; // undefined for hardcoded profiles
       const variantPort = profileInfo.port; // variant-specific port for isolation
       const cliproxyPort = variantPort || CLIPROXY_DEFAULT_PORT;
@@ -821,6 +908,9 @@ async function main(): Promise<void> {
           '--port-forward',
           '--nickname',
           '--kiro-auth-method',
+          '--kiro-idc-start-url',
+          '--kiro-idc-region',
+          '--kiro-idc-flow',
           '--backend',
           '--proxy-host',
           '--proxy-port',
@@ -905,7 +995,8 @@ async function main(): Promise<void> {
             baseUrl: envVars['ANTHROPIC_BASE_URL'],
             model: envVars['ANTHROPIC_MODEL'],
           }),
-          reasoningOverride: droidReasoningOverride,
+          reasoningOverride: runtimeReasoningOverride,
+          runtimeConfigOverrides: codexRuntimeConfigOverrides,
           envVars,
         };
 
@@ -923,7 +1014,11 @@ async function main(): Promise<void> {
         }
 
         await adapter.prepareCredentials(creds);
-        const targetArgs = adapter.buildArgs(profileInfo.name, targetRemainingArgs);
+        const targetArgs = adapter.buildArgs(profileInfo.name, targetRemainingArgs, {
+          creds,
+          profileType: profileInfo.type,
+          binaryInfo: targetBinaryInfo || undefined,
+        });
         const targetEnv = adapter.buildEnv(creds, profileInfo.type);
         adapter.exec(targetArgs, targetEnv, { binaryInfo: targetBinaryInfo || undefined });
         return;
@@ -939,10 +1034,20 @@ async function main(): Promise<void> {
       });
     } else if (profileInfo.type === 'copilot') {
       // COPILOT FLOW: GitHub Copilot subscription via copilot-api proxy
-      // Inject WebSearch hook into profile settings before launch
-      ensureProfileHooks(profileInfo.name);
-      // Inject Image Analyzer hook into profile settings before launch
-      ensureImageAnalyzerHooks(profileInfo.name);
+      ensureWebSearchMcpOrThrow();
+      const imageAnalysisMcpReady = ensureImageAnalysisMcpOrThrow();
+      if (resolvedTarget === 'claude') {
+        if (imageAnalysisMcpReady) {
+          removeImageAnalysisProfileHook(profileInfo.name);
+        } else {
+          const imageAnalysisFallbackHookReady = prepareImageAnalysisFallbackHook();
+          ensureImageAnalyzerHooks({
+            profileName: profileInfo.name,
+            profileType: profileInfo.type,
+            sharedHookInstalled: imageAnalysisFallbackHookReady,
+          });
+        }
+      }
 
       const { executeCopilotProfile } = await import('./copilot');
       const copilotConfig = profileInfo.copilotConfig;
@@ -969,15 +1074,60 @@ async function main(): Promise<void> {
         claudeCli
       );
       process.exit(exitCode);
+    } else if (profileInfo.type === 'cursor') {
+      // CURSOR FLOW: local Cursor daemon profile
+      ensureWebSearchMcpOrThrow();
+      installImageAnalyzerHook();
+      ensureImageAnalyzerHooks({
+        profileName: profileInfo.name,
+        profileType: profileInfo.type,
+      });
+
+      const { executeCursorProfile } = await import('./cursor');
+      const cursorConfig = profileInfo.cursorConfig;
+      if (!cursorConfig) {
+        console.error(fail('Cursor configuration not found'));
+        process.exit(1);
+      }
+      const continuityInheritance = await resolveProfileContinuityInheritance({
+        profileName: profileInfo.name,
+        profileType: profileInfo.type,
+        target: resolvedTarget,
+      });
+      if (continuityInheritance.sourceAccount && process.env.CCS_DEBUG) {
+        console.error(
+          info(
+            `Continuity inheritance active: profile "${profileInfo.name}" -> account "${continuityInheritance.sourceAccount}"`
+          )
+        );
+      }
+      const exitCode = await executeCursorProfile(
+        cursorConfig,
+        remainingArgs,
+        continuityInheritance.claudeConfigDir,
+        claudeCli
+      );
+      process.exit(exitCode);
     } else if (profileInfo.type === 'settings') {
       // Settings-based profiles (glm, glmt) are third-party providers
-      // WebSearch is server-side tool - third-party providers have no access
-      // Inject WebSearch hook into profile settings before launch
-      ensureProfileHooks(profileInfo.name);
-      // Inject Image Analyzer hook into profile settings before launch
-      ensureImageAnalyzerHooks(profileInfo.name);
-
-      ensureMcpWebSearch();
+      const imageAnalysisMcpReady =
+        resolvedTarget === 'claude' ? ensureImageAnalysisMcpOrThrow() : true;
+      const browserAttachRuntime =
+        resolvedTarget === 'claude' &&
+        claudeBrowserExposure?.exposeForLaunch &&
+        claudeAttachConfig?.enabled
+          ? await resolveOptionalBrowserAttachRuntime(claudeAttachConfig)
+          : undefined;
+      const browserRuntimeEnv = browserAttachRuntime?.runtimeEnv;
+      if (browserAttachRuntime?.warning) {
+        process.stderr.write(`${warn(browserAttachRuntime.warning)}\n`);
+      }
+      if (resolvedTarget === 'claude') {
+        ensureWebSearchMcpOrThrow();
+        if (browserRuntimeEnv) {
+          ensureBrowserMcpOrThrow();
+        }
+      }
 
       // Display WebSearch status (single line, equilibrium UX)
       displayWebSearchStatus();
@@ -998,18 +1148,79 @@ async function main(): Promise<void> {
         );
       }
       const inheritedClaudeConfigDir = continuityInheritance.claudeConfigDir;
+      syncWebSearchMcpToConfigDir(inheritedClaudeConfigDir);
+      syncImageAnalysisMcpToConfigDir(inheritedClaudeConfigDir);
+      if (
+        browserRuntimeEnv &&
+        inheritedClaudeConfigDir &&
+        !syncBrowserMcpToConfigDir(inheritedClaudeConfigDir)
+      ) {
+        throw new Error(
+          'Browser MCP is enabled, but CCS could not sync the browser MCP config into the inherited Claude instance.'
+        );
+      }
+      const expandedSettingsPath =
+        resolvedSettingsPath ??
+        (profileInfo.settingsPath
+          ? expandPath(profileInfo.settingsPath)
+          : getSettingsPath(profileInfo.name));
+      const settings = resolvedSettings ?? loadSettings(expandedSettingsPath);
+      const cliproxyBridge = resolvedCliproxyBridge ?? resolveCliproxyBridgeMetadata(settings);
 
-      // Pre-flight validation for GLM/GLMT/MiniMax profiles
-      if (profileInfo.name === 'glm' || profileInfo.name === 'glmt') {
-        const preflightSettingsPath = getSettingsPath(profileInfo.name);
-        const preflightSettings = loadSettings(preflightSettingsPath);
-        const apiKey = preflightSettings.env?.['ANTHROPIC_AUTH_TOKEN'];
+      let imageAnalysisFallbackHookReady: boolean | undefined;
+      if (resolvedTarget === 'claude') {
+        if (imageAnalysisMcpReady) {
+          removeImageAnalysisProfileHook(profileInfo.name, expandedSettingsPath);
+        } else {
+          imageAnalysisFallbackHookReady = prepareImageAnalysisFallbackHook();
+          ensureImageAnalyzerHooks({
+            profileName: profileInfo.name,
+            profileType: profileInfo.type,
+            settingsPath: expandedSettingsPath,
+            settings,
+            cliproxyBridge,
+            sharedHookInstalled: imageAnalysisFallbackHookReady,
+          });
+        }
+      }
+      if (resolvedTarget !== 'claude') {
+        const compatibility = evaluateTargetRuntimeCompatibility({
+          target: resolvedTarget,
+          profileType: profileInfo.type,
+          cliproxyBridgeProvider: cliproxyBridge?.provider ?? null,
+        });
+        if (!compatibility.supported) {
+          console.error(
+            fail(
+              compatibility.reason ||
+                `${targetAdapter?.displayName || resolvedTarget} does not support this profile.`
+            )
+          );
+          if (compatibility.suggestion) {
+            console.error(info(compatibility.suggestion));
+          }
+          process.exit(1);
+        }
+      }
+      const rawSettingsEnv = profileInfo.env ?? settings.env ?? {};
+      const isDeprecatedGlmtProfile = isDeprecatedGlmtProfileName(profileInfo.name);
+      const glmtNormalization = isDeprecatedGlmtProfile
+        ? normalizeDeprecatedGlmtEnv(rawSettingsEnv)
+        : null;
+      const settingsEnv = glmtNormalization?.env ?? rawSettingsEnv;
+
+      if (glmtNormalization) {
+        for (const message of glmtNormalization.warnings) {
+          console.error(warn(message));
+        }
+      }
+
+      // Pre-flight validation for Z.AI-compatible profiles.
+      if (profileInfo.name === 'glm' || isDeprecatedGlmtProfile) {
+        const apiKey = settingsEnv['ANTHROPIC_AUTH_TOKEN'];
 
         if (apiKey) {
-          const validation = await validateGlmKey(
-            apiKey,
-            preflightSettings.env?.['ANTHROPIC_BASE_URL']
-          );
+          const validation = await validateGlmKey(apiKey, settingsEnv['ANTHROPIC_BASE_URL']);
 
           if (!validation.valid) {
             console.error('');
@@ -1026,15 +1237,10 @@ async function main(): Promise<void> {
       }
 
       if (profileInfo.name === 'mm') {
-        const preflightSettingsPath = getSettingsPath(profileInfo.name);
-        const preflightSettings = loadSettings(preflightSettingsPath);
-        const apiKey = preflightSettings.env?.['ANTHROPIC_AUTH_TOKEN'];
+        const apiKey = settingsEnv['ANTHROPIC_AUTH_TOKEN'];
 
         if (apiKey) {
-          const validation = await validateMiniMaxKey(
-            apiKey,
-            preflightSettings.env?.['ANTHROPIC_BASE_URL']
-          );
+          const validation = await validateMiniMaxKey(apiKey, settingsEnv['ANTHROPIC_BASE_URL']);
 
           if (!validation.valid) {
             console.error('');
@@ -1052,10 +1258,8 @@ async function main(): Promise<void> {
 
       // Pre-flight validation for Anthropic direct profiles (ANTHROPIC_API_KEY + no BASE_URL)
       {
-        const preflightSettingsPath = getSettingsPath(profileInfo.name);
-        const preflightSettings = loadSettings(preflightSettingsPath);
-        const anthropicApiKey = preflightSettings.env?.['ANTHROPIC_API_KEY'];
-        const hasBaseUrl = !!preflightSettings.env?.['ANTHROPIC_BASE_URL'];
+        const anthropicApiKey = settingsEnv['ANTHROPIC_API_KEY'];
+        const hasBaseUrl = !!settingsEnv['ANTHROPIC_BASE_URL'];
         if (anthropicApiKey && !hasBaseUrl) {
           const validation = await validateAnthropicKey(anthropicApiKey);
           if (!validation.valid) {
@@ -1074,89 +1278,218 @@ async function main(): Promise<void> {
         }
       }
 
-      // Check if this is GLMT profile (requires proxy)
-      if (profileInfo.name === 'glmt') {
-        if (resolvedTarget !== 'claude') {
+      const webSearchEnv = getWebSearchHookEnv();
+      const imageAnalysisStatus = await resolveImageAnalysisRuntimeStatus({
+        profileName: profileInfo.name,
+        profileType: profileInfo.type,
+        settings,
+        cliproxyBridge,
+        sharedHookInstalled: imageAnalysisFallbackHookReady,
+      });
+      const runtimeConnection = resolveImageAnalysisRuntimeConnection();
+      let imageAnalysisEnv = getImageAnalysisHookEnv({
+        profileName: profileInfo.name,
+        profileType: profileInfo.type,
+        settings,
+        cliproxyBridge,
+      });
+      imageAnalysisEnv = applyImageAnalysisRuntimeOverrides(imageAnalysisEnv, {
+        backendId: imageAnalysisStatus.backendId,
+        model: imageAnalysisStatus.model,
+        runtimePath: imageAnalysisStatus.runtimePath,
+        baseUrl: runtimeConnection.baseUrl,
+        apiKey: runtimeConnection.apiKey,
+        allowSelfSigned: runtimeConnection.allowSelfSigned,
+      });
+      imageAnalysisEnv = {
+        ...imageAnalysisEnv,
+        CCS_IMAGE_ANALYSIS_SKIP_HOOK:
+          resolvedTarget === 'claude' && imageAnalysisMcpReady ? '1' : '0',
+      };
+
+      const imageAnalysisProvider = imageAnalysisEnv['CCS_CURRENT_PROVIDER'];
+      if (
+        resolvedTarget === 'claude' &&
+        imageAnalysisEnv['CCS_IMAGE_ANALYSIS_SKIP'] !== '1' &&
+        imageAnalysisProvider
+      ) {
+        const verboseProxyLaunch =
+          remainingArgs.includes('--verbose') ||
+          remainingArgs.includes('-v') ||
+          targetRemainingArgs.includes('--verbose') ||
+          targetRemainingArgs.includes('-v');
+
+        if (imageAnalysisStatus.effectiveRuntimeMode === 'native-read') {
           console.error(
-            fail(`${targetAdapter?.displayName || 'Target'} does not support GLMT proxy profiles`)
+            info(
+              `${imageAnalysisStatus.effectiveRuntimeReason || `Image analysis via ${imageAnalysisProvider} is unavailable.`} This session will use native Read.`
+            )
           );
-          console.error(
-            info('Use --target claude for glmt, or switch to a direct API profile (glm/km)')
+          imageAnalysisEnv = {
+            ...imageAnalysisEnv,
+            CCS_CURRENT_PROVIDER: '',
+            CCS_IMAGE_ANALYSIS_SKIP: '1',
+            CCS_IMAGE_ANALYSIS_RUNTIME_PATH: '',
+            CCS_IMAGE_ANALYSIS_RUNTIME_BASE_URL: '',
+            CCS_IMAGE_ANALYSIS_RUNTIME_API_KEY: '',
+            CCS_IMAGE_ANALYSIS_RUNTIME_ALLOW_SELF_SIGNED: '0',
+          };
+        } else if (imageAnalysisStatus.proxyReadiness === 'stopped') {
+          const ensureServiceResult = await ensureCliproxyService(
+            CLIPROXY_DEFAULT_PORT,
+            verboseProxyLaunch
           );
+          if (!ensureServiceResult.started) {
+            console.error(
+              warn(
+                `Image analysis via ${imageAnalysisProvider} is unavailable because CCS could not start the local CLIProxy service. This session will use native Read.`
+              )
+            );
+            imageAnalysisEnv = {
+              ...imageAnalysisEnv,
+              CCS_CURRENT_PROVIDER: '',
+              CCS_IMAGE_ANALYSIS_SKIP: '1',
+            };
+          }
+        }
+      }
+      // Get global env vars (DISABLE_TELEMETRY, etc.) for third-party profiles
+      const globalEnvConfig = getGlobalEnvConfig();
+      const globalEnv = globalEnvConfig.enabled ? globalEnvConfig.env : {};
+
+      // Log global env injection for visibility (debug mode only)
+      if (globalEnvConfig.enabled && Object.keys(globalEnv).length > 0 && process.env.CCS_DEBUG) {
+        const envNames = Object.keys(globalEnv).join(', ');
+        console.error(info(`Global env: ${envNames}`));
+      }
+
+      // For Claude target launches that already pass `--settings`, keep runtime
+      // env free of ANTHROPIC routing/auth while preserving non-routing profile
+      // env so nested Team/subagent sessions can still inherit model intent and
+      // other profile-scoped runtime flags.
+      const settingsRuntimeEnv = stripBrowserEnv({ ...globalEnv, ...settingsEnv });
+      const claudeRuntimeEnvVars: NodeJS.ProcessEnv = {
+        ...stripAnthropicRoutingEnv(settingsRuntimeEnv),
+        ...(inheritedClaudeConfigDir ? { CLAUDE_CONFIG_DIR: inheritedClaudeConfigDir } : {}),
+        ...webSearchEnv,
+        ...imageAnalysisEnv,
+        ...(browserRuntimeEnv || {}),
+        CCS_PROFILE_TYPE: 'settings',
+        CCS_STRIP_INHERITED_ANTHROPIC_ENV: '1',
+      };
+
+      // Non-Claude targets still need effective credentials injected directly.
+      const envVars: NodeJS.ProcessEnv = {
+        ...settingsRuntimeEnv,
+        ...(inheritedClaudeConfigDir ? { CLAUDE_CONFIG_DIR: inheritedClaudeConfigDir } : {}),
+        ...webSearchEnv,
+        ...imageAnalysisEnv,
+        ...(browserRuntimeEnv || {}),
+        CCS_PROFILE_TYPE: 'settings',
+      };
+
+      // Dispatch through target adapter for non-claude targets
+      if (resolvedTarget !== 'claude') {
+        const adapter = targetAdapter;
+        if (!adapter) {
+          console.error(fail(`Target adapter not found for "${resolvedTarget}"`));
           process.exit(1);
         }
-        // GLMT FLOW: Settings-based with embedded proxy for thinking support
-        await execClaudeWithProxy(
-          claudeCli,
-          profileInfo.name,
-          remainingArgs,
-          inheritedClaudeConfigDir
-        );
-      } else {
-        // EXISTING FLOW: Settings-based profile (glm)
-        // Use --settings flag (backward compatible)
-        const expandedSettingsPath = profileInfo.settingsPath
-          ? expandPath(profileInfo.settingsPath)
-          : getSettingsPath(profileInfo.name);
-        const webSearchEnv = getWebSearchHookEnv();
-        const imageAnalysisEnv = getImageAnalysisHookEnv(profileInfo.name);
-        // Get global env vars (DISABLE_TELEMETRY, etc.) for third-party profiles
-        const globalEnvConfig = getGlobalEnvConfig();
-        const globalEnv = globalEnvConfig.enabled ? globalEnvConfig.env : {};
-
-        // Log global env injection for visibility (debug mode only)
-        if (globalEnvConfig.enabled && Object.keys(globalEnv).length > 0 && process.env.CCS_DEBUG) {
-          const envNames = Object.keys(globalEnv).join(', ');
-          console.error(info(`Global env: ${envNames}`));
-        }
-
-        // CRITICAL: Load settings and explicitly set ANTHROPIC_* env vars
-        // to prevent inheriting stale values from previous CLIProxy sessions.
-        // Environment variables take precedence over --settings file values,
-        // so we must explicitly set them here to ensure correct routing.
-        const settings = loadSettings(expandedSettingsPath);
-        const settingsEnv = settings.env || {};
-
-        const envVars: NodeJS.ProcessEnv = {
-          ...globalEnv,
-          ...settingsEnv, // Explicitly inject all settings env vars
-          ...(inheritedClaudeConfigDir ? { CLAUDE_CONFIG_DIR: inheritedClaudeConfigDir } : {}),
-          ...webSearchEnv,
-          ...imageAnalysisEnv,
-          CCS_PROFILE_TYPE: 'settings', // Signal to WebSearch hook this is a third-party provider
-        };
-
-        // Dispatch through target adapter for non-claude targets
-        if (resolvedTarget !== 'claude') {
-          const adapter = targetAdapter;
-          if (!adapter) {
-            console.error(fail(`Target adapter not found for "${resolvedTarget}"`));
-            process.exit(1);
-          }
-          const directAnthropicBaseUrl =
-            settingsEnv['ANTHROPIC_BASE_URL'] ||
-            (settingsEnv['ANTHROPIC_API_KEY'] ? 'https://api.anthropic.com' : '');
-          const creds: TargetCredentials = {
-            profile: profileInfo.name,
+        const directAnthropicBaseUrl =
+          settingsEnv['ANTHROPIC_BASE_URL'] ||
+          (settingsEnv['ANTHROPIC_API_KEY'] ? 'https://api.anthropic.com' : '');
+        const creds: TargetCredentials = {
+          profile: profileInfo.name,
+          baseUrl: directAnthropicBaseUrl,
+          apiKey: settingsEnv['ANTHROPIC_AUTH_TOKEN'] || settingsEnv['ANTHROPIC_API_KEY'] || '',
+          model: settingsEnv['ANTHROPIC_MODEL'],
+          provider: resolveDroidProvider({
+            provider: settingsEnv['CCS_DROID_PROVIDER'] || settingsEnv['DROID_PROVIDER'],
             baseUrl: directAnthropicBaseUrl,
-            apiKey: settingsEnv['ANTHROPIC_AUTH_TOKEN'] || settingsEnv['ANTHROPIC_API_KEY'] || '',
             model: settingsEnv['ANTHROPIC_MODEL'],
-            provider: resolveDroidProvider({
-              provider: settingsEnv['CCS_DROID_PROVIDER'] || settingsEnv['DROID_PROVIDER'],
-              baseUrl: directAnthropicBaseUrl,
-              model: settingsEnv['ANTHROPIC_MODEL'],
-            }),
-            reasoningOverride: droidReasoningOverride,
-          };
-          await adapter.prepareCredentials(creds);
-          const targetArgs = adapter.buildArgs(profileInfo.name, targetRemainingArgs);
-          const targetEnv = adapter.buildEnv(creds, profileInfo.type);
-          adapter.exec(targetArgs, targetEnv, { binaryInfo: targetBinaryInfo || undefined });
-          return;
+          }),
+          reasoningOverride: runtimeReasoningOverride,
+          runtimeConfigOverrides: codexRuntimeConfigOverrides,
+          envVars,
+        };
+        await adapter.prepareCredentials(creds);
+        const targetArgs = adapter.buildArgs(profileInfo.name, targetRemainingArgs, {
+          creds,
+          profileType: profileInfo.type,
+          binaryInfo: targetBinaryInfo || undefined,
+        });
+        const targetEnv = adapter.buildEnv(creds, profileInfo.type);
+        adapter.exec(targetArgs, targetEnv, { binaryInfo: targetBinaryInfo || undefined });
+        return;
+      }
+
+      const imageAnalysisArgs = imageAnalysisMcpReady
+        ? appendThirdPartyImageAnalysisToolArgs(remainingArgs)
+        : remainingArgs;
+      const browserArgs = browserRuntimeEnv
+        ? appendBrowserToolArgs(imageAnalysisArgs)
+        : imageAnalysisArgs;
+      const openAICompatProfile = resolveOpenAICompatProfileConfig(
+        profileInfo.name,
+        expandedSettingsPath,
+        settingsEnv
+      );
+      if (openAICompatProfile) {
+        const proxyStart = await startOpenAICompatProxy(openAICompatProfile, {
+          insecure: openAICompatProfile.insecure,
+        });
+        if (!proxyStart.success) {
+          console.error(fail(proxyStart.error || 'Failed to start local OpenAI-compatible proxy'));
+          process.exit(1);
         }
 
-        execClaude(claudeCli, ['--settings', expandedSettingsPath, ...remainingArgs], envVars);
+        console.error(
+          info(
+            `Using local OpenAI-compatible proxy for "${profileInfo.name}" on port ${proxyStart.port}`
+          )
+        );
+
+        const proxyEnv = {
+          ...envVars,
+          ...buildOpenAICompatProxyEnv(
+            openAICompatProfile,
+            proxyStart.port,
+            proxyStart.authToken || '',
+            inheritedClaudeConfigDir
+          ),
+        };
+        delete proxyEnv.ANTHROPIC_API_KEY;
+
+        const launchArgs = [
+          '--settings',
+          expandedSettingsPath,
+          ...appendThirdPartyWebSearchToolArgs(browserArgs),
+        ];
+        const traceEnv = createWebSearchTraceContext({
+          launcher: 'ccs.settings-profile.proxy',
+          args: launchArgs,
+          profile: profileInfo.name,
+          profileType: profileInfo.type,
+          settingsPath: expandedSettingsPath,
+        });
+
+        execClaude(claudeCli, launchArgs, { ...proxyEnv, ...traceEnv });
+        return;
       }
+      const launchArgs = [
+        '--settings',
+        expandedSettingsPath,
+        ...appendThirdPartyWebSearchToolArgs(browserArgs),
+      ];
+      const traceEnv = createWebSearchTraceContext({
+        launcher: 'ccs.settings-profile',
+        args: launchArgs,
+        profile: profileInfo.name,
+        profileType: profileInfo.type,
+        settingsPath: expandedSettingsPath,
+      });
+
+      execClaude(claudeCli, launchArgs, { ...claudeRuntimeEnvVars, ...traceEnv });
     } else if (profileInfo.type === 'account') {
       // NEW FLOW: Account-based profile (work, personal)
       // All platforms: Use instance isolation with CLAUDE_CONFIG_DIR
@@ -1192,7 +1525,9 @@ async function main(): Promise<void> {
         CCS_WEBSEARCH_SKIP: '1',
         CCS_IMAGE_ANALYSIS_SKIP: '1',
       };
-      execClaude(claudeCli, remainingArgs, envVars);
+      await maybeWarnAboutResumeLaneMismatch(profileInfo.name, instancePath, remainingArgs);
+      const launchArgs = resolveNativeClaudeLaunchArgs(remainingArgs, 'account', instancePath);
+      execClaude(claudeCli, launchArgs, envVars);
     } else {
       // DEFAULT: No profile configured, use Claude's own defaults
       // Skip WebSearch hook - native Claude has server-side WebSearch
@@ -1202,8 +1537,22 @@ async function main(): Promise<void> {
         CCS_WEBSEARCH_SKIP: '1',
         CCS_IMAGE_ANALYSIS_SKIP: '1',
       };
+      const browserAttachRuntime =
+        resolvedTarget === 'claude' &&
+        claudeBrowserExposure?.exposeForLaunch &&
+        claudeAttachConfig?.enabled
+          ? await resolveOptionalBrowserAttachRuntime(claudeAttachConfig)
+          : undefined;
+      const browserRuntimeEnv = browserAttachRuntime?.runtimeEnv;
+      if (browserAttachRuntime?.warning) {
+        process.stderr.write(`${warn(browserAttachRuntime.warning)}\n`);
+      }
 
       if (resolvedTarget === 'claude') {
+        if (browserRuntimeEnv) {
+          ensureBrowserMcpOrThrow();
+          Object.assign(envVars, browserRuntimeEnv);
+        }
         const defaultContinuityInheritance = await resolveProfileContinuityInheritance({
           profileName: profileInfo.name,
           profileType: profileInfo.type,
@@ -1218,6 +1567,14 @@ async function main(): Promise<void> {
         }
         if (defaultContinuityInheritance.claudeConfigDir) {
           envVars.CLAUDE_CONFIG_DIR = defaultContinuityInheritance.claudeConfigDir;
+          if (
+            browserRuntimeEnv &&
+            !syncBrowserMcpToConfigDir(defaultContinuityInheritance.claudeConfigDir)
+          ) {
+            throw new Error(
+              'Browser MCP is enabled, but CCS could not sync the browser MCP config into the inherited Claude instance.'
+            );
+          }
         }
       }
 
@@ -1242,9 +1599,11 @@ async function main(): Promise<void> {
             baseUrl: process.env['ANTHROPIC_BASE_URL'],
             model: process.env['ANTHROPIC_MODEL'],
           }),
-          reasoningOverride: droidReasoningOverride,
+          reasoningOverride: runtimeReasoningOverride,
+          runtimeConfigOverrides: codexRuntimeConfigOverrides,
+          browserRuntimeEnv,
         };
-        if (!creds.baseUrl || !creds.apiKey) {
+        if (resolvedTarget === 'droid' && (!creds.baseUrl || !creds.apiKey)) {
           console.error(
             fail(
               `${adapter.displayName} default mode requires ANTHROPIC_BASE_URL and ANTHROPIC_AUTH_TOKEN`
@@ -1254,13 +1613,22 @@ async function main(): Promise<void> {
           process.exit(1);
         }
         await adapter.prepareCredentials(creds);
-        const targetArgs = adapter.buildArgs('default', targetRemainingArgs);
+        const targetArgs = adapter.buildArgs('default', targetRemainingArgs, {
+          creds,
+          profileType: 'default',
+          binaryInfo: targetBinaryInfo || undefined,
+        });
         const targetEnv = adapter.buildEnv(creds, 'default');
         adapter.exec(targetArgs, targetEnv, { binaryInfo: targetBinaryInfo || undefined });
         return;
       }
 
-      execClaude(claudeCli, remainingArgs, envVars);
+      const launchArgs = resolveNativeClaudeLaunchArgs(
+        browserRuntimeEnv ? appendBrowserToolArgs(remainingArgs) : remainingArgs,
+        'default',
+        envVars.CLAUDE_CONFIG_DIR
+      );
+      execClaude(claudeCli, launchArgs, envVars);
     }
   } catch (error) {
     const err = error as ProfileError;

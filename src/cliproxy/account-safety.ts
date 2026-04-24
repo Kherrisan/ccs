@@ -37,8 +37,24 @@ interface AutoPausedFile {
   sessions: AutoPausedSession[];
 }
 
+interface QuotaPausedEntry {
+  provider: CLIProxyProvider;
+  accountId: string;
+  pausedAt: string;
+  until: number;
+  reason: 'quota_exhausted';
+}
+
+interface QuotaPausedFile {
+  entries: QuotaPausedEntry[];
+}
+
 function getAutoPausedPath(): string {
   return path.join(getCcsDir(), 'cliproxy', 'auto-paused.json');
+}
+
+function getQuotaPausedPath(): string {
+  return path.join(getCcsDir(), 'cliproxy', 'quota-paused.json');
 }
 
 function loadAutoPaused(): AutoPausedFile {
@@ -57,6 +73,48 @@ function loadAutoPaused(): AutoPausedFile {
 function saveAutoPaused(data: AutoPausedFile): void {
   const filePath = getAutoPausedPath();
   if (data.sessions.length === 0) {
+    try {
+      fs.unlinkSync(filePath);
+    } catch {
+      /* already gone */
+    }
+    return;
+  }
+  const dir = path.dirname(filePath);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  fs.writeFileSync(filePath, JSON.stringify(data, null, 2) + '\n', { mode: 0o600 });
+}
+
+function loadQuotaPaused(): QuotaPausedFile {
+  try {
+    const filePath = getQuotaPausedPath();
+    if (fs.existsSync(filePath)) {
+      const data = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as {
+        entries?: unknown;
+      };
+      if (Array.isArray(data.entries)) {
+        return {
+          entries: data.entries.filter(
+            (entry): entry is QuotaPausedEntry =>
+              typeof entry === 'object' &&
+              entry !== null &&
+              typeof (entry as QuotaPausedEntry).provider === 'string' &&
+              typeof (entry as QuotaPausedEntry).accountId === 'string' &&
+              typeof (entry as QuotaPausedEntry).pausedAt === 'string' &&
+              Number.isFinite((entry as QuotaPausedEntry).until)
+          ),
+        };
+      }
+    }
+  } catch {
+    // Corrupted or malformed file — start fresh
+  }
+  return { entries: [] };
+}
+
+function saveQuotaPaused(data: QuotaPausedFile): void {
+  const filePath = getQuotaPausedPath();
+  if (data.entries.length === 0) {
     try {
       fs.unlinkSync(filePath);
     } catch {
@@ -326,6 +384,93 @@ export function cleanupStaleAutoPauses(): void {
 }
 
 /**
+ * Resume quota-paused accounts whose cooldown windows have expired.
+ * Auto-resume only applies to pauses created by CCS quota handling.
+ */
+export function restoreExpiredQuotaPauses(now = Date.now()): number {
+  const data = loadQuotaPaused();
+  if (data.entries.length === 0) return 0;
+
+  const keep: QuotaPausedEntry[] = [];
+  let resumed = 0;
+  const registry = loadAccountsRegistry();
+
+  for (const entry of data.entries) {
+    if (!Number.isFinite(entry.until) || entry.until > now) {
+      keep.push(entry);
+      continue;
+    }
+
+    const account = registry.providers[entry.provider]?.accounts[entry.accountId];
+    if (!account?.paused) {
+      continue;
+    }
+
+    // Only auto-resume the exact pause CCS created for quota cooldown.
+    // Missing or changed pausedAt metadata is treated as a mismatch so we do
+    // not accidentally resume a manually paused account.
+    if (account.pausedAt !== entry.pausedAt) {
+      continue;
+    }
+
+    if (resumeAccount(entry.provider, entry.accountId)) {
+      resumed += 1;
+      continue;
+    }
+
+    // Resume failures are treated as transient I/O/state issues. Keep the
+    // quota-pause record so the next restore pass can retry instead of leaving
+    // the account paused forever without any cooldown metadata.
+    keep.push(entry);
+  }
+
+  saveQuotaPaused({ entries: keep });
+  return resumed;
+}
+
+/**
+ * Temporarily remove an exhausted account from CLIProxy rotation for the
+ * configured cooldown window. Returns false when the account was already paused
+ * or could not be paused, so callers can fall back to in-memory cooldown only.
+ */
+export function pauseAccountForQuotaCooldown(
+  provider: CLIProxyProvider,
+  accountId: string,
+  cooldownMinutes: number,
+  now = Date.now()
+): boolean {
+  const registryBefore = loadAccountsRegistry();
+  const accountBefore = registryBefore.providers[provider]?.accounts[accountId];
+  if (!accountBefore || accountBefore.paused) {
+    return false;
+  }
+
+  if (!pauseAccount(provider, accountId)) {
+    return false;
+  }
+
+  const registryAfter = loadAccountsRegistry();
+  const pausedAt = registryAfter.providers[provider]?.accounts[accountId]?.pausedAt;
+  if (!pausedAt) {
+    return false;
+  }
+
+  const data = loadQuotaPaused();
+  data.entries = data.entries.filter(
+    (entry) => !(entry.provider === provider && entry.accountId === accountId)
+  );
+  data.entries.push({
+    provider,
+    accountId,
+    pausedAt,
+    until: now + cooldownMinutes * 60 * 1000,
+    reason: 'quota_exhausted',
+  });
+  saveQuotaPaused(data);
+  return true;
+}
+
+/**
  * Enforce provider isolation by auto-pausing conflicting accounts in other providers.
  * Records paused accounts for crash recovery and session exit restore.
  * Returns number of accounts paused.
@@ -553,6 +698,7 @@ export async function handleQuotaExhaustion(
   const alternative = await findHealthyAccount(provider, [accountId]);
 
   if (alternative) {
+    pauseAccountForQuotaCooldown(provider, accountId, cooldownMinutes);
     setDefaultAccount(provider, alternative.id);
     touchAccount(provider, alternative.id);
     writeQuotaExhausted(accountId, alternative.id, cooldownMinutes);

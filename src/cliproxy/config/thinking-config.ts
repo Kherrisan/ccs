@@ -3,10 +3,11 @@
  * Manages thinking budget suffixes for CLIProxyAPIPlus
  */
 
-import { CLIProxyProvider } from '../types';
-import { ThinkingConfig, DEFAULT_THINKING_TIER_DEFAULTS } from '../../config/unified-config-types';
+import type { CLIProxyProvider } from '../types';
+import { DEFAULT_THINKING_TIER_DEFAULTS } from '../../config/unified-config-types';
+import type { ThinkingConfig } from '../../config/unified-config-types';
 import { getThinkingConfig } from '../../config/unified-config-loader';
-import { supportsThinking } from '../model-catalog';
+import { getModelThinkingSupport, supportsThinking } from '../model-catalog';
 import { isThinkingOffValue, validateThinking } from '../thinking-validator';
 import { normalizeModelIdForProvider } from '../model-id-normalizer';
 import { warn } from '../../utils/ui';
@@ -64,7 +65,7 @@ export function detectTierFromModel(modelName: string): ModelTier {
  *
  * @param model - Base model name
  * @param thinkingValue - Level name (e.g., 'high') or numeric budget
- * @returns Model name with thinking suffix, e.g., "gemini-3-pro-preview(high)"
+ * @returns Model name with thinking suffix, e.g., "gemini-3.1-pro-preview(high)"
  */
 export function applyThinkingSuffix(model: string, thinkingValue: string | number): string {
   return applyThinkingSuffixForProvider(model, thinkingValue);
@@ -85,7 +86,8 @@ function applyThinkingSuffixForProvider(
   const parenthesizedSuffixMatch = model.match(/\(([^)]+)\)$/);
 
   // Existing parenthesized suffix:
-  // - keep as-is for non-codex providers
+  // - keep as-is for non-codex providers unless the target model now expects
+  //   named levels and we need to rewrite an old numeric suffix
   // - for codex effort levels, normalize to codex model suffix style
   if (parenthesizedSuffixMatch) {
     if (provider === 'codex') {
@@ -94,6 +96,15 @@ function applyThinkingSuffixForProvider(
         return model.replace(/\([^)]+\)$/, `-${normalizedParensValue}`);
       }
     }
+
+    if (provider) {
+      const normalizedBaseModel = normalizeModelForThinkingLookup(model, provider);
+      const thinking = getModelThinkingSupport(provider, normalizedBaseModel);
+      if (thinking?.type === 'levels') {
+        return model.replace(/\([^)]+\)$/, `(${thinkingValue})`);
+      }
+    }
+
     return model;
   }
 
@@ -299,6 +310,16 @@ export function applyThinkingConfig(
       }
 
       // If per-tier thinking is 'off', skip this tier
+      if (isThinkingOffValue(tierThinkingValue)) {
+        continue;
+      }
+
+      // Validate/clamp tier thinking against this specific tier model capabilities.
+      const tierValidation = validateThinking(tierProvider, normalizedTierModel, tierThinkingValue);
+      if (tierValidation.warning && shouldShowWarnings(thinkingConfig)) {
+        console.warn(warn(tierValidation.warning));
+      }
+      tierThinkingValue = tierValidation.value;
       if (isThinkingOffValue(tierThinkingValue)) {
         continue;
       }

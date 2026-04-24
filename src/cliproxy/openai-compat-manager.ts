@@ -7,7 +7,8 @@
 
 import * as fs from 'fs';
 import * as yaml from 'js-yaml';
-import { getCliproxyConfigPath } from './config-generator';
+import { configExists, getCliproxyConfigPath, regenerateConfig } from './config-generator';
+import { rewriteTopLevelYamlSection } from './ai-providers/config-yaml-sections';
 
 /** Model alias configuration */
 export interface OpenAICompatModel {
@@ -62,17 +63,35 @@ function loadConfig(): ConfigYaml {
 }
 
 /**
- * Save config.yaml with proper formatting
+ * Persist only the openai-compatibility section so the generated config header
+ * and unrelated user-managed sections survive legacy writes.
  */
 function saveConfig(config: ConfigYaml): void {
   const configPath = getCliproxyConfigPath();
-  const content = yaml.dump(config, {
-    lineWidth: -1, // Disable line wrapping
-    quotingType: '"',
-    forceQuotes: false,
-  });
+  if (!configExists()) {
+    regenerateConfig();
+  }
 
-  fs.writeFileSync(configPath, content, { mode: 0o600 });
+  const currentContent = fs.existsSync(configPath) ? fs.readFileSync(configPath, 'utf-8') : '';
+  const sectionContent =
+    config['openai-compatibility'] && config['openai-compatibility'].length > 0
+      ? yaml.dump(
+          { 'openai-compatibility': config['openai-compatibility'] },
+          {
+            lineWidth: -1,
+            quotingType: '"',
+            forceQuotes: false,
+          }
+        )
+      : null;
+  const nextContent = rewriteTopLevelYamlSection(
+    currentContent,
+    'openai-compatibility',
+    sectionContent
+  );
+  const tempPath = `${configPath}.tmp`;
+  fs.writeFileSync(tempPath, nextContent, { mode: 0o600 });
+  fs.renameSync(tempPath, configPath);
 }
 
 /**

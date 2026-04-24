@@ -3,6 +3,7 @@ import { ArrowDownRight, ArrowUpRight, Database, Gauge, Sparkles } from 'lucide-
 import type { ModelUsage } from '@/hooks/use-usage';
 import { usePrivacy, PRIVACY_BLUR_CLASS } from '@/contexts/privacy-context';
 import { cn } from '@/lib/utils';
+import { useTranslation } from 'react-i18next';
 
 interface ModelDetailsContentProps {
   model: ModelUsage;
@@ -10,6 +11,7 @@ interface ModelDetailsContentProps {
 
 export function ModelDetailsContent({ model }: ModelDetailsContentProps) {
   const { privacyMode } = usePrivacy();
+  const { t } = useTranslation();
   const ioRatioStatus = getIoRatioStatus(model.ioRatio);
 
   return (
@@ -38,22 +40,28 @@ export function ModelDetailsContent({ model }: ModelDetailsContentProps) {
           <p className={cn('text-lg font-bold', privacyMode && PRIVACY_BLUR_CLASS)}>
             ${model.cost.toFixed(2)}
           </p>
-          <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Total Cost</p>
+          <p className="text-[10px] text-muted-foreground uppercase tracking-wider">
+            {t('analyticsCards.totalCost')}
+          </p>
         </div>
         <div className="p-2 rounded-md bg-muted/50 border text-center">
           <p className={cn('text-lg font-bold', privacyMode && PRIVACY_BLUR_CLASS)}>
             {formatCompactNumber(model.tokens)}
           </p>
-          <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Total Tokens</p>
+          <p className="text-[10px] text-muted-foreground uppercase tracking-wider">
+            {t('analyticsCards.totalTokens')}
+          </p>
         </div>
       </div>
 
       {/* Token Breakdown */}
       <div className="space-y-2">
         <h5 className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+          {/* TODO i18n: missing key for "Token Breakdown" */}
           Token Breakdown
         </h5>
         <div className={cn('space-y-1', privacyMode && PRIVACY_BLUR_CLASS)}>
+          {/* TODO i18n: missing keys for Input/Output/Cache Write/Cache Read labels */}
           <TokenRow
             label="Input"
             tokens={model.inputTokens}
@@ -89,7 +97,7 @@ export function ModelDetailsContent({ model }: ModelDetailsContentProps) {
       <div className="p-2.5 rounded-md border bg-muted/20 space-y-1.5">
         <div className="flex items-center gap-2">
           <Gauge className="h-3.5 w-3.5 text-muted-foreground" />
-          <span className="text-xs font-medium">Input/Output Ratio</span>
+          <span className="text-xs font-medium">{t('analyticsCards.inputOutputRatio')}</span>
         </div>
         <p className="text-[11px] text-muted-foreground leading-snug">
           {ioRatioStatus.description}

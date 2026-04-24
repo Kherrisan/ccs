@@ -1,7 +1,7 @@
 /**
  * Cleanup Command Handler
  *
- * Removes old CLIProxy logs to free up disk space.
+ * Removes old CCS and CLIProxy logs to free up disk space.
  * Supports both main logs and error request logs with age-based filtering.
  * Logs can accumulate to several GB without user awareness.
  */
@@ -9,6 +9,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { getCliproxyDir } from '../cliproxy/config-generator';
+import { getLogArchiveDir, getNativeLogsDir } from '../services/logging';
 import { info, ok, warn } from '../utils/ui';
 
 /** Default age in days for error log cleanup */
@@ -19,6 +20,14 @@ function getLogsDir(): string {
   return path.join(getCliproxyDir(), 'logs');
 }
 
+function getCcsLogsDir(): string {
+  return getNativeLogsDir();
+}
+
+function getCcsLogArchiveDir(): string {
+  return getLogArchiveDir();
+}
+
 /** Format bytes to human-readable size */
 function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B';
@@ -27,23 +36,20 @@ function formatBytes(bytes: number): string {
   return `${(bytes / Math.pow(1024, i)).toFixed(2)} ${units[i]}`;
 }
 
-/** Calculate total size of a directory */
+/** Calculate total size of regular top-level files in a directory */
 function getDirSize(dirPath: string): number {
   if (!fs.existsSync(dirPath)) return 0;
 
   let totalSize = 0;
-  const files = fs.readdirSync(dirPath);
+  const entries = fs.readdirSync(dirPath);
 
-  for (const file of files) {
-    const filePath = path.join(dirPath, file);
+  for (const entry of entries) {
+    const filePath = path.join(dirPath, entry);
     try {
-      const stats = fs.lstatSync(filePath); // Use lstat to detect symlinks
+      const stats = fs.lstatSync(filePath);
       if (stats.isFile() && !stats.isSymbolicLink()) {
         totalSize += stats.size;
-      } else if (stats.isDirectory() && !stats.isSymbolicLink()) {
-        totalSize += getDirSize(filePath);
       }
-      // Skip symlinks for safety
     } catch {
       // File may have been deleted between readdir and stat - skip
     }
@@ -174,18 +180,18 @@ function printHelp(): void {
   console.log('');
   console.log('Usage: ccs cleanup [options]');
   console.log('');
-  console.log('Remove old CLIProxy logs to free up disk space.');
+  console.log('Remove old CCS and CLIProxy logs to free up disk space.');
   console.log('');
   console.log('Options:');
-  console.log('  --errors      Clean error request logs (error-*.log files)');
+  console.log('  --errors      Clean legacy CLIProxy error request logs (error-*.log files)');
   console.log('  --days=N      Delete error logs older than N days (default: 7)');
   console.log('  --dry-run     Show what would be deleted without deleting');
   console.log('  --force       Skip confirmation prompt');
   console.log('  --help, -h    Show this help message');
   console.log('');
   console.log('Examples:');
-  console.log('  ccs cleanup              Interactive main log cleanup');
-  console.log('  ccs cleanup --errors     Clean error logs older than 7 days');
+  console.log('  ccs cleanup              Interactive CCS + CLIProxy log cleanup');
+  console.log('  ccs cleanup --errors     Clean legacy CLIProxy error logs older than 7 days');
   console.log('  ccs cleanup --errors --days=3   Clean error logs older than 3 days');
   console.log('  ccs cleanup --errors --dry-run  Preview error log cleanup');
   console.log('  ccs cleanup --dry-run    Preview main log cleanup');
@@ -207,6 +213,8 @@ export async function handleCleanupCommand(args: string[]): Promise<void> {
   const force = args.includes('--force');
   const cleanErrors = args.includes('--errors');
   const logsDir = getLogsDir();
+  const ccsLogsDir = getCcsLogsDir();
+  const ccsArchiveDir = getCcsLogArchiveDir();
 
   // Parse --days=N option
   let maxAgeDays = DEFAULT_ERROR_LOG_AGE_DAYS;
@@ -224,7 +232,13 @@ export async function handleCleanupCommand(args: string[]): Promise<void> {
   if (cleanErrors) {
     await handleErrorLogCleanup(logsDir, maxAgeDays, dryRun, force);
   } else {
-    await handleMainLogCleanup(logsDir, dryRun, force);
+    await handleMainLogCleanup({
+      cliproxyLogsDir: logsDir,
+      ccsLogsDir,
+      ccsArchiveDir,
+      dryRun,
+      force,
+    });
   }
 }
 
@@ -319,40 +333,48 @@ async function handleErrorLogCleanup(
 /**
  * Handle main log cleanup (main.log and rotated files)
  */
-async function handleMainLogCleanup(
-  logsDir: string,
-  dryRun: boolean,
-  force: boolean
-): Promise<void> {
-  // Check if logs directory exists
-  if (!fs.existsSync(logsDir)) {
-    console.log(info('No CLIProxy logs found.'));
+async function handleMainLogCleanup(options: {
+  cliproxyLogsDir: string;
+  ccsLogsDir: string;
+  ccsArchiveDir: string;
+  dryRun: boolean;
+  force: boolean;
+}): Promise<void> {
+  const targets = [
+    { label: 'CCS Logs', dir: options.ccsLogsDir },
+    { label: 'CCS Log Archives', dir: options.ccsArchiveDir },
+    { label: 'CLIProxy Logs', dir: options.cliproxyLogsDir },
+  ].map((target) => ({
+    ...target,
+    fileCount: countFiles(target.dir),
+    size: getDirSize(target.dir),
+  }));
+  const activeTargets = targets.filter((target) => target.fileCount > 0);
+
+  if (activeTargets.length === 0) {
+    console.log(info('No CCS or CLIProxy logs found.'));
     return;
   }
 
-  // Calculate current size
-  const currentSize = getDirSize(logsDir);
-  const fileCount = countFiles(logsDir);
+  const currentSize = activeTargets.reduce((sum, target) => sum + target.size, 0);
+  const fileCount = activeTargets.reduce((sum, target) => sum + target.fileCount, 0);
 
-  if (fileCount === 0) {
-    console.log(info('No log files to clean.'));
-    return;
+  console.log('');
+  console.log('Log Cleanup Targets:');
+  for (const target of activeTargets) {
+    console.log(`  ${target.label}: ${target.fileCount} files (${formatBytes(target.size)})`);
+    console.log(`    ${target.dir}`);
   }
-
-  console.log('');
-  console.log(`CLIProxy Logs: ${logsDir}`);
-  console.log(`  Files: ${fileCount}`);
-  console.log(`  Size:  ${formatBytes(currentSize)}`);
   console.log('');
 
-  if (dryRun) {
+  if (options.dryRun) {
     console.log(info('Dry run - no files deleted.'));
     console.log(`Would delete ${fileCount} files (${formatBytes(currentSize)})`);
     return;
   }
 
   // Confirm unless --force
-  if (!force) {
+  if (!options.force) {
     const readline = await import('readline');
     const rl = readline.createInterface({
       input: process.stdin,
@@ -371,13 +393,19 @@ async function handleMainLogCleanup(
   }
 
   // Perform cleanup
-  const { deleted, freedBytes } = cleanDirectory(logsDir);
+  let deleted = 0;
+  let freedBytes = 0;
+  for (const target of activeTargets) {
+    const result = cleanDirectory(target.dir);
+    deleted += result.deleted;
+    freedBytes += result.freedBytes;
+  }
   console.log(ok(`Deleted ${deleted} files, freed ${formatBytes(freedBytes)}`));
 
   // Suggest disabling logging if it was enabled
   if (deleted > 0) {
     console.log('');
-    console.log(warn('Tip: CLIProxy logging is now disabled by default.'));
-    console.log('     Run `ccs doctor --fix` to update your config.');
+    console.log(warn('Tip: CCS logging is bounded by retention, but you can lower it further.'));
+    console.log('     Open `ccs config` and review the Logs settings.');
   }
 }

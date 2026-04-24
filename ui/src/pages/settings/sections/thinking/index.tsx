@@ -22,15 +22,21 @@ import { useThinkingConfig } from '../../hooks';
 import type { ThinkingMode } from '../../types';
 import { useTranslation } from 'react-i18next';
 
+// Thinking level labels are technical descriptors with token counts that stay
+// consistent across locales. If locale-specific labels are needed later, add
+// i18n keys and replace these with t() calls.
+// TODO i18n: missing key for thinking level labels
 const THINKING_LEVELS = [
   { value: 'minimal', label: 'Minimal (512 tokens)' },
   { value: 'low', label: 'Low (1K tokens)' },
   { value: 'medium', label: 'Medium (8K tokens)' },
   { value: 'high', label: 'High (24K tokens)' },
   { value: 'xhigh', label: 'Extra High (32K tokens)' },
+  { value: 'max', label: 'Max (adaptive ceiling)' },
   { value: 'auto', label: 'Auto (dynamic)' },
 ];
 
+// TODO i18n: missing key for override level labels
 const OVERRIDE_LEVELS = [
   { value: '__none__', label: 'None (use CLI flags only)' },
   ...THINKING_LEVELS,
@@ -334,6 +340,7 @@ export default function ThinkingSection() {
                       {t('settingsThinking.apply')}
                     </Button>
                   </div>
+                  {/* TODO i18n: missing key for budget range text */}
                   <p className="text-xs text-muted-foreground">
                     Range: {THINKING_BUDGET_MIN} to {THINKING_BUDGET_MAX}
                   </p>
@@ -446,6 +453,7 @@ export default function ThinkingSection() {
           {/* Info Box */}
           <div className="p-4 rounded-lg border bg-muted/30">
             <h4 className="text-sm font-medium mb-2">{t('settingsThinking.cliEnvOverride')}</h4>
+            {/* TODO i18n: missing key for CLI/env override info text */}
             <p className="text-sm text-muted-foreground mb-2">
               Override per session with flags or{' '}
               <code className="px-1.5 py-0.5 rounded bg-muted">CCS_THINKING</code> env var.

@@ -2,14 +2,16 @@
 
 Tab completion for CCS commands, subcommands, profiles, and flags.
 
+The completion scripts are thin adapters over the hidden `ccs __complete` backend so
+all supported shells stay aligned with the same command graph.
+
 **Supported Shells:** Bash, Zsh, Fish, PowerShell
 
 ## Features
 
 - Complete profile names (both settings-based and account-based)
-- Complete `ccs auth` subcommands (create, list, show, remove, default)
-- Complete flags (`--help`, `--version`, `--json`, `--verbose`, `--yes`)
-- Complete profile names for auth subcommands
+- Complete root commands, help topics, provider shortcuts, and command flags
+- Complete `ccs auth` and `ccs api` lifecycle subcommands
 - Context-aware: suggests relevant options based on current command
 
 ## Quick Install (Recommended)
@@ -30,6 +32,12 @@ ccs --shell-completion --bash        # Force bash
 ccs --shell-completion --zsh         # Force zsh
 ccs --shell-completion --fish        # Force fish
 ccs --shell-completion --powershell  # Force PowerShell
+```
+
+**Help and verification:**
+```bash
+ccs help completion
+ccs --shell-completion --force
 ```
 
 ## Manual Installation
@@ -116,188 +124,104 @@ sudo cp scripts/completion/ccs.fish /usr/share/fish/vendor_completions.d/
 
 ```bash
 $ ccs <TAB>
-auth      doctor    glm       glmt      kimi      work      personal  --help    --version
+auth      api       cliproxy  config    doctor    docker    help
 
-$ ccs auth <TAB>
-create    list      show      remove    default   --help
+$ ccs help <TAB>
+profiles  providers  completion  targets
 ```
 
-### Profile Completion
+### Context Completion
 
 ```bash
 $ ccs auth show <TAB>
 work      personal  team      --json
 
-$ ccs auth remove <TAB>
-work      personal  team      --yes     -y
+$ ccs api <TAB>
+create    list      discover  copy    export  import  remove
 ```
 
-### Flag Completion
+### Backend Contract
 
 ```bash
-$ ccs auth list <TAB>
---verbose --json
-
-$ ccs auth show work <TAB>
---json
+$ ccs __complete --shell bash --current do
+doctor
+docker
 ```
 
-## Completion Behavior
-
-### Top-level (after `ccs`)
-- Built-in commands: `auth`, `doctor`
-- Flags: `--help`, `--version`, `-h`, `-v`
-- Settings-based profiles: from `~/.ccs/config.json`
-- Account-based profiles: from `~/.ccs/profiles.json`
-
-### After `ccs auth`
-- Subcommands: `create`, `list`, `show`, `remove`, `default`
-- Flags: `--help`, `-h`
-
-### After `ccs auth <subcommand>`
-- **create**: No completion (user enters new profile name)
-  - Flags: `--force`
-- **list**: No profile completion
-  - Flags: `--verbose`, `--json`
-- **show**: Account profiles only
-  - Flags: `--json`
-- **remove**: Account profiles only
-  - Flags: `--yes`, `-y`
-- **default**: Account profiles only
-
-### After `ccs <profile>`
-- No completion (Claude CLI arguments are free-form)
+Shell adapters now call the shared CCS completion backend instead of maintaining their own
+copy of the command graph. That means:
+- top-level commands, help topics, and provider shortcuts come from CCS itself
+- dynamic profiles and CLIProxy variants resolve through the real config loaders
+- bash, zsh, fish, and PowerShell stay aligned with the same completion logic
 
 ## Troubleshooting
 
-### Bash: Completion not working
+### Bash
 
-1. Check if bash-completion is installed:
-   ```bash
-   # macOS
-   brew install bash-completion
-
-   # Ubuntu/Debian
-   sudo apt install bash-completion
-   ```
-
-2. Verify jq is installed (required for profile completion):
-   ```bash
-   command -v jq
-   ```
-
-3. Check if completion is loaded:
+1. Check if completion is loaded:
    ```bash
    complete -p ccs
    ```
-
-   Should output:
+2. Verify the backend directly:
+   ```bash
+   ccs __complete --shell bash --current "" -- help
    ```
-   complete -F _ccs_completion ccs
-   ```
 
-### Zsh: Completion not working
+### Zsh
 
-1. Verify completion system is enabled in `~/.zshrc`:
+1. Verify completion system is enabled:
    ```zsh
    autoload -Uz compinit && compinit
    ```
-
-2. Check if completion is loaded:
-   ```zsh
-   which _ccs
-   ```
-
-3. Rebuild completion cache:
+2. Rebuild the cache if needed:
    ```zsh
    rm ~/.zcompdump && compinit
    ```
-
-### PowerShell: Completion not working
-
-1. Check PowerShell version (5.1+ required):
-   ```powershell
-   $PSVersionTable.PSVersion
+3. Verify the backend directly:
+   ```zsh
+   ccs __complete --shell zsh --current "" -- help
    ```
 
-2. Verify profile is loaded:
+### PowerShell
+
+1. Check that the profile exists:
    ```powershell
    Test-Path $PROFILE
    ```
-
-3. Check if completion is registered:
+2. Verify the backend directly:
    ```powershell
-   (Get-ArgumentCompleter).CommandName | Select-String ccs
+   ccs __complete --shell powershell --current "" -- help
    ```
 
-### Fish: Completion not working
+### Fish
 
-1. Check Fish version (3.0+ required):
-   ```fish
-   fish --version
-   ```
-
-2. Verify completion file is in the right location:
+1. Verify completion file location:
    ```fish
    ls ~/.config/fish/completions/ccs.fish
    ```
-
-3. Verify jq is installed (required for profile completion):
-   ```fish
-   which jq
-   ```
-
-4. Test completion manually:
+2. Test completion manually:
    ```fish
    complete -C'ccs '
    ```
-
-5. If needed, rebuild completions:
+3. Verify the backend directly:
    ```fish
-   fish_update_completions
+   ccs __complete --shell fish --current "" -- help
    ```
 
 ## Technical Details
 
-### Bash Implementation
-- Uses `complete -F` for programmable completion
-- Compatible with bash 3.2+ (macOS default)
-- Reads profiles dynamically using `jq`
-- Context-aware based on `COMP_CWORD` and `COMP_WORDS`
-
-### Zsh Implementation
-- Uses `_arguments` and `_describe` for rich completion
-- Compatible with zsh 5.0+
-- Supports completion descriptions
-- Context-aware using `$state` and `$words`
-
-### PowerShell Implementation
-- Uses `Register-ArgumentCompleter`
-- Compatible with PowerShell 5.1+
-- Reads profiles dynamically using `ConvertFrom-Json`
-- Provides `CompletionResult` objects
-
-### Fish Implementation
-- Uses declarative `complete` command
-- Compatible with Fish 3.0+
-- Automatic loading from `~/.config/fish/completions/`
-- Helper functions for dynamic profile loading
-- Context-aware using `__fish_seen_subcommand_from`
-- No manual sourcing required
-
-## Dependencies
-
-- **jq**: Required for reading profiles from JSON files
-  - Install: `brew install jq` (macOS) or `apt install jq` (Ubuntu)
-  - Already required by CCS core functionality
+- Bash uses `complete -F`
+- Zsh uses a custom `_ccs` completion function
+- Fish uses `complete -a` with backend command substitution
+- PowerShell uses `Register-ArgumentCompleter`
+- All four shells now delegate suggestion logic to `ccs __complete`
 
 ## Contributing
 
-When adding new commands or flags:
-1. Update all four completion scripts (bash, zsh, fish, PowerShell)
-2. Test on each shell
-3. Update this README with new completion examples
-4. Maintain cross-shell parity
+When adding or changing command surfaces:
+1. Update the shared TypeScript command/completion catalog
+2. Run `bun run validate`
+3. Smoke-check at least one installed shell adapter plus the backend directly
 
 ## See Also
 

@@ -14,6 +14,8 @@ interface ProviderCardProps {
   providerColor: string;
   totalRequests: number;
   maxRequests: number;
+  showVisibleMetrics?: boolean;
+  hiddenPausedCount?: number;
   isDragging: boolean;
   offset: DragOffset;
   hoveredAccount: number | null;
@@ -30,6 +32,8 @@ export function ProviderCard({
   providerColor,
   totalRequests,
   maxRequests,
+  showVisibleMetrics = false,
+  hiddenPausedCount = 0,
   isDragging,
   offset,
   hoveredAccount,
@@ -42,6 +46,7 @@ export function ProviderCard({
 }: ProviderCardProps) {
   const { t } = useTranslation();
   const { accounts } = providerData;
+  const progressDenominator = Math.max(1, maxRequests * Math.max(1, accounts.length));
 
   return (
     <div
@@ -125,22 +130,31 @@ export function ProviderCard({
 
       <div className="space-y-2 relative z-10">
         <div className="flex justify-between items-center text-xs">
-          <span className="text-muted-foreground">{t('flowViz.totalRequests')}</span>
+          <span className="text-muted-foreground">
+            {showVisibleMetrics ? t('flowViz.visibleTotalRequests') : t('flowViz.totalRequests')}
+          </span>
           <span className="text-foreground font-mono">{totalRequests.toLocaleString()}</span>
         </div>
         <div className="flex justify-between items-center text-xs">
-          <span className="text-muted-foreground">{t('flowViz.accounts')}</span>
+          <span className="text-muted-foreground">
+            {showVisibleMetrics ? t('flowViz.visibleAccounts') : t('flowViz.accounts')}
+          </span>
           <span className="text-foreground font-mono">{accounts.length}</span>
         </div>
         <div className="w-full bg-muted dark:bg-zinc-800/50 h-1 rounded-full mt-2 overflow-hidden">
           <div
             className="h-full rounded-full transition-all duration-500"
             style={{
-              width: `${Math.min(100, (totalRequests / (maxRequests * accounts.length)) * 100)}%`,
+              width: `${Math.min(100, (totalRequests / progressDenominator) * 100)}%`,
               backgroundColor: providerColor,
             }}
           />
         </div>
+        {showVisibleMetrics && hiddenPausedCount > 0 && (
+          <div className="text-[10px] text-muted-foreground">
+            {t('flowViz.excludingPausedAccounts', { count: hiddenPausedCount })}
+          </div>
+        )}
       </div>
     </div>
   );

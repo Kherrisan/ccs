@@ -5,15 +5,11 @@
  * model version formats (e.g., 4.6 vs 4-6).
  */
 
-import { CLIProxyProvider } from './types';
+import type { CLIProxyProvider } from './types';
+import { ANTHROPIC_MODEL_ENV_KEYS } from '../shared/extended-context-utils';
 
 /** Env vars that carry model identifiers. */
-export const MODEL_ENV_VAR_KEYS = [
-  'ANTHROPIC_MODEL',
-  'ANTHROPIC_DEFAULT_OPUS_MODEL',
-  'ANTHROPIC_DEFAULT_SONNET_MODEL',
-  'ANTHROPIC_DEFAULT_HAIKU_MODEL',
-] as const;
+export const MODEL_ENV_VAR_KEYS = ANTHROPIC_MODEL_ENV_KEYS;
 
 type ProviderLike = CLIProxyProvider | string | null | undefined;
 
@@ -31,6 +27,16 @@ const DENIED_ANTIGRAVITY_SONNET_45_REGEX =
   /claude-sonnet-4(?:[.-])5(?:-thinking)?(?=(?:$|[^a-z0-9]))/gi;
 const CANONICAL_ANTIGRAVITY_OPUS_46_MODEL = 'claude-opus-4-6-thinking';
 const CODEX_EFFORT_SUFFIX_REGEX = /-(xhigh|high|medium)$/i;
+const CODEX_LEGACY_MODEL_ALIASES: Readonly<Record<string, string>> = Object.freeze({
+  'gpt-5-codex': 'gpt-5.4',
+  'gpt-5-codex-mini': 'gpt-5.4-mini',
+  'gpt-5-mini': 'gpt-5.4-mini',
+  'gpt-5.1-codex': 'gpt-5.2',
+  'gpt-5.1-codex-mini': 'gpt-5.4-mini',
+  'gpt-5.1-codex-max': 'gpt-5.4',
+  'gpt-5.2-codex': 'gpt-5.2',
+  'gpt-5.2-codex-mini': 'gpt-5.4-mini',
+});
 const IFLOW_LEGACY_MODEL_ALIASES: Readonly<Record<string, string>> = Object.freeze({
   'iflow-default': 'qwen3-coder-plus',
   'kimi-k2.5': 'kimi-k2',
@@ -56,6 +62,18 @@ function splitBaseModelAndSuffix(model: string): { baseModel: string; suffix: st
   return {
     baseModel: model.slice(0, suffixStart),
     suffix: model.slice(suffixStart),
+  };
+}
+
+function splitCodexEffortSuffix(model: string): { baseModel: string; suffix: string } {
+  const match = model.match(CODEX_EFFORT_SUFFIX_REGEX);
+  if (!match?.[0]) {
+    return { baseModel: model, suffix: '' };
+  }
+
+  return {
+    baseModel: model.slice(0, -match[0].length),
+    suffix: match[0],
   };
 }
 
@@ -91,9 +109,24 @@ export function isIFlowProvider(provider: ProviderLike): boolean {
   return provider.trim().toLowerCase() === 'iflow';
 }
 
-/** Normalize Codex effort-suffixed IDs to canonical IDs. */
+/** Strip Codex effort suffixes while preserving trailing config suffixes. */
 export function stripCodexEffortSuffix(model: string): string {
-  return model.replace(CODEX_EFFORT_SUFFIX_REGEX, '');
+  const trimmed = trimModelId(model);
+  const { baseModel, suffix } = splitBaseModelAndSuffix(trimmed);
+  const { baseModel: withoutEffort } = splitCodexEffortSuffix(baseModel);
+  return `${withoutEffort}${suffix}`;
+}
+
+/** Normalize legacy Codex aliases to the current public Codex model IDs. */
+export function normalizeCodexLegacyModelAliases(model: string): string {
+  const trimmed = trimModelId(model);
+  const { baseModel, suffix } = splitBaseModelAndSuffix(trimmed);
+  const { baseModel: baseWithoutEffort, suffix: effortSuffix } = splitCodexEffortSuffix(baseModel);
+  const replacement = CODEX_LEGACY_MODEL_ALIASES[baseWithoutEffort.trim().toLowerCase()];
+  if (!replacement) {
+    return trimmed;
+  }
+  return `${replacement}${effortSuffix}${suffix}`;
 }
 
 /**
@@ -190,6 +223,9 @@ export function normalizeModelIdForProvider(model: string, provider: ProviderLik
   if (isIFlowProvider(provider)) {
     return normalizeIFlowLegacyModelAliases(trimmedModel);
   }
+  if (isCodexProvider(provider)) {
+    return normalizeCodexLegacyModelAliases(trimmedModel);
+  }
   if (!isAntigravityProvider(provider)) return trimmedModel;
   const normalizedDottedVersion = normalizeClaudeDottedMajorMinor(trimmedModel);
   return normalizeDeprecatedAntigravityModelAliases(normalizedDottedVersion);
@@ -197,15 +233,12 @@ export function normalizeModelIdForProvider(model: string, provider: ProviderLik
 
 /**
  * Canonicalize model ID for provider-specific compatibility.
- * - Codex: strip effort suffixes.
+ * - Codex: preserve valid effort suffixes while normalizing legacy aliases.
  * - Antigravity: normalize dotted/historical aliases.
  */
 export function canonicalizeModelIdForProvider(model: string, provider: ProviderLike): string {
   const trimmedModel = trimModelId(model);
-  const withoutCodexSuffix = isCodexProvider(provider)
-    ? stripCodexEffortSuffix(trimmedModel)
-    : trimmedModel;
-  return normalizeModelIdForProvider(withoutCodexSuffix, provider);
+  return normalizeModelIdForProvider(trimmedModel, provider);
 }
 
 /**

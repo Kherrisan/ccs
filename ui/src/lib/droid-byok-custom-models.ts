@@ -267,7 +267,7 @@ export function extractDroidByokModels(settings: Record<string, unknown>): Droid
     const displayName =
       asNonEmptyString(entry.displayName) ??
       asNonEmptyString(entry.model_display_name) ??
-      'Unnamed model';
+      'Unnamed model'; // TODO i18n: missing key for unnamed model
     const model = asNonEmptyString(entry.model) ?? '';
     const provider = asNonEmptyString(entry.provider) ?? 'unknown';
     const providerKind = normalizeProviderKind(provider);

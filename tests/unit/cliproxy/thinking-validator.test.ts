@@ -29,6 +29,7 @@ describe('Thinking Validator', () => {
       expect(VALID_THINKING_LEVELS).toContain('medium');
       expect(VALID_THINKING_LEVELS).toContain('high');
       expect(VALID_THINKING_LEVELS).toContain('xhigh');
+      expect(VALID_THINKING_LEVELS).toContain('max');
       expect(VALID_THINKING_LEVELS).toContain('auto');
     });
 
@@ -38,6 +39,24 @@ describe('Thinking Validator', () => {
       expect(THINKING_LEVEL_BUDGETS.medium).toBe(8192);
       expect(THINKING_LEVEL_BUDGETS.high).toBe(24576);
       expect(THINKING_LEVEL_BUDGETS.xhigh).toBe(32768);
+      // `max` sits above xhigh — unconstrained thinking on Opus 4.7 / Mythos
+      expect(THINKING_LEVEL_BUDGETS.max).toBeGreaterThan(THINKING_LEVEL_BUDGETS.xhigh);
+    });
+
+    it('should treat max as a distinct top tier on models that list it (Opus 4.7)', () => {
+      // Opus 4.7 exposes both xhigh and max; max must not collapse into xhigh.
+      const result = validateThinking('claude', 'claude-opus-4-7', 'max');
+      expect(result.valid).toBe(true);
+      expect(result.value).toBe('max');
+      expect(result.warning).toBeUndefined();
+    });
+
+    it('should still alias max -> xhigh for models without a max level (backcompat)', () => {
+      // Codex catalog uses ['low','medium','high','xhigh'] with maxLevel 'xhigh'.
+      // User input "max" should map down to xhigh rather than be rejected.
+      const result = validateThinking('codex', 'gpt-5.4', 'max');
+      expect(result.valid).toBe(true);
+      expect(result.value).toBe('xhigh');
     });
 
     it('should export off values', () => {
@@ -101,6 +120,13 @@ describe('Thinking Validator', () => {
       expect(result.valid).toBe(true);
       expect(typeof result.value).toBe('string'); // Should be a level name
       expect(result.warning).toContain('Mapped');
+    });
+
+    it('caps unsupported higher standard levels to the highest supported model level', () => {
+      const result = validateThinking('codex', 'gpt-5-mini', 'xhigh');
+      expect(result.valid).toBe(true);
+      expect(result.value).toBe('high');
+      expect(result.warning).toContain('mapped to "high"');
     });
   });
 

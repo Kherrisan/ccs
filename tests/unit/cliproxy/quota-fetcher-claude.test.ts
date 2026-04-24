@@ -1,7 +1,7 @@
 /**
  * Claude Quota Fetcher Unit Tests
  *
- * Covers policy limits parsing and auth/token edge cases.
+ * Covers Claude quota parsing and auth/token edge cases.
  */
 
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
@@ -157,6 +157,45 @@ describe('Claude Quota Fetcher', () => {
       expect(windows[0].rateLimitType).toBe('five_hour');
       expect(windows[0].remainingPercent).toBe(40);
     });
+
+    it('parses OAuth usage payload keyed by window name', () => {
+      const windows = buildClaudeQuotaWindows({
+        five_hour: {
+          utilization: 39,
+          resets_at: '2026-02-28T10:00:00Z',
+        },
+        seven_day_sonnet: {
+          utilization: 9,
+          resets_at: '2026-03-06T10:00:00Z',
+        },
+        extra_usage: {
+          is_enabled: true,
+          monthly_limit: 5000,
+          used_credits: 1200,
+          utilization: 0.24,
+        },
+      });
+
+      expect(windows).toHaveLength(2);
+      expect(windows[0].rateLimitType).toBe('five_hour');
+      expect(windows[0].remainingPercent).toBe(61);
+      expect(windows[1].rateLimitType).toBe('seven_day_sonnet');
+      expect(windows[1].remainingPercent).toBe(91);
+    });
+
+    it('parses future OAuth usage windows without hardcoded keys', () => {
+      const windows = buildClaudeQuotaWindows({
+        seven_day_haiku: {
+          utilization: 16,
+          resets_at: '2026-03-06T10:00:00Z',
+        },
+      });
+
+      expect(windows).toHaveLength(1);
+      expect(windows[0].rateLimitType).toBe('seven_day_haiku');
+      expect(windows[0].label).toBe('Seven Day Haiku');
+      expect(windows[0].remainingPercent).toBe(84);
+    });
   });
 
   describe('buildClaudeCoreUsageSummary', () => {
@@ -285,7 +324,7 @@ describe('Claude Quota Fetcher', () => {
   });
 
   describe('fetchClaudeQuota', () => {
-    it('fetches and normalizes policy limits response', async () => {
+    it('fetches and normalizes Claude OAuth usage response', async () => {
       createClaudeAccount('claude-main@example.com', {
         access_token: 'claude-token',
         expired: '2099-01-01T00:00:00.000Z',
@@ -293,30 +332,26 @@ describe('Claude Quota Fetcher', () => {
       });
 
       global.fetch = mock((url: string, options?: RequestInit) => {
-        expect(url).toBe('https://api.anthropic.com/api/claude_code/policy_limits');
+        expect(url).toBe('https://api.anthropic.com/api/oauth/usage');
         expect(options?.method).toBe('GET');
         expect(options?.headers).toMatchObject({
           Authorization: 'Bearer claude-token',
           Accept: 'application/json',
+          'Content-Type': 'application/json',
+          'anthropic-beta': 'oauth-2025-04-20',
         });
 
         return Promise.resolve(
           new Response(
             JSON.stringify({
-              restrictions: [
-                {
-                  rateLimitType: 'five_hour',
-                  utilization: 0.5,
-                  resetsAt: '2026-03-01T01:00:00Z',
-                  status: 'allowed',
-                },
-                {
-                  rateLimitType: 'seven_day',
-                  utilization: 0.75,
-                  resetsAt: '2026-03-07T01:00:00Z',
-                  status: 'allowed_warning',
-                },
-              ],
+              five_hour: {
+                utilization: 39,
+                resets_at: '2026-03-01T01:00:00Z',
+              },
+              seven_day: {
+                utilization: 75,
+                resets_at: '2026-03-07T01:00:00Z',
+              },
             }),
             {
               status: 200,
@@ -331,7 +366,7 @@ describe('Claude Quota Fetcher', () => {
       expect(result.success).toBe(true);
       expect(result.accountId).toBe('claude-main@example.com');
       expect(result.windows).toHaveLength(2);
-      expect(result.coreUsage?.fiveHour?.remainingPercent).toBe(50);
+      expect(result.coreUsage?.fiveHour?.remainingPercent).toBe(61);
       expect(result.coreUsage?.weekly?.remainingPercent).toBe(25);
 
       const all = await fetchAllClaudeQuotas();
@@ -340,7 +375,7 @@ describe('Claude Quota Fetcher', () => {
       expect(all[0].quota.success).toBe(true);
     });
 
-    it('returns needsReauth on 401 responses', async () => {
+    it('returns needsReauth on empty 401 OAuth usage responses', async () => {
       createClaudeAccount(
         'claude-auth@example.com',
         {
@@ -360,9 +395,9 @@ describe('Claude Quota Fetcher', () => {
       expect(result.error).toContain('Authentication');
     });
 
-    it('treats OAuth-unsupported 401 as policy-limits unavailable', async () => {
+    it('surfaces nested OAuth usage 401 messages', async () => {
       createClaudeAccount(
-        'claude-oauth-unsupported@example.com',
+        'claude-oauth-nested-message@example.com',
         {
           access_token: 'oauth-token',
           expired: '2099-01-01T00:00:00.000Z',
@@ -378,7 +413,7 @@ describe('Claude Quota Fetcher', () => {
               type: 'error',
               error: {
                 type: 'authentication_error',
-                message: 'OAuth authentication is currently not supported.',
+                message: 'OAuth session expired.',
               },
             }),
             { status: 401, headers: { 'Content-Type': 'application/json' } }
@@ -386,16 +421,14 @@ describe('Claude Quota Fetcher', () => {
         )
       ) as typeof fetch;
 
-      const result = await fetchClaudeQuota('claude-oauth-unsupported@example.com');
+      const result = await fetchClaudeQuota('claude-oauth-nested-message@example.com');
 
-      expect(result.success).toBe(true);
-      expect(result.needsReauth).toBeUndefined();
-      expect(result.windows).toHaveLength(0);
-      expect(result.coreUsage?.fiveHour).toBeNull();
-      expect(result.coreUsage?.weekly).toBeNull();
+      expect(result.success).toBe(false);
+      expect(result.needsReauth).toBe(true);
+      expect(result.error).toContain('OAuth session expired.');
     });
 
-    it('treats root-level OAuth-unsupported 401 message as policy-limits unavailable', async () => {
+    it('surfaces root-level OAuth usage 401 messages', async () => {
       createClaudeAccount('claude-oauth-root-message@example.com', {
         access_token: 'oauth-token',
         expired: '2099-01-01T00:00:00.000Z',
@@ -406,7 +439,7 @@ describe('Claude Quota Fetcher', () => {
         Promise.resolve(
           new Response(
             JSON.stringify({
-              message: 'OAuth authentication is currently not supported.',
+              message: 'OAuth session expired.',
             }),
             { status: 401, headers: { 'Content-Type': 'application/json' } }
           )
@@ -415,14 +448,12 @@ describe('Claude Quota Fetcher', () => {
 
       const result = await fetchClaudeQuota('claude-oauth-root-message@example.com');
 
-      expect(result.success).toBe(true);
-      expect(result.needsReauth).toBeUndefined();
-      expect(result.windows).toHaveLength(0);
-      expect(result.coreUsage?.fiveHour).toBeNull();
-      expect(result.coreUsage?.weekly).toBeNull();
+      expect(result.success).toBe(false);
+      expect(result.needsReauth).toBe(true);
+      expect(result.error).toContain('OAuth session expired.');
     });
 
-    it('treats plain-text OAuth-unsupported 401 as policy-limits unavailable', async () => {
+    it('surfaces plain-text OAuth usage 401 messages', async () => {
       createClaudeAccount('claude-oauth-plaintext@example.com', {
         access_token: 'oauth-token',
         expired: '2099-01-01T00:00:00.000Z',
@@ -430,18 +461,14 @@ describe('Claude Quota Fetcher', () => {
       });
 
       global.fetch = mock(() =>
-        Promise.resolve(
-          new Response('OAuth authentication is currently not supported.', { status: 401 })
-        )
+        Promise.resolve(new Response('OAuth session expired.', { status: 401 }))
       ) as typeof fetch;
 
       const result = await fetchClaudeQuota('claude-oauth-plaintext@example.com');
 
-      expect(result.success).toBe(true);
-      expect(result.needsReauth).toBeUndefined();
-      expect(result.windows).toHaveLength(0);
-      expect(result.coreUsage?.fiveHour).toBeNull();
-      expect(result.coreUsage?.weekly).toBeNull();
+      expect(result.success).toBe(false);
+      expect(result.needsReauth).toBe(true);
+      expect(result.error).toContain('OAuth session expired.');
     });
 
     it('keeps non-matching 401 payloads in the reauth path', async () => {
@@ -469,11 +496,11 @@ describe('Claude Quota Fetcher', () => {
 
       expect(result.success).toBe(false);
       expect(result.needsReauth).toBe(true);
-      expect(result.error).toContain('Authentication');
+      expect(result.error).toContain('Token revoked.');
     });
 
-    it('treats 404 policy limits responses as unavailable but successful', async () => {
-      createClaudeAccount('claude-policy-limits-404@example.com', {
+    it('treats 404 OAuth usage responses as failures', async () => {
+      createClaudeAccount('claude-usage-404@example.com', {
         access_token: 'oauth-token',
         expired: '2099-01-01T00:00:00.000Z',
         type: 'claude',
@@ -481,13 +508,10 @@ describe('Claude Quota Fetcher', () => {
 
       global.fetch = mock(() => Promise.resolve(new Response('', { status: 404 }))) as typeof fetch;
 
-      const result = await fetchClaudeQuota('claude-policy-limits-404@example.com');
+      const result = await fetchClaudeQuota('claude-usage-404@example.com');
 
-      expect(result.success).toBe(true);
-      expect(result.needsReauth).toBeUndefined();
-      expect(result.windows).toHaveLength(0);
-      expect(result.coreUsage?.fiveHour).toBeNull();
-      expect(result.coreUsage?.weekly).toBeNull();
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('not found');
     });
 
     it('fails fast when auth file has no token', async () => {
@@ -515,7 +539,7 @@ describe('Claude Quota Fetcher', () => {
 
       global.fetch = mock(() =>
         Promise.resolve(
-          new Response(JSON.stringify({ restrictions: [] }), {
+          new Response(JSON.stringify({}), {
             status: 200,
             headers: { 'Content-Type': 'application/json' },
           })
@@ -545,14 +569,10 @@ describe('Claude Quota Fetcher', () => {
         return Promise.resolve(
           new Response(
             JSON.stringify({
-              restrictions: [
-                {
-                  rateLimitType: 'five_hour',
-                  utilization: 0.4,
-                  resetsAt: '2026-03-01T01:00:00Z',
-                  status: 'allowed',
-                },
-              ],
+              five_hour: {
+                utilization: 40,
+                resets_at: '2026-03-01T01:00:00Z',
+              },
             }),
             { status: 200, headers: { 'Content-Type': 'application/json' } }
           )
@@ -584,14 +604,10 @@ describe('Claude Quota Fetcher', () => {
         return Promise.resolve(
           new Response(
             JSON.stringify({
-              restrictions: [
-                {
-                  rateLimitType: 'seven_day',
-                  utilization: 0.3,
-                  resetsAt: '2026-03-07T01:00:00Z',
-                  status: 'allowed',
-                },
-              ],
+              seven_day: {
+                utilization: 30,
+                resets_at: '2026-03-07T01:00:00Z',
+              },
             }),
             { status: 200, headers: { 'Content-Type': 'application/json' } }
           )
@@ -654,7 +670,7 @@ describe('Claude Quota Fetcher', () => {
           Authorization: 'Bearer valid-anthropic-token',
         });
         return Promise.resolve(
-          new Response(JSON.stringify({ restrictions: [] }), {
+          new Response(JSON.stringify({}), {
             status: 200,
             headers: { 'Content-Type': 'application/json' },
           })

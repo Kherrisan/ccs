@@ -10,7 +10,7 @@ import { ModelConfigSection } from './model-config-section';
 import { AccountsSection } from './accounts-section';
 import { api } from '@/lib/api-client';
 import type { ProviderCatalog } from '../provider-model-selector';
-import type { OAuthAccount } from '@/lib/api-client';
+import type { OAuthAccount, CliproxyProviderRoutingHints } from '@/lib/api-client';
 import { QUOTA_SUPPORTED_PROVIDERS, type QuotaSupportedProvider } from '@/hooks/use-cliproxy-stats';
 
 interface ModelConfigTabProps {
@@ -28,6 +28,7 @@ interface ModelConfigTabProps {
   sonnetModel?: string;
   haikuModel?: string;
   providerModels: Array<{ id: string; owned_by: string }>;
+  routing?: CliproxyProviderRoutingHints;
   /** Whether extended context (1M tokens) is enabled */
   extendedContextEnabled?: boolean;
   /** Callback when extended context toggle changes */
@@ -71,6 +72,7 @@ export function ModelConfigTab({
   sonnetModel,
   haikuModel,
   providerModels,
+  routing,
   extendedContextEnabled,
   onExtendedContextToggle,
   onApplyPreset,
@@ -160,6 +162,7 @@ export function ModelConfigTab({
           sonnetModel={sonnetModel}
           haikuModel={haikuModel}
           providerModels={providerModels}
+          routing={routing}
           provider={provider}
           extendedContextEnabled={extendedContextEnabled}
           onExtendedContextToggle={onExtendedContextToggle}

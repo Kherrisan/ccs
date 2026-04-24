@@ -4,16 +4,7 @@
  */
 
 import { Badge } from '@/components/ui/badge';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-  SelectGroup,
-  SelectLabel,
-} from '@/components/ui/select';
-import { Check } from 'lucide-react';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import type { FlexibleModelSelectorProps } from './types';
 import { getPlanBadgeStyle, getMultiplierDisplay } from './utils';
 import { useTranslation } from 'react-i18next';
@@ -27,8 +18,6 @@ export function FlexibleModelSelector({
   disabled,
 }: FlexibleModelSelectorProps) {
   const { t } = useTranslation();
-  // Find current model for display
-  const currentModel = models.find((m) => m.id === value);
 
   return (
     <div className="space-y-1.5">
@@ -36,58 +25,63 @@ export function FlexibleModelSelector({
         <label className="text-xs font-medium">{label}</label>
         {description && <p className="text-[10px] text-muted-foreground">{description}</p>}
       </div>
-      <Select value={value || ''} onValueChange={onChange} disabled={disabled}>
-        <SelectTrigger className="h-9">
-          <SelectValue placeholder={t('componentModelSelector.selectModel')}>
-            {value && (
-              <div className="flex items-center gap-2">
-                <span className="truncate font-mono text-xs">{value}</span>
-                {currentModel?.minPlan && (
-                  <Badge
-                    variant="outline"
-                    className={`text-[9px] px-1 py-0 h-4 ${getPlanBadgeStyle(currentModel.minPlan)}`}
-                  >
-                    {currentModel.minPlan}
-                  </Badge>
-                )}
-              </div>
-            )}
-          </SelectValue>
-        </SelectTrigger>
-        <SelectContent className="max-h-[300px]">
-          <SelectGroup>
-            <SelectLabel className="text-xs text-muted-foreground">
-              {t('componentModelSelector.availableModelsCount', { count: models.length })}
-            </SelectLabel>
-            {models.map((model) => (
-              <SelectItem key={model.id} value={model.id}>
-                <div className="flex items-center gap-2">
-                  <span className="truncate font-mono text-xs">{model.name || model.id}</span>
-                  {model.minPlan && (
-                    <Badge
-                      variant="outline"
-                      className={`text-[9px] px-1 py-0 h-4 ${getPlanBadgeStyle(model.minPlan)}`}
-                    >
-                      {model.minPlan}
-                    </Badge>
-                  )}
-                  {model.multiplier !== undefined && (
-                    <span className="text-[9px] text-muted-foreground">
-                      {getMultiplierDisplay(model.multiplier)}
-                    </span>
-                  )}
-                  {model.preview && (
-                    <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4">
-                      {t('componentModelSelector.preview')}
-                    </Badge>
-                  )}
-                  {value === model.id && <Check className="w-3 h-3 text-primary ml-auto" />}
-                </div>
-              </SelectItem>
-            ))}
-          </SelectGroup>
-        </SelectContent>
-      </Select>
+      <SearchableSelect
+        value={value || undefined}
+        onChange={onChange}
+        disabled={disabled}
+        placeholder={t('componentModelSelector.selectModel')}
+        searchPlaceholder={t('searchableSelect.searchModels')}
+        emptyText={t('searchableSelect.noResults')}
+        triggerClassName="h-9"
+        groups={[
+          {
+            key: 'models',
+            label: t('componentModelSelector.availableModelsCount', { count: models.length }),
+          },
+        ]}
+        options={models.map((model) => ({
+          value: model.id,
+          groupKey: 'models',
+          searchText: `${model.name || model.id} ${model.id}`,
+          keywords: [model.minPlan ?? '', model.preview ? 'preview' : ''],
+          triggerContent: (
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="truncate font-mono text-xs">{model.id}</span>
+              {model.minPlan && (
+                <Badge
+                  variant="outline"
+                  className={`text-[9px] px-1 py-0 h-4 ${getPlanBadgeStyle(model.minPlan)}`}
+                >
+                  {model.minPlan}
+                </Badge>
+              )}
+            </div>
+          ),
+          itemContent: (
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="truncate font-mono text-xs">{model.name || model.id}</span>
+              {model.minPlan && (
+                <Badge
+                  variant="outline"
+                  className={`text-[9px] px-1 py-0 h-4 ${getPlanBadgeStyle(model.minPlan)}`}
+                >
+                  {model.minPlan}
+                </Badge>
+              )}
+              {model.multiplier !== undefined && (
+                <span className="text-[9px] text-muted-foreground">
+                  {getMultiplierDisplay(model.multiplier)}
+                </span>
+              )}
+              {model.preview && (
+                <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4">
+                  {t('componentModelSelector.preview')}
+                </Badge>
+              )}
+            </div>
+          ),
+        }))}
+      />
     </div>
   );
 }

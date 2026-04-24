@@ -1,4 +1,5 @@
 import { BrainCircuit } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -39,12 +40,14 @@ export function DroidByokReasoningControlsCard({
   onEffortChange,
   onAnthropicBudgetChange,
 }: DroidByokReasoningControlsCardProps) {
+  const { t } = useTranslation();
+
   return (
     <Card>
       <CardHeader className="pb-2">
         <CardTitle className="text-base flex items-center gap-2">
           <BrainCircuit className="h-4 w-4" />
-          BYOK Reasoning / Thinking
+          {t('droidSettings.reasoningControls')}
           <Badge variant="outline" className="text-[10px] font-normal">
             customModels
           </Badge>
@@ -55,6 +58,7 @@ export function DroidByokReasoningControlsCard({
 
         {models.length === 0 ? (
           <p className="text-xs text-muted-foreground">
+            {/* TODO i18n: missing key droidSettings.noByokModels */}
             No BYOK custom models found in settings.json (`customModels` or `custom_models`).
           </p>
         ) : (
@@ -75,7 +79,9 @@ export function DroidByokReasoningControlsCard({
 
                 <div className="grid gap-2 sm:grid-cols-2">
                   <div className="space-y-1">
-                    <p className="text-[11px] font-medium">Reasoning Effort</p>
+                    <p className="text-[11px] font-medium">
+                      {t('codex.reasoningEffortCapitalized')}
+                    </p>
                     <Select
                       value={model.effort ?? UNSET_VALUE}
                       onValueChange={(next) =>
@@ -84,9 +90,11 @@ export function DroidByokReasoningControlsCard({
                       disabled={disabled}
                     >
                       <SelectTrigger className="h-8 text-xs">
+                        {/* TODO i18n: missing key droidSettings.useProviderDefault */}
                         <SelectValue placeholder="Use provider default" />
                       </SelectTrigger>
                       <SelectContent>
+                        {/* TODO i18n: missing key droidSettings.useProviderDefault */}
                         <SelectItem value={UNSET_VALUE}>Use provider default</SelectItem>
                         {DROID_REASONING_EFFORT_OPTIONS.map((option) => (
                           <SelectItem key={option} value={option}>
@@ -99,7 +107,7 @@ export function DroidByokReasoningControlsCard({
 
                   {model.providerKind === 'anthropic' && (
                     <div className="space-y-1">
-                      <p className="text-[11px] font-medium">Thinking Budget Tokens</p>
+                      <p className="text-[11px] font-medium">{t('codex.thinkingBudgetTokens')}</p>
                       <Input
                         type="number"
                         min={1024}

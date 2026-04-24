@@ -4,6 +4,9 @@ import * as os from 'os';
 import * as path from 'path';
 import * as lockfile from 'proper-lockfile';
 import { handlePersistCommand } from '../../../src/commands/persist-command';
+import { createEmptyUnifiedConfig } from '../../../src/config/unified-config-types';
+import { saveUnifiedConfig } from '../../../src/config/unified-config-loader';
+import { runWithScopedCcsHome } from '../../../src/utils/config-manager';
 
 interface RestoreFixture {
   claudeDir: string;
@@ -19,6 +22,10 @@ let originalClaudeConfigDir: string | undefined;
 let originalProcessExit: typeof process.exit;
 let originalFsOpen: typeof fs.promises.open;
 let originalFsRename: typeof fs.promises.rename;
+
+async function withScopedHome<T>(fn: () => Promise<T>): Promise<T> {
+  return await runWithScopedCcsHome(tempRoot, fn);
+}
 
 async function pathExists(filePath: string): Promise<boolean> {
   try {
@@ -66,6 +73,8 @@ function stubProcessExit(): void {
 beforeEach(async () => {
   tempRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ccs-persist-handler-test-'));
   originalClaudeConfigDir = process.env.CLAUDE_CONFIG_DIR;
+  // Clear CLAUDE_CONFIG_DIR so scoped CCS_HOME takes effect (leaks from host CCS session)
+  delete process.env.CLAUDE_CONFIG_DIR;
   originalProcessExit = process.exit;
   originalFsOpen = fs.promises.open;
   originalFsRename = fs.promises.rename;
@@ -89,50 +98,50 @@ afterEach(async () => {
 
 describe('persist command real handler paths', () => {
   it('throws parseError for missing --permission-mode before profile detection', async () => {
-    await expect(handlePersistCommand(['glm', '--permission-mode'])).rejects.toThrow(
+    await expect(withScopedHome(() => handlePersistCommand(['glm', '--permission-mode']))).rejects.toThrow(
       'Missing value for --permission-mode'
     );
   });
 
   it('throws parseError for empty inline --permission-mode before profile detection', async () => {
-    await expect(handlePersistCommand(['glm', '--permission-mode='])).rejects.toThrow(
+    await expect(withScopedHome(() => handlePersistCommand(['glm', '--permission-mode=']))).rejects.toThrow(
       'Missing value for --permission-mode'
     );
   });
 
   it('throws parseError for invalid --permission-mode before profile detection', async () => {
-    await expect(handlePersistCommand(['glm', '--permission-mode', 'invalid-mode'])).rejects.toThrow(
-      /Invalid --permission-mode/
-    );
+    await expect(
+      withScopedHome(() => handlePersistCommand(['glm', '--permission-mode', 'invalid-mode']))
+    ).rejects.toThrow(/Invalid --permission-mode/);
   });
 
   it('throws parseError for unknown flags on real handler path', async () => {
-    await expect(handlePersistCommand(['glm', '--unknown-flag'])).rejects.toThrow(
+    await expect(withScopedHome(() => handlePersistCommand(['glm', '--unknown-flag']))).rejects.toThrow(
       /Unknown option\(s\)/
     );
   });
 
   it('throws parseError for list/restore conflict on real handler path', async () => {
-    await expect(handlePersistCommand(['--list-backups', '--restore'])).rejects.toThrow(
+    await expect(withScopedHome(() => handlePersistCommand(['--list-backups', '--restore']))).rejects.toThrow(
       '--list-backups cannot be used with --restore'
     );
   });
 
   it('throws parseError for permission flags with --restore on real handler path', async () => {
-    await expect(handlePersistCommand(['--restore', '--auto-approve'])).rejects.toThrow(
+    await expect(withScopedHome(() => handlePersistCommand(['--restore', '--auto-approve']))).rejects.toThrow(
       /Permission flags are not valid with backup operations/
     );
   });
 
   it('shows help when --help is present even with other invalid args', async () => {
-    await expect(handlePersistCommand(['--help', '--permission-mode'])).resolves.toBeUndefined();
+    await expect(withScopedHome(() => handlePersistCommand(['--help', '--permission-mode']))).resolves.toBeUndefined();
   });
 
   it('does not create CLAUDE_CONFIG_DIR on parseError path', async () => {
     const isolatedClaudeDir = path.join(tempRoot, '.claude-parse-early');
     process.env.CLAUDE_CONFIG_DIR = isolatedClaudeDir;
 
-    await expect(handlePersistCommand(['glm', '--permission-mode='])).rejects.toThrow(
+    await expect(withScopedHome(() => handlePersistCommand(['glm', '--permission-mode=']))).rejects.toThrow(
       'Missing value for --permission-mode'
     );
     expect(await pathExists(isolatedClaudeDir)).toBe(false);
@@ -152,9 +161,9 @@ describe('persist command restore failure handling', () => {
 
     stubProcessExit();
     try {
-      await expect(handlePersistCommand(['--restore', fixture.timestamp, '--yes'])).rejects.toThrow(
-        'process.exit(1)'
-      );
+      await expect(
+        withScopedHome(() => handlePersistCommand(['--restore', fixture.timestamp, '--yes']))
+      ).rejects.toThrow('process.exit(1)');
     } finally {
       await release();
     }
@@ -175,9 +184,9 @@ describe('persist command restore failure handling', () => {
     }) as typeof fs.promises.open;
 
     stubProcessExit();
-    await expect(handlePersistCommand(['--restore', fixture.timestamp, '--yes'])).rejects.toThrow(
-      'process.exit(1)'
-    );
+    await expect(
+      withScopedHome(() => handlePersistCommand(['--restore', fixture.timestamp, '--yes']))
+    ).rejects.toThrow('process.exit(1)');
   });
 
   it('exits when backup read fails with ELOOP (symlink rejection)', async () => {
@@ -195,9 +204,9 @@ describe('persist command restore failure handling', () => {
     }) as typeof fs.promises.open;
 
     stubProcessExit();
-    await expect(handlePersistCommand(['--restore', fixture.timestamp, '--yes'])).rejects.toThrow(
-      'process.exit(1)'
-    );
+    await expect(
+      withScopedHome(() => handlePersistCommand(['--restore', fixture.timestamp, '--yes']))
+    ).rejects.toThrow('process.exit(1)');
   });
 
   it('exits when backup path resolves to a non-regular file', async () => {
@@ -218,9 +227,9 @@ describe('persist command restore failure handling', () => {
     }) as typeof fs.promises.open;
 
     stubProcessExit();
-    await expect(handlePersistCommand(['--restore', fixture.timestamp, '--yes'])).rejects.toThrow(
-      'process.exit(1)'
-    );
+    await expect(
+      withScopedHome(() => handlePersistCommand(['--restore', fixture.timestamp, '--yes']))
+    ).rejects.toThrow('process.exit(1)');
   });
 
   it('rolls back settings when restore write fails mid-flight', async () => {
@@ -237,9 +246,9 @@ describe('persist command restore failure handling', () => {
     }) as typeof fs.promises.rename;
 
     stubProcessExit();
-    await expect(handlePersistCommand(['--restore', fixture.timestamp, '--yes'])).rejects.toThrow(
-      'process.exit(1)'
-    );
+    await expect(
+      withScopedHome(() => handlePersistCommand(['--restore', fixture.timestamp, '--yes']))
+    ).rejects.toThrow('process.exit(1)');
 
     const finalContent = await fs.promises.readFile(fixture.settingsPath, 'utf8');
     const finalSettings = JSON.parse(finalContent);
@@ -262,12 +271,116 @@ describe('persist command restore failure handling', () => {
 
     stubProcessExit();
     try {
-      await expect(handlePersistCommand(['--restore', fixture.timestamp, '--yes'])).rejects.toThrow(
-        'process.exit(1)'
-      );
+      await expect(
+        withScopedHome(() => handlePersistCommand(['--restore', fixture.timestamp, '--yes']))
+      ).rejects.toThrow('process.exit(1)');
       expect(capturedLogs.some((line) => line.includes('Rollback also failed'))).toBe(true);
     } finally {
       console.log = originalConsoleLog;
     }
+  });
+});
+
+describe('persist command Claude extension parity', () => {
+  async function writeUnifiedConfig(): Promise<void> {
+    const config = createEmptyUnifiedConfig();
+    config.accounts.work = {
+      created: '2026-03-15T00:00:00.000Z',
+      last_used: null,
+      context_mode: 'isolated',
+    };
+    config.default = 'work';
+    config.profiles.glm = {
+      type: 'api',
+      settings: path.join(tempRoot, '.ccs', 'glm.settings.json'),
+    };
+
+    await fs.promises.mkdir(path.join(tempRoot, '.ccs'), { recursive: true });
+    await fs.promises.writeFile(
+      path.join(tempRoot, '.ccs', 'glm.settings.json'),
+      JSON.stringify(
+        {
+          env: {
+            ANTHROPIC_BASE_URL: 'https://api.example.test',
+            ANTHROPIC_API_KEY: 'sk-ant-test-123456',
+            ANTHROPIC_MODEL: 'claude-sonnet-4-5',
+          },
+        },
+        null,
+        2
+      ) + '\n',
+      'utf8'
+    );
+    await withScopedHome(async () => {
+      saveUnifiedConfig(config);
+    });
+  }
+
+  it('persists account profiles via CLAUDE_CONFIG_DIR and clears stale managed env keys', async () => {
+    await writeUnifiedConfig();
+
+    const settingsPath = path.join(tempRoot, '.claude', 'settings.json');
+    await fs.promises.mkdir(path.dirname(settingsPath), { recursive: true });
+    await fs.promises.writeFile(
+      settingsPath,
+      JSON.stringify(
+        {
+          env: {
+            ANTHROPIC_API_KEY: 'stale-key',
+            ANTHROPIC_BASE_URL: 'http://127.0.0.1:8317',
+            KEEP_ME: 'still-here',
+          },
+        },
+        null,
+        2
+      ) + '\n',
+      'utf8'
+    );
+
+    await withScopedHome(() => handlePersistCommand(['work', '--yes']));
+
+    const persisted = JSON.parse(await fs.promises.readFile(settingsPath, 'utf8')) as {
+      env: Record<string, string>;
+    };
+
+    expect(persisted.env.KEEP_ME).toBe('still-here');
+    expect(persisted.env.ANTHROPIC_API_KEY).toBeUndefined();
+    expect(persisted.env.ANTHROPIC_BASE_URL).toBeUndefined();
+    expect(persisted.env.CLAUDE_CONFIG_DIR).toBe(path.join(tempRoot, '.ccs', 'instances', 'work'));
+    expect(fs.existsSync(persisted.env.CLAUDE_CONFIG_DIR)).toBe(true);
+  });
+
+  it('persists default profile using mapped account continuity and preserves unrelated env', async () => {
+    await writeUnifiedConfig();
+
+    const settingsPath = path.join(tempRoot, '.claude', 'settings.json');
+    await fs.promises.mkdir(path.dirname(settingsPath), { recursive: true });
+    await fs.promises.writeFile(
+      settingsPath,
+      JSON.stringify(
+        {
+          env: {
+            ANTHROPIC_AUTH_TOKEN: 'stale-token',
+            ANTHROPIC_MODEL: 'stale-model',
+            KEEP_ME: 'still-here',
+          },
+        },
+        null,
+        2
+      ) + '\n',
+      'utf8'
+    );
+
+    await withScopedHome(() => handlePersistCommand(['default', '--yes']));
+
+    const persisted = JSON.parse(await fs.promises.readFile(settingsPath, 'utf8')) as {
+      env: Record<string, string>;
+    };
+
+    expect(persisted.env.KEEP_ME).toBe('still-here');
+    expect(persisted.env.ANTHROPIC_AUTH_TOKEN).toBeUndefined();
+    expect(persisted.env.ANTHROPIC_MODEL).toBeUndefined();
+    expect(persisted.env.CLAUDE_CONFIG_DIR).toBe(path.join(tempRoot, '.ccs', 'instances', 'work'));
+    expect(fs.existsSync(persisted.env.CLAUDE_CONFIG_DIR)).toBe(true);
   });
 });

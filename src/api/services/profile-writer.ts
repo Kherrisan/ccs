@@ -6,14 +6,13 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { getCcsDir, getConfigPath, loadConfigSafe } from '../../utils/config-manager';
 import { expandPath } from '../../utils/helpers';
-import {
-  loadOrCreateUnifiedConfig,
-  saveUnifiedConfig,
-  isUnifiedMode,
-} from '../../config/unified-config-loader';
-import { ensureProfileHooks } from '../../utils/websearch/profile-hook-injector';
+import { validateApiName } from './validation-service';
+import { mutateUnifiedConfig, isUnifiedMode } from '../../config/unified-config-loader';
+import { ensureWebSearchMcpOrThrow } from '../../utils/websearch-manager';
+import { ensureImageAnalysisMcpOrThrow } from '../../utils/image-analysis';
 import type { TargetType } from '../../targets/target-adapter';
 import { resolveDroidProvider } from '../../targets/droid-provider';
+import { isReservedName } from '../../config/reserved-names';
 import { mapExternalProviderName } from '../../cliproxy/provider-capabilities';
 import {
   extractProviderFromPathname,
@@ -23,9 +22,15 @@ import type { CLIProxyProvider } from '../../cliproxy/types';
 import type {
   ModelMapping,
   CreateApiProfileResult,
+  CreateCliproxyBridgeProfileResult,
   RemoveApiProfileResult,
   UpdateApiProfileTargetResult,
 } from './profile-types';
+import { apiProfileExists } from './profile-reader';
+import {
+  resolveCliproxyBridgeMetadata,
+  resolveCliproxyBridgeProfile,
+} from './cliproxy-profile-bridge';
 
 /** Check if URL is an OpenRouter endpoint */
 function isOpenRouterUrl(baseUrl: string): boolean {
@@ -65,6 +70,21 @@ function getDeniedModelReason(baseUrl: string, models: ModelMapping): string | n
   return null;
 }
 
+function rollbackSettingsFile(
+  filePath: string,
+  previousContent: string | null,
+  existedBefore: boolean
+): void {
+  if (existedBefore && previousContent !== null) {
+    fs.writeFileSync(filePath, previousContent, 'utf8');
+    return;
+  }
+
+  if (fs.existsSync(filePath)) {
+    fs.unlinkSync(filePath);
+  }
+}
+
 /** Create settings.json file for API profile (legacy format) */
 function createSettingsFile(
   name: string,
@@ -101,11 +121,18 @@ function createSettingsFile(
     },
   };
 
+  const settingsExisted = fs.existsSync(settingsPath);
+  const previousSettingsContent = settingsExisted ? fs.readFileSync(settingsPath, 'utf8') : null;
   fs.mkdirSync(ccsDir, { recursive: true });
   fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n', 'utf8');
 
-  // Inject WebSearch hooks into profile settings
-  ensureProfileHooks(name);
+  try {
+    ensureWebSearchMcpOrThrow();
+    ensureImageAnalysisMcpOrThrow();
+  } catch (error) {
+    rollbackSettingsFile(settingsPath, previousSettingsContent, settingsExisted);
+    throw error;
+  }
 
   return settingsPath;
 }
@@ -185,18 +212,25 @@ function createApiProfileUnified(
     fs.mkdirSync(ccsDir, { recursive: true });
   }
 
+  const settingsExisted = fs.existsSync(settingsPath);
+  const previousSettingsContent = settingsExisted ? fs.readFileSync(settingsPath, 'utf8') : null;
   fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n', 'utf8');
 
-  // Inject WebSearch hooks into profile settings
-  ensureProfileHooks(name);
+  try {
+    ensureWebSearchMcpOrThrow();
+    ensureImageAnalysisMcpOrThrow();
+  } catch (error) {
+    rollbackSettingsFile(settingsPath, previousSettingsContent, settingsExisted);
+    throw error;
+  }
 
-  const config = loadOrCreateUnifiedConfig();
-  config.profiles[name] = {
-    type: 'api',
-    settings: `~/.ccs/${settingsFile}`,
-    ...(target !== 'claude' && { target }),
-  };
-  saveUnifiedConfig(config);
+  mutateUnifiedConfig((config) => {
+    config.profiles[name] = {
+      type: 'api',
+      settings: `~/.ccs/${settingsFile}`,
+      ...(target !== 'claude' && { target }),
+    };
+  });
 }
 
 /** Create a new API profile */
@@ -233,6 +267,63 @@ export function createApiProfile(
   }
 }
 
+export function createCliproxyBridgeProfile(
+  provider: CLIProxyProvider,
+  options: {
+    name?: string;
+    force?: boolean;
+    target?: TargetType;
+  } = {}
+): CreateCliproxyBridgeProfileResult {
+  const providedName = options.name?.trim();
+  if (providedName) {
+    const nameError = validateApiName(providedName);
+    if (nameError) {
+      return { success: false, settingsFile: '', error: nameError };
+    }
+    if (isReservedName(providedName)) {
+      return {
+        success: false,
+        settingsFile: '',
+        error: `Profile name '${providedName}' is reserved`,
+      };
+    }
+  }
+
+  const resolved = resolveCliproxyBridgeProfile(provider, options);
+  const settingsPath = path.join(getCcsDir(), `${resolved.name}.settings.json`);
+  if (!options.force && (apiProfileExists(resolved.name) || fs.existsSync(settingsPath))) {
+    return {
+      success: false,
+      settingsFile: '',
+      error: `Profile already exists: ${resolved.name}`,
+    };
+  }
+
+  const result = createApiProfile(
+    resolved.name,
+    resolved.baseUrl,
+    resolved.apiKey,
+    resolved.models,
+    resolved.target,
+    provider
+  );
+
+  return {
+    ...result,
+    name: resolved.name,
+    provider,
+    target: resolved.target,
+    cliproxyBridge:
+      resolveCliproxyBridgeMetadata({
+        env: {
+          ANTHROPIC_BASE_URL: resolved.baseUrl,
+          ANTHROPIC_AUTH_TOKEN: resolved.apiKey,
+        },
+      }) ?? null,
+  };
+}
+
 /**
  * Update API profile target (claude/droid).
  * Persists to config.yaml in unified mode and config.json profile_targets in legacy mode.
@@ -243,17 +334,17 @@ export function updateApiProfileTarget(
 ): UpdateApiProfileTargetResult {
   try {
     if (isUnifiedMode()) {
-      const config = loadOrCreateUnifiedConfig();
-      if (!config.profiles[name]) {
-        return { success: false, error: `API profile not found: ${name}` };
-      }
+      mutateUnifiedConfig((config) => {
+        if (!config.profiles[name]) {
+          throw new Error(`API profile not found: ${name}`);
+        }
 
-      if (target === 'claude') {
-        delete config.profiles[name].target;
-      } else {
-        config.profiles[name].target = target;
-      }
-      saveUnifiedConfig(config);
+        if (target === 'claude') {
+          delete config.profiles[name].target;
+        } else {
+          config.profiles[name].target = target;
+        }
+      });
       return { success: true, target };
     }
 
@@ -292,30 +383,26 @@ export function updateApiProfileTarget(
 
 /** Remove API profile from unified config */
 function removeApiProfileUnified(name: string): void {
-  const config = loadOrCreateUnifiedConfig();
-  const profile = config.profiles[name];
+  mutateUnifiedConfig((config) => {
+    const profile = config.profiles[name];
 
-  if (!profile) {
-    throw new Error(`API profile not found: ${name}`);
-  }
-
-  // Delete the settings file if it exists.
-  // Uses expandPath() for cross-platform path handling.
-  if (profile.settings) {
-    const settingsPath = expandPath(profile.settings);
-    if (fs.existsSync(settingsPath)) {
-      fs.unlinkSync(settingsPath);
+    if (!profile) {
+      throw new Error(`API profile not found: ${name}`);
     }
-  }
 
-  delete config.profiles[name];
+    if (profile.settings) {
+      const settingsPath = expandPath(profile.settings);
+      if (fs.existsSync(settingsPath)) {
+        fs.unlinkSync(settingsPath);
+      }
+    }
 
-  // Clear default if it was the deleted profile
-  if (config.default === name) {
-    config.default = undefined;
-  }
+    delete config.profiles[name];
 
-  saveUnifiedConfig(config);
+    if (config.default === name) {
+      config.default = undefined;
+    }
+  });
 }
 
 /** Remove API profile from legacy config */

@@ -398,8 +398,6 @@ function getStatusText(code: number): string {
  */
 export function formatRelativeTime(modifiedSeconds: number, locale?: string): string {
   const formatLocale = getFormattingLocale(locale);
-  const isZh = formatLocale === 'zh-CN';
-  const isVi = formatLocale === 'vi';
   const now = Date.now();
   const modified = modifiedSeconds * 1000; // Convert to milliseconds
   const diff = now - modified;
@@ -410,21 +408,33 @@ export function formatRelativeTime(modifiedSeconds: number, locale?: string): st
   const days = Math.floor(hours / 24);
 
   if (seconds < 60) {
+    // TODO i18n: missing key for relative time "just now"
+    const isZh = formatLocale === 'zh-CN';
+    const isVi = formatLocale === 'vi';
     if (isZh) return '刚刚';
     if (isVi) return 'vừa xong';
     return 'just now';
   }
   if (minutes < 60) {
+    // TODO i18n: missing key for relative time minutes
+    const isZh = formatLocale === 'zh-CN';
+    const isVi = formatLocale === 'vi';
     if (isZh) return `${minutes} 分钟前`;
     if (isVi) return `${minutes} phút trước`;
     return `${minutes}m ago`;
   }
   if (hours < 24) {
+    // TODO i18n: missing key for relative time hours
+    const isZh = formatLocale === 'zh-CN';
+    const isVi = formatLocale === 'vi';
     if (isZh) return `${hours} 小时前`;
     if (isVi) return `${hours} giờ trước`;
     return `${hours}h ago`;
   }
   if (days < 7) {
+    // TODO i18n: missing key for relative time days
+    const isZh = formatLocale === 'zh-CN';
+    const isVi = formatLocale === 'vi';
     if (isZh) return `${days} 天前`;
     if (isVi) return `${days} ngày trước`;
     return `${days}d ago`;
@@ -458,6 +468,7 @@ export function getStatusColor(code: number): string {
  * Get error type label
  */
 export function getErrorTypeLabel(type: ParsedErrorLog['errorType'], locale?: string): string {
+  // TODO i18n: missing keys for error type labels (rate_limit, auth, not_found, server, timeout, unknown)
   const formatLocale = getFormattingLocale(locale);
   if (formatLocale === 'zh-CN') {
     const labels: Record<string, string> = {
@@ -520,6 +531,7 @@ export function formatQuotaResetTimestamp(
   const formatLocale = getFormattingLocale(locale);
   const isZh = formatLocale === 'zh-CN';
   const isVi = formatLocale === 'vi';
+  // TODO i18n: missing keys for quota reset timestamp formatting
   try {
     const resetDate = new Date(timestamp);
     const now = new Date();

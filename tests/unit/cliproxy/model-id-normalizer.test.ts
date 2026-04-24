@@ -8,6 +8,7 @@ import {
   migrateDeniedAntigravityModelAliases,
   normalizeClaudeDottedMajorMinor,
   normalizeClaudeDottedThinkingMajorMinor,
+  normalizeCodexLegacyModelAliases,
   normalizeModelIdForProvider,
   normalizeModelIdForRouting,
   normalizeModelEnvVarsForProvider,
@@ -82,7 +83,9 @@ describe('model-id-normalizer', () => {
     });
 
     it('applies provider canonicalization for codex and antigravity', () => {
-      expect(canonicalizeModelIdForProvider('gpt-5.3-codex-xhigh', 'codex')).toBe('gpt-5.3-codex');
+      expect(canonicalizeModelIdForProvider('gpt-5.3-codex-xhigh', 'codex')).toBe(
+        'gpt-5.3-codex-xhigh'
+      );
       expect(canonicalizeModelIdForProvider('claude-sonnet-4.6-thinking', 'agy')).toBe(
         'claude-sonnet-4-6'
       );
@@ -93,7 +96,7 @@ describe('model-id-normalizer', () => {
 
     it('trims and canonicalizes provider model IDs with surrounding whitespace', () => {
       expect(canonicalizeModelIdForProvider('  gpt-5.3-codex-high  ', 'codex')).toBe(
-        'gpt-5.3-codex'
+        'gpt-5.3-codex-high'
       );
       expect(canonicalizeModelIdForProvider('  claude-sonnet-4.6-thinking  ', 'agy')).toBe(
         'claude-sonnet-4-6'
@@ -114,6 +117,16 @@ describe('model-id-normalizer', () => {
       expect(canonicalizeModelIdForProvider('glm-4.7', 'iflow')).toBe('glm-4.6');
       expect(canonicalizeModelIdForProvider('minimax-m2.5', 'iflow')).toBe('qwen3-coder-plus');
       expect(canonicalizeModelIdForProvider('kimi-k2.5', 'gemini')).toBe('kimi-k2.5');
+    });
+
+    it('normalizes legacy codex aliases to the current supported model IDs', () => {
+      expect(normalizeCodexLegacyModelAliases('gpt-5-codex')).toBe('gpt-5.4');
+      expect(normalizeCodexLegacyModelAliases('gpt-5-codex-mini[1m]')).toBe('gpt-5.4-mini[1m]');
+      expect(normalizeCodexLegacyModelAliases('gpt-5-codex-high')).toBe('gpt-5.4-high');
+      expect(normalizeCodexLegacyModelAliases('gpt-5-codex-high[1m]')).toBe('gpt-5.4-high[1m]');
+      expect(normalizeModelIdForProvider('gpt-5.2-codex', 'codex')).toBe('gpt-5.2');
+      expect(normalizeModelIdForProvider('gpt-5.1-codex-mini', 'codex')).toBe('gpt-5.4-mini');
+      expect(canonicalizeModelIdForProvider('gpt-5-codex-high', 'codex')).toBe('gpt-5.4-high');
     });
   });
 

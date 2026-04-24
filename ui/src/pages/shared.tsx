@@ -89,6 +89,7 @@ export function SharedPage() {
   const hasNoItems = !isLoading && !isError && allItems.length === 0;
   const hasNoMatches = !isLoading && !isError && allItems.length > 0 && filteredItems.length === 0;
 
+  // TODO i18n: missing key for "Shared item totals could not be loaded. Listing still works."
   const summaryErrorMessage = getSharedErrorMessage(
     summaryError,
     'Shared item totals could not be loaded. Listing still works.'
@@ -155,6 +156,7 @@ export function SharedPage() {
             <AlertTriangle className="h-4 w-4" />
             <AlertTitle>{t('sharedPage.configurationRequired')}</AlertTitle>
             <AlertDescription>
+              {/* TODO i18n: missing key for "Run `ccs sync` to configure." */}
               {summary.symlinkStatus.message}. Run `ccs sync` to configure.
             </AlertDescription>
           </Alert>
@@ -399,6 +401,7 @@ function getSharedErrorMessage(error: unknown, fallbackMessage: string): string 
 
   const normalized = error.message.toLowerCase();
   if (normalized.includes('failed to fetch') || normalized.includes('network')) {
+    // TODO i18n: missing key for connection lost message
     return 'Connection to dashboard server lost or restarting. Keep `ccs config` running, then retry.';
   }
 

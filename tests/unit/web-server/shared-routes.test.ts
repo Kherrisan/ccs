@@ -231,6 +231,14 @@ describe('web-server shared-routes', () => {
     ]);
   });
 
+  it('returns an empty command list when shared commands directory is missing', async () => {
+    const payload = await getJson<{
+      items: Array<{ name: string; type: string; description: string; path: string }>;
+    }>(baseUrl, '/api/shared/commands');
+
+    expect(payload.items).toEqual([]);
+  });
+
   it('returns full content for a shared command markdown file', async () => {
     const commandsDir = path.join(ccsDir, 'shared', 'commands');
     fs.mkdirSync(commandsDir, { recursive: true });

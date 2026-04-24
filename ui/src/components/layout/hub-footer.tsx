@@ -1,26 +1,28 @@
 import { Separator } from '@/components/ui/separator';
 import { Button } from '@/components/ui/button';
 import { FileTextIcon, SettingsIcon, GithubIcon, ExternalLinkIcon } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 export function HubFooter() {
+  const { t } = useTranslation();
   const currentYear = new Date().getFullYear();
 
   const footerLinks = [
     {
       icon: <FileTextIcon className="w-4 h-4" />,
-      label: 'Logs',
+      label: t('hubFooter.logs'),
       href: '#logs',
       onClick: () => console.log('Navigate to Logs'),
     },
     {
       icon: <SettingsIcon className="w-4 h-4" />,
-      label: 'Settings',
+      label: t('hubFooter.settings'),
       href: '#settings',
       onClick: () => console.log('Navigate to Settings'),
     },
     {
       icon: <GithubIcon className="w-4 h-4" />,
-      label: 'GitHub',
+      label: t('hubFooter.github'),
       href: 'https://github.com/kaitranntt/ccs',
       external: true,
     },
@@ -32,7 +34,7 @@ export function HubFooter() {
         <div className="flex items-center space-x-2 text-sm text-muted-foreground">
           <span>CCS v0.0.0</span>
           <Separator orientation="vertical" className="h-4" />
-          <span>© {currentYear} kaitranntt</span>
+          <span>{t('hubFooter.copyright', { year: currentYear })}</span>
         </div>
 
         <div className="ml-auto flex items-center space-x-2">

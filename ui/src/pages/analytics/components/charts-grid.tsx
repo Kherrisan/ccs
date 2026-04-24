@@ -13,6 +13,7 @@ import { TrendingUp, PieChart } from 'lucide-react';
 import { usePrivacy } from '@/contexts/privacy-context';
 import { CostByModelCard } from './cost-by-model-card';
 import type { ModelUsage, PaginatedSessions, DailyUsage, HourlyUsage } from '@/hooks/use-usage';
+// TODO i18n: import { useTranslation } from 'react-i18next'; when keys are ready
 
 interface ChartsGridProps {
   viewMode: 'daily' | 'hourly';
@@ -42,6 +43,8 @@ export function ChartsGrid({
   onModelClick,
 }: ChartsGridProps) {
   const { privacyMode } = usePrivacy();
+  // TODO i18n: uncomment when keys for "Last 24 Hours" / "Usage Trends" / "Model Usage" are added
+  // const { t } = useTranslation();
 
   return (
     <div className="min-h-0 grid gap-4 lg:grid-rows-[minmax(260px,1.2fr)_minmax(220px,0.9fr)]">
@@ -50,6 +53,7 @@ export function ChartsGrid({
         <CardHeader className="px-3 py-2 shrink-0">
           <CardTitle className="text-base font-semibold flex items-center gap-2">
             <TrendingUp className="w-4 h-4" />
+            {/* TODO i18n: missing keys for "Last 24 Hours" / "Usage Trends" */}
             {viewMode === 'hourly' ? 'Last 24 Hours' : 'Usage Trends'}
           </CardTitle>
         </CardHeader>
@@ -77,6 +81,7 @@ export function ChartsGrid({
           <CardHeader className="px-3 py-2">
             <CardTitle className="text-base font-semibold flex items-center gap-2">
               <PieChart className="w-4 h-4" />
+              {/* TODO i18n: missing key for "Model Usage" */}
               Model Usage
             </CardTitle>
           </CardHeader>

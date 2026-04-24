@@ -18,6 +18,8 @@ export type {
   WebSearchConfig,
 } from './types';
 
+export type { WebSearchApiKeyState } from './provider-secrets';
+
 // Gemini CLI
 export {
   getGeminiCliStatus,
@@ -38,6 +40,7 @@ export {
   hasWebSearchHook,
   getWebSearchHookConfig,
   installWebSearchHook,
+  removeMigrationMarker,
   uninstallWebSearchHook,
 } from './hook-installer';
 
@@ -46,6 +49,31 @@ export { removeHookConfig } from './hook-config';
 
 // Hook Environment
 export { getWebSearchHookEnv } from './hook-env';
+
+// MCP Runtime
+export {
+  getWebSearchMcpServerName,
+  getWebSearchMcpServerPath,
+  installWebSearchMcpServer,
+  ensureWebSearchMcpConfig,
+  ensureWebSearchMcp,
+  uninstallWebSearchMcpServer,
+  removeWebSearchMcpConfig,
+  uninstallWebSearchMcp,
+  syncWebSearchMcpToConfigDir,
+  ensureWebSearchMcpOrThrow,
+} from './mcp-installer';
+
+// Claude launch args
+export { appendThirdPartyWebSearchToolArgs } from './claude-tool-args';
+
+// Trace helpers
+export {
+  appendWebSearchTrace,
+  createWebSearchTraceContext,
+  isWebSearchTraceEnabled,
+  readWebSearchTraceRecords,
+} from './trace';
 
 // Status and Readiness
 export {
@@ -56,5 +84,7 @@ export {
   displayWebSearchStatus,
 } from './status';
 
-// Profile Hook Injection
-export { ensureProfileHooks, removeMigrationMarker } from './profile-hook-injector';
+export { WEBSEARCH_API_KEY_PROVIDERS, getWebSearchApiKeyStates } from './provider-secrets';
+
+// Profile compatibility hook injection
+export { ensureProfileHooks, ensureProfileHooksOrThrow } from './profile-hook-injector';

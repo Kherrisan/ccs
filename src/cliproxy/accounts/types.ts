@@ -2,7 +2,7 @@
  * Shared types and constants for account management
  */
 
-import { CLIProxyProvider } from '../types';
+import type { CLIProxyProvider } from '../types';
 
 /** Account tier for quota management: ultra > pro > free */
 export type AccountTier = 'free' | 'pro' | 'ultra' | 'unknown';
