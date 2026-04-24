@@ -149,6 +149,21 @@ export function mapProfileToClaudeKey(profile: SyncableProfile): ClaudeKey | nul
         alias: '',
       },
     ];
+
+    // Append extra models from ANTHROPIC_EXTRA_MODELS env var (comma-separated)
+    const extraModelsRaw = env.ANTHROPIC_EXTRA_MODELS;
+    if (extraModelsRaw && extraModelsRaw.trim()) {
+      const extraModels = extraModelsRaw
+        .split(',')
+        .map((m) => m.trim())
+        .filter((m) => m.length > 0);
+      for (const extra of extraModels) {
+        claudeKey.models.push({
+          name: extra,
+          alias: '',
+        });
+      }
+    }
   }
 
   return claudeKey;

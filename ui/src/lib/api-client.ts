@@ -336,6 +336,7 @@ export interface CreateProfile {
   baseUrl: string;
   apiKey: string;
   model?: string;
+  extraModels?: string;
   opusModel?: string;
   sonnetModel?: string;
   haikuModel?: string;
@@ -346,6 +347,7 @@ export interface UpdateProfile {
   baseUrl?: string;
   apiKey?: string;
   model?: string;
+  extraModels?: string;
   opusModel?: string;
   sonnetModel?: string;
   haikuModel?: string;

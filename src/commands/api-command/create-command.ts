@@ -493,7 +493,7 @@ export async function handleApiCreateCommand(args: string[]): Promise<void> {
 
   console.log('');
   console.log(info('Creating API profile...'));
-  const result = createApiProfile(name, baseUrl || '', apiKey, finalModels, target);
+  const result = createApiProfile(name, baseUrl || '', apiKey, finalModels, target, undefined, parsedArgs.extraModels);
   if (!result.success) {
     console.log(fail(`Failed to create API profile: ${result.error}`));
     process.exit(1);
@@ -532,6 +532,10 @@ export async function handleApiCreateCommand(args: string[]): Promise<void> {
       `  Opus:   ${finalModels.opus}\n` +
       `  Sonnet: ${finalModels.sonnet}\n` +
       `  Haiku:  ${finalModels.haiku}`;
+  }
+
+  if (parsedArgs.extraModels && parsedArgs.extraModels.length > 0) {
+    details += `\nExtraModels: ${parsedArgs.extraModels.join(', ')}`;
   }
 
   console.log('');

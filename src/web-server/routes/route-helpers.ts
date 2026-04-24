@@ -218,6 +218,7 @@ export function updateSettingsFile(
     baseUrl?: string;
     apiKey?: string;
     model?: string;
+    extraModels?: string;
     opusModel?: string;
     sonnetModel?: string;
     haikuModel?: string;
@@ -333,6 +334,17 @@ export function updateSettingsFile(
       settings.env.ANTHROPIC_DEFAULT_HAIKU_MODEL = canonicalHaikuModel;
     } else {
       delete settings.env.ANTHROPIC_DEFAULT_HAIKU_MODEL;
+    }
+  }
+
+  // Handle extra models (comma-separated string)
+  if (updates.extraModels !== undefined) {
+    settings.env = settings.env || {};
+    const normalized = typeof updates.extraModels === 'string' ? updates.extraModels.trim() : '';
+    if (normalized.length > 0) {
+      settings.env.ANTHROPIC_EXTRA_MODELS = normalized;
+    } else {
+      delete settings.env.ANTHROPIC_EXTRA_MODELS;
     }
   }
 

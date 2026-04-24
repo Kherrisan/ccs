@@ -34,6 +34,7 @@ const schema = z.object({
   baseUrl: optionalUrlSchema,
   apiKey: z.string().min(10, 'API key must be at least 10 characters'),
   model: z.string().optional(),
+  extraModels: z.string().optional(),
   opusModel: z.string().optional(),
   sonnetModel: z.string().optional(),
   haikuModel: z.string().optional(),
@@ -67,6 +68,7 @@ export function ProfileDialog({ open, onClose, profile }: ProfileDialogProps) {
           baseUrl: '',
           apiKey: '',
           model: '',
+          extraModels: '',
           opusModel: '',
           sonnetModel: '',
           haikuModel: '',
@@ -102,6 +104,7 @@ export function ProfileDialog({ open, onClose, profile }: ProfileDialogProps) {
             baseUrl: data.baseUrl,
             apiKey: data.apiKey,
             model: data.model,
+            extraModels: data.extraModels,
             opusModel: data.opusModel,
             sonnetModel: data.sonnetModel,
             haikuModel: data.haikuModel,
@@ -162,6 +165,19 @@ export function ProfileDialog({ open, onClose, profile }: ProfileDialogProps) {
             <Input id="model" {...register('model')} placeholder={DEFAULT_MODEL} />
             <p className="text-xs text-muted-foreground mt-1">
               {t('profileDialog.defaultModelHint', { model: DEFAULT_MODEL })}
+            </p>
+          </div>
+
+          <div>
+            <Label htmlFor="extraModels">Extra Models</Label>
+            <Input
+              id="extraModels"
+              {...register('extraModels')}
+              placeholder="model-a,model-b,model-c"
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Comma-separated list of additional models available via this provider. These are
+              synced to CLIProxy alongside the default model.
             </p>
           </div>
 

@@ -17,6 +17,7 @@ export interface ApiCommandArgs {
   baseUrl?: string;
   apiKey?: string;
   model?: string;
+  extraModels?: string[];
   preset?: string;
   cliproxyProvider?: string;
   target?: TargetType;
@@ -33,6 +34,7 @@ export const API_VALUE_FLAGS = [
   '--base-url',
   '--api-key',
   '--model',
+  '--extra-models',
   '--preset',
   '--cliproxy-provider',
   '--target',
@@ -220,6 +222,21 @@ export function parseApiCommandArgs(
       result.errors.push('Missing value for --model');
     },
     true
+  );
+
+  remaining = applyRepeatedOption(
+    remaining,
+    ['--extra-models'],
+    (value) => {
+      result.extraModels = value
+        .split(',')
+        .map((m) => m.trim())
+        .filter((m) => m.length > 0);
+    },
+    () => {
+      result.errors.push('Missing value for --extra-models');
+    },
+    false
   );
 
   remaining = applyRepeatedOption(
