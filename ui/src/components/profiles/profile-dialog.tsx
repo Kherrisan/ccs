@@ -57,7 +57,7 @@ export function ProfileDialog({ open, onClose, profile }: ProfileDialogProps) {
   const {
     register,
     handleSubmit,
-    formState: { errors },
+    formState: { errors, dirtyFields },
     reset,
     control,
   } = useForm<FormData>({
@@ -97,14 +97,20 @@ export function ProfileDialog({ open, onClose, profile }: ProfileDialogProps) {
   const onSubmit = async (data: FormData) => {
     try {
       if (profile) {
-        // Update mode
+        // Update mode. The dialog cannot pre-populate `extraModels` from the
+        // existing profile (Profile type carries no env data), so the field
+        // always starts blank in edit mode. Forwarding that blank value
+        // unconditionally would clobber any saved ANTHROPIC_EXTRA_MODELS via
+        // the route's "empty string deletes" semantics. Only forward the
+        // field if the user actually edited it — typing then clearing still
+        // marks it dirty, preserving the explicit-clear UX.
         await updateMutation.mutateAsync({
           name: profile.name,
           data: {
             baseUrl: data.baseUrl,
             apiKey: data.apiKey,
             model: data.model,
-            extraModels: data.extraModels,
+            ...(dirtyFields.extraModels ? { extraModels: data.extraModels } : {}),
             opusModel: data.opusModel,
             sonnetModel: data.sonnetModel,
             haikuModel: data.haikuModel,
