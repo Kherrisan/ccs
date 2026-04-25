@@ -144,6 +144,7 @@ router.post('/', (req: Request, res: Response): void => {
     'baseUrl',
     'apiKey',
     'model',
+    'extraModels',
     'opusModel',
     'sonnetModel',
     'haikuModel',
@@ -156,7 +157,8 @@ router.post('/', (req: Request, res: Response): void => {
     return;
   }
 
-  const { name, baseUrl, apiKey, model, opusModel, sonnetModel, haikuModel, target } = req.body;
+  const { name, baseUrl, apiKey, model, extraModels, opusModel, sonnetModel, haikuModel, target } =
+    req.body;
   const providerHint = req.body?.droidProvider ?? req.body?.provider;
   const parsedProvider = normalizeDroidProvider(providerHint);
   const normalizedBaseUrl = typeof baseUrl === 'string' ? baseUrl.trim() : '';
@@ -198,6 +200,14 @@ router.post('/', (req: Request, res: Response): void => {
   }
 
   // Create profile using unified-config-aware service
+  const parsedExtraModels: string[] | undefined =
+    typeof extraModels === 'string' && extraModels.trim()
+      ? extraModels
+          .split(',')
+          .map((m: string) => m.trim())
+          .filter((m: string) => m.length > 0)
+      : undefined;
+
   const result = createApiProfile(
     name,
     normalizedBaseUrl,
@@ -209,7 +219,8 @@ router.post('/', (req: Request, res: Response): void => {
       haiku: haikuModel || model || '',
     },
     parsedTarget || 'claude',
-    parsedProvider || undefined
+    parsedProvider || undefined,
+    parsedExtraModels
   );
 
   if (!result.success) {
@@ -409,6 +420,7 @@ router.put('/:name', (req: Request, res: Response): void => {
     'baseUrl',
     'apiKey',
     'model',
+    'extraModels',
     'opusModel',
     'sonnetModel',
     'haikuModel',
@@ -422,7 +434,8 @@ router.put('/:name', (req: Request, res: Response): void => {
   }
 
   const { name } = req.params;
-  const { baseUrl, apiKey, model, opusModel, sonnetModel, haikuModel, target } = req.body;
+  const { baseUrl, apiKey, model, extraModels, opusModel, sonnetModel, haikuModel, target } =
+    req.body;
   const providerHint = req.body?.droidProvider ?? req.body?.provider;
   const parsedProvider = normalizeDroidProvider(providerHint);
   const normalizedBaseUrl = typeof baseUrl === 'string' ? baseUrl.trim() : baseUrl;
@@ -457,6 +470,7 @@ router.put('/:name', (req: Request, res: Response): void => {
       baseUrl !== undefined ||
       apiKey !== undefined ||
       model !== undefined ||
+      extraModels !== undefined ||
       opusModel !== undefined ||
       sonnetModel !== undefined ||
       haikuModel !== undefined ||
@@ -473,6 +487,7 @@ router.put('/:name', (req: Request, res: Response): void => {
         baseUrl: normalizedBaseUrl,
         apiKey: normalizedApiKey,
         model,
+        extraModels,
         opusModel,
         sonnetModel,
         haikuModel,
