@@ -2,7 +2,7 @@
 
 A page-level design system extracted from the **canonical reference pages** — `home` and `cliproxy` — that already prove the patterns work in production. New pages should adapt to these references, not the other way around.
 
-Health is the second-tier reference for pages whose content shape (gauge + KPIs + group accordions) doesn't fit either canonical hero — it uses the `MonitorLayout` archetype.
+Some pages legitimately need a bespoke design (the redesigned `health` page is the current example) — when content shape demands custom hierarchy, the system should step out of the way rather than force the page into a wrong-fit archetype.
 
 > Live preview in dev: `bun run dev` then visit `/_styleguide`.
 
@@ -63,7 +63,7 @@ Page identity (brand + page-level CTA + status) lives **inside the left rail**. 
 
 ### 1c. `PageHeader` — title-row chrome
 
-**Canonical reference:** `pages/health.tsx`
+**Canonical reference:** none yet (was `health.tsx` until its bespoke redesign — see §1d).
 
 ```
 ┌────────────────────────────────────────────────────────────────────┐
@@ -81,6 +81,19 @@ Traditional title row with description and trailing actions.
 
 **API:** `<PageHeader title description status actions />` — title + description on left, status badges + action buttons on right.
 
+### 1d. Bespoke — full custom design
+
+**Canonical reference:** `pages/health.tsx`
+
+When a page's content shape demands its own hierarchy (priority-driven sections, dynamic backgrounds tied to status, custom card primitives like `HealthStatusRibbon` / `HealthPriorityCard`), the design system gets out of the way. Bespoke pages still respect global concerns (privacy mode, theme, sidebar) but build their own layout from scratch.
+
+**Use it when:**
+- None of the three patterns above fits without distorting the content
+- The page's information hierarchy is genuinely unique (e.g. severity-driven priority surfaces with secondary audit lists)
+- A bespoke implementation will be clearly better than forcing a fit
+
+**Cost:** higher LOC, no reuse, no consistency — only justified when content demands it.
+
 ### Decision table
 
 | Page shape | Identity strip |
@@ -88,6 +101,7 @@ Traditional title row with description and trailing actions.
 | Dashboard / overview with ≤4 hero stats | **HeroBar** (home pattern) |
 | Multi-entity Config (3-pane: list/form/json) | **Rail-anchored** (cliproxy pattern, no top chrome) |
 | Single-entity Config OR Monitor with a real hero viz | **PageHeader** + body archetype |
+| Severity / priority-driven page with custom hierarchy | **Bespoke** (health pattern) |
 | Wizard / login / dialog | None — bespoke shell |
 
 ---
@@ -124,7 +138,7 @@ Left rail = `ListPane` (multi-entity) or `SectionRail` (single-entity, with `Int
 
 ### 2b. Monitor — KPI row + 12-col grid
 
-**Canonical reference:** `pages/health.tsx`
+**Canonical reference:** none in this PR. Health used to be the reference but went bespoke (§1d). The primitives (`MonitorLayout`, `KpiRow`, `KpiCard`, `MonitorGrid`, `MonitorCard`) ship and remain available; first page to genuinely need them becomes the next reference.
 
 ```
 ┌────────────────────────────────────────┐

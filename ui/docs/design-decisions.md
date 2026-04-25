@@ -34,6 +34,24 @@ Phase 2's home + cliproxy migrations are reverted. Health stays migrated (Monito
 
 ---
 
+## v1.2 revision (2026-04-25) — health redesign and bespoke pattern
+
+After the v1.1 restructure, the `health` page received a separate, focused redesign per a dedicated handoff brief (`plans/reports/handoff-260425-1417-health-page-redesign.md`). The redesign went bespoke:
+
+- New domain components: `HealthStatusRibbon`, `HealthPriorityCard`, `HealthPriorityList`, `HealthAuditSection`
+- Severity-driven layout: priority surfaces (errors/warnings) at the top with prominent fix affordances, audit accordion below
+- Dynamic colored background tied to overall status, glassmorphic accents
+- No `PageShell`, no `PageHeader`, no `MonitorLayout` — full custom shell
+
+**Resolution:** add a fourth identity-strip pattern — **§1d Bespoke** — for pages whose content shape doesn't fit the three primary patterns. The v1.1 row's claim that "health stays migrated (Monitor archetype + PageHeader works there)" no longer holds; corrected here.
+
+**Side effects:**
+- `PageHeader` lost its canonical reference (was health). New reference TBD when another page adopts it.
+- `MonitorLayout` lost its canonical reference. Primitives remain available for future Monitor pages.
+- `Bespoke` is explicitly an escape hatch — not a default. Code review enforces "you tried the three patterns first."
+
+---
+
 ## How to revisit
 
 If a decision turns out wrong in practice, update this doc and bump the affected primitive — don't silently drift. Each row above should be appended with a "Revised: <date> · <reason>" line if changed.
