@@ -47,6 +47,11 @@ const HealthPage = lazy(() => import('@/pages/health').then((m) => ({ default: m
 const SharedPage = lazy(() => import('@/pages/shared').then((m) => ({ default: m.SharedPage })));
 const UpdatesPage = lazy(() => import('@/pages/updates').then((m) => ({ default: m.UpdatesPage })));
 
+// Dev-only: design system styleguide
+const StyleguidePage = import.meta.env.DEV
+  ? lazy(() => import('@/pages/_styleguide').then((m) => ({ default: m.StyleguidePage })))
+  : null;
+
 // Loading fallback for lazy components
 function PageLoader() {
   return (
@@ -203,6 +208,16 @@ export default function App() {
                         </Suspense>
                       }
                     />
+                    {StyleguidePage && (
+                      <Route
+                        path="/_styleguide"
+                        element={
+                          <Suspense fallback={<PageLoader />}>
+                            <StyleguidePage />
+                          </Suspense>
+                        }
+                      />
+                    )}
                   </Route>
                 </Route>
               </Routes>
