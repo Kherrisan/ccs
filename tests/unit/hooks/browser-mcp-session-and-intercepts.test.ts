@@ -126,15 +126,21 @@ describe('ccs-browser MCP server - session and interception', () => {
 
     const setDownloadTool = tools.find((tool) => tool.name === 'browser_set_download_behavior');
     expect(setDownloadTool?.inputSchema?.properties?.behavior).toMatchObject({ type: 'string' });
-    expect(setDownloadTool?.inputSchema?.properties?.downloadPath).toMatchObject({ type: 'string' });
-    expect(setDownloadTool?.inputSchema?.properties?.eventsEnabled).toMatchObject({ type: 'boolean' });
+    expect(setDownloadTool?.inputSchema?.properties?.downloadPath).toMatchObject({
+      type: 'string',
+    });
+    expect(setDownloadTool?.inputSchema?.properties?.eventsEnabled).toMatchObject({
+      type: 'boolean',
+    });
 
     const listDownloadsTool = tools.find((tool) => tool.name === 'browser_list_downloads');
     expect(listDownloadsTool?.inputSchema?.properties?.limit).toMatchObject({ type: 'integer' });
     expect(listDownloadsTool?.inputSchema?.properties?.pageId).toBeUndefined();
 
     const cancelDownloadTool = tools.find((tool) => tool.name === 'browser_cancel_download');
-    expect(cancelDownloadTool?.inputSchema?.properties?.downloadId).toMatchObject({ type: 'string' });
+    expect(cancelDownloadTool?.inputSchema?.properties?.downloadId).toMatchObject({
+      type: 'string',
+    });
     expect(cancelDownloadTool?.inputSchema?.properties?.guid).toMatchObject({ type: 'string' });
 
     const uploadTool = tools.find((tool) => tool.name === 'browser_set_file_input');
@@ -157,7 +163,9 @@ describe('ccs-browser MCP server - session and interception', () => {
 
     const dragElementTool = tools.find((tool) => tool.name === 'browser_drag_element');
     expect(dragElementTool?.inputSchema?.properties?.selector).toMatchObject({ type: 'string' });
-    expect(dragElementTool?.inputSchema?.properties?.targetSelector).toMatchObject({ type: 'string' });
+    expect(dragElementTool?.inputSchema?.properties?.targetSelector).toMatchObject({
+      type: 'string',
+    });
     expect(dragElementTool?.inputSchema?.properties?.targetX).toMatchObject({ type: 'number' });
     expect(dragElementTool?.inputSchema?.properties?.targetY).toMatchObject({ type: 'number' });
     expect(dragElementTool?.inputSchema?.properties?.steps).toMatchObject({ type: 'integer' });
@@ -166,7 +174,9 @@ describe('ccs-browser MCP server - session and interception', () => {
     expect(pointerTool?.inputSchema?.properties?.actions).toMatchObject({ type: 'array' });
 
     const startRecordingTool = tools.find((tool) => tool.name === 'browser_start_recording');
-    expect(startRecordingTool?.inputSchema?.properties?.pageIndex).toMatchObject({ type: 'integer' });
+    expect(startRecordingTool?.inputSchema?.properties?.pageIndex).toMatchObject({
+      type: 'integer',
+    });
     expect(startRecordingTool?.inputSchema?.properties?.pageId).toMatchObject({ type: 'string' });
 
     const stopRecordingTool = tools.find((tool) => tool.name === 'browser_stop_recording');
@@ -189,15 +199,25 @@ describe('ccs-browser MCP server - session and interception', () => {
     const cancelReplayTool = tools.find((tool) => tool.name === 'browser_cancel_replay');
     expect(cancelReplayTool?.inputSchema).toMatchObject({ type: 'object' });
 
-    const startOrchestrationTool = tools.find((tool) => tool.name === 'browser_start_orchestration');
-    expect(startOrchestrationTool?.inputSchema?.properties?.blocks).toMatchObject({ type: 'array' });
-    expect(startOrchestrationTool?.inputSchema?.properties?.pageIndex).toMatchObject({ type: 'integer' });
-    expect(startOrchestrationTool?.inputSchema?.properties?.pageId).toMatchObject({ type: 'string' });
+    const startOrchestrationTool = tools.find(
+      (tool) => tool.name === 'browser_start_orchestration'
+    );
+    expect(startOrchestrationTool?.inputSchema?.properties?.blocks).toMatchObject({
+      type: 'array',
+    });
+    expect(startOrchestrationTool?.inputSchema?.properties?.pageIndex).toMatchObject({
+      type: 'integer',
+    });
+    expect(startOrchestrationTool?.inputSchema?.properties?.pageId).toMatchObject({
+      type: 'string',
+    });
 
     const getOrchestrationTool = tools.find((tool) => tool.name === 'browser_get_orchestration');
     expect(getOrchestrationTool?.inputSchema).toMatchObject({ type: 'object' });
 
-    const cancelOrchestrationTool = tools.find((tool) => tool.name === 'browser_cancel_orchestration');
+    const cancelOrchestrationTool = tools.find(
+      (tool) => tool.name === 'browser_cancel_orchestration'
+    );
     expect(cancelOrchestrationTool?.inputSchema).toMatchObject({ type: 'object' });
 
     const exportArtifactTool = tools.find((tool) => tool.name === 'browser_export_artifact');
@@ -287,6 +307,55 @@ describe('ccs-browser MCP server - session and interception', () => {
 
     const text = getResponseText(responses.find((message) => message.id === 812));
     expect(text).toContain('Docs text');
+  });
+
+  it('opens a page when Chrome DevTools requires PUT for /json/new', async () => {
+    const responses = await runMcpRequests(
+      [{ id: 'page-1', title: 'Home', currentUrl: 'https://example.com/' }],
+      [
+        {
+          jsonrpc: '2.0',
+          id: 820,
+          method: 'tools/call',
+          params: {
+            name: 'browser_open_page',
+            arguments: { url: 'https://example.com/new' },
+          },
+        },
+      ],
+      { requirePutForNewPage: true }
+    );
+
+    const openText = getResponseText(responses.find((message) => message.id === 820));
+    expect(openText).toContain('status: opened');
+    expect(openText).toContain('url: https://example.com/new');
+  });
+
+  it('omits non-browser popup targets from session info', async () => {
+    const responses = await runMcpRequests(
+      [
+        {
+          id: 'page-1',
+          title: 'Omnibox Popup',
+          currentUrl: 'chrome://omnibox-popup.top-chrome/',
+        },
+        { id: 'page-2', title: 'Home', currentUrl: 'https://example.com/' },
+      ],
+      [
+        {
+          jsonrpc: '2.0',
+          id: 8201,
+          method: 'tools/call',
+          params: { name: 'browser_get_session_info', arguments: {} },
+        },
+      ]
+    );
+
+    const text = getResponseText(responses.find((message) => message.id === 8201));
+    expect(text).toContain('0. Home');
+    expect(text).toContain('selected: true');
+    expect(text).not.toContain('Omnibox Popup');
+    expect(text).not.toContain('chrome://omnibox-popup.top-chrome/');
   });
 
   it('opens a page and makes it selected', async () => {
@@ -717,7 +786,9 @@ describe('ccs-browser MCP server - session and interception', () => {
           title: 'Docs',
           currentUrl: 'https://example.com/docs',
           intercept: {
-            pausedRequests: [{ requestId: 'req-closed', url: 'https://example.com/api/docs', method: 'GET' }],
+            pausedRequests: [
+              { requestId: 'req-closed', url: 'https://example.com/api/docs', method: 'GET' },
+            ],
           },
         },
       ],
@@ -801,7 +872,9 @@ describe('ccs-browser MCP server - session and interception', () => {
 
     const response = responses.find((message) => message.id === 951);
     expect((response?.result as { isError?: boolean }).isError).toBe(true);
-    expect(getResponseText(response)).toContain('Browser MCP failed: pageIndex and pageId cannot be used together');
+    expect(getResponseText(response)).toContain(
+      'Browser MCP failed: pageIndex and pageId cannot be used together'
+    );
   });
 
   it('rejects browser_add_intercept_rule when action is invalid', async () => {
@@ -825,7 +898,9 @@ describe('ccs-browser MCP server - session and interception', () => {
 
     const response = responses.find((message) => message.id === 952);
     expect((response?.result as { isError?: boolean }).isError).toBe(true);
-    expect(getResponseText(response)).toContain('Browser MCP failed: action must be one of: continue, fail');
+    expect(getResponseText(response)).toContain(
+      'Browser MCP failed: action must be one of: continue, fail'
+    );
   });
 
   it('rejects intercept rules when urlPattern and urlRegex are both provided', async () => {
@@ -850,7 +925,9 @@ describe('ccs-browser MCP server - session and interception', () => {
 
     const response = responses.find((message) => message.id === 981);
     expect((response?.result as { isError?: boolean }).isError).toBe(true);
-    expect(getResponseText(response)).toContain('Browser MCP failed: urlPattern and urlRegex cannot be used together');
+    expect(getResponseText(response)).toContain(
+      'Browser MCP failed: urlPattern and urlRegex cannot be used together'
+    );
   });
 
   it('rejects intercept rules when priority is not an integer', async () => {
@@ -899,7 +976,9 @@ describe('ccs-browser MCP server - session and interception', () => {
 
     const response = responses.find((message) => message.id === 983);
     expect((response?.result as { isError?: boolean }).isError).toBe(true);
-    expect(getResponseText(response)).toContain('Browser MCP failed: headerMatchers must be an array');
+    expect(getResponseText(response)).toContain(
+      'Browser MCP failed: headerMatchers must be an array'
+    );
   });
 
   it('rejects intercept rules when a header matcher is missing name', async () => {
@@ -923,7 +1002,9 @@ describe('ccs-browser MCP server - session and interception', () => {
 
     const response = responses.find((message) => message.id === 984);
     expect((response?.result as { isError?: boolean }).isError).toBe(true);
-    expect(getResponseText(response)).toContain('Browser MCP failed: headerMatchers.name is required');
+    expect(getResponseText(response)).toContain(
+      'Browser MCP failed: headerMatchers.name is required'
+    );
   });
 
   it('rejects intercept rules when a header matcher has no value matcher', async () => {
@@ -947,7 +1028,9 @@ describe('ccs-browser MCP server - session and interception', () => {
 
     const response = responses.find((message) => message.id === 985);
     expect((response?.result as { isError?: boolean }).isError).toBe(true);
-    expect(getResponseText(response)).toContain('Browser MCP failed: headerMatchers entry must include valueIncludes or valueRegex');
+    expect(getResponseText(response)).toContain(
+      'Browser MCP failed: headerMatchers entry must include valueIncludes or valueRegex'
+    );
   });
 
   it('rejects intercept rules when no matching condition is provided', async () => {
@@ -971,7 +1054,9 @@ describe('ccs-browser MCP server - session and interception', () => {
 
     const response = responses.find((message) => message.id === 986);
     expect((response?.result as { isError?: boolean }).isError).toBe(true);
-    expect(getResponseText(response)).toContain('Browser MCP failed: at least one matching condition is required');
+    expect(getResponseText(response)).toContain(
+      'Browser MCP failed: at least one matching condition is required'
+    );
   });
 
   it('adds a resourceType interception rule and lists its richer matching summary', async () => {
@@ -1556,7 +1641,9 @@ describe('ccs-browser MCP server - session and interception', () => {
 
     const response = responses.find((message) => message.id === 968);
     expect((response?.result as { isError?: boolean }).isError).toBe(true);
-    expect(getResponseText(response)).toContain('Browser MCP failed: statusCode must be an integer between 100 and 599');
+    expect(getResponseText(response)).toContain(
+      'Browser MCP failed: statusCode must be an integer between 100 and 599'
+    );
   });
 
   it('rejects fulfill rules when responseHeaders is not an array', async () => {
@@ -1582,7 +1669,9 @@ describe('ccs-browser MCP server - session and interception', () => {
 
     const response = responses.find((message) => message.id === 969);
     expect((response?.result as { isError?: boolean }).isError).toBe(true);
-    expect(getResponseText(response)).toContain('Browser MCP failed: responseHeaders must be an array');
+    expect(getResponseText(response)).toContain(
+      'Browser MCP failed: responseHeaders must be an array'
+    );
   });
 
   it('rejects fulfill rules when a responseHeaders entry is missing name', async () => {
@@ -1608,7 +1697,9 @@ describe('ccs-browser MCP server - session and interception', () => {
 
     const response = responses.find((message) => message.id === 970);
     expect((response?.result as { isError?: boolean }).isError).toBe(true);
-    expect(getResponseText(response)).toContain('Browser MCP failed: responseHeaders.name is required');
+    expect(getResponseText(response)).toContain(
+      'Browser MCP failed: responseHeaders.name is required'
+    );
   });
 
   it('rejects fulfill rules when body is not a string', async () => {
@@ -1657,7 +1748,9 @@ describe('ccs-browser MCP server - session and interception', () => {
 
     const response = responses.find((message) => message.id === 1001);
     expect((response?.result as { isError?: boolean }).isError).toBe(true);
-    expect(getResponseText(response)).toContain('Browser MCP failed: urlRegex must be a valid regular expression');
+    expect(getResponseText(response)).toContain(
+      'Browser MCP failed: urlRegex must be a valid regular expression'
+    );
   });
 
   it('rejects intercept rules when headerMatchers.valueRegex is invalid', async () => {
@@ -1681,7 +1774,9 @@ describe('ccs-browser MCP server - session and interception', () => {
 
     const response = responses.find((message) => message.id === 1002);
     expect((response?.result as { isError?: boolean }).isError).toBe(true);
-    expect(getResponseText(response)).toContain('Browser MCP failed: headerMatchers.valueRegex must be a valid regular expression');
+    expect(getResponseText(response)).toContain(
+      'Browser MCP failed: headerMatchers.valueRegex must be a valid regular expression'
+    );
   });
 
   it('removes fulfill rules and request summaries after the bound page is closed', async () => {
@@ -1694,13 +1789,22 @@ describe('ccs-browser MCP server - session and interception', () => {
           currentUrl: 'https://example.com/mocked',
           intercept: {
             pausedRequests: [
-              { requestId: 'req-fulfill-close', url: 'https://example.com/api/mock/close', method: 'GET' },
+              {
+                requestId: 'req-fulfill-close',
+                url: 'https://example.com/api/mock/close',
+                method: 'GET',
+              },
             ],
           },
         },
       ],
       [
-        { jsonrpc: '2.0', id: 972, method: 'tools/call', params: { name: 'browser_select_page', arguments: { pageIndex: 1 } } },
+        {
+          jsonrpc: '2.0',
+          id: 972,
+          method: 'tools/call',
+          params: { name: 'browser_select_page', arguments: { pageIndex: 1 } },
+        },
         {
           jsonrpc: '2.0',
           id: 973,
@@ -1715,19 +1819,45 @@ describe('ccs-browser MCP server - session and interception', () => {
             },
           },
         },
-        { jsonrpc: '2.0', id: 974, method: 'tools/call', params: { name: 'browser_list_requests', arguments: {} } },
-        { jsonrpc: '2.0', id: 975, method: 'tools/call', params: { name: 'browser_close_page', arguments: { pageId: 'page-2' } } },
-        { jsonrpc: '2.0', id: 976, method: 'tools/call', params: { name: 'browser_list_intercept_rules', arguments: {} } },
-        { jsonrpc: '2.0', id: 977, method: 'tools/call', params: { name: 'browser_list_requests', arguments: {} } },
+        {
+          jsonrpc: '2.0',
+          id: 974,
+          method: 'tools/call',
+          params: { name: 'browser_list_requests', arguments: {} },
+        },
+        {
+          jsonrpc: '2.0',
+          id: 975,
+          method: 'tools/call',
+          params: { name: 'browser_close_page', arguments: { pageId: 'page-2' } },
+        },
+        {
+          jsonrpc: '2.0',
+          id: 976,
+          method: 'tools/call',
+          params: { name: 'browser_list_intercept_rules', arguments: {} },
+        },
+        {
+          jsonrpc: '2.0',
+          id: 977,
+          method: 'tools/call',
+          params: { name: 'browser_list_requests', arguments: {} },
+        },
       ],
       {
         responseTimeoutMs: 12000,
       }
     );
 
-    expect(getResponseText(responses.find((message) => message.id === 974))).toContain('requestId: req-fulfill-close');
-    expect(getResponseText(responses.find((message) => message.id === 976))).not.toContain('pageId: page-2');
-    expect(getResponseText(responses.find((message) => message.id === 977))).not.toContain('requestId: req-fulfill-close');
+    expect(getResponseText(responses.find((message) => message.id === 974))).toContain(
+      'requestId: req-fulfill-close'
+    );
+    expect(getResponseText(responses.find((message) => message.id === 976))).not.toContain(
+      'pageId: page-2'
+    );
+    expect(getResponseText(responses.find((message) => message.id === 977))).not.toContain(
+      'requestId: req-fulfill-close'
+    );
   });
 
   it('returns only the requested number of recent requests', async () => {
@@ -1739,8 +1869,18 @@ describe('ccs-browser MCP server - session and interception', () => {
           currentUrl: 'https://example.com/',
           intercept: {
             pausedRequests: [
-              { requestId: 'req-1', url: 'https://example.com/api/one', method: 'GET', resourceType: 'XHR' },
-              { requestId: 'req-2', url: 'https://example.com/api/two', method: 'GET', resourceType: 'XHR' },
+              {
+                requestId: 'req-1',
+                url: 'https://example.com/api/one',
+                method: 'GET',
+                resourceType: 'XHR',
+              },
+              {
+                requestId: 'req-2',
+                url: 'https://example.com/api/two',
+                method: 'GET',
+                resourceType: 'XHR',
+              },
             ],
           },
         },
@@ -1813,5 +1953,4 @@ describe('ccs-browser MCP server - session and interception', () => {
     const listText = getResponseText(responses.find((message) => message.id === 956));
     expect(listText).toBe('status: empty');
   });
-
 });
