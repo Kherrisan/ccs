@@ -137,6 +137,30 @@ function resetMockState(): void {
 /**
  * Invoke the hook with JSON input
  */
+function buildHookEnv(env: Record<string, string> = {}): NodeJS.ProcessEnv {
+  const baseEnv: NodeJS.ProcessEnv = { ...process.env };
+  for (const key of Object.keys(baseEnv)) {
+    if (
+      key.startsWith('CCS_IMAGE_ANALYSIS_') ||
+      key === 'CCS_CURRENT_PROVIDER' ||
+      key === 'CCS_PROFILE_TYPE' ||
+      key === 'CCS_CLIPROXY_API_KEY' ||
+      key === 'CCS_CLIPROXY_PORT'
+    ) {
+      delete baseEnv[key];
+    }
+  }
+
+  return {
+    ...baseEnv,
+    CCS_CLIPROXY_API_KEY: CLIPROXY_API_KEY,
+    CCS_CLIPROXY_PORT: String(MOCK_PORT),
+    CCS_IMAGE_ANALYSIS_PROVIDER_MODELS: DEFAULT_PROVIDER_MODELS,
+    CCS_CURRENT_PROVIDER: DEFAULT_PROVIDER,
+    ...env,
+  };
+}
+
 function invokeHook(
   input: object,
   env: Record<string, string> = {}
@@ -144,15 +168,7 @@ function invokeHook(
   const result = spawnSync('node', [HOOK_PATH], {
     input: JSON.stringify(input),
     encoding: 'utf8',
-    env: {
-      ...process.env,
-      CCS_CLIPROXY_API_KEY: CLIPROXY_API_KEY,
-      CCS_CLIPROXY_PORT: String(MOCK_PORT),
-      // Default provider config for tests (can be overridden)
-      CCS_IMAGE_ANALYSIS_PROVIDER_MODELS: DEFAULT_PROVIDER_MODELS,
-      CCS_CURRENT_PROVIDER: DEFAULT_PROVIDER,
-      ...env,
-    },
+    env: buildHookEnv(env),
     timeout: 10000, // 10 second timeout per test
   });
 
@@ -169,14 +185,7 @@ function invokeHookAsync(
 ): Promise<{ code: number; stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
     const child = spawn('node', [HOOK_PATH], {
-      env: {
-        ...process.env,
-        CCS_CLIPROXY_API_KEY: CLIPROXY_API_KEY,
-        CCS_CLIPROXY_PORT: String(MOCK_PORT),
-        CCS_IMAGE_ANALYSIS_PROVIDER_MODELS: DEFAULT_PROVIDER_MODELS,
-        CCS_CURRENT_PROVIDER: DEFAULT_PROVIDER,
-        ...env,
-      },
+      env: buildHookEnv(env),
       stdio: ['pipe', 'pipe', 'pipe'],
     });
 
