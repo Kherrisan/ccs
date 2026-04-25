@@ -13,6 +13,27 @@ The 6 open questions from the brainstorm phase, resolved before implementation.
 
 ---
 
+## v1.1 revision (2026-04-25) — identity-strip patterns
+
+Phase 2 attempted to migrate `home` and `cliproxy` to a one-size-fits-all `PageShell + PageHeader` chrome. Both regressed on density:
+
+- **home** had a single-row hero (logo + title + version + 4 inline stats) — splitting it into a stacked PageHeader + KpiRow doubled vertical footprint and lost scannability
+- **cliproxy** had identity in the left rail — adding a top PageHeader duplicated branding and stole ~80px from the 3-pane body
+
+**Resolution:** the design system is restructured around three identity-strip patterns extracted from the existing canonical references:
+
+| # | Pattern | Reference | When |
+|---|---------|-----------|------|
+| 7a | `HeroBar` (1-row dense) | `pages/home.tsx` | Dashboard pages with ≤4 hero stats |
+| 7b | Rail-anchored identity (no top chrome) | `pages/cliproxy.tsx` | Multi-entity Config pages where rail carries brand |
+| 7c | `PageHeader` (current) | `pages/health.tsx` | Pages where description / status info is non-redundant |
+
+Phase 2's home + cliproxy migrations are reverted. Health stays migrated (Monitor archetype + PageHeader works there). Future page migrations adapt to whichever pattern fits, NOT the other way around.
+
+**Why bottom-up:** the existing references already proved their patterns work in production. The job of the design system is to formalize what works, not impose what should.
+
+---
+
 ## How to revisit
 
 If a decision turns out wrong in practice, update this doc and bump the affected primitive — don't silently drift. Each row above should be appended with a "Revised: <date> · <reason>" line if changed.

@@ -121,9 +121,15 @@ function Intro() {
       </Badge>
       <h1 className="text-3xl font-bold tracking-tight">CCS Dashboard Design System</h1>
       <p className="text-muted-foreground">
-        Two archetypes — <strong>Config</strong> (3-pane: list | form | JSON) and{' '}
-        <strong>Monitor</strong> (KPI row + grid) — wrapped by <code>PageShell</code>. Every page
-        picks one archetype.
+        Three identity-strip patterns — <strong>HeroBar</strong> (one-row dense, see <code>/</code>{' '}
+        home page), <strong>rail-anchored</strong> (no top chrome, see <code>/cliproxy</code>), and{' '}
+        <strong>PageHeader</strong> (title + description + actions, see <code>/health</code>) — and
+        two body archetypes: <strong>Config</strong> (3-pane: list / form / JSON) and{' '}
+        <strong>Monitor</strong> (KPI row + grid). Pick the identity strip that matches your
+        page&apos;s shape; pick the body archetype your content needs.
+      </p>
+      <p className="text-xs text-muted-foreground">
+        See <code>ui/docs/design-system.md</code> for the decision table.
       </p>
     </header>
   );
