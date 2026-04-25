@@ -11,6 +11,8 @@ import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Check, X, RefreshCw, Sparkles, Zap, GitBranch, Trash2 } from 'lucide-react';
+import { PageShell, PageHeader } from '@/components/page-shell';
+import { ConfigLayout } from '@/components/config-layout';
 import { QuickSetupWizard } from '@/components/quick-setup-wizard';
 import { AddAccountDialog } from '@/components/account/add-account-dialog';
 import { AccountSafetyWarningCard } from '@/components/account/account-safety-warning-card';
@@ -352,234 +354,238 @@ export function CliproxyPage() {
     setSelectedProvider(null);
   };
 
-  return (
-    <div className="flex h-full min-h-0 overflow-hidden">
-      {/* Left Sidebar */}
-      <div className="w-80 border-r flex flex-col bg-muted/30">
-        {/* Header */}
-        <div className="p-4 border-b bg-background">
-          <div className="flex items-center justify-between mb-1">
-            <div className="flex items-center gap-2">
-              <Zap className="w-5 h-5 text-primary" />
-              <h1 className="font-semibold">{updateCheck?.backendLabel ?? 'CLIProxy'}</h1>
-            </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8"
-              onClick={handleRefresh}
-              disabled={isFetching}
-            >
-              <RefreshCw className={cn('w-4 h-4', isFetching && 'animate-spin')} />
-            </Button>
+  const sidebar = (
+    <div className="flex h-full flex-col bg-muted/30">
+      {/* Header inside the rail: Quick Setup CTA */}
+      <div className="border-b bg-background p-3">
+        <Button
+          variant="default"
+          size="sm"
+          className="w-full gap-2"
+          onClick={() => setWizardOpen(true)}
+        >
+          <Sparkles className="w-4 h-4" />
+          {t('cliproxyPage.quickSetup')}
+        </Button>
+      </div>
+
+      {/* Providers List */}
+      <ScrollArea className="flex-1">
+        <div className="p-2">
+          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide px-3 py-2">
+            {t('cliproxyPage.providers')}
           </div>
-          <p className="text-xs text-muted-foreground mb-3">
-            {t('cliproxyPage.accountManagement')}
-          </p>
-
-          <Button
-            variant="default"
-            size="sm"
-            className="w-full gap-2"
-            onClick={() => setWizardOpen(true)}
-          >
-            <Sparkles className="w-4 h-4" />
-            {t('cliproxyPage.quickSetup')}
-          </Button>
-        </div>
-
-        {/* Providers List */}
-        <ScrollArea className="flex-1">
-          <div className="p-2">
-            <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide px-3 py-2">
-              {t('cliproxyPage.providers')}
+          {authLoading ? (
+            <div className="space-y-2 px-2">
+              {[1, 2, 3, 4].map((i) => (
+                <Skeleton key={i} className="h-14 w-full rounded-lg" />
+              ))}
             </div>
-            {authLoading ? (
-              <div className="space-y-2 px-2">
-                {[1, 2, 3, 4].map((i) => (
-                  <Skeleton key={i} className="h-14 w-full rounded-lg" />
-                ))}
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {providerSections.map((section) => (
-                  <div key={section.id} className="space-y-1">
-                    <div className="px-3">
-                      <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                        {t(section.labelKey)}
-                      </div>
-                      <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-                        {t(section.hintKey)}
-                      </p>
+          ) : (
+            <div className="space-y-4">
+              {providerSections.map((section) => (
+                <div key={section.id} className="space-y-1">
+                  <div className="px-3">
+                    <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                      {t(section.labelKey)}
                     </div>
-                    <div className="space-y-1">
-                      {section.items.map((status) => (
-                        <ProviderSidebarItem
-                          key={status.provider}
-                          status={status}
-                          isSelected={effectiveProvider === status.provider}
-                          onSelect={() => handleSelectProvider(status.provider)}
-                        />
-                      ))}
-                    </div>
+                    <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+                      {t(section.hintKey)}
+                    </p>
                   </div>
+                  <div className="space-y-1">
+                    {section.items.map((status) => (
+                      <ProviderSidebarItem
+                        key={status.provider}
+                        status={status}
+                        isSelected={effectiveProvider === status.provider}
+                        onSelect={() => handleSelectProvider(status.provider)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Variants Section */}
+          {variants.length > 0 && (
+            <>
+              <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide px-3 py-2 mt-4 flex items-center gap-1.5">
+                <GitBranch className="w-3 h-3" />
+                {t('cliproxyPage.variants')}
+              </div>
+              <div className="space-y-1">
+                {variants.map((variant) => (
+                  <VariantSidebarItem
+                    key={variant.name}
+                    variant={variant}
+                    parentAuth={providers.find((p) => p.provider === variant.provider)}
+                    isSelected={selectedVariant === variant.name}
+                    onSelect={() => handleSelectVariant(variant.name)}
+                    onDelete={() => deleteMutation.mutate(variant.name)}
+                    isDeleting={deleteMutation.isPending}
+                  />
                 ))}
               </div>
-            )}
-
-            {/* Variants Section */}
-            {variants.length > 0 && (
-              <>
-                <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide px-3 py-2 mt-4 flex items-center gap-1.5">
-                  <GitBranch className="w-3 h-3" />
-                  {t('cliproxyPage.variants')}
-                </div>
-                <div className="space-y-1">
-                  {variants.map((variant) => (
-                    <VariantSidebarItem
-                      key={variant.name}
-                      variant={variant}
-                      parentAuth={providers.find((p) => p.provider === variant.provider)}
-                      isSelected={selectedVariant === variant.name}
-                      onSelect={() => handleSelectVariant(variant.name)}
-                      onDelete={() => deleteMutation.mutate(variant.name)}
-                      isDeleting={deleteMutation.isPending}
-                    />
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
-        </ScrollArea>
-
-        {/* Proxy Status Widget */}
-        <div className="p-3 border-t">
-          <ProxyStatusWidget />
+            </>
+          )}
         </div>
+      </ScrollArea>
 
-        {/* Footer Stats */}
-        <div className="p-3 border-t bg-background text-xs text-muted-foreground">
-          <div className="flex items-center justify-between">
-            <span>{t('cliproxyPage.providerCount', { count: providers.length })}</span>
-            <span className="flex items-center gap-1">
-              <Check className="w-3 h-3 text-green-600" />
-              {t('cliproxyPage.connectedCount', {
-                count: providers.filter((p) => p.authenticated).length,
-              })}
-            </span>
-          </div>
-        </div>
+      {/* Proxy Status Widget */}
+      <div className="border-t p-3">
+        <ProxyStatusWidget />
       </div>
 
-      {/* Right Panel */}
-      <div className="flex-1 flex min-w-0 flex-col overflow-hidden bg-background">
-        {selectedVariantData && parentAuthForVariant ? (
-          <>
-            <ProviderEditor
-              provider={selectedVariantData.name}
-              displayName={t('cliproxyPage.variantDisplay', {
-                name: selectedVariantData.name,
+      {/* Footer Stats */}
+      <div className="border-t bg-background p-3 text-xs text-muted-foreground">
+        <div className="flex items-center justify-between">
+          <span>{t('cliproxyPage.providerCount', { count: providers.length })}</span>
+          <span className="flex items-center gap-1">
+            <Check className="w-3 h-3 text-green-600" />
+            {t('cliproxyPage.connectedCount', {
+              count: providers.filter((p) => p.authenticated).length,
+            })}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+
+  const detail = (
+    <div className="flex h-full min-w-0 flex-col overflow-hidden bg-background">
+      {selectedVariantData && parentAuthForVariant ? (
+        <>
+          <ProviderEditor
+            provider={selectedVariantData.name}
+            displayName={t('cliproxyPage.variantDisplay', {
+              name: selectedVariantData.name,
+              provider: selectedVariantData.provider,
+            })}
+            authStatus={parentAuthForVariant}
+            catalog={catalogs[selectedVariantData.provider]}
+            routing={routingHints[selectedVariantData.provider]}
+            logoProvider={selectedVariantData.provider}
+            baseProvider={selectedVariantData.provider}
+            defaultTarget={selectedVariantData.target}
+            isRemoteMode={isRemoteMode}
+            port={selectedVariantData.port}
+            topNotice={
+              showAccountSafetyWarning ? (
+                <AccountSafetyWarningCard compact showProxySettingsLink />
+              ) : undefined
+            }
+            onAddAccount={() =>
+              setAddAccountProvider({
                 provider: selectedVariantData.provider,
-              })}
-              authStatus={parentAuthForVariant}
-              catalog={catalogs[selectedVariantData.provider]}
-              routing={routingHints[selectedVariantData.provider]}
-              logoProvider={selectedVariantData.provider}
-              baseProvider={selectedVariantData.provider}
-              defaultTarget={selectedVariantData.target}
-              isRemoteMode={isRemoteMode}
-              port={selectedVariantData.port}
-              topNotice={
-                showAccountSafetyWarning ? (
-                  <AccountSafetyWarningCard compact showProxySettingsLink />
-                ) : undefined
-              }
-              onAddAccount={() =>
-                setAddAccountProvider({
-                  provider: selectedVariantData.provider,
-                  displayName: parentAuthForVariant.displayName,
-                  isFirstAccount: (parentAuthForVariant.accounts?.length || 0) === 0,
-                })
-              }
-              onSetDefault={(accountId) =>
-                setDefaultMutation.mutate({
-                  provider: selectedVariantData.provider,
-                  accountId,
-                })
-              }
-              onRemoveAccount={(accountId) =>
-                removeMutation.mutate({
-                  provider: selectedVariantData.provider,
-                  accountId,
-                })
-              }
-              onPauseToggle={(accountId, paused) =>
-                handlePauseToggle(selectedVariantData.provider, accountId, paused)
-              }
-              onSoloMode={(accountId) => handleSoloMode(selectedVariantData.provider, accountId)}
-              onBulkPause={(accountIds) =>
-                handleBulkPause(selectedVariantData.provider, accountIds)
-              }
-              onBulkResume={(accountIds) =>
-                handleBulkResume(selectedVariantData.provider, accountIds)
-              }
-              isRemovingAccount={removeMutation.isPending}
-              isPausingAccount={pauseMutation.isPending || resumeMutation.isPending}
-              isSoloingAccount={soloMutation.isPending}
-              isBulkPausing={bulkPauseMutation.isPending}
-              isBulkResuming={bulkResumeMutation.isPending}
-            />
-          </>
-        ) : selectedStatus ? (
-          <>
-            <ProviderEditor
-              provider={selectedStatus.provider}
-              displayName={selectedStatus.displayName}
-              authStatus={selectedStatus}
-              catalog={catalogs[selectedStatus.provider]}
-              routing={routingHints[selectedStatus.provider]}
-              isRemoteMode={isRemoteMode}
-              topNotice={
-                showAccountSafetyWarning ? (
-                  <AccountSafetyWarningCard compact showProxySettingsLink />
-                ) : undefined
-              }
-              onAddAccount={() =>
-                setAddAccountProvider({
-                  provider: selectedStatus.provider,
-                  displayName: selectedStatus.displayName,
-                  isFirstAccount: (selectedStatus.accounts?.length || 0) === 0,
-                })
-              }
-              onSetDefault={(accountId) =>
-                setDefaultMutation.mutate({
-                  provider: selectedStatus.provider,
-                  accountId,
-                })
-              }
-              onRemoveAccount={(accountId) =>
-                removeMutation.mutate({
-                  provider: selectedStatus.provider,
-                  accountId,
-                })
-              }
-              onPauseToggle={(accountId, paused) =>
-                handlePauseToggle(selectedStatus.provider, accountId, paused)
-              }
-              onSoloMode={(accountId) => handleSoloMode(selectedStatus.provider, accountId)}
-              onBulkPause={(accountIds) => handleBulkPause(selectedStatus.provider, accountIds)}
-              onBulkResume={(accountIds) => handleBulkResume(selectedStatus.provider, accountIds)}
-              isRemovingAccount={removeMutation.isPending}
-              isPausingAccount={pauseMutation.isPending || resumeMutation.isPending}
-              isSoloingAccount={soloMutation.isPending}
-              isBulkPausing={bulkPauseMutation.isPending}
-              isBulkResuming={bulkResumeMutation.isPending}
-            />
-          </>
-        ) : (
-          <EmptyProviderState onSetup={() => setWizardOpen(true)} />
-        )}
-      </div>
+                displayName: parentAuthForVariant.displayName,
+                isFirstAccount: (parentAuthForVariant.accounts?.length || 0) === 0,
+              })
+            }
+            onSetDefault={(accountId) =>
+              setDefaultMutation.mutate({
+                provider: selectedVariantData.provider,
+                accountId,
+              })
+            }
+            onRemoveAccount={(accountId) =>
+              removeMutation.mutate({
+                provider: selectedVariantData.provider,
+                accountId,
+              })
+            }
+            onPauseToggle={(accountId, paused) =>
+              handlePauseToggle(selectedVariantData.provider, accountId, paused)
+            }
+            onSoloMode={(accountId) => handleSoloMode(selectedVariantData.provider, accountId)}
+            onBulkPause={(accountIds) => handleBulkPause(selectedVariantData.provider, accountIds)}
+            onBulkResume={(accountIds) =>
+              handleBulkResume(selectedVariantData.provider, accountIds)
+            }
+            isRemovingAccount={removeMutation.isPending}
+            isPausingAccount={pauseMutation.isPending || resumeMutation.isPending}
+            isSoloingAccount={soloMutation.isPending}
+            isBulkPausing={bulkPauseMutation.isPending}
+            isBulkResuming={bulkResumeMutation.isPending}
+          />
+        </>
+      ) : selectedStatus ? (
+        <>
+          <ProviderEditor
+            provider={selectedStatus.provider}
+            displayName={selectedStatus.displayName}
+            authStatus={selectedStatus}
+            catalog={catalogs[selectedStatus.provider]}
+            routing={routingHints[selectedStatus.provider]}
+            isRemoteMode={isRemoteMode}
+            topNotice={
+              showAccountSafetyWarning ? (
+                <AccountSafetyWarningCard compact showProxySettingsLink />
+              ) : undefined
+            }
+            onAddAccount={() =>
+              setAddAccountProvider({
+                provider: selectedStatus.provider,
+                displayName: selectedStatus.displayName,
+                isFirstAccount: (selectedStatus.accounts?.length || 0) === 0,
+              })
+            }
+            onSetDefault={(accountId) =>
+              setDefaultMutation.mutate({
+                provider: selectedStatus.provider,
+                accountId,
+              })
+            }
+            onRemoveAccount={(accountId) =>
+              removeMutation.mutate({
+                provider: selectedStatus.provider,
+                accountId,
+              })
+            }
+            onPauseToggle={(accountId, paused) =>
+              handlePauseToggle(selectedStatus.provider, accountId, paused)
+            }
+            onSoloMode={(accountId) => handleSoloMode(selectedStatus.provider, accountId)}
+            onBulkPause={(accountIds) => handleBulkPause(selectedStatus.provider, accountIds)}
+            onBulkResume={(accountIds) => handleBulkResume(selectedStatus.provider, accountIds)}
+            isRemovingAccount={removeMutation.isPending}
+            isPausingAccount={pauseMutation.isPending || resumeMutation.isPending}
+            isSoloingAccount={soloMutation.isPending}
+            isBulkPausing={bulkPauseMutation.isPending}
+            isBulkResuming={bulkResumeMutation.isPending}
+          />
+        </>
+      ) : (
+        <EmptyProviderState onSetup={() => setWizardOpen(true)} />
+      )}
+    </div>
+  );
+
+  return (
+    <PageShell>
+      <PageHeader
+        title={
+          <span className="flex items-center gap-2">
+            <Zap className="w-5 h-5 text-primary" />
+            {updateCheck?.backendLabel ?? 'CLIProxy'}
+          </span>
+        }
+        description={t('cliproxyPage.accountManagement')}
+        actions={
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={handleRefresh}
+            disabled={isFetching}
+            aria-label="Refresh"
+          >
+            <RefreshCw className={cn('w-4 h-4', isFetching && 'animate-spin')} />
+          </Button>
+        }
+      />
+      <ConfigLayout left={sidebar} form={detail} />
 
       {/* Dialogs */}
       <QuickSetupWizard open={wizardOpen} onClose={() => setWizardOpen(false)} />
@@ -595,6 +601,6 @@ export function CliproxyPage() {
         }
         isFirstAccount={addAccountProvider?.isFirstAccount || false}
       />
-    </div>
+    </PageShell>
   );
 }
