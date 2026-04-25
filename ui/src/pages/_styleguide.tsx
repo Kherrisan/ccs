@@ -8,11 +8,26 @@
  * safe to publish in PRs without enabling Privacy mode.
  */
 import { useState } from 'react';
-import { Activity, Bot, Cloud, Cpu, Plus, RefreshCcw, ShieldCheck, Zap } from 'lucide-react';
+import {
+  Activity,
+  Bot,
+  Cloud,
+  Cpu,
+  Key,
+  Plus,
+  RefreshCcw,
+  RefreshCw,
+  ShieldCheck,
+  Sparkles,
+  Users,
+  Zap,
+} from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { cn } from '@/lib/utils';
 import { PageShell, PageHeader, EmptyState, ErrorState } from '@/components/page-shell';
 import {
   ConfigLayout,
@@ -60,7 +75,25 @@ export function StyleguidePage() {
   return (
     <div className="space-y-12 bg-muted/20 px-4 py-8 sm:px-8">
       <Intro />
-      <PrimitiveSection title="1. PageShell + PageHeader" anchor="page-shell">
+
+      <PrimitiveSection
+        title="1a. HeroBar — single-row dense identity strip (home pattern)"
+        anchor="hero-bar"
+      >
+        <DemoHeroBar />
+      </PrimitiveSection>
+
+      <PrimitiveSection
+        title="1b. Rail-anchored identity — no top chrome (cliproxy pattern)"
+        anchor="rail-anchored"
+      >
+        <DemoRailAnchored />
+      </PrimitiveSection>
+
+      <PrimitiveSection
+        title="1c. PageHeader — title + description + actions (health pattern)"
+        anchor="page-header"
+      >
         <DemoPageHeader />
       </PrimitiveSection>
 
@@ -153,7 +186,195 @@ function PrimitiveSection({
 }
 
 // -----------------------------------------------------------------------------
-// PageHeader demo
+// HeroBar demo (canonical: pages/home.tsx)
+//
+// One row packs logo + title + version + ≤4 inline stats. Optional dotted
+// background pattern. Stats are clickable when they double as nav entry points.
+// Use it for dashboard pages with a clear product identity and ≤4 hero numbers.
+// -----------------------------------------------------------------------------
+
+function DemoInlineStat({
+  title,
+  value,
+  icon: Icon,
+  variant = 'default',
+}: {
+  title: string;
+  value: string | number;
+  icon: typeof Activity;
+  variant?: 'default' | 'accent' | 'success' | 'warning';
+}) {
+  const styles = {
+    default: 'bg-muted text-muted-foreground',
+    accent: 'bg-accent/15 text-accent',
+    success: 'bg-emerald-600/15 text-emerald-700 dark:text-emerald-400',
+    warning: 'bg-amber-500/15 text-amber-700 dark:text-amber-400',
+  }[variant];
+  const valueColor = {
+    default: 'text-foreground',
+    accent: 'text-accent',
+    success: 'text-emerald-700 dark:text-emerald-400',
+    warning: 'text-amber-700 dark:text-amber-400',
+  }[variant];
+
+  return (
+    <button
+      type="button"
+      className="flex items-center gap-3 rounded-lg border bg-card/50 px-4 py-2.5 transition-all hover:-translate-y-0.5 hover:bg-card hover:shadow-sm active:scale-[0.98]"
+    >
+      <div className={cn('flex size-9 items-center justify-center rounded-md', styles)}>
+        <Icon className="size-4" />
+      </div>
+      <div className="text-left">
+        <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{title}</p>
+        <p className={cn('font-mono text-lg font-bold leading-tight', valueColor)}>{value}</p>
+      </div>
+    </button>
+  );
+}
+
+function DemoHeroBar() {
+  return (
+    <div className="space-y-6 p-6">
+      <div className="relative overflow-hidden rounded-xl border bg-gradient-to-br from-background via-background to-muted/30">
+        <div className="pointer-events-none absolute inset-0 opacity-[0.03]">
+          <div
+            className="absolute inset-0"
+            style={{
+              backgroundImage: `radial-gradient(circle at 1px 1px, currentColor 1px, transparent 0)`,
+              backgroundSize: '24px 24px',
+            }}
+          />
+        </div>
+        <div className="relative flex flex-col gap-4 p-6 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex items-center gap-4">
+            <div className="flex size-12 items-center justify-center rounded-xl bg-accent/15 text-accent">
+              <Zap className="size-6" />
+            </div>
+            <div>
+              <div className="flex items-center gap-3">
+                <h1 className="text-2xl font-bold">Demo Dashboard</h1>
+                <Badge variant="outline" className="font-mono text-xs">
+                  v1.0.0
+                </Badge>
+              </div>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Single-row dense hero — logo + title + version + inline stats
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <DemoInlineStat title="Profiles" value={4} icon={Key} variant="accent" />
+            <DemoInlineStat title="CLIProxy" value={2} icon={Zap} variant="accent" />
+            <DemoInlineStat title="Accounts" value={87} icon={Users} variant="default" />
+            <DemoInlineStat title="Health" value="23/43" icon={Activity} variant="warning" />
+          </div>
+        </div>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Body content renders below — no separate KpiRow needed since stats are absorbed into the
+        hero strip.
+      </p>
+    </div>
+  );
+}
+
+// -----------------------------------------------------------------------------
+// Rail-anchored identity demo (canonical: pages/cliproxy.tsx)
+//
+// Page identity (brand + page-level CTA + status) lives inside the left rail of
+// a Config 3-pane layout. Zero top chrome. The body archetype gets the full
+// vertical viewport. Use for multi-entity Config pages where the rail naturally
+// carries the page name.
+// -----------------------------------------------------------------------------
+
+function DemoRailAnchored() {
+  const [selectedId, setSelectedId] = useState('provider-a');
+
+  const railHeader = (
+    <div className="flex h-full flex-col bg-muted/30">
+      {/* Brand strip — replaces the global PageHeader */}
+      <div className="border-b bg-background p-4">
+        <div className="mb-1 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Zap className="size-5 text-primary" />
+            <h1 className="font-semibold">Demo Brand</h1>
+          </div>
+          <Button variant="ghost" size="icon" className="h-8 w-8">
+            <RefreshCw className="size-4" />
+          </Button>
+        </div>
+        <p className="mb-3 text-xs text-muted-foreground">Page subtitle / description</p>
+        <Button variant="default" size="sm" className="w-full gap-2">
+          <Sparkles className="size-4" /> Quick Setup
+        </Button>
+      </div>
+
+      {/* Provider list */}
+      <ScrollArea className="flex-1">
+        <div className="p-2">
+          <div className="px-3 py-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Providers
+          </div>
+          <div className="space-y-1">
+            {DEMO_PROVIDERS.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => setSelectedId(p.id)}
+                className={cn(
+                  'flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors',
+                  selectedId === p.id ? 'bg-accent text-accent-foreground' : 'hover:bg-accent/50'
+                )}
+              >
+                {p.icon}
+                <span className="flex-1 truncate">{p.label}</span>
+                <span className="text-xs text-muted-foreground">{p.badge}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      </ScrollArea>
+
+      {/* Footer status */}
+      <div className="border-t bg-background p-3 text-xs text-muted-foreground">
+        <div className="flex items-center justify-between">
+          <span>4 providers</span>
+          <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
+            <ShieldCheck className="size-3" /> 1 connected
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="flex h-[640px] flex-col">
+      {/* NOTE: NO PageHeader at the top. Identity is inside the rail. */}
+      <ConfigLayout
+        left={railHeader}
+        form={
+          <FormPane
+            header={<p className="text-sm font-semibold">Provider A</p>}
+            footer={<Button size="sm">Save</Button>}
+          >
+            <FormSection id="general" title="General">
+              <Field label="Endpoint" defaultValue="https://example.local:8317" />
+            </FormSection>
+          </FormPane>
+        }
+        json={<JsonPane title="Effective" data={DEMO_CONFIG} />}
+      />
+    </div>
+  );
+}
+
+// -----------------------------------------------------------------------------
+// PageHeader demo (canonical: pages/health.tsx)
+//
+// Traditional title row with description and trailing actions. Use when the
+// page does NOT fit either canonical hero AND the description carries
+// non-redundant context (last refresh, page hierarchy, filter state, version).
 // -----------------------------------------------------------------------------
 
 function DemoPageHeader() {
