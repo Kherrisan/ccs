@@ -127,14 +127,20 @@ export function HealthPriorityCard({ check }: HealthPriorityCardProps) {
                   {(check.fix || check.fixable) && (
                     <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
                       {check.fix && (
-                        <div className="flex-1 flex items-center gap-2 h-10 px-3 rounded-full bg-background/50 border border-border/40 group/fix">
+                        <div className="flex-1 flex items-center gap-2 h-10 px-3 rounded-full bg-background/50 border border-border/40">
                           <Terminal className="w-3.5 h-3.5 text-muted-foreground" />
                           <code className="text-xs font-mono flex-1 truncate">{check.fix}</code>
+                          {/*
+                           * Always-visible copy button. The previous design hid it behind
+                           * group-hover, which excluded keyboard users and touch-only
+                           * devices (no hover state on mobile = effectively unreachable).
+                           */}
                           <Button
                             variant="ghost"
                             size="icon"
                             onClick={copyFix}
-                            className="h-6 w-6 rounded-full opacity-0 group-hover/fix:opacity-100 transition-opacity"
+                            aria-label={t('health.copy') ?? 'Copy fix command'}
+                            className="h-6 w-6 rounded-full text-muted-foreground hover:text-foreground"
                           >
                             <Copy className="w-3 h-3" />
                           </Button>

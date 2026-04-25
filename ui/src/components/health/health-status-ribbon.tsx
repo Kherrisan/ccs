@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { Cpu, RefreshCw, Terminal, Copy } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -40,6 +41,18 @@ export function HealthStatusRibbon({
   onRefresh,
 }: HealthStatusRibbonProps) {
   const { t } = useTranslation();
+
+  // formatRelativeTime reads Date.now() during render. Without a ticking
+  // re-render, the "last scan" label freezes at whatever it showed on mount
+  // and never advances to "1 minute ago", "2 hours ago", etc. — even though
+  // the underlying lastScan timestamp is stale. Force a re-render every
+  // second; the cost is negligible (one tiny component) and the UX win is
+  // a label that actually behaves like a relative timestamp.
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const interval = setInterval(() => setTick((n) => n + 1), 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   const copyDoctorCommand = () => {
     navigator.clipboard.writeText('ccs doctor');
