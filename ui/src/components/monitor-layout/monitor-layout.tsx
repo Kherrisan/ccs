@@ -25,12 +25,17 @@ interface MonitorLayoutProps {
  *   </PageShell>
  */
 export function MonitorLayout({ kpis, children, className }: MonitorLayoutProps) {
+  // Wrapper establishes its own flex column with min-h-0 so the ScrollArea
+  // gets a definite height and can scroll its content. Without this we'd be
+  // implicitly relying on PageShell being flex-col, which is fragile.
   return (
-    <ScrollArea className={cn('flex-1', className)}>
-      <div className="space-y-4 p-4 sm:p-6">
-        {kpis}
-        {children}
-      </div>
-    </ScrollArea>
+    <div className={cn('flex min-h-0 flex-1 flex-col', className)}>
+      <ScrollArea className="flex-1">
+        <div className="space-y-4 p-4 sm:p-6">
+          {kpis}
+          {children}
+        </div>
+      </ScrollArea>
+    </div>
   );
 }

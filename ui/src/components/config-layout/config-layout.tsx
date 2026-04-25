@@ -63,11 +63,16 @@ function MobileTabs({
     { id: 'form', label: 'Configure', node: form },
     json && { id: 'json', label: 'JSON', node: json },
   ].filter(Boolean) as { id: string; label: string; node: ReactNode }[];
-  const [active, setActive] = useState(tabs[0]?.id ?? 'form');
+  const [selected, setSelected] = useState(tabs[0]?.id ?? 'form');
+
+  // Derive the effective active tab during render so a parent toggling `left`
+  // or `json` (which changes the available tabs) cannot leave us pointing at
+  // an id that no longer exists. Falls back to the first available tab.
+  const active = tabs.some((t) => t.id === selected) ? selected : (tabs[0]?.id ?? 'form');
 
   return (
     <div className={cn('flex min-h-0 flex-1 flex-col gap-3 p-3 lg:hidden', className)}>
-      <Tabs value={active} onValueChange={setActive}>
+      <Tabs value={active} onValueChange={setSelected}>
         <TabsList className="w-full">
           {tabs.map((t) => (
             <TabsTrigger key={t.id} value={t.id} className="flex-1">
