@@ -1,4 +1,12 @@
-import { AlertCircle, AlertTriangle, Copy, Terminal, Wrench, ChevronRight } from 'lucide-react';
+import {
+  AlertCircle,
+  AlertTriangle,
+  Copy,
+  Terminal,
+  Wrench,
+  ChevronRight,
+  RefreshCw,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useFixHealth, type HealthCheck } from '@/hooks/use-health';
@@ -14,7 +22,8 @@ interface HealthPriorityCardProps {
 export function HealthPriorityCard({ check }: HealthPriorityCardProps) {
   const { t } = useTranslation();
   const fixMutation = useFixHealth();
-  const [isExpanded, setIsExpanded] = useState(true);
+  const hasContent = !!(check.details || check.fix || check.fixable);
+  const [isExpanded, setIsExpanded] = useState(false);
 
   const isError = check.status === 'error';
   const Icon = isError ? AlertCircle : AlertTriangle;
@@ -44,7 +53,10 @@ export function HealthPriorityCard({ check }: HealthPriorityCardProps) {
         <div className="absolute inset-0 rounded-[calc(2rem-1px)] shadow-[inset_0_1px_1px_rgba(255,255,255,0.1)] pointer-events-none" />
 
         <div className="p-6">
-          <div className="flex items-start gap-4">
+          <div
+            className={cn('flex items-start gap-4', hasContent && 'cursor-pointer select-none')}
+            onClick={() => hasContent && setIsExpanded(!isExpanded)}
+          >
             {/* Status Icon with Ring */}
             <div
               className={cn(
@@ -58,19 +70,20 @@ export function HealthPriorityCard({ check }: HealthPriorityCardProps) {
             <div className="flex-1 min-w-0 space-y-1">
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-bold tracking-tight">{check.name}</h3>
-                <button
-                  onClick={() => setIsExpanded(!isExpanded)}
-                  className="p-1 hover:bg-muted rounded-full transition-colors"
-                >
-                  <ChevronRight
-                    className={cn(
-                      'w-5 h-5 text-muted-foreground transition-transform',
-                      isExpanded && 'rotate-90'
-                    )}
-                  />
-                </button>
+                {hasContent && (
+                  <div className="p-1 hover:bg-muted rounded-full transition-colors">
+                    <ChevronRight
+                      className={cn(
+                        'w-5 h-5 text-muted-foreground transition-transform',
+                        isExpanded && 'rotate-90'
+                      )}
+                    />
+                  </div>
+                )}
               </div>
-              <p className="text-sm font-medium leading-relaxed">{check.message}</p>
+              <p className="text-sm font-medium leading-relaxed text-muted-foreground/80">
+                {check.message}
+              </p>
             </div>
           </div>
 
@@ -118,7 +131,11 @@ export function HealthPriorityCard({ check }: HealthPriorityCardProps) {
                               : 'bg-amber-500 hover:bg-amber-600'
                           )}
                         >
-                          <Wrench className="w-4 h-4 mr-2" />
+                          {fixMutation.isPending ? (
+                            <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                          ) : (
+                            <Wrench className="w-4 h-4 mr-2" />
+                          )}
                           {t('health.applyFix')}
                         </Button>
                       )}

@@ -47,23 +47,28 @@ export function HealthPage() {
   const hasIssues = priorityChecks.length > 0;
 
   return (
-    <div className="relative min-h-[100dvh] pb-20">
+    <div className="relative pb-20 overflow-hidden">
       {/* Dynamic Background */}
-      <div className="fixed inset-0 pointer-events-none overflow-hidden">
+      <div className="absolute inset-0 pointer-events-none">
         <div
           className={cn(
-            'absolute -top-[20%] -left-[10%] w-[70%] h-[70%] blur-[120px] rounded-full opacity-[0.08] transition-colors duration-1000',
+            'absolute top-[5%] -left-[5%] w-[60%] h-[60%] blur-[100px] rounded-full opacity-[0.08] transition-colors duration-1000',
             hasIssues ? 'bg-rose-500' : 'bg-emerald-500'
           )}
         />
         <div
           className={cn(
-            'absolute -bottom-[20%] -right-[10%] w-[60%] h-[60%] blur-[120px] rounded-full opacity-[0.05] transition-colors duration-1000',
+            'absolute -bottom-[5%] -right-[5%] w-[50%] h-[50%] blur-[100px] rounded-full opacity-[0.06] transition-colors duration-1000',
             hasIssues ? 'bg-amber-500' : 'bg-blue-500'
           )}
         />
-        {/* Grain overlay */}
-        <div className="absolute inset-0 opacity-[0.02] mix-blend-overlay bg-[url('https://grainy-gradients.vercel.app/noise.svg')]" />
+        {/* Grain overlay - Local SVG data URI for reliability */}
+        <div
+          className="absolute inset-0 opacity-[0.03] mix-blend-overlay"
+          style={{
+            backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E")`,
+          }}
+        />
       </div>
 
       <div className="relative p-6 max-w-6xl mx-auto space-y-12">
