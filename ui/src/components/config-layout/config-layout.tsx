@@ -1,6 +1,31 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
+
+const DESKTOP_BREAKPOINT_PX = 1024;
+
+/**
+ * Track whether the viewport meets the desktop breakpoint.
+ * Used to render EITHER the 3-pane grid OR the mobile tabs — never both.
+ * Rendering both at once duplicates FormSection ids in the DOM, which breaks
+ * SectionRail scroll-spy (getElementById returns the hidden desktop copy first).
+ */
+function useIsDesktop(): boolean {
+  const [isDesktop, setIsDesktop] = useState(() =>
+    typeof window === 'undefined'
+      ? true // SSR-safe default; harmless on first paint
+      : window.matchMedia(`(min-width: ${DESKTOP_BREAKPOINT_PX}px)`).matches
+  );
+
+  useEffect(() => {
+    const mql = window.matchMedia(`(min-width: ${DESKTOP_BREAKPOINT_PX}px)`);
+    const onChange = (e: MediaQueryListEvent) => setIsDesktop(e.matches);
+    mql.addEventListener('change', onChange);
+    return () => mql.removeEventListener('change', onChange);
+  }, []);
+
+  return isDesktop;
+}
 
 interface ConfigLayoutProps {
   /** Left rail: <ListPane> for multi-entity, <SectionRail> for single-entity, omit for none. */
@@ -24,16 +49,22 @@ interface ConfigLayoutProps {
  * - <ConfigLayout …/>                          // no rail
  */
 export function ConfigLayout({ left, form, json, className }: ConfigLayoutProps) {
-  return (
-    <>
-      {/* Desktop: 3-pane grid */}
+  const isDesktop = useIsDesktop();
+
+  // CRITICAL: render exactly one layout at a time. Rendering both and
+  // toggling visibility via Tailwind `hidden lg:grid` would mount two copies
+  // of every FormSection — SectionRail's scroll-spy and click-to-jump use
+  // document.getElementById() which would resolve to the (hidden) desktop
+  // copy first on mobile, breaking the rail entirely.
+  if (isDesktop) {
+    return (
       <div
         className={cn(
-          'hidden min-h-0 flex-1 lg:grid lg:gap-4 lg:p-4',
-          left && json && 'lg:grid-cols-[260px_minmax(0,1fr)_360px]',
-          left && !json && 'lg:grid-cols-[260px_minmax(0,1fr)]',
-          !left && json && 'lg:grid-cols-[minmax(0,1fr)_360px]',
-          !left && !json && 'lg:grid-cols-1',
+          'grid min-h-0 flex-1 gap-4 p-4',
+          left && json && 'grid-cols-[260px_minmax(0,1fr)_360px]',
+          left && !json && 'grid-cols-[260px_minmax(0,1fr)]',
+          !left && json && 'grid-cols-[minmax(0,1fr)_360px]',
+          !left && !json && 'grid-cols-1',
           className
         )}
       >
@@ -45,11 +76,10 @@ export function ConfigLayout({ left, form, json, className }: ConfigLayoutProps)
           <aside className="min-w-0 overflow-hidden rounded-xl border bg-card">{json}</aside>
         )}
       </div>
+    );
+  }
 
-      {/* Mobile/tablet: tabs */}
-      <MobileTabs left={left} form={form} json={json} className={className} />
-    </>
-  );
+  return <MobileTabs left={left} form={form} json={json} className={className} />;
 }
 
 function MobileTabs({
@@ -71,7 +101,7 @@ function MobileTabs({
   const active = tabs.some((t) => t.id === selected) ? selected : (tabs[0]?.id ?? 'form');
 
   return (
-    <div className={cn('flex min-h-0 flex-1 flex-col gap-3 p-3 lg:hidden', className)}>
+    <div className={cn('flex min-h-0 flex-1 flex-col gap-3 p-3', className)}>
       <Tabs value={active} onValueChange={setSelected}>
         <TabsList className="w-full">
           {tabs.map((t) => (
