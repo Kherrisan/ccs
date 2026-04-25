@@ -1,36 +1,116 @@
 # CCS Dashboard Design System
 
-The dashboard ships **two page archetypes**. Every page picks exactly one. All pages share the same outer chrome via `PageShell` + `PageHeader`.
+A page-level design system extracted from the **canonical reference pages** — `home` and `cliproxy` — that already prove the patterns work in production. New pages should adapt to these references, not the other way around.
+
+Some pages legitimately need a bespoke design (the redesigned `health` page is the current example) — when content shape demands custom hierarchy, the system should step out of the way rather than force the page into a wrong-fit archetype.
 
 > Live preview in dev: `bun run dev` then visit `/_styleguide`.
 
 ---
 
-## 1. The shell — every page
+## 1. Identity-strip patterns (pick one per page)
+
+Three patterns cover every page in the dashboard. The choice depends on what your page already has.
+
+### 1a. `HeroBar` — single-row dense hero
+
+**Canonical reference:** `pages/home.tsx`
 
 ```
-PageShell
-├─ PageHeader   (title · description · status · actions)
-└─ <archetype body>
+┌────────────────────────────────────────────────────────────────────┐
+│ [logo]  Title  [version]   ┃  [Stat] [Stat] [Stat] [Stat]          │
+└────────────────────────────────────────────────────────────────────┘
 ```
 
-```tsx
-<PageShell>
-  <PageHeader title="Cliproxy" status={…} actions={…} />
-  <ConfigLayout … />     {/* OR <MonitorLayout> */}
-</PageShell>
+One row packs logo + title + version + ≤4 inline stats. Optional subtle dotted-pattern background. Stats are clickable when they double as navigation entry points.
+
+**Use it when:**
+- The page is a dashboard / monitor with a clear product identity
+- ≤4 hero stats summarize the page in numbers
+- Vertical real estate matters (this is half the height of a stacked PageHeader + KpiRow)
+
+**Building blocks:**
+- `<HeroSection version={…}/>` — logo + title + subtitle from `components/layout/hero-section.tsx`
+- `<InlineStat title value icon variant onClick/>` — clickable stat tile (extracted from `home.tsx`); promote to a shared primitive when a 2nd page adopts it
+
+### 1b. Rail-anchored identity — no top chrome
+
+**Canonical reference:** `pages/cliproxy.tsx`
+
+```
+┌──────────┬─────────────────────────────────────────────────────────┐
+│ ⚡ Brand  │                                                         │
+│ subtitle │                                                         │
+│ [QSetup] │  full-height 3-pane body                                │
+│          │                                                         │
+│ • prov A │  (form + raw json fill the entire viewport)             │
+│ • prov B │                                                         │
+│  …       │                                                         │
+│ [status] │                                                         │
+└──────────┴─────────────────────────────────────────────────────────┘
 ```
 
-Header rules:
-- `title` is mandatory; `description` optional 1-line subtitle.
-- `status` slot: small badges/chips (e.g. "Running · :8317").
-- `actions` slot: button group; **primary action belongs in FormPane footer**, not here, for Config pages.
+Page identity (brand + page-level CTA + status) lives **inside the left rail**. Zero top chrome — the body archetype gets the full vertical viewport.
+
+**Use it when:**
+- The page is a multi-entity Config (3-pane: list / form / json)
+- The rail naturally carries the page name (you'd duplicate it in a top header)
+- Vertical real estate is at a premium because the body has dense form content
+
+**Building blocks:**
+- The left rail's own header section (in-place markup, no extracted primitive yet — keep it bespoke until a 2nd page adopts the pattern)
+- Recommended order in the rail: brand strip → primary CTA → entity list → status widget → footer summary
+
+### 1c. `PageHeader` — title-row chrome
+
+**Canonical reference:** none yet (was `health.tsx` until its bespoke redesign — see §1d).
+
+```
+┌────────────────────────────────────────────────────────────────────┐
+│ Title  [v-badge]                              [action] [action]    │
+│ Description / last-update / status info                            │
+└────────────────────────────────────────────────────────────────────┘
+```
+
+Traditional title row with description and trailing actions.
+
+**Use it when:**
+- The page does NOT fit either canonical hero
+- The description carries genuinely non-redundant context (last refresh, page hierarchy, filter state, version)
+- Body archetype below benefits from a clear identity strip
+
+**API:** `<PageHeader title description status actions />` — title + description on left, status badges + action buttons on right.
+
+### 1d. Bespoke — full custom design
+
+**Canonical reference:** `pages/health.tsx`
+
+When a page's content shape demands its own hierarchy (priority-driven sections, dynamic backgrounds tied to status, custom card primitives like `HealthStatusRibbon` / `HealthPriorityCard`), the design system gets out of the way. Bespoke pages still respect global concerns (privacy mode, theme, sidebar) but build their own layout from scratch.
+
+**Use it when:**
+- None of the three patterns above fits without distorting the content
+- The page's information hierarchy is genuinely unique (e.g. severity-driven priority surfaces with secondary audit lists)
+- A bespoke implementation will be clearly better than forcing a fit
+
+**Cost:** higher LOC, no reuse, no consistency — only justified when content demands it.
+
+### Decision table
+
+| Page shape | Identity strip |
+|------------|---------------|
+| Dashboard / overview with ≤4 hero stats | **HeroBar** (home pattern) |
+| Multi-entity Config (3-pane: list/form/json) | **Rail-anchored** (cliproxy pattern, no top chrome) |
+| Single-entity Config OR Monitor with a real hero viz | **PageHeader** + body archetype |
+| Severity / priority-driven page with custom hierarchy | **Bespoke** (health pattern) |
+| Wizard / login / dialog | None — bespoke shell |
 
 ---
 
-## 2. Config archetype — 3-pane
+## 2. Body archetypes
 
-Used by every page that configures one or more entities (cliproxy, accounts, codex, copilot, cursor, droid, claude-extension, api, shared, profiles).
+### 2a. Config — 3-pane
+
+**Canonical reference:** `pages/cliproxy.tsx`
 
 ```
 ┌──────────┬──────────────────┬──────────┐
@@ -39,141 +119,74 @@ Used by every page that configures one or more entities (cliproxy, accounts, cod
 └──────────┴──────────────────┴──────────┘
 ```
 
-One component, prop-controlled left rail:
+Left rail = `ListPane` (multi-entity) or `SectionRail` (single-entity, with `IntersectionObserver` scroll-spy). Form and JSON panes are middle and right respectively.
 
 ```tsx
-// Multi-entity (cliproxy, accounts, providers)
 <ConfigLayout
-  left={<ListPane items={…} selectedId={id} onSelect={…} />}
+  left={<ListPane …/>}            // multi-entity
+  // OR
+  left={<SectionRail …/>}         // single-entity
   form={<FormPane>…</FormPane>}
   json={<JsonPane data={…} />}
 />
-
-// Single-entity (codex, copilot, cursor, droid, claude-extension)
-<ConfigLayout
-  left={<SectionRail sections={…} />}
-  form={<FormPane>…</FormPane>}
-  json={<JsonPane data={…} />}
-/>
-
-// No rail (rare — only if page has neither entities to pick nor sections to navigate)
-<ConfigLayout form={<FormPane>…</FormPane>} json={<JsonPane data={…} />} />
 ```
 
-### Rules
+**Rules:**
+- Save action lives **only** in `FormPane` footer
+- `<1024px`: collapses to tabs (Browse | Configure | JSON)
+- `JsonPane` is read-only by default; opt-in `editable` for cliproxy-style inline editing
 
-- **Layout**: left 260px / form flex / json 360px on `>=1024px`.
-- **<1024px**: collapses to tabs (`Browse | Configure | JSON`).
-- **Save action**: lives **only** in `FormPane footer`. Never duplicate in PageHeader.
-- **Per-entity actions** (delete, duplicate, sync): ListPane row trailing actions or FormPane header secondary actions — never both.
-- **JsonPane is read-only by default**. Pass `editable` prop only on pages that need inline editing (cliproxy is the canonical example).
+### 2b. Monitor — KPI row + 12-col grid
 
-### SectionRail
-
-For single-entity pages. Provides anchor nav with `IntersectionObserver` scroll-spy. Each item must match the `id` of a `<FormSection id="…">` in the FormPane.
-
-```tsx
-<SectionRail
-  sections={[
-    { id: 'general', label: 'General' },
-    { id: 'auth', label: 'Authentication' },
-    { id: 'routing', label: 'Routing' },
-  ]}
-/>
-
-// FormPane:
-<FormSection id="general" title="General">…</FormSection>
-<FormSection id="auth" title="Authentication">…</FormSection>
-```
-
----
-
-## 3. Monitor archetype — KPI row + 12-col grid
-
-Used by every page that shows live state (home, analytics, health, logs, future status pages).
+**Canonical reference:** none in this PR. Health used to be the reference but went bespoke (§1d). The primitives (`MonitorLayout`, `KpiRow`, `KpiCard`, `MonitorGrid`, `MonitorCard`) ship and remain available; first page to genuinely need them becomes the next reference.
 
 ```
-┌────────────────────────────────────────────────┐
-│ KpiRow:  [KPI] [KPI] [KPI] [KPI]              │  (optional, ≤4 hero numbers)
-├────────────────────────────────────────────────┤
-│ MonitorGrid (12-col):                          │
-│   <MonitorCard span={8}>  primary viz         │
-│   <MonitorCard span={4}>  side widget         │
-│   <MonitorCard span={6}>  ...                 │
-│   <MonitorCard span={6}>  ...                 │
-└────────────────────────────────────────────────┘
+┌────────────────────────────────────────┐
+│ KpiRow (≤4 hero numbers)               │
+├────────────────────────────────────────┤
+│ MonitorGrid (12-col):                  │
+│   <MonitorCard span={…}/>              │
+└────────────────────────────────────────┘
 ```
 
 ```tsx
-<MonitorLayout
-  kpis={
-    <KpiRow>
-      <KpiCard label="Active accounts" value="87" hint="▲ 3" tone="positive" />
-      …
-    </KpiRow>
-  }
->
+<MonitorLayout kpis={<KpiRow>…</KpiRow>}>
   <MonitorGrid>
-    <MonitorCard span={8} title="Live monitor">…</MonitorCard>
-    <MonitorCard span={4} title="Top providers">…</MonitorCard>
-    <MonitorCard span={6} title="Requests" meta="last 24h">…</MonitorCard>
-    <MonitorCard span={6} variant="terminal" title="$ ccs health --watch">…</MonitorCard>
+    <MonitorCard span={6} variant="terminal" title=…>…</MonitorCard>
   </MonitorGrid>
 </MonitorLayout>
 ```
 
-### Rules
+**Rules:**
+- `KpiRow` only when ≤4 hero numbers; more → group inside the grid
+- One primary viz per page, span ≥8 cols
+- `variant="terminal"` for live-log / `health --watch` aesthetics
 
-- **KpiRow** only when there are ≤4 hero numbers. More than 4 → use `MonitorCard`s inside the grid instead.
-- **One primary viz per page** — span ≥8 cols. Preserves the "punch" of home and analytics.
-- **`variant="terminal"`** = dark monospace card, for live-log / `health --watch` aesthetics. Opt-in only.
-- **Spans clamp at 6 cols on tablet**, single column on mobile.
+---
+
+## 3. Composing a new page
+
+```tsx
+// Example: a new dashboard-style page
+<PageShell>
+  <HeroBar … />            {/* or PageHeader, or rail-anchored identity */}
+  <MonitorLayout … />      {/* or ConfigLayout */}
+</PageShell>
+```
+
+Target LOC for a new page: **~80** for typical config, **~120** for monitor with hero strip. Target LOC for an outlier rewrite: **<400**.
 
 ---
 
 ## 4. When NOT to use either archetype
 
-These remain bespoke:
-- `/login` — minimal centered shell, no header/grid.
-- Setup wizard — modal overlay, not a page.
-- Dialogs — radix `Dialog`, not a layout.
-
-If you find yourself fighting the shell, the answer is usually "this isn't a Config or Monitor page" — talk to the maintainers before inventing a third archetype.
+These remain bespoke and are out of scope:
+- `/login` — minimal centered shell
+- Setup wizard — modal overlay
+- Dialogs — Radix `Dialog`
 
 ---
 
-## 5. Composing a new page
+## 5. Decisions
 
-The recipe for any new page is:
-
-```tsx
-import { PageShell, PageHeader } from '@/components/page-shell';
-import { ConfigLayout, /*…*/ } from '@/components/config-layout';
-
-export function MyPage() {
-  return (
-    <PageShell>
-      <PageHeader title="My Page" actions={<Actions/>} />
-      <ConfigLayout
-        left={…}
-        form={<FormPane>…</FormPane>}
-        json={<JsonPane data={…}/>}
-      />
-    </PageShell>
-  );
-}
-```
-
-Target LOC for a new page: **~80** for typical config, **~120** for monitor. If your page exceeds 400 LOC it should be split into `pages/<name>/` with section files.
-
----
-
-## 6. Lint / enforcement
-
-Phase 4 adds a lint rule: every file under `src/pages/*.tsx` (or `src/pages/*/index.tsx`) must import `PageShell`. Until then, code review enforces the contract.
-
----
-
-## 7. Decisions
-
-See [`design-decisions.md`](./design-decisions.md) for the resolutions of the 6 open questions from the brainstorm phase.
+See [`design-decisions.md`](./design-decisions.md) for the resolved open questions and the v1.1 revision rationale.
