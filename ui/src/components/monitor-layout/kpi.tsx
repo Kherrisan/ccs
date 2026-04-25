@@ -27,6 +27,14 @@ interface KpiCardProps {
   /** Tone for the hint line (e.g. positive delta, warning, etc.). */
   tone?: 'default' | 'positive' | 'warning' | 'negative';
   icon?: ReactNode;
+  /**
+   * Optional click handler. When set, the tile renders as a button with
+   * keyboard + hover affordances — used by pages where each KPI is also a
+   * navigation entry point (e.g. home dashboard).
+   */
+  onClick?: () => void;
+  /** Accessible label override when onClick is set. Defaults to `label`. */
+  ariaLabel?: string;
   className?: string;
 }
 
@@ -39,10 +47,22 @@ const TONE_CLASSES: Record<NonNullable<KpiCardProps['tone']>, string> = {
 
 /**
  * KpiCard - Single hero stat tile inside a KpiRow.
+ *
+ * Renders as a static <div> by default; promotes to a clickable <button>
+ * when `onClick` is supplied so the tile gains keyboard focus + hover state.
  */
-export function KpiCard({ label, value, hint, tone = 'default', icon, className }: KpiCardProps) {
-  return (
-    <div className={cn('rounded-xl border bg-card p-4 shadow-sm', className)}>
+export function KpiCard({
+  label,
+  value,
+  hint,
+  tone = 'default',
+  icon,
+  onClick,
+  ariaLabel,
+  className,
+}: KpiCardProps) {
+  const content = (
+    <>
       <div className="flex items-center justify-between">
         <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
           {label}
@@ -51,6 +71,27 @@ export function KpiCard({ label, value, hint, tone = 'default', icon, className 
       </div>
       <p className="mt-2 text-2xl font-semibold tracking-tight tabular-nums">{value}</p>
       {hint && <p className={cn('mt-1 text-xs', TONE_CLASSES[tone])}>{hint}</p>}
-    </div>
+    </>
   );
+
+  const baseClasses = 'rounded-xl border bg-card p-4 shadow-sm';
+
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        aria-label={ariaLabel ?? (typeof label === 'string' ? label : undefined)}
+        className={cn(
+          baseClasses,
+          'text-left transition-all hover:bg-card/80 hover:shadow-md hover:-translate-y-0.5 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+          className
+        )}
+      >
+        {content}
+      </button>
+    );
+  }
+
+  return <div className={cn(baseClasses, className)}>{content}</div>;
 }

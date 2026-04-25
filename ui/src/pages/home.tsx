@@ -67,22 +67,26 @@ export function HomePage() {
               label={t('home.profiles')}
               value={overview?.profiles ?? 0}
               icon={<KeyIcon className="size-4" />}
+              onClick={() => navigate('/providers')}
             />
             <KpiCard
               label={t('home.cliproxy')}
               value={overview?.cliproxy ?? 0}
               icon={<Zap className="size-4" />}
+              onClick={() => navigate('/cliproxy')}
             />
             <KpiCard
               label={t('home.accounts')}
               value={overview?.accounts ?? 0}
               icon={<UsersIcon className="size-4" />}
+              onClick={() => navigate('/accounts')}
             />
             <KpiCard
               label={t('home.health')}
               value={overview?.health ? `${overview.health.passed}/${overview.health.total}` : '—'}
               tone={healthTone}
               icon={<ActivityIcon className="size-4" />}
+              onClick={() => navigate('/health')}
             />
           </KpiRow>
         }
