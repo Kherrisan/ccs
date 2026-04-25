@@ -43,6 +43,13 @@ export function SectionRail({
       .filter((el): el is HTMLElement => el !== null);
     if (els.length === 0) return;
 
+    // FormPane wraps its body in shadcn ScrollArea (radix), which means the
+    // actual scrolling element is an ancestor with overflow-y:auto/scroll —
+    // NOT the page viewport. Walk up from the first FormSection to find it.
+    // Without this, IntersectionObserver watches the wrong scroller and the
+    // active section never updates as the form scrolls.
+    const root = observeRoot ?? findScrollableAncestor(els[0]);
+
     const observer = new IntersectionObserver(
       (entries) => {
         // Pick the section closest to top that's intersecting
@@ -52,7 +59,7 @@ export function SectionRail({
         if (visible[0]) setActiveId(visible[0].target.id);
       },
       {
-        root: observeRoot ?? null,
+        root,
         rootMargin: '-20% 0px -60% 0px',
         threshold: 0,
       }
@@ -67,6 +74,8 @@ export function SectionRail({
       onJump(id);
       return;
     }
+    // scrollIntoView walks ancestors — works whether the scroller is the
+    // viewport or the FormPane's internal ScrollArea.
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
@@ -107,4 +116,21 @@ export function SectionRail({
       </ScrollArea>
     </div>
   );
+}
+
+/**
+ * Walk up the DOM until we find an element whose computed style scrolls vertically.
+ * Returns null if none found (IntersectionObserver treats null as the viewport).
+ */
+function findScrollableAncestor(el: HTMLElement | null): HTMLElement | null {
+  let node: HTMLElement | null = el?.parentElement ?? null;
+  while (node && node !== document.body) {
+    const style = window.getComputedStyle(node);
+    const overflowY = style.overflowY;
+    if (overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay') {
+      return node;
+    }
+    node = node.parentElement;
+  }
+  return null;
 }

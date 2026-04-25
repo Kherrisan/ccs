@@ -39,7 +39,14 @@ export function JsonPane({
   className,
 }: JsonPaneProps) {
   const hasTabs = tabs && tabs.length > 0;
-  const [activeTab, setActiveTab] = useState<string>(tabs?.[0]?.id ?? 'data');
+  const [selectedTabId, setSelectedTabId] = useState<string>(tabs?.[0]?.id ?? 'data');
+
+  // Derive the *effective* active tab during render rather than mutating state
+  // in an effect. If the parent swaps the `tabs` array (e.g. selects a different
+  // entity), the previous selectedTabId may no longer exist — fall back to the
+  // first available tab so the pane never shows empty content.
+  const activeTab =
+    hasTabs && tabs.some((t) => t.id === selectedTabId) ? selectedTabId : (tabs?.[0]?.id ?? 'data');
 
   return (
     <div className={cn('flex h-full flex-col', className)}>
@@ -61,7 +68,7 @@ export function JsonPane({
       {hasTabs ? (
         <Tabs
           value={activeTab}
-          onValueChange={setActiveTab}
+          onValueChange={setSelectedTabId}
           className="flex min-h-0 flex-1 flex-col"
         >
           <TabsList className="mx-3 mt-2 w-fit">
@@ -94,8 +101,12 @@ function JsonView({ data, editable, onChange }: JsonViewProps) {
   const text = useMemo(() => JSON.stringify(data ?? {}, null, 2), [data]);
 
   if (editable) {
+    // `key={text}` forces React to remount the textarea when the underlying data
+    // changes (e.g. parent swaps the selected entity). Without this, an
+    // uncontrolled textarea retains the prior value and onBlur saves stale text.
     return (
       <textarea
+        key={text}
         defaultValue={text}
         onBlur={(e) => onChange?.(e.target.value)}
         spellCheck={false}
