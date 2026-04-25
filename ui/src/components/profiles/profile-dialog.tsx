@@ -54,10 +54,17 @@ export function ProfileDialog({ open, onClose, profile }: ProfileDialogProps) {
   const updateMutation = useUpdateProfile();
   const [showModelMapping, setShowModelMapping] = useState(false);
 
+  // Tracks whether the user has interacted with the Extra Models field in
+  // edit mode. RHF's `dirtyFields` compares the current value against
+  // `defaultValues`, so typing "x" and erasing back to "" reverts dirty to
+  // false. We need a latch so an explicit-clear (type then delete) still
+  // forwards the empty-string delete signal to the backend.
+  const [extraModelsTouched, setExtraModelsTouched] = useState(false);
+
   const {
     register,
     handleSubmit,
-    formState: { errors, dirtyFields },
+    formState: { errors },
     reset,
     control,
   } = useForm<FormData>({
@@ -91,6 +98,7 @@ export function ProfileDialog({ open, onClose, profile }: ProfileDialogProps) {
   useEffect(() => {
     if (!open) {
       setShowModelMapping(false);
+      setExtraModelsTouched(false);
     }
   }, [open]);
 
@@ -99,18 +107,19 @@ export function ProfileDialog({ open, onClose, profile }: ProfileDialogProps) {
       if (profile) {
         // Update mode. The dialog cannot pre-populate `extraModels` from the
         // existing profile (Profile type carries no env data), so the field
-        // always starts blank in edit mode. Forwarding that blank value
-        // unconditionally would clobber any saved ANTHROPIC_EXTRA_MODELS via
-        // the route's "empty string deletes" semantics. Only forward the
-        // field if the user actually edited it — typing then clearing still
-        // marks it dirty, preserving the explicit-clear UX.
+        // always starts blank. Forwarding that blank value unconditionally
+        // would clobber any saved ANTHROPIC_EXTRA_MODELS, since the PUT route
+        // treats an empty string as a delete signal. Use a latch flipped on
+        // the first onChange so we can distinguish "user never touched it"
+        // (skip → preserve existing value) from "user typed then cleared"
+        // (forward "" → explicit delete).
         await updateMutation.mutateAsync({
           name: profile.name,
           data: {
             baseUrl: data.baseUrl,
             apiKey: data.apiKey,
             model: data.model,
-            ...(dirtyFields.extraModels ? { extraModels: data.extraModels } : {}),
+            ...(extraModelsTouched ? { extraModels: data.extraModels } : {}),
             opusModel: data.opusModel,
             sonnetModel: data.sonnetModel,
             haikuModel: data.haikuModel,
@@ -178,7 +187,9 @@ export function ProfileDialog({ open, onClose, profile }: ProfileDialogProps) {
             <Label htmlFor="extraModels">Extra Models</Label>
             <Input
               id="extraModels"
-              {...register('extraModels')}
+              {...register('extraModels', {
+                onChange: () => setExtraModelsTouched(true),
+              })}
               placeholder="model-a,model-b,model-c"
             />
             <p className="text-xs text-muted-foreground mt-1">
