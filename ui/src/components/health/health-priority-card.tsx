@@ -35,6 +35,39 @@ export function HealthPriorityCard({ check }: HealthPriorityCardProps) {
     }
   };
 
+  const headerInner = (
+    <>
+      {/* Status Icon with Ring */}
+      <div
+        className={cn(
+          'flex items-center justify-center w-12 h-12 rounded-2xl shrink-0',
+          isError ? 'bg-rose-500/10 text-rose-500' : 'bg-amber-500/10 text-amber-500'
+        )}
+      >
+        <Icon className="w-6 h-6" />
+      </div>
+
+      <div className="flex-1 min-w-0 space-y-1">
+        <div className="flex items-center justify-between">
+          <h3 className="text-lg font-bold tracking-tight">{check.name}</h3>
+          {hasContent && (
+            <div className="p-1 hover:bg-muted rounded-full transition-colors">
+              <ChevronRight
+                className={cn(
+                  'w-5 h-5 text-muted-foreground transition-transform',
+                  isExpanded && 'rotate-90'
+                )}
+              />
+            </div>
+          )}
+        </div>
+        <p className="text-sm font-medium leading-relaxed text-muted-foreground/80">
+          {check.message}
+        </p>
+      </div>
+    </>
+  );
+
   return (
     <motion.div
       layout
@@ -53,39 +86,27 @@ export function HealthPriorityCard({ check }: HealthPriorityCardProps) {
         <div className="absolute inset-0 rounded-[calc(2rem-1px)] shadow-[inset_0_1px_1px_rgba(255,255,255,0.1)] pointer-events-none" />
 
         <div className="p-6">
-          <div
-            className={cn('flex items-start gap-4', hasContent && 'cursor-pointer select-none')}
-            onClick={() => hasContent && setIsExpanded(!isExpanded)}
-          >
-            {/* Status Icon with Ring */}
-            <div
-              className={cn(
-                'flex items-center justify-center w-12 h-12 rounded-2xl shrink-0',
-                isError ? 'bg-rose-500/10 text-rose-500' : 'bg-amber-500/10 text-amber-500'
-              )}
+          {/*
+           * Header acts as the expand/collapse trigger when there's
+           * additional content (details, fix, fixable). Render as <button>
+           * so keyboard and screen-reader users can toggle it; aria-expanded
+           * reflects state. Without content, render a plain <div>.
+           */}
+          {hasContent ? (
+            <button
+              type="button"
+              onClick={() => setIsExpanded(!isExpanded)}
+              aria-expanded={isExpanded}
+              aria-label={
+                isExpanded ? `Collapse ${check.name} details` : `Expand ${check.name} details`
+              }
+              className="flex w-full select-none items-start gap-4 rounded-2xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             >
-              <Icon className="w-6 h-6" />
-            </div>
-
-            <div className="flex-1 min-w-0 space-y-1">
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-bold tracking-tight">{check.name}</h3>
-                {hasContent && (
-                  <div className="p-1 hover:bg-muted rounded-full transition-colors">
-                    <ChevronRight
-                      className={cn(
-                        'w-5 h-5 text-muted-foreground transition-transform',
-                        isExpanded && 'rotate-90'
-                      )}
-                    />
-                  </div>
-                )}
-              </div>
-              <p className="text-sm font-medium leading-relaxed text-muted-foreground/80">
-                {check.message}
-              </p>
-            </div>
-          </div>
+              {headerInner}
+            </button>
+          ) : (
+            <div className="flex w-full items-start gap-4">{headerInner}</div>
+          )}
 
           <AnimatePresence>
             {isExpanded && (

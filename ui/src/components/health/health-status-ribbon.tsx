@@ -25,7 +25,11 @@ function formatRelativeTime(
   const seconds = Math.floor((Date.now() - timestamp) / 1000);
   if (seconds < 5) return t('health.justNow');
   if (seconds < 60) return t('health.secondsAgo', { count: seconds });
-  return t('health.minutesAgo', { count: Math.floor(seconds / 60) });
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return t('health.minutesAgo', { count: minutes });
+  // Roll up to hours so a stale "120 minutes ago" reads as "2 hours ago"
+  const hours = Math.floor(minutes / 60);
+  return t('health.hoursAgo', { count: hours });
 }
 
 export function HealthStatusRibbon({
