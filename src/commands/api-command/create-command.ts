@@ -493,7 +493,15 @@ export async function handleApiCreateCommand(args: string[]): Promise<void> {
 
   console.log('');
   console.log(info('Creating API profile...'));
-  const result = createApiProfile(name, baseUrl || '', apiKey, finalModels, target, undefined, parsedArgs.extraModels);
+  const result = createApiProfile(
+    name,
+    baseUrl || '',
+    apiKey,
+    finalModels,
+    target,
+    undefined,
+    parsedArgs.extraModels
+  );
   if (!result.success) {
     console.log(fail(`Failed to create API profile: ${result.error}`));
     process.exit(1);

@@ -157,7 +157,8 @@ router.post('/', (req: Request, res: Response): void => {
     return;
   }
 
-  const { name, baseUrl, apiKey, model, extraModels, opusModel, sonnetModel, haikuModel, target } = req.body;
+  const { name, baseUrl, apiKey, model, extraModels, opusModel, sonnetModel, haikuModel, target } =
+    req.body;
   const providerHint = req.body?.droidProvider ?? req.body?.provider;
   const parsedProvider = normalizeDroidProvider(providerHint);
   const normalizedBaseUrl = typeof baseUrl === 'string' ? baseUrl.trim() : '';
@@ -433,7 +434,8 @@ router.put('/:name', (req: Request, res: Response): void => {
   }
 
   const { name } = req.params;
-  const { baseUrl, apiKey, model, extraModels, opusModel, sonnetModel, haikuModel, target } = req.body;
+  const { baseUrl, apiKey, model, extraModels, opusModel, sonnetModel, haikuModel, target } =
+    req.body;
   const providerHint = req.body?.droidProvider ?? req.body?.provider;
   const parsedProvider = normalizeDroidProvider(providerHint);
   const normalizedBaseUrl = typeof baseUrl === 'string' ? baseUrl.trim() : baseUrl;
