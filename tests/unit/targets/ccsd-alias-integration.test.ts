@@ -89,17 +89,28 @@ describe('ccsd alias integration', () => {
     expect(path.basename(argvPath)).toBe('ccsx');
   });
 
+  it('should preserve ccsxp symlink basename in argv[1] under node', () => {
+    if (process.platform === 'win32') {
+      return;
+    }
+
+    const argvPath = probeArgvPath('ccsxp');
+    expect(path.basename(argvPath)).toBe('ccsxp');
+  });
+
   it('should preserve extension-style alias basenames for wrapper compatibility', () => {
     const cmdArgvPath = probeArgvPathDirect('ccsd.cmd');
     const ps1ArgvPath = probeArgvPathDirect('ccsd.ps1');
     const explicitCmdArgvPath = probeArgvPathDirect('ccs-droid.cmd');
     const codexCmdArgvPath = probeArgvPathDirect('ccs-codex.cmd');
     const codexShortCmdArgvPath = probeArgvPathDirect('ccsx.cmd');
+    const codexProxyCmdArgvPath = probeArgvPathDirect('ccsxp.cmd');
 
     expect(path.basename(cmdArgvPath)).toBe('ccsd.cmd');
     expect(path.basename(ps1ArgvPath)).toBe('ccsd.ps1');
     expect(path.basename(explicitCmdArgvPath)).toBe('ccs-droid.cmd');
     expect(path.basename(codexCmdArgvPath)).toBe('ccs-codex.cmd');
     expect(path.basename(codexShortCmdArgvPath)).toBe('ccsx.cmd');
+    expect(path.basename(codexProxyCmdArgvPath)).toBe('ccsxp.cmd');
   });
 });
