@@ -57,7 +57,8 @@ function clampToMaxStable(version: string | undefined, verbose: boolean): string
 async function handleAutoUpdate(config: BinaryManagerConfig, verbose: boolean): Promise<void> {
   const backend: CLIProxyBackend = config.backend ?? DEFAULT_BACKEND;
   const backendLabel = getBackendLabel(backend);
-  const updateResult = await checkForUpdates(config.binPath, config.version, verbose, backend);
+  const checkFn = config.checkForUpdatesFn ?? checkForUpdates;
+  const updateResult = await checkFn(config.binPath, config.version, verbose, backend);
   const currentVersion = updateResult.currentVersion;
   const latestVersion = updateResult.latestVersion;
 

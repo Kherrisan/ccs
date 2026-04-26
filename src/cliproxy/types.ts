@@ -4,6 +4,7 @@
  */
 
 import type { CompositeTierConfig } from '../config/unified-config-types';
+import type { UpdateCheckResult } from './binary/types';
 
 /**
  * Supported operating systems
@@ -56,6 +57,18 @@ export interface BinaryManagerConfig {
   allowInstall: boolean;
   /** Backend variant (original vs plus) */
   backend?: CLIProxyBackend;
+  /**
+   * Test-only seam: override the auto-update check. When omitted, the real
+   * `checkForUpdates` from ./binary/version-checker is used. Provided so tests
+   * can verify "skipAutoUpdate respected" without resorting to bun's
+   * `mock.module()`, which leaks across test files in the same process.
+   */
+  checkForUpdatesFn?: (
+    binPath: string,
+    configVersion: string,
+    verbose?: boolean,
+    backend?: CLIProxyBackend
+  ) => Promise<UpdateCheckResult>;
 }
 
 /**
