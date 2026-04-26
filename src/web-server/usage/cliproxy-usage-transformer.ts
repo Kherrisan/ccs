@@ -13,10 +13,16 @@ import type { ModelBreakdown, DailyUsage, HourlyUsage, MonthlyUsage } from './ty
 // INTERNAL HELPERS
 // ============================================================================
 
-/** Flat entry pairing a model name with its request detail */
-interface FlatDetail {
+/** Persisted request detail used to rebuild historical CLIProxy analytics buckets */
+export interface CliproxyUsageHistoryDetail {
   model: string;
-  detail: CliproxyRequestDetail;
+  timestamp: string;
+  source: string;
+  authIndex: string;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  failed: boolean;
 }
 
 /** Accumulator for token counts per model per time bucket */
@@ -36,6 +42,22 @@ function buildModelBreakdown(modelName: string, acc: ModelAccumulator): ModelBre
   return { modelName, inputTokens, outputTokens, cacheCreationTokens: 0, cacheReadTokens, cost };
 }
 
+function createHistoryDetail(
+  model: string,
+  detail: CliproxyRequestDetail
+): CliproxyUsageHistoryDetail {
+  return {
+    model,
+    timestamp: detail.timestamp,
+    source: detail.source,
+    authIndex: String(detail.auth_index),
+    inputTokens: detail.tokens?.input_tokens ?? 0,
+    outputTokens: detail.tokens?.output_tokens ?? 0,
+    cacheReadTokens: detail.tokens?.cached_tokens ?? 0,
+    failed: detail.failed,
+  };
+}
+
 // ============================================================================
 // FLATTEN
 // ============================================================================
@@ -51,14 +73,16 @@ function hasTrackedUsage(detail: CliproxyRequestDetail): boolean {
 
 /**
  * Flatten the nested response.usage.apis[provider].models[model].details[]
- * structure into a flat array. Failed requests are retained only when they
- * still report tracked token usage that analytics can account for.
+ * structure into normalized history details. Failed requests are retained only
+ * when they still report tracked token usage that analytics can account for.
  */
-export function flattenCliproxyDetails(response: CliproxyUsageApiResponse): FlatDetail[] {
+export function extractCliproxyUsageHistoryDetails(
+  response: CliproxyUsageApiResponse
+): CliproxyUsageHistoryDetail[] {
   const apis = response?.usage?.apis;
   if (!apis) return [];
 
-  const results: FlatDetail[] = [];
+  const results: CliproxyUsageHistoryDetail[] = [];
   for (const providerData of Object.values(apis)) {
     const models = providerData?.models;
     if (!models) continue;
@@ -67,11 +91,80 @@ export function flattenCliproxyDetails(response: CliproxyUsageApiResponse): Flat
       if (!details) continue;
       for (const detail of details) {
         if (detail.failed && !hasTrackedUsage(detail)) continue;
-        results.push({ model, detail });
+        results.push(createHistoryDetail(model, detail));
       }
     }
   }
   return results;
+}
+
+function createHistorySignature(detail: CliproxyUsageHistoryDetail): string {
+  return [
+    detail.model,
+    detail.timestamp,
+    detail.source,
+    detail.authIndex,
+    detail.inputTokens,
+    detail.outputTokens,
+    detail.cacheReadTokens,
+    detail.failed ? '1' : '0',
+  ].join('|');
+}
+
+export function mergeCliproxyUsageHistoryDetails(
+  existing: CliproxyUsageHistoryDetail[],
+  incoming: CliproxyUsageHistoryDetail[]
+): CliproxyUsageHistoryDetail[] {
+  const existingCounts = new Map<string, { detail: CliproxyUsageHistoryDetail; count: number }>();
+  for (const detail of existing) {
+    const signature = createHistorySignature(detail);
+    const entry = existingCounts.get(signature);
+    if (entry) {
+      entry.count += 1;
+    } else {
+      existingCounts.set(signature, { detail, count: 1 });
+    }
+  }
+
+  const incomingCounts = new Map<string, { detail: CliproxyUsageHistoryDetail; count: number }>();
+  for (const detail of incoming) {
+    const signature = createHistorySignature(detail);
+    const entry = incomingCounts.get(signature);
+    if (entry) {
+      entry.count += 1;
+    } else {
+      incomingCounts.set(signature, { detail, count: 1 });
+    }
+  }
+
+  for (const [signature, incomingEntry] of incomingCounts) {
+    const existingEntry = existingCounts.get(signature);
+    if (!existingEntry || incomingEntry.count > existingEntry.count) {
+      existingCounts.set(signature, {
+        detail: incomingEntry.detail,
+        count: incomingEntry.count,
+      });
+    }
+  }
+
+  const merged: CliproxyUsageHistoryDetail[] = [];
+  for (const { detail, count } of existingCounts.values()) {
+    for (let index = 0; index < count; index++) {
+      merged.push({ ...detail });
+    }
+  }
+
+  return merged.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+}
+
+export function pruneCliproxyUsageHistoryDetails(
+  details: CliproxyUsageHistoryDetail[],
+  oldestTimestamp: number
+): CliproxyUsageHistoryDetail[] {
+  return details.filter((detail) => {
+    const timestamp = Date.parse(detail.timestamp);
+    return Number.isFinite(timestamp) && timestamp >= oldestTimestamp;
+  });
 }
 
 // ============================================================================
@@ -80,7 +173,7 @@ export function flattenCliproxyDetails(response: CliproxyUsageApiResponse): Flat
 
 /** Group flat details by a time key extractor, return sorted DailyUsage-like records */
 function aggregateByKey<T>(
-  flat: FlatDetail[],
+  flat: CliproxyUsageHistoryDetail[],
   keyFn: (timestamp: string) => string,
   buildRecord: (key: string, breakdowns: ModelBreakdown[], requestCount: number) => T,
   sortFn: (a: T, b: T) => number
@@ -89,18 +182,18 @@ function aggregateByKey<T>(
   const buckets = new Map<string, Map<string, ModelAccumulator>>();
   const requestCounts = new Map<string, number>();
 
-  for (const { model, detail } of flat) {
+  for (const detail of flat) {
     const key = keyFn(detail.timestamp);
     if (!buckets.has(key)) buckets.set(key, new Map());
     requestCounts.set(key, (requestCounts.get(key) ?? 0) + 1);
     const modelMap = buckets.get(key) as Map<string, ModelAccumulator>;
-    if (!modelMap.has(model)) {
-      modelMap.set(model, { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0 });
+    if (!modelMap.has(detail.model)) {
+      modelMap.set(detail.model, { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0 });
     }
-    const acc = modelMap.get(model) as ModelAccumulator;
-    acc.inputTokens += detail.tokens?.input_tokens ?? 0;
-    acc.outputTokens += detail.tokens?.output_tokens ?? 0;
-    acc.cacheReadTokens += detail.tokens?.cached_tokens ?? 0;
+    const acc = modelMap.get(detail.model) as ModelAccumulator;
+    acc.inputTokens += detail.inputTokens;
+    acc.outputTokens += detail.outputTokens;
+    acc.cacheReadTokens += detail.cacheReadTokens;
   }
 
   const records: T[] = [];
@@ -125,7 +218,7 @@ function sumField(breakdowns: ModelBreakdown[], field: keyof ModelBreakdown): nu
 
 /** Transform CLIProxy usage response into DailyUsage array (sorted descending by date) */
 export function transformCliproxyToDailyUsage(response: CliproxyUsageApiResponse): DailyUsage[] {
-  const flat = flattenCliproxyDetails(response);
+  const flat = extractCliproxyUsageHistoryDetails(response);
   return aggregateByKey(
     flat,
     (ts) => ts.slice(0, 10),
@@ -150,7 +243,7 @@ export function transformCliproxyToDailyUsage(response: CliproxyUsageApiResponse
 
 /** Transform CLIProxy usage response into HourlyUsage array (sorted descending by hour) */
 export function transformCliproxyToHourlyUsage(response: CliproxyUsageApiResponse): HourlyUsage[] {
-  const flat = flattenCliproxyDetails(response);
+  const flat = extractCliproxyUsageHistoryDetails(response);
   return aggregateByKey(
     flat,
     (ts) => {
@@ -182,7 +275,7 @@ export function transformCliproxyToHourlyUsage(response: CliproxyUsageApiRespons
 export function transformCliproxyToMonthlyUsage(
   response: CliproxyUsageApiResponse
 ): MonthlyUsage[] {
-  const flat = flattenCliproxyDetails(response);
+  const flat = extractCliproxyUsageHistoryDetails(response);
   return aggregateByKey(
     flat,
     (ts) => ts.slice(0, 7),
@@ -199,4 +292,74 @@ export function transformCliproxyToMonthlyUsage(
     }),
     (a, b) => b.month.localeCompare(a.month)
   );
+}
+
+export function buildCliproxyUsageHistoryAggregates(details: CliproxyUsageHistoryDetail[]): {
+  daily: DailyUsage[];
+  hourly: HourlyUsage[];
+  monthly: MonthlyUsage[];
+} {
+  return {
+    daily: aggregateByKey(
+      details,
+      (timestamp) => timestamp.slice(0, 10),
+      (date, breakdowns) => {
+        const totalCost = sumField(breakdowns, 'cost');
+        return {
+          date,
+          source: 'cliproxy',
+          inputTokens: sumField(breakdowns, 'inputTokens'),
+          outputTokens: sumField(breakdowns, 'outputTokens'),
+          cacheCreationTokens: 0,
+          cacheReadTokens: sumField(breakdowns, 'cacheReadTokens'),
+          cost: totalCost,
+          totalCost,
+          modelsUsed: breakdowns.map((breakdown) => breakdown.modelName),
+          modelBreakdowns: breakdowns,
+        };
+      },
+      (a, b) => b.date.localeCompare(a.date)
+    ),
+    hourly: aggregateByKey(
+      details,
+      (timestamp) => {
+        const date = timestamp.slice(0, 10);
+        const hour = timestamp.slice(11, 13) || '00';
+        return `${date} ${hour}:00`;
+      },
+      (hour, breakdowns, requestCount) => {
+        const totalCost = sumField(breakdowns, 'cost');
+        return {
+          hour,
+          source: 'cliproxy',
+          inputTokens: sumField(breakdowns, 'inputTokens'),
+          outputTokens: sumField(breakdowns, 'outputTokens'),
+          cacheCreationTokens: 0,
+          cacheReadTokens: sumField(breakdowns, 'cacheReadTokens'),
+          cost: totalCost,
+          totalCost,
+          modelsUsed: breakdowns.map((breakdown) => breakdown.modelName),
+          modelBreakdowns: breakdowns,
+          requestCount,
+        };
+      },
+      (a, b) => b.hour.localeCompare(a.hour)
+    ),
+    monthly: aggregateByKey(
+      details,
+      (timestamp) => timestamp.slice(0, 7),
+      (month, breakdowns) => ({
+        month,
+        source: 'cliproxy',
+        inputTokens: sumField(breakdowns, 'inputTokens'),
+        outputTokens: sumField(breakdowns, 'outputTokens'),
+        cacheCreationTokens: 0,
+        cacheReadTokens: sumField(breakdowns, 'cacheReadTokens'),
+        totalCost: sumField(breakdowns, 'cost'),
+        modelsUsed: breakdowns.map((breakdown) => breakdown.modelName),
+        modelBreakdowns: breakdowns,
+      }),
+      (a, b) => b.month.localeCompare(a.month)
+    ),
+  };
 }

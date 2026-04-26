@@ -154,8 +154,8 @@ describe('cliproxy usage syncer', () => {
     });
   });
 
-  it('keeps the newer overlapping snapshot when an older sync finishes last', async () => {
-    const olderSync = createDeferredFetch(buildResponse(100, '2026-03-02T10:00:00.000Z'));
+  it('merges unique history from overlapping syncs even when the older sync finishes last', async () => {
+    const olderSync = createDeferredFetch(buildResponse(100, '2026-03-01T10:00:00.000Z'));
     const newerSync = createDeferredFetch(buildResponse(200, '2026-03-02T11:00:00.000Z'));
 
     await runWithScopedConfigDir(ccsDir, async () => {
@@ -169,8 +169,127 @@ describe('cliproxy usage syncer', () => {
       await Promise.all([olderWrite, newerWrite]);
 
       const cached = await loadCachedCliproxyData();
-      expect(cached.daily).toHaveLength(1);
+      expect(cached.daily).toHaveLength(2);
+      expect(cached.daily.find((entry) => entry.date === '2026-03-01')?.inputTokens).toBe(100);
       expect(cached.daily[0].inputTokens).toBe(200);
+    });
+  });
+
+  it('migrates legacy v2 snapshots forward before merging new history', async () => {
+    await runWithScopedConfigDir(ccsDir, async () => {
+      const snapshotPath = path.join(ccsDir, 'cache', 'cliproxy-usage', 'latest.json');
+      fs.mkdirSync(path.dirname(snapshotPath), { recursive: true });
+      fs.writeFileSync(
+        snapshotPath,
+        JSON.stringify({
+          version: 2,
+          timestamp: Date.now() - 60_000,
+          daily: [
+            {
+              date: '2026-03-01',
+              source: 'cliproxy',
+              inputTokens: 100,
+              outputTokens: 20,
+              cacheCreationTokens: 0,
+              cacheReadTokens: 10,
+              cost: 0.2,
+              totalCost: 0.2,
+              modelsUsed: ['gemini-2.5-pro'],
+              modelBreakdowns: [
+                {
+                  modelName: 'gemini-2.5-pro',
+                  inputTokens: 100,
+                  outputTokens: 20,
+                  cacheCreationTokens: 0,
+                  cacheReadTokens: 10,
+                  cost: 0.2,
+                },
+              ],
+            },
+          ],
+          hourly: [
+            {
+              hour: '2026-03-01 12:00',
+              source: 'cliproxy',
+              inputTokens: 100,
+              outputTokens: 20,
+              cacheCreationTokens: 0,
+              cacheReadTokens: 10,
+              cost: 0.2,
+              totalCost: 0.2,
+              modelsUsed: ['gemini-2.5-pro'],
+              modelBreakdowns: [
+                {
+                  modelName: 'gemini-2.5-pro',
+                  inputTokens: 100,
+                  outputTokens: 20,
+                  cacheCreationTokens: 0,
+                  cacheReadTokens: 10,
+                  cost: 0.2,
+                },
+              ],
+            },
+          ],
+          monthly: [
+            {
+              month: '2026-03',
+              source: 'cliproxy',
+              inputTokens: 100,
+              outputTokens: 20,
+              cacheCreationTokens: 0,
+              cacheReadTokens: 10,
+              totalCost: 0.2,
+              modelsUsed: ['gemini-2.5-pro'],
+              modelBreakdowns: [
+                {
+                  modelName: 'gemini-2.5-pro',
+                  inputTokens: 100,
+                  outputTokens: 20,
+                  cacheCreationTokens: 0,
+                  cacheReadTokens: 10,
+                  cost: 0.2,
+                },
+              ],
+            },
+          ],
+        }),
+        'utf-8'
+      );
+
+      await syncCliproxyUsage(() => Promise.resolve(buildResponse(200, '2026-03-02T12:00:00.000Z')));
+
+      const cached = await loadCachedCliproxyData();
+      expect(cached.daily.map((entry) => entry.date)).toEqual(['2026-03-02', '2026-03-01']);
+    });
+  });
+
+  it('preserves prior-day history when a later sync only returns the current window', async () => {
+    await runWithScopedConfigDir(ccsDir, async () => {
+      await syncCliproxyUsage(() =>
+        Promise.resolve(buildResponse(100, '2026-03-01T12:00:00.000Z'))
+      );
+      await syncCliproxyUsage(() =>
+        Promise.resolve(buildResponse(200, '2026-03-02T12:00:00.000Z'))
+      );
+
+      const cached = await loadCachedCliproxyData();
+      expect(cached.daily).toHaveLength(2);
+      expect(cached.daily.map((entry) => entry.date)).toEqual(['2026-03-02', '2026-03-01']);
+      expect(cached.daily.find((entry) => entry.date === '2026-03-01')?.inputTokens).toBe(100);
+      expect(cached.daily.find((entry) => entry.date === '2026-03-02')?.inputTokens).toBe(200);
+    });
+  });
+
+  it('does not double count when the same snapshot window is synced twice', async () => {
+    await runWithScopedConfigDir(ccsDir, async () => {
+      const repeatedResponse = buildResponse(250, '2026-03-02T12:00:00.000Z');
+      await syncCliproxyUsage(() => Promise.resolve(repeatedResponse));
+      await syncCliproxyUsage(() => Promise.resolve(repeatedResponse));
+
+      const cached = await loadCachedCliproxyData();
+      expect(cached.daily).toHaveLength(1);
+      expect(cached.daily[0].inputTokens).toBe(250);
+      expect(cached.hourly[0].requestCount).toBe(1);
     });
   });
 });

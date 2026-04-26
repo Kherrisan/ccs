@@ -38,8 +38,20 @@ function writeCliproxySnapshotFixture(): void {
   fs.mkdirSync(snapshotDir, { recursive: true });
 
   const snapshot = {
-    version: 2,
+    version: 3,
     timestamp: Date.now(),
+    details: [
+      {
+        model: 'gemini-2.5-pro',
+        timestamp: '2026-03-02T10:00:00.000Z',
+        source: 'account-a',
+        authIndex: '0',
+        inputTokens: 50,
+        outputTokens: 10,
+        cacheReadTokens: 5,
+        failed: false,
+      },
+    ],
     daily: [
       {
         date: '2026-03-02',

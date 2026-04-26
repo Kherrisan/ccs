@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'bun:test';
 import type { CliproxyUsageApiResponse } from '../../../src/cliproxy/stats-fetcher';
 import {
-  flattenCliproxyDetails,
+  buildCliproxyUsageHistoryAggregates,
+  extractCliproxyUsageHistoryDetails,
+  mergeCliproxyUsageHistoryDetails,
   transformCliproxyToDailyUsage,
   transformCliproxyToHourlyUsage,
   transformCliproxyToMonthlyUsage,
@@ -97,24 +99,48 @@ const sampleResponse: CliproxyUsageApiResponse = {
 
 describe('cliproxy usage transformer', () => {
   it('retains failed requests when they carry usage and skips zero-usage failures', () => {
-    const flat = flattenCliproxyDetails(sampleResponse);
+    const flat = extractCliproxyUsageHistoryDetails(sampleResponse);
     expect(flat).toHaveLength(4);
     expect(
       flat.some(
         (entry) =>
-          entry.detail.failed === true &&
-          entry.detail.tokens.input_tokens === 40 &&
-          entry.detail.tokens.output_tokens === 10
+          entry.failed === true &&
+          entry.inputTokens === 40 &&
+          entry.outputTokens === 10
       )
     ).toBe(true);
     expect(
       flat.some(
         (entry) =>
-          entry.detail.failed === true &&
-          entry.detail.tokens.input_tokens === 0 &&
-          entry.detail.tokens.output_tokens === 0
+          entry.failed === true &&
+          entry.inputTokens === 0 &&
+          entry.outputTokens === 0
       )
     ).toBe(false);
+  });
+
+  it('deduplicates repeated snapshot details when merging history', () => {
+    const details = extractCliproxyUsageHistoryDetails(sampleResponse);
+    const merged = mergeCliproxyUsageHistoryDetails(details, details);
+
+    expect(merged).toHaveLength(details.length);
+  });
+
+  it('preserves legitimate duplicate requests when the incoming batch has more occurrences', () => {
+    const details = extractCliproxyUsageHistoryDetails(sampleResponse);
+    const repeated = [details[0], { ...details[0] }];
+    const merged = mergeCliproxyUsageHistoryDetails([details[0]], repeated);
+
+    expect(merged).toHaveLength(2);
+  });
+
+  it('rebuilds daily history aggregates from merged detail history', () => {
+    const details = extractCliproxyUsageHistoryDetails(sampleResponse);
+    const { daily } = buildCliproxyUsageHistoryAggregates(details);
+
+    expect(daily).toHaveLength(2);
+    expect(daily[0].date).toBe('2026-03-02');
+    expect(daily[1].date).toBe('2026-03-01');
   });
 
   it('transforms daily usage with aggregated model totals', () => {
