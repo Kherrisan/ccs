@@ -113,19 +113,13 @@ export function CodexDocsTab({ diagnostics }: CodexDocsTabProps) {
           <CardContent className="space-y-3 text-sm text-muted-foreground">
             <div className="space-y-1.5">
               <p>
-                {/* TODO i18n: missing key codex.builtInLabel */}
-                <strong>Built-in:</strong> Use <code>ccsxp</code> for native Codex with the{' '}
-                <code>cliproxy</code> provider shortcut.
+                <strong>{t('codex.builtInLabel')}</strong> {t('codex.builtInCcsxpDesc')}
               </p>
               <p>
-                {/* TODO i18n: missing key codex.nativeLabelRecipe */}
-                <strong>Native:</strong> Configure the recipe below to use CLIProxy directly with{' '}
-                <code>codex</code>.
+                <strong>{t('codex.nativeRecipeLabel')}</strong> {t('codex.nativeRecipeDesc')}
               </p>
               <p>
-                {/* TODO i18n: missing key codex.managedBridgeLabel */}
-                <strong>Managed bridge:</strong> Use <code>ccs codex --target codex</code> when you
-                want the stricter CCS-managed route explicitly.
+                <strong>{t('codex.managedBridgeLabel')}</strong> {t('codex.managedBridgeDesc')}
               </p>
             </div>
             <pre className="overflow-x-auto rounded-md border bg-muted/20 p-3 text-xs text-foreground">
