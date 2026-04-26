@@ -70,8 +70,8 @@ const BASE_SUPPORT_NOTICES: SupportNotice[] = [
     entryIds: ['codex-target', 'codex-cliproxy'],
     highlights: [
       'Use ccs-codex or ccsx for native Codex runs.',
-      'Use ccsxp for the built-in CCS Codex provider shortcut on native Codex.',
-      'Built-in Codex and Codex bridge profiles can run on native Codex with --target codex.',
+      'Use ccsxp for native Codex with the cliproxy provider shortcut.',
+      'Use ccs codex --target codex when you want the explicit CCS-managed Codex bridge.',
       'Saved default targets for API profiles and variants can now be claude, droid, or codex.',
     ],
     actions: [
@@ -84,8 +84,8 @@ const BASE_SUPPORT_NOTICES: SupportNotice[] = [
       },
       {
         id: 'copy-codex-provider-command',
-        label: 'Run built-in Codex on Codex',
-        description: 'Use the built-in Codex provider shortcut on native Codex.',
+        label: 'Run native Codex with cliproxy',
+        description: 'Use the native Codex cliproxy shortcut through CCS.',
         type: 'command',
         command: 'ccsxp "your prompt"',
       },
@@ -283,7 +283,7 @@ const BASE_CLI_SUPPORT_ENTRIES: CliSupportEntry[] = [
       'ccs api create codex-api --cliproxy-provider codex',
     ],
     notes:
-      'Use ccsxp when you want the built-in Codex provider on native Codex without retyping --target codex.',
+      'Use ccsxp when you want native Codex with the cliproxy shortcut; use ccs codex --target codex for the explicit managed bridge.',
   },
   {
     id: 'gemini-cliproxy',

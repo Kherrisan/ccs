@@ -114,12 +114,18 @@ export function CodexDocsTab({ diagnostics }: CodexDocsTabProps) {
             <div className="space-y-1.5">
               <p>
                 {/* TODO i18n: missing key codex.builtInLabel */}
-                <strong>Built-in:</strong> Use <code>ccsxp</code> for the CCS provider shortcut.
+                <strong>Built-in:</strong> Use <code>ccsxp</code> for native Codex with the{' '}
+                <code>cliproxy</code> provider shortcut.
               </p>
               <p>
                 {/* TODO i18n: missing key codex.nativeLabelRecipe */}
                 <strong>Native:</strong> Configure the recipe below to use CLIProxy directly with{' '}
                 <code>codex</code>.
+              </p>
+              <p>
+                {/* TODO i18n: missing key codex.managedBridgeLabel */}
+                <strong>Managed bridge:</strong> Use <code>ccs codex --target codex</code> when you
+                want the stricter CCS-managed route explicitly.
               </p>
             </div>
             <pre className="overflow-x-auto rounded-md border bg-muted/20 p-3 text-xs text-foreground">

@@ -88,7 +88,7 @@ CCS resolves which adapter to use via priority-ordered checks:
 2. Explicit runtime entrypoint (`CCS_INTERNAL_ENTRY_TARGET`) — dedicated bin shims
    └─ ccs-droid / ccsd → droid
    └─ ccs-codex / ccsx → codex
-   └─ ccsxp → codex, then rewrites argv to `ccs codex --target codex ...`
+   └─ ccsxp → codex, then prepends `--config model_provider="cliproxy"`
 
 3. argv[0] detection (runtime alias pattern) — binary name mapping for same-binary/custom aliases
    └─ ccs-droid (explicit alias) → droid
@@ -514,7 +514,7 @@ ccsx
 ccsxp
 → dist/bin/ccsxp-runtime.js
 → CCS_INTERNAL_ENTRY_TARGET=codex
-→ injects built-in codex profile shortcut
+→ injects native `model_provider="cliproxy"` override
 → pins CODEX_HOME to native `~/.codex` unless `CCSXP_CODEX_HOME` is set
 ```
 

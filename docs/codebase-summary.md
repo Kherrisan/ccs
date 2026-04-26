@@ -38,7 +38,7 @@ src/
 ├── bin/                      # Dedicated runtime entrypoints
 │   ├── droid-runtime.ts      # Forces droid target for ccs-droid / ccsd package bins
 │   ├── codex-runtime.ts      # Forces codex target for ccs-codex / ccsx package bins
-│   └── ccsxp-runtime.ts      # Forces built-in codex profile + codex target for ccsxp
+│   └── ccsxp-runtime.ts      # Forces codex target + native cliproxy override for ccsxp
 ├── types/                    # TypeScript type definitions
 │   ├── index.ts              # Barrel export (aggregates all types)
 │   ├── cli.ts                # CLI types (ParsedArgs, ExitCode)
@@ -267,7 +267,7 @@ src/
 ### Native Codex Runtime Target
 
 - Dedicated runtime entrypoints: `ccs-codex` and `ccsx` resolve through `src/bin/codex-runtime.ts`, while `ccsxp` resolves through `src/bin/ccsxp-runtime.ts`; all three set `CCS_INTERNAL_ENTRY_TARGET=codex` before delegating to `src/targets/target-resolver.ts`.
-- Provider shortcut behavior: `ccsxp` also strips user-supplied `--target` overrides and rewrites argv to `ccs codex --target codex ...`, so it always lands on the built-in Codex-via-CLIProxy route. It pins `CODEX_HOME` to native `~/.codex` by default so inherited launcher state does not send history/config writes to a nonstandard Codex root; `CCSXP_CODEX_HOME` is the explicit override.
+- Provider shortcut behavior: `ccsxp` strips user-supplied `--target` overrides and prepends `--config model_provider="cliproxy"` so it behaves like native Codex plus the CLIProxy provider recipe. The stricter CCS-managed bridge remains available explicitly through `ccs codex --target codex`. It pins `CODEX_HOME` to native `~/.codex` by default so inherited launcher state does not send history/config writes to a nonstandard Codex root; `CCSXP_CODEX_HOME` is the explicit override.
 - `argv[0]` alias mapping still exists in `src/targets/target-resolver.ts` for same-binary/custom alias scenarios, but the built-in npm bins above do not depend on that map at runtime.
 - Metadata boundary: `src/targets/target-metadata.ts` keeps Codex runtime-only in v1, so persisted default targets remain `claude | droid`.
 - Compatibility guardrails: `src/targets/target-runtime-compatibility.ts` centralizes which profile types can execute on Codex.

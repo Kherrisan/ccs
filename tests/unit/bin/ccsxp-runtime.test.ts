@@ -39,7 +39,7 @@ describe('ccsxp runtime wrapper', () => {
     delete require.cache[ccsPath];
   });
 
-  it('prepends the built-in codex profile and target before loading CCS', () => {
+  it('prepends the cliproxy provider override before loading CCS', () => {
     process.argv = ['node', wrapperPath, 'fix failing tests'];
     require.cache[ccsPath] = { exports: {} } as NodeJS.Module;
 
@@ -47,7 +47,11 @@ describe('ccsxp runtime wrapper', () => {
 
     expect(process.env.CCS_INTERNAL_ENTRY_TARGET).toBe('codex');
     expect(process.env.CODEX_HOME).toBe(path.join(os.homedir(), '.codex'));
-    expect(process.argv.slice(2)).toEqual(['codex', '--target', 'codex', 'fix failing tests']);
+    expect(process.argv.slice(2)).toEqual([
+      '--config',
+      'model_provider="cliproxy"',
+      'fix failing tests',
+    ]);
   });
 
   it('pins ccsxp history to native Codex default instead of inherited CODEX_HOME', () => {
@@ -71,13 +75,13 @@ describe('ccsxp runtime wrapper', () => {
     expect(process.env.CODEX_HOME).toBe('/tmp/explicit-ccsxp-codex-home');
   });
 
-  it('keeps flag-only invocations routed through the built-in codex profile shortcut', () => {
+  it('keeps flag-only invocations routed through the native cliproxy shortcut', () => {
     process.argv = ['node', wrapperPath, '--version'];
     require.cache[ccsPath] = { exports: {} } as NodeJS.Module;
 
     require(wrapperPath);
 
-    expect(process.argv.slice(2)).toEqual(['codex', '--target', 'codex', '--version']);
+    expect(process.argv.slice(2)).toEqual(['--config', 'model_provider="cliproxy"', '--version']);
   });
 
   it('strips user-supplied target overrides before forcing the codex shortcut target', () => {
@@ -86,6 +90,6 @@ describe('ccsxp runtime wrapper', () => {
 
     require(wrapperPath);
 
-    expect(process.argv.slice(2)).toEqual(['codex', '--target', 'codex', '--version']);
+    expect(process.argv.slice(2)).toEqual(['--config', 'model_provider="cliproxy"', '--version']);
   });
 });

@@ -1911,7 +1911,7 @@ const resources = {
         overview: 'Overview',
         docs: 'Docs',
         nativeCodexRuntime: 'Native Codex Runtime',
-        ccsCodexProvider: 'CCS Codex provider / bridge',
+        ccsCodexProvider: 'Cliproxy shortcut / managed bridge',
         codexDocs: 'Codex docs',
         howCodexWorks: 'How Codex works in CCS',
         supportedFlows: 'Supported flows',
@@ -1922,7 +1922,7 @@ const resources = {
         nativeConfigDesc: 'ccs-codex and ccsx launch native Codex using your saved defaults.',
         transientOverridesLabel: 'Transient overrides:',
         transientOverridesDesc:
-          'ccsxp (or ccs codex --target codex) uses the CCS provider shortcut.',
+          'ccsxp stays on native Codex and prepends the cliproxy provider override; ccs codex --target codex remains the explicit CCS-managed bridge.',
         cliproxyDefaultLabel: 'CLIProxy default:',
         cliproxyDefaultDesc:
           'To make plain codex use CLIProxy, set model_provider = "cliproxy" and add the recipe below.',
@@ -1936,13 +1936,13 @@ const resources = {
         installDirectory: 'Install directory',
         versionLabel: 'Version',
         nativeAliases: 'Native aliases',
-        ccsProviderShortcut: 'CCS provider shortcut',
+        ccsProviderShortcut: 'Cliproxy shortcut',
         configOverrideSupport: '--config override support',
         available: 'Available',
         missing: 'Missing',
         cliproxyNativeCodex: 'CLIProxy-backed native Codex',
         builtInLabel: 'Built-in:',
-        builtInCcsxpDesc: 'Use ccsxp for the CCS provider shortcut.',
+        builtInCcsxpDesc: 'Use ccsxp for native Codex with the cliproxy provider shortcut.',
         nativeRecipeLabel: 'Native:',
         nativeRecipeDesc: 'Configure the recipe below to use CLIProxy directly with codex.',
         saveProviderNamedCliproxy:
@@ -1951,7 +1951,7 @@ const resources = {
         exportCliproxyApiKey:
           'Export CLIPROXY_API_KEY in your shell before launching native Codex.',
         noConfigOverrides:
-          'This Codex build can still use the native path, but CCS-backed Codex routing via ccsxp or ccs codex --target codex stays unavailable until the detected Codex binary exposes --config overrides.',
+          'This Codex build can still use the plain native path, but ccsxp and the explicit CCS-managed Codex bridge stay unavailable until the detected Codex binary exposes --config overrides.',
         configFile: 'Config file',
         path: 'Path',
         resolved: 'Resolved',
@@ -1972,12 +1972,12 @@ const resources = {
         officialChannels: 'Official Channels',
         codexCli: 'Codex CLI',
         openNativeCodex: 'Open native Codex',
-        runBuiltInCodex: 'Run built-in Codex on Codex',
-        runBuiltInCodexExplicit: 'Run built-in Codex on Codex (explicit)',
+        runBuiltInCodex: 'Run native Codex with the cliproxy shortcut',
+        runBuiltInCodexExplicit: 'Run the CCS-managed Codex bridge explicitly',
         openCodexDashboard: 'Open Codex dashboard',
         nativeShortAlias: 'Native short alias',
-        ccsCodexShortcut: 'CCS Codex shortcut',
-        explicitProviderRoute: 'Explicit provider route',
+        ccsCodexShortcut: 'Cliproxy shortcut',
+        explicitProviderRoute: 'Managed bridge route',
         status: 'Status',
         profiles: 'Profiles',
         createNewProfile: 'Create new profile',
@@ -4459,7 +4459,8 @@ const resources = {
         nativeConfigLabel: '原生配置：',
         nativeConfigDesc: 'ccs-codex 和 ccsx 会使用你保存的默认值启动原生 Codex。',
         transientOverridesLabel: '临时覆盖：',
-        transientOverridesDesc: 'ccsxp（或 ccs codex --target codex）会使用 CCS 提供商快捷方式。',
+        transientOverridesDesc:
+          'ccsxp 会保持原生 Codex，只额外加上 cliproxy provider 覆盖；ccs codex --target codex 仍然是显式的 CCS 托管桥接。',
         cliproxyDefaultLabel: 'CLIProxy 默认：',
         cliproxyDefaultDesc:
           '如果你想让普通的 codex 走 CLIProxy，请设置 model_provider = "cliproxy"，并加入下面的配方。',
@@ -4477,7 +4478,7 @@ const resources = {
         missing: '缺失',
         cliproxyNativeCodex: '由 CLIProxy 支持的原生 Codex',
         builtInLabel: '内置：',
-        builtInCcsxpDesc: '使用 ccsxp 作为 CCS 提供商快捷方式。',
+        builtInCcsxpDesc: '使用 ccsxp 通过 cliproxy provider 快捷方式启动原生 Codex。',
         nativeRecipeLabel: '原生：',
         nativeRecipeDesc: '按下面的配方配置，即可让 codex 直接走 CLIProxy。',
         saveProviderNamedCliproxy:
@@ -4485,7 +4486,7 @@ const resources = {
         inTopLevelSetDefault: '在顶层设置中，将 Default provider 设为 cliproxy。',
         exportCliproxyApiKey: '在启动原生 Codex 之前，在 shell 中导出 CLIPROXY_API_KEY。',
         noConfigOverrides:
-          '这个 Codex 版本仍然可以走原生路径，但在检测到的二进制支持 --config 覆盖之前，ccsxp 或 ccs codex --target codex 这样的 CCS 路由不可用。',
+          '这个 Codex 版本仍然可以走纯原生路径，但在检测到的二进制支持 --config 覆盖之前，ccsxp 和显式的 CCS 托管 Codex 桥接都不可用。',
         configFile: '配置文件',
         path: '路径',
         resolved: '已解析',
@@ -6993,7 +6994,7 @@ const resources = {
         nativeConfigDesc: 'ccs-codex và ccsx khởi chạy Codex gốc bằng các mặc định bạn đã lưu.',
         transientOverridesLabel: 'Ghi đè tạm thời:',
         transientOverridesDesc:
-          'ccsxp (hoặc ccs codex --target codex) dùng đường tắt nhà cung cấp CCS.',
+          'ccsxp vẫn chạy Codex gốc và chỉ thêm ghi đè provider cliproxy; ccs codex --target codex vẫn là cầu nối CCS được quản lý rõ ràng.',
         cliproxyDefaultLabel: 'Mặc định CLIProxy:',
         cliproxyDefaultDesc:
           'Để lệnh codex thông thường đi qua CLIProxy, hãy đặt model_provider = "cliproxy" và dùng công thức bên dưới.',
@@ -7011,14 +7012,14 @@ const resources = {
         missing: 'Thiếu',
         cliproxyNativeCodex: 'Codex gốc dùng CLIProxy',
         builtInLabel: 'Tích hợp:',
-        builtInCcsxpDesc: 'Dùng ccsxp cho lối tắt nhà cung cấp CCS.',
+        builtInCcsxpDesc: 'Dùng ccsxp để chạy Codex gốc với lối tắt provider cliproxy.',
         nativeRecipeLabel: 'Gốc:',
         nativeRecipeDesc: 'Cấu hình công thức bên dưới để dùng CLIProxy trực tiếp với codex.',
         saveProviderNamedCliproxy: 'Lưu một provider tên cliproxy với base URL và env key ở trên.',
         inTopLevelSetDefault: 'Trong Top-level settings, đặt Default provider là cliproxy.',
         exportCliproxyApiKey: 'Xuất CLIPROXY_API_KEY trong shell trước khi chạy Codex gốc.',
         noConfigOverrides:
-          'Bản Codex này vẫn có thể dùng đường gốc, nhưng định tuyến Codex qua CCS như ccsxp hoặc ccs codex --target codex sẽ không hoạt động cho đến khi binary hỗ trợ ghi đè --config.',
+          'Bản Codex này vẫn có thể dùng đường gốc thuần, nhưng ccsxp và cầu nối Codex do CCS quản lý rõ ràng sẽ chưa dùng được cho đến khi binary hỗ trợ ghi đè --config.',
         configFile: 'Tệp cấu hình',
         path: 'Đường dẫn',
         resolved: 'Đã phân giải',
@@ -9287,7 +9288,7 @@ const resources = {
         nativeConfigDesc: 'ccs-codex と ccsx は保存済みデフォルトでネイティブ Codex を起動します。',
         transientOverridesLabel: '一時オーバーライド:',
         transientOverridesDesc:
-          'ccsxp（または ccs codex --target codex）は CCS プロバイダーのショートカットを使います。',
+          'ccsxp はネイティブ Codex のまま cliproxy プロバイダー上書きだけを追加し、ccs codex --target codex は明示的な CCS 管理ブリッジのままです。',
         cliproxyDefaultLabel: 'CLIProxy デフォルト:',
         cliproxyDefaultDesc:
           '通常の codex を CLIProxy 経由にするには、model_provider = "cliproxy" を設定し、下のレシピを追加します。',
@@ -9305,7 +9306,8 @@ const resources = {
         missing: '不足',
         cliproxyNativeCodex: 'CLIProxy 経由のネイティブ Codex',
         builtInLabel: '内蔵:',
-        builtInCcsxpDesc: 'CCS プロバイダーショートカットとして ccsxp を使用します。',
+        builtInCcsxpDesc:
+          'ccsxp を使うと、cliproxy プロバイダーショートカット付きでネイティブ Codex を起動します。',
         nativeRecipeLabel: 'ネイティブ:',
         nativeRecipeDesc: '下のレシピを設定すると codex を直接 CLIProxy 経由で利用できます。',
         saveProviderNamedCliproxy:
@@ -9314,7 +9316,7 @@ const resources = {
         exportCliproxyApiKey:
           'ネイティブ Codex を起動する前に shell で CLIPROXY_API_KEY を export してください。',
         noConfigOverrides:
-          'この Codex ビルドでもネイティブパスは使えますが、ccsxp や ccs codex --target codex などの CCS 側ルーティングは、検出された Codex バイナリが --config オーバーライドに対応するまで利用できません。',
+          'この Codex ビルドでも純粋なネイティブパスは使えますが、検出された Codex バイナリが --config オーバーライドに対応するまで、ccsxp と明示的な CCS 管理 Codex ブリッジは利用できません。',
         configFile: '設定ファイル',
         path: 'パス',
         resolved: '解決先',
