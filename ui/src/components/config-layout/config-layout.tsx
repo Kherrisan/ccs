@@ -1,4 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
+import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
+import { GripVertical } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 
@@ -34,22 +36,46 @@ interface ConfigLayoutProps {
   form: ReactNode;
   /** Right pane: raw JSON / effective config. Omit to hide. */
   json?: ReactNode;
+  /**
+   * Persistence key for the form↔json split ratio (per §0e). Optional —
+   * defaults to a key derived from `window.location.pathname` so each
+   * route gets its own localStorage slot automatically. Pass an explicit
+   * key only when sub-routes should share split state, or to opt out of
+   * pathname coupling. Avoid hardcoded shared keys: they cause split
+   * ratios to bleed across unrelated Config pages.
+   */
+  storageKey?: string;
   className?: string;
 }
 
 /**
  * ConfigLayout - Strict 3-pane shell for every Config archetype page.
  *
- * - >=1024px: 3-column grid (left 260px / form flex / json 360px)
+ * - >=1024px: content-fit rail (§0a, w-fit min 240 / max 360) + resizable
+ *   form/json split (§0e); rail itself is NOT user-resizable
  * - <1024px: tabs (left | form | json)
  *
  * Single component, prop-controlled left rail. The contract:
  * - <ConfigLayout left={<ListPane …/>}  …/>  // multi-entity
  * - <ConfigLayout left={<SectionRail …/>} …/> // single-entity
  * - <ConfigLayout …/>                          // no rail
+ *
+ * The form↔json divider is user-draggable (react-resizable-panels). The
+ * chosen ratio persists in localStorage via `autoSaveId={storageKey}`. Min
+ * sizes prevent either pane from collapsing to unreadable.
  */
-export function ConfigLayout({ left, form, json, className }: ConfigLayoutProps) {
+export function ConfigLayout({ left, form, json, storageKey, className }: ConfigLayoutProps) {
   const isDesktop = useIsDesktop();
+  // Per-route default so pages get unique localStorage slots automatically
+  // (prevents the cross-page state bleed that a hardcoded shared default
+  // would cause). SSR-safe: falls back to a stable string when window is
+  // unavailable. Pages can still pass an explicit storageKey to opt out of
+  // pathname coupling (e.g. when sub-routes should share split state).
+  const effectiveKey =
+    storageKey ??
+    (typeof window === 'undefined'
+      ? 'config-layout.default'
+      : `config-layout${window.location.pathname.replace(/\//g, '.')}`);
 
   // CRITICAL: render exactly one layout at a time. Rendering both and
   // toggling visibility via Tailwind `hidden lg:grid` would mount two copies
@@ -58,28 +84,71 @@ export function ConfigLayout({ left, form, json, className }: ConfigLayoutProps)
   // copy first on mobile, breaking the rail entirely.
   if (isDesktop) {
     return (
-      <div
-        className={cn(
-          'grid min-h-0 flex-1 gap-4 p-4',
-          left && json && 'grid-cols-[260px_minmax(0,1fr)_360px]',
-          left && !json && 'grid-cols-[260px_minmax(0,1fr)]',
-          !left && json && 'grid-cols-[minmax(0,1fr)_360px]',
-          !left && !json && 'grid-cols-1',
-          className
-        )}
-      >
+      <div className={cn('flex min-h-0 flex-1 gap-4 p-4', className)}>
         {left && (
-          <aside className="min-w-0 overflow-hidden rounded-xl border bg-card">{left}</aside>
+          // §0a: rail width is content-fit within a unified envelope.
+          // Floor (min-w 240px) prevents the header from squeezing controls
+          // into a wrap. Cap (max-w 360px) prevents the rail from dominating
+          // the body when entity labels are unusually long; per-item
+          // truncation inside ListPane handles overflow beyond that.
+          // `w-fit` lets the rail expand to the largest atomic header element
+          // (title + buttons) so titles never break across two lines.
+          <aside className="w-fit min-w-[240px] max-w-[360px] shrink-0 overflow-hidden rounded-xl border bg-card">
+            {left}
+          </aside>
         )}
-        <main className="min-w-0 overflow-hidden rounded-xl border bg-card">{form}</main>
-        {json && (
-          <aside className="min-w-0 overflow-hidden rounded-xl border bg-card">{json}</aside>
-        )}
+        <PanelGroup direction="horizontal" autoSaveId={effectiveKey} className="min-w-0 flex-1">
+          <Panel defaultSize={json ? 45 : 100} minSize={json ? 30 : 100} order={1}>
+            <main className="h-full overflow-hidden rounded-xl border bg-card">{form}</main>
+          </Panel>
+          {json && <ResizeDivider />}
+          {json && (
+            <Panel defaultSize={55} minSize={30} order={2}>
+              <aside className="h-full overflow-hidden rounded-xl border bg-card">{json}</aside>
+            </Panel>
+          )}
+        </PanelGroup>
       </div>
     );
   }
 
   return <MobileTabs left={left} form={form} json={json} className={className} />;
+}
+
+/**
+ * ResizeDivider - draggable handle between form and json panes (§0e).
+ *
+ * Keyboard accessible (arrow keys move 16px increments per
+ * react-resizable-panels default). Visual: thin 8px hot zone with a 1px
+ * vertical line and a centered grip glyph that brightens on hover/drag.
+ */
+function ResizeDivider() {
+  return (
+    <PanelResizeHandle
+      className={cn(
+        'group relative mx-1 flex w-2 shrink-0 items-center justify-center',
+        'outline-none focus-visible:ring-2 focus-visible:ring-ring rounded'
+      )}
+      aria-label="Resize form and JSON panes"
+    >
+      {/* Thin vertical line */}
+      <div
+        className={cn(
+          'h-full w-px bg-border transition-colors',
+          'group-hover:bg-accent group-data-[resize-handle-state=drag]:bg-accent'
+        )}
+      />
+      {/* Grip glyph appears on hover/drag */}
+      <div
+        className={cn(
+          'absolute flex h-8 w-3 items-center justify-center rounded border bg-background opacity-0 shadow-sm transition-opacity',
+          'group-hover:opacity-100 group-data-[resize-handle-state=drag]:opacity-100'
+        )}
+      >
+        <GripVertical className="size-3 text-muted-foreground" />
+      </div>
+    </PanelResizeHandle>
+  );
 }
 
 function MobileTabs({

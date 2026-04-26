@@ -49,11 +49,29 @@ export function JsonPane({
     hasTabs && tabs.some((t) => t.id === selectedTabId) ? selectedTabId : (tabs?.[0]?.id ?? 'data');
 
   return (
-    <div className={cn('flex h-full flex-col', className)}>
-      <header className="flex shrink-0 items-center justify-between gap-2 border-b px-4 py-2.5">
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          {title}
-        </h3>
+    // Outer shell: muted wash differentiates the json pane from the form pane
+    // (bg-card) so the two sibling panes are visually distinct without a
+    // hard divider line. Maintains the Pampas/Crail palette — no new colors.
+    <div className={cn('flex h-full flex-col bg-muted/30', className)}>
+      <header className="relative flex shrink-0 items-center justify-between gap-2 border-b bg-card/80 px-4 py-2.5 backdrop-blur">
+        {/* 1px Crail strip at the top edge — visually links to FormPane's header strip. */}
+        <span aria-hidden className="absolute inset-x-0 top-0 h-px bg-accent/40" />
+        <div className="flex items-center gap-2">
+          <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-accent" />
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            {title}
+          </h3>
+          <span
+            className={cn(
+              'rounded border px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wider',
+              editable
+                ? 'border-accent/40 bg-accent/10 text-accent'
+                : 'border-border bg-muted/60 text-muted-foreground'
+            )}
+          >
+            {editable ? 'editable' : 'read only'}
+          </span>
+        </div>
         <div className="flex items-center gap-1">
           <CopyButton
             value={
@@ -117,7 +135,11 @@ function JsonView({ data, editable, onChange }: JsonViewProps) {
 
   return (
     <ScrollArea className="h-full">
-      <pre className="whitespace-pre p-3 font-mono text-xs leading-relaxed text-foreground">
+      {/* Inner card on top of the muted shell — gives the json a subtle
+          embossed feel rather than floating on a flat surface. JSON content
+          renders plain; a dedicated JSON viewer (with its own color coding)
+          will replace this <pre> in a follow-up. */}
+      <pre className="m-3 whitespace-pre rounded-md border bg-card/80 p-3 font-mono text-xs leading-relaxed text-foreground shadow-inner">
         {text}
       </pre>
     </ScrollArea>

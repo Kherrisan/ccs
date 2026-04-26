@@ -63,17 +63,46 @@ export function ListPane({
                   type="button"
                   onClick={() => onSelect(item.id)}
                   className={cn(
-                    'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors',
+                    'group/item relative flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-all duration-150',
+                    // Crail accent leading-edge stripe on the selected row —
+                    // matches the FormSection treatment so the "active entity"
+                    // visually links to its form on the right.
+                    'before:absolute before:inset-y-1 before:left-0 before:w-[3px] before:rounded-r before:bg-transparent before:transition-colors',
                     selected
-                      ? 'bg-accent text-accent-foreground'
-                      : 'hover:bg-accent/50 hover:text-accent-foreground'
+                      ? 'bg-accent/10 text-foreground before:bg-accent'
+                      : 'hover:bg-muted/60 hover:before:bg-accent/30'
                   )}
                   aria-current={selected ? 'true' : undefined}
                 >
-                  {item.icon && <span className="shrink-0">{item.icon}</span>}
-                  <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                  {item.icon && (
+                    <span
+                      className={cn(
+                        'shrink-0 transition-colors',
+                        selected
+                          ? 'text-accent'
+                          : 'text-muted-foreground group-hover/item:text-foreground'
+                      )}
+                    >
+                      {item.icon}
+                    </span>
+                  )}
+                  <span
+                    className={cn(
+                      'min-w-0 flex-1 truncate transition-colors',
+                      selected && 'font-medium'
+                    )}
+                  >
+                    {item.label}
+                  </span>
                   {item.badge && (
-                    <span className="shrink-0 text-xs text-muted-foreground">{item.badge}</span>
+                    <span
+                      className={cn(
+                        'shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium tabular-nums transition-colors',
+                        selected ? 'bg-accent/15 text-accent' : 'bg-muted/60 text-muted-foreground'
+                      )}
+                    >
+                      {item.badge}
+                    </span>
                   )}
                 </button>
               </li>
