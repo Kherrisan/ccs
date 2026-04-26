@@ -1460,11 +1460,7 @@ async function main(): Promise<void> {
         };
         delete proxyEnv.ANTHROPIC_API_KEY;
 
-        const launchArgs = [
-          '--settings',
-          expandedSettingsPath,
-          ...appendThirdPartyWebSearchToolArgs(browserArgs),
-        ];
+        const launchArgs = [...appendThirdPartyWebSearchToolArgs(browserArgs)];
         const traceEnv = createWebSearchTraceContext({
           launcher: 'ccs.settings-profile.proxy',
           args: launchArgs,
