@@ -87,6 +87,14 @@ function buildDailyTimestamp(date: string): string {
   return `${date}T00:00:00.000Z`;
 }
 
+function distributeRequestCounts(total: number, buckets: number): number[] {
+  if (buckets <= 0) return [];
+  const normalizedTotal = Math.max(buckets, total);
+  const base = Math.floor(normalizedTotal / buckets);
+  const remainder = normalizedTotal % buckets;
+  return Array.from({ length: buckets }, (_value, index) => base + (index < remainder ? 1 : 0));
+}
+
 function buildLegacyHistoryDetails(
   snapshot: LegacyCliproxyUsageSnapshot
 ): CliproxyUsageHistoryDetail[] {
@@ -94,7 +102,12 @@ function buildLegacyHistoryDetails(
   const coveredDailyKeys = new Set<string>();
 
   for (const hour of snapshot.hourly ?? []) {
-    for (const breakdown of hour.modelBreakdowns) {
+    const requestCounts = distributeRequestCounts(
+      hour.requestCount ?? hour.modelBreakdowns.length,
+      hour.modelBreakdowns.length
+    );
+
+    hour.modelBreakdowns.forEach((breakdown, index) => {
       details.push({
         model: breakdown.modelName,
         timestamp: buildHourlyTimestamp(hour.hour),
@@ -103,10 +116,12 @@ function buildLegacyHistoryDetails(
         inputTokens: breakdown.inputTokens,
         outputTokens: breakdown.outputTokens,
         cacheReadTokens: breakdown.cacheReadTokens,
+        requestCount: requestCounts[index] ?? 1,
+        cost: breakdown.cost,
         failed: false,
       });
       coveredDailyKeys.add(`${hour.hour.slice(0, 10)}|${breakdown.modelName}`);
-    }
+    });
   }
 
   for (const day of snapshot.daily ?? []) {
@@ -124,6 +139,8 @@ function buildLegacyHistoryDetails(
         inputTokens: breakdown.inputTokens,
         outputTokens: breakdown.outputTokens,
         cacheReadTokens: breakdown.cacheReadTokens,
+        requestCount: 1,
+        cost: breakdown.cost,
         failed: false,
       });
     }

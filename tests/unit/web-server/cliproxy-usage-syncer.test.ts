@@ -211,6 +211,7 @@ describe('cliproxy usage syncer', () => {
             {
               hour: '2026-03-01 12:00',
               source: 'cliproxy',
+              requestCount: 7,
               inputTokens: 100,
               outputTokens: 20,
               cacheCreationTokens: 0,
@@ -260,6 +261,21 @@ describe('cliproxy usage syncer', () => {
 
       const cached = await loadCachedCliproxyData();
       expect(cached.daily.map((entry) => entry.date)).toEqual(['2026-03-02', '2026-03-01']);
+      expect(cached.hourly.find((entry) => entry.hour === '2026-03-01 12:00')?.requestCount).toBe(7);
+    });
+  });
+
+  it('prunes history details older than the configured retention window', async () => {
+    await runWithScopedConfigDir(ccsDir, async () => {
+      await syncCliproxyUsage(() =>
+        Promise.resolve(buildResponse(100, '2024-01-01T12:00:00.000Z'))
+      );
+      await syncCliproxyUsage(() =>
+        Promise.resolve(buildResponse(200, new Date().toISOString()))
+      );
+
+      const cached = await loadCachedCliproxyData();
+      expect(cached.daily.some((entry) => entry.date === '2024-01-01')).toBe(false);
     });
   });
 

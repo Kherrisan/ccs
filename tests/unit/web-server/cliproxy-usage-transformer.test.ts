@@ -134,6 +134,14 @@ describe('cliproxy usage transformer', () => {
     expect(merged).toHaveLength(2);
   });
 
+  it('uses persisted cost from history instead of recomputing from current pricing', () => {
+    const details = extractCliproxyUsageHistoryDetails(sampleResponse);
+    const seeded = details.map((detail) => ({ ...detail, cost: 999 }));
+    const { daily } = buildCliproxyUsageHistoryAggregates(seeded);
+
+    expect(daily[0].modelBreakdowns[0]?.cost).toBe(999);
+  });
+
   it('rebuilds daily history aggregates from merged detail history', () => {
     const details = extractCliproxyUsageHistoryDetails(sampleResponse);
     const { daily } = buildCliproxyUsageHistoryAggregates(details);

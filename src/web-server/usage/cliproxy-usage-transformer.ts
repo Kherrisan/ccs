@@ -22,6 +22,8 @@ export interface CliproxyUsageHistoryDetail {
   inputTokens: number;
   outputTokens: number;
   cacheReadTokens: number;
+  requestCount: number;
+  cost: number;
   failed: boolean;
 }
 
@@ -30,15 +32,12 @@ interface ModelAccumulator {
   inputTokens: number;
   outputTokens: number;
   cacheReadTokens: number;
+  cost: number;
 }
 
 /** Build ModelBreakdown from accumulated token counts */
 function buildModelBreakdown(modelName: string, acc: ModelAccumulator): ModelBreakdown {
-  const { inputTokens, outputTokens, cacheReadTokens } = acc;
-  const cost = calculateCost(
-    { inputTokens, outputTokens, cacheCreationTokens: 0, cacheReadTokens },
-    modelName
-  );
+  const { inputTokens, outputTokens, cacheReadTokens, cost } = acc;
   return { modelName, inputTokens, outputTokens, cacheCreationTokens: 0, cacheReadTokens, cost };
 }
 
@@ -54,6 +53,16 @@ function createHistoryDetail(
     inputTokens: detail.tokens?.input_tokens ?? 0,
     outputTokens: detail.tokens?.output_tokens ?? 0,
     cacheReadTokens: detail.tokens?.cached_tokens ?? 0,
+    requestCount: 1,
+    cost: calculateCost(
+      {
+        inputTokens: detail.tokens?.input_tokens ?? 0,
+        outputTokens: detail.tokens?.output_tokens ?? 0,
+        cacheCreationTokens: 0,
+        cacheReadTokens: detail.tokens?.cached_tokens ?? 0,
+      },
+      model
+    ),
     failed: detail.failed,
   };
 }
@@ -107,6 +116,7 @@ function createHistorySignature(detail: CliproxyUsageHistoryDetail): string {
     detail.inputTokens,
     detail.outputTokens,
     detail.cacheReadTokens,
+    detail.requestCount,
     detail.failed ? '1' : '0',
   ].join('|');
 }
@@ -185,15 +195,21 @@ function aggregateByKey<T>(
   for (const detail of flat) {
     const key = keyFn(detail.timestamp);
     if (!buckets.has(key)) buckets.set(key, new Map());
-    requestCounts.set(key, (requestCounts.get(key) ?? 0) + 1);
+    requestCounts.set(key, (requestCounts.get(key) ?? 0) + detail.requestCount);
     const modelMap = buckets.get(key) as Map<string, ModelAccumulator>;
     if (!modelMap.has(detail.model)) {
-      modelMap.set(detail.model, { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0 });
+      modelMap.set(detail.model, {
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheReadTokens: 0,
+        cost: 0,
+      });
     }
     const acc = modelMap.get(detail.model) as ModelAccumulator;
     acc.inputTokens += detail.inputTokens;
     acc.outputTokens += detail.outputTokens;
     acc.cacheReadTokens += detail.cacheReadTokens;
+    acc.cost += detail.cost;
   }
 
   const records: T[] = [];
