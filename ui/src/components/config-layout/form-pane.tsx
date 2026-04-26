@@ -19,15 +19,26 @@ interface FormPaneProps {
  */
 export function FormPane({ header, children, footer, className }: FormPaneProps) {
   return (
-    <div className={cn('flex h-full flex-col', className)}>
+    <div className={cn('flex h-full flex-col bg-card', className)}>
       {header && (
-        <div className="flex shrink-0 items-center gap-2 border-b bg-card px-5 py-3">{header}</div>
+        // Sticky entity header. 1px accent strip on the top edge nods to the
+        // page's primary action (Save) which lives at the bottom — same accent.
+        // The bottom edge has a soft inset shadow so when the body scrolls
+        // under, the header reads as "elevated" rather than flat.
+        <div className="relative flex shrink-0 items-center gap-2 border-b bg-gradient-to-b from-card to-card/70 px-5 py-3 shadow-[0_1px_0_oklch(0_0_0/0.04),0_4px_8px_-4px_oklch(0_0_0/0.06)]">
+          <span aria-hidden className="absolute inset-x-0 top-0 h-px bg-accent/40" />
+          {header}
+        </div>
       )}
       <ScrollArea className="flex-1">
-        <div className="space-y-4 p-5">{children}</div>
+        {/* Body uses a faint muted wash so FormSections (bg-card) read as
+            elevated cards. Without this they would float on a same-color shell. */}
+        <div className="space-y-4 bg-muted/20 p-5">{children}</div>
       </ScrollArea>
       {footer && (
-        <div className="flex shrink-0 items-center gap-2 border-t bg-card/80 px-5 py-3 backdrop-blur">
+        // Footer anchors the primary save action; muted/40 shadow pulls focus
+        // downward and keeps the action button visible while the body scrolls.
+        <div className="flex shrink-0 items-center gap-2 border-t bg-muted/40 px-5 py-3 backdrop-blur">
           {footer}
         </div>
       )}

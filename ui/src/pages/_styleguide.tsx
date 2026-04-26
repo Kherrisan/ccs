@@ -24,8 +24,6 @@ import {
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { PageShell, PageHeader, EmptyState, ErrorState } from '@/components/page-shell';
@@ -46,6 +44,7 @@ import {
   KpiRow,
   KpiCard,
 } from '@/components/monitor-layout';
+import { Field } from '@/components/forms/field';
 
 const DEMO_PROVIDERS: ListPaneItem[] = [
   { id: 'provider-a', label: 'Provider A', badge: '14', icon: <Zap className="size-3.5" /> },
@@ -64,11 +63,25 @@ const DEMO_SECTIONS: SectionRailItem[] = [
 ];
 
 const DEMO_CONFIG = {
-  endpoint: 'https://example.local:8317',
-  strategy: 'weighted-round-robin',
-  accounts: 14,
-  failover: ['provider-b', 'provider-c'],
-  timeout_ms: 30000,
+  env: {
+    ANTHROPIC_BASE_URL: 'https://api.example.local/anthropic',
+    ANTHROPIC_AUTH_TOKEN: '••••••••••••••••••••••••',
+    API_TIMEOUT_MS: '3000000',
+    ANTHROPIC_MODEL: 'demo-1.0',
+    ANTHROPIC_DEFAULT_OPUS_MODEL: 'demo-1.0',
+    ANTHROPIC_DEFAULT_SONNET_MODEL: 'demo-1',
+    ANTHROPIC_DEFAULT_HAIKU_MODEL: 'demo-0.5-air',
+    DISABLE_TELEMETRY: '1',
+    ANTHROPIC_TEMPERATURE: '0.2',
+    ANTHROPIC_MAX_TOKENS: '65536',
+  },
+  routing: {
+    strategy: 'weighted-round-robin',
+    failover: ['provider-b', 'provider-c'],
+  },
+  permissions: {
+    defaultMode: 'bypassPermissions',
+  },
 };
 
 export function StyleguidePage() {
@@ -91,21 +104,21 @@ export function StyleguidePage() {
       </PrimitiveSection>
 
       <PrimitiveSection
-        title="1c. PageHeader — title + description + actions (health pattern)"
+        title="1c. PageHeader — Monitor-only chrome (NEVER above ConfigLayout)"
         anchor="page-header"
       >
         <DemoPageHeader />
       </PrimitiveSection>
 
       <PrimitiveSection
-        title="2a. Config archetype — multi-entity (ListPane)"
+        title="2a. Config archetype — multi-entity (rail-anchored, no top chrome)"
         anchor="config-multi"
       >
         <DemoConfigMulti />
       </PrimitiveSection>
 
       <PrimitiveSection
-        title="2b. Config archetype — single-entity (SectionRail)"
+        title="2b. Config archetype — single-entity (rail-anchored, no top chrome)"
         anchor="config-single"
       >
         <DemoConfigSingle />
@@ -148,7 +161,7 @@ export function StyleguidePage() {
 
 function Intro() {
   return (
-    <header className="mx-auto max-w-4xl space-y-3 text-center">
+    <header className="mx-auto max-w-4xl space-y-4 text-center">
       <Badge variant="outline" className="font-mono">
         DEV ONLY · /_styleguide
       </Badge>
@@ -156,13 +169,48 @@ function Intro() {
       <p className="text-muted-foreground">
         Three identity-strip patterns — <strong>HeroBar</strong> (one-row dense, see <code>/</code>{' '}
         home page), <strong>rail-anchored</strong> (no top chrome, see <code>/cliproxy</code>), and{' '}
-        <strong>PageHeader</strong> (title + description + actions, see <code>/health</code>) — and
-        two body archetypes: <strong>Config</strong> (3-pane: list / form / JSON) and{' '}
-        <strong>Monitor</strong> (KPI row + grid). Pick the identity strip that matches your
-        page&apos;s shape; pick the body archetype your content needs.
+        <strong>PageHeader</strong> (Monitor-only) — and two body archetypes:{' '}
+        <strong>Config</strong> (rail + form + optional JSON) and <strong>Monitor</strong> (KPI row
+        + grid).
       </p>
+      <div className="mx-auto max-w-3xl rounded-2xl border border-destructive/30 bg-destructive/5 p-4 text-left text-sm">
+        <p className="mb-2 font-semibold text-destructive">§0 Layout invariants — never violate</p>
+        <ul className="list-disc space-y-1 pl-5 text-muted-foreground">
+          <li>
+            Config pages are a <strong>strict two-column shell</strong>: largest pane on the left
+            (rail / list owns identity), main content on the right. Both columns flush against the
+            global topbar, filling the viewport.
+          </li>
+          <li>
+            <strong>No second horizontal strip</strong> below the global topbar. No{' '}
+            <code>PageHeader</code>, breadcrumb row, description band, or KPI ribbon above a{' '}
+            <code>ConfigLayout</code>.
+          </li>
+          <li>
+            Form and JSON panes are <strong>siblings sharing one top edge</strong>. Tab bars live
+            inside the form pane&apos;s scroll area, never as a sibling row that offsets the JSON
+            pane.
+          </li>
+          <li>
+            <code>pages/cliproxy.tsx</code> is the canonical Config reference. When a Config page
+            disagrees with it on layout shape, the page is wrong.
+          </li>
+          <li>
+            The <strong>left rail is content-fit within a unified envelope</strong> (
+            <code>w-fit min-w-[240px] max-w-[360px]</code>). Same primitives, same treatment
+            everywhere; width adapts to header content so titles never wrap. Pages MUST NOT override
+            this envelope.
+          </li>
+          <li>
+            The <strong>form ↔ JSON split is user-resizable</strong> via a draggable divider; the
+            rail itself is NOT user-resizable. Min widths: form ≥ 360px, json ≥ 320px. Ratio
+            persists in <code>localStorage</code> per-page.
+          </li>
+        </ul>
+      </div>
       <p className="text-xs text-muted-foreground">
-        See <code>ui/docs/design-system.md</code> for the decision table.
+        Full spec: <code>ui/docs/design-system.md</code> · revision history:{' '}
+        <code>ui/docs/design-decisions.md</code> (current: v1.6, 2026-04-26). Color rules: §5.
       </p>
     </header>
   );
@@ -352,56 +400,167 @@ function DemoRailAnchored() {
     <div className="flex h-[640px] flex-col">
       {/* NOTE: NO PageHeader at the top. Identity is inside the rail. */}
       <ConfigLayout
+        storageKey="styleguide.rail-anchored"
         left={railHeader}
         form={
           <FormPane
-            header={<p className="text-sm font-semibold">Provider A</p>}
-            footer={<Button size="sm">Save</Button>}
+            header={
+              <div className="flex w-full items-center justify-between">
+                <div>
+                  <p className="text-sm font-semibold">Provider A</p>
+                  <p className="text-xs text-muted-foreground">
+                    Last modified: 4/12/2026 · 14 accounts · synced 2m ago
+                  </p>
+                </div>
+                <Badge variant="outline">connected</Badge>
+              </div>
+            }
+            footer={
+              <>
+                <Button size="sm">Save</Button>
+                <Button size="sm" variant="outline">
+                  Test connection
+                </Button>
+              </>
+            }
           >
-            <FormSection id="general" title="General">
-              <Field label="Endpoint" defaultValue="https://example.local:8317" />
+            <FormSection id="endpoint" title="Endpoint" description="Base URL and auth token.">
+              <Field
+                label="ANTHROPIC_BASE_URL"
+                defaultValue="https://api.example.local/anthropic"
+              />
+              <Field label="ANTHROPIC_AUTH_TOKEN" defaultValue="••••••••••••••••••••••" />
+              <Field label="API_TIMEOUT_MS" defaultValue="3000000" />
+            </FormSection>
+            <FormSection id="models" title="Models" description="Routing for Opus/Sonnet/Haiku.">
+              <Field label="ANTHROPIC_MODEL" defaultValue="demo-1.0" />
+              <Field label="ANTHROPIC_DEFAULT_OPUS_MODEL" defaultValue="demo-1.0" />
+              <Field label="ANTHROPIC_DEFAULT_SONNET_MODEL" defaultValue="demo-1" />
+              <Field label="ANTHROPIC_DEFAULT_HAIKU_MODEL" defaultValue="demo-0.5-air" />
+            </FormSection>
+            <FormSection id="advanced" title="Advanced">
+              <Field label="ANTHROPIC_TEMPERATURE" defaultValue="0.2" />
+              <Field label="ANTHROPIC_MAX_TOKENS" defaultValue="65536" />
+              <Field label="DISABLE_TELEMETRY" defaultValue="1" />
             </FormSection>
           </FormPane>
         }
-        json={<JsonPane title="Effective" data={DEMO_CONFIG} />}
+        json={<JsonPane title="Raw configuration" data={DEMO_CONFIG} />}
       />
     </div>
   );
 }
 
 // -----------------------------------------------------------------------------
-// PageHeader demo (canonical: pages/health.tsx)
+// PageHeader demo — MONITOR-ONLY use (§0b / §1c).
 //
-// Traditional title row with description and trailing actions. Use when the
-// page does NOT fit either canonical hero AND the description carries
-// non-redundant context (last refresh, page hierarchy, filter state, version).
+// PageHeader stacks a second horizontal strip below the global topbar, which
+// costs vertical real estate. That cost is acceptable ONLY when the body is a
+// Monitor archetype (KPI row + grid) with NO left rail. NEVER place PageHeader
+// above a ConfigLayout — the rail owns identity in Config pages.
 // -----------------------------------------------------------------------------
 
 function DemoPageHeader() {
+  const tiles: Array<{
+    label: string;
+    value: string;
+    hint: string;
+    tone: 'positive' | 'warning' | 'default';
+    spark: number[];
+  }> = [
+    {
+      label: 'Active',
+      value: '87',
+      hint: '▲ 3 vs yesterday',
+      tone: 'positive',
+      spark: [62, 70, 68, 74, 80, 82, 85, 87],
+    },
+    {
+      label: 'Requests/24h',
+      value: '12,481',
+      hint: '▲ 6.4%',
+      tone: 'positive',
+      spark: [40, 55, 48, 60, 70, 75, 82, 90],
+    },
+    {
+      label: 'Errors',
+      value: '12',
+      hint: '3 quota · 9 transient',
+      tone: 'warning',
+      spark: [4, 6, 3, 8, 10, 7, 9, 12],
+    },
+    {
+      label: 'Uptime',
+      value: '99.98%',
+      hint: '30-day window',
+      tone: 'default',
+      spark: [98, 99, 99, 99, 100, 100, 99, 100],
+    },
+  ];
+
   return (
-    <PageShell>
-      <PageHeader
-        title="Demo Page"
-        description="PageShell + PageHeader provide consistent chrome for every page."
-        status={<Badge variant="secondary">Running</Badge>}
-        actions={
-          <>
-            <Button variant="outline" size="sm">
-              Refresh
-            </Button>
-            <Button size="sm">
-              <Plus className="size-3.5" /> New
-            </Button>
-          </>
-        }
-      />
-      <div className="p-6 text-sm text-muted-foreground">Page body renders below the header.</div>
-    </PageShell>
+    <div className="flex flex-col">
+      <div className="border-b border-amber-500/30 bg-amber-500/10 px-4 py-2 text-xs text-amber-800 dark:text-amber-300">
+        <strong>Allowed only above Monitor body without a rail.</strong> Never stack above{' '}
+        <code>ConfigLayout</code> — see §4a anti-pattern.
+      </div>
+      <PageShell>
+        <PageHeader
+          title="Demo Monitor"
+          description="Last refresh: 12s ago · 4 sources · viewing live"
+          status={<Badge variant="secondary">All systems nominal</Badge>}
+          actions={
+            <>
+              <Button variant="outline" size="sm">
+                <RefreshCcw className="size-3.5" /> Refresh
+              </Button>
+              <Button size="sm">
+                <Plus className="size-3.5" /> New source
+              </Button>
+            </>
+          }
+        />
+        <div className="grid grid-cols-4 gap-3 p-4">
+          {tiles.map((t) => {
+            const max = Math.max(...t.spark);
+            const toneStroke =
+              t.tone === 'positive'
+                ? 'stroke-emerald-500'
+                : t.tone === 'warning'
+                  ? 'stroke-amber-500'
+                  : 'stroke-foreground/60';
+            return (
+              <div key={t.label} className="rounded-lg border bg-card p-3">
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                  {t.label}
+                </p>
+                <p className="mt-1 font-mono text-lg font-bold">{t.value}</p>
+                <p className="text-[10px] text-muted-foreground">{t.hint}</p>
+                <svg viewBox="0 0 100 24" className="mt-2 h-6 w-full" preserveAspectRatio="none">
+                  <polyline
+                    fill="none"
+                    strokeWidth="1.5"
+                    className={cn(toneStroke)}
+                    points={t.spark
+                      .map((v, i) => `${(i / (t.spark.length - 1)) * 100},${24 - (v / max) * 22}`)
+                      .join(' ')}
+                  />
+                </svg>
+              </div>
+            );
+          })}
+        </div>
+      </PageShell>
+    </div>
   );
 }
 
 // -----------------------------------------------------------------------------
-// Config (multi-entity) demo
+// Config (multi-entity) demo — rail-anchored, NO top chrome (§0b / §1b).
+//
+// Identity (brand + page CTA) lives inside ListPane.header. The two columns
+// share one top edge flush against the global topbar; the body fills the
+// viewport. Canonical reference: pages/cliproxy.tsx.
 // -----------------------------------------------------------------------------
 
 function DemoConfigMulti() {
@@ -412,20 +571,31 @@ function DemoConfigMulti() {
     String(p.label).toLowerCase().includes(search.toLowerCase())
   );
 
+  const railHeader = (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <Zap className="size-4 text-primary" />
+          <h2 className="text-sm font-semibold">CLIProxy</h2>
+        </div>
+        <Badge variant="outline" className="text-[10px]">
+          4 providers
+        </Badge>
+      </div>
+      <Button size="sm" className="w-full gap-1.5">
+        <Plus className="size-3.5" /> New provider
+      </Button>
+    </div>
+  );
+
   return (
     <div className="flex h-[640px] flex-col">
-      <PageHeader
-        title="CLIProxy"
-        status={<Badge variant="secondary">Multi-entity demo</Badge>}
-        actions={
-          <Button size="sm">
-            <Plus className="size-3.5" /> New provider
-          </Button>
-        }
-      />
+      {/* NO PageHeader above ConfigLayout — see §4a anti-pattern. */}
       <ConfigLayout
+        storageKey="styleguide.config-multi"
         left={
           <ListPane
+            header={railHeader}
             items={filtered}
             selectedId={selectedId}
             onSelect={setSelectedId}
@@ -433,9 +603,12 @@ function DemoConfigMulti() {
             onSearchChange={setSearch}
             searchPlaceholder="Search providers…"
             footer={
-              <Button variant="outline" size="sm" className="w-full">
-                <Plus className="size-3.5" /> Add provider
-              </Button>
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span>{filtered.length} shown</span>
+                <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
+                  <ShieldCheck className="size-3" /> 1 connected
+                </span>
+              </div>
             }
           />
         }
@@ -459,61 +632,121 @@ function DemoConfigMulti() {
               </>
             }
           >
-            <FormSection id="general" title="General" description="Endpoint and routing strategy.">
+            <FormSection id="general" title="General" description="Display and endpoint.">
               <Field label="Display name" defaultValue="Provider A" />
-              <Field label="Endpoint" defaultValue="https://example.local:8317" />
+              <Field
+                label="ANTHROPIC_BASE_URL"
+                defaultValue="https://api.example.local/anthropic"
+              />
+              <Field label="ANTHROPIC_AUTH_TOKEN" defaultValue="••••••••••••••••••••••" />
+              <Field label="API_TIMEOUT_MS" defaultValue="3000000" />
             </FormSection>
-            <FormSection id="auth" title="Authentication">
+            <FormSection id="models" title="Models" description="Routing per role.">
+              <Field label="ANTHROPIC_MODEL" defaultValue="demo-1.0" />
+              <Field label="ANTHROPIC_DEFAULT_OPUS_MODEL" defaultValue="demo-1.0" />
+              <Field label="ANTHROPIC_DEFAULT_SONNET_MODEL" defaultValue="demo-1" />
+              <Field label="ANTHROPIC_DEFAULT_HAIKU_MODEL" defaultValue="demo-0.5-air" />
+            </FormSection>
+            <FormSection id="auth" title="Authentication & Routing">
               <Field label="Strategy" defaultValue="weighted-round-robin" />
+              <Field label="Failover chain" defaultValue="provider-b → provider-c" />
+            </FormSection>
+            <FormSection id="advanced" title="Advanced">
+              <Field label="ANTHROPIC_TEMPERATURE" defaultValue="0.2" />
+              <Field label="ANTHROPIC_MAX_TOKENS" defaultValue="65536" />
+              <Field label="DISABLE_TELEMETRY" defaultValue="1" />
             </FormSection>
           </FormPane>
         }
-        json={<JsonPane title="Effective" data={DEMO_CONFIG} />}
+        json={<JsonPane title="Raw configuration" data={DEMO_CONFIG} />}
       />
     </div>
   );
 }
 
 // -----------------------------------------------------------------------------
-// Config (single-entity) demo
+// Config (single-entity) demo — rail-anchored, NO top chrome (§0b / §1b).
+//
+// Identity (brand + version + primary CTA) lives inside SectionRail.header.
+// Both columns flush against the global topbar; the form scrolls inside its
+// own pane while the rail stays sticky. No PageHeader above the layout.
 // -----------------------------------------------------------------------------
 
 function DemoConfigSingle() {
+  const railHeader = (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <Bot className="size-4 text-primary" />
+          <h2 className="text-sm font-semibold">Cursor</h2>
+        </div>
+        <Badge variant="outline" className="text-[10px] font-mono">
+          v0.42
+        </Badge>
+      </div>
+      <Button size="sm" variant="outline" className="w-full gap-1.5">
+        <Plus className="size-3.5" /> Open editor
+      </Button>
+    </div>
+  );
+
   return (
     <div className="flex h-[680px] flex-col">
-      <PageHeader
-        title="Cursor"
-        description="Single-entity config with SectionRail."
-        status={<Badge variant="secondary">v0.42 · connected</Badge>}
-        actions={
-          <Button size="sm">
-            <Plus className="size-3.5" /> Open editor
-          </Button>
-        }
-      />
+      {/* NO PageHeader above ConfigLayout — see §4a anti-pattern. */}
       <ConfigLayout
-        left={<SectionRail sections={DEMO_SECTIONS} />}
+        storageKey="styleguide.config-single"
+        left={<SectionRail header={railHeader} sections={DEMO_SECTIONS} />}
         form={
-          <FormPane footer={<Button size="sm">Save configuration</Button>}>
-            <FormSection id="general" title="General" description="Top-level identity.">
-              <Field label="Endpoint" defaultValue="https://example.local:8317" />
+          <FormPane
+            header={
+              <div className="flex w-full items-center justify-between">
+                <div>
+                  <p className="text-sm font-semibold">Cursor IDE</p>
+                  <p className="text-xs text-muted-foreground">
+                    Last modified: 4/12/2026 · workspace synced
+                  </p>
+                </div>
+                <Badge variant="outline">connected</Badge>
+              </div>
+            }
+            footer={
+              <>
+                <Button size="sm">Save configuration</Button>
+                <Button size="sm" variant="outline">
+                  Open editor
+                </Button>
+              </>
+            }
+          >
+            <FormSection id="general" title="General" description="Endpoint and identity.">
+              <Field
+                label="ANTHROPIC_BASE_URL"
+                defaultValue="https://api.example.local/anthropic"
+              />
               <Field label="Default profile" defaultValue="example-profile" />
+              <Field label="API_TIMEOUT_MS" defaultValue="3000000" />
             </FormSection>
             <FormSection id="auth" title="Authentication">
               <Field label="Strategy" defaultValue="oauth" />
+              <Field label="ANTHROPIC_AUTH_TOKEN" defaultValue="••••••••••••••••••••••" />
             </FormSection>
             <FormSection id="routing" title="Routing">
               <Field label="Strategy" defaultValue="weighted-round-robin" />
               <Field label="Failover chain" defaultValue="provider-b → provider-c" />
             </FormSection>
             <FormSection id="models" title="Models">
-              <Field label="Default model" defaultValue="model-x" />
+              <Field label="ANTHROPIC_MODEL" defaultValue="demo-1.0" />
+              <Field label="ANTHROPIC_DEFAULT_OPUS_MODEL" defaultValue="demo-1.0" />
+              <Field label="ANTHROPIC_DEFAULT_SONNET_MODEL" defaultValue="demo-1" />
+              <Field label="ANTHROPIC_DEFAULT_HAIKU_MODEL" defaultValue="demo-0.5-air" />
             </FormSection>
             <FormSection id="tools" title="Tools & MCP">
               <Field label="MCP endpoint" defaultValue="(none)" />
             </FormSection>
             <FormSection id="advanced" title="Advanced">
-              <Field label="Timeout (ms)" defaultValue="30000" />
+              <Field label="ANTHROPIC_TEMPERATURE" defaultValue="0.2" />
+              <Field label="ANTHROPIC_MAX_TOKENS" defaultValue="65536" />
+              <Field label="DISABLE_TELEMETRY" defaultValue="1" />
             </FormSection>
           </FormPane>
         }
@@ -651,16 +884,5 @@ function DemoMonitor() {
 }
 
 // -----------------------------------------------------------------------------
-// tiny field helper
+// tiny field helper (extracted to shared component)
 // -----------------------------------------------------------------------------
-
-function Field({ label, defaultValue }: { label: string; defaultValue: string }) {
-  return (
-    <div className="space-y-1.5">
-      <Label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-        {label}
-      </Label>
-      <Input defaultValue={defaultValue} className="font-mono text-sm" />
-    </div>
-  );
-}

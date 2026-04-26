@@ -1,30 +1,70 @@
 import { useState } from 'react';
+import { Eye, EyeOff, Lock } from 'lucide-react';
 import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import { Eye, EyeOff } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 interface MaskedInputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   label?: string;
+  /**
+   * Hide the "sensitive" pill on the label row. Defaults to false (pill shown).
+   * Use only when the surrounding context already signals sensitivity.
+   */
+  hideSensitivePill?: boolean;
 }
 
-export function MaskedInput({ label, ...props }: MaskedInputProps) {
-  const [visible, setVisible] = useState(false);
+/**
+ * MaskedInput - Sensitive text input per design-system.md §5g.
+ *
+ * Treatment: Lock glyph prefixing the label · "sensitive" accent pill on the
+ * label row · <input type="password"> by default with a reveal/hide eye
+ * toggle on the right edge · accent focus ring (the only place the default
+ * focus ring is overridden).
+ *
+ * Consumers: API token / OAuth secret / WebSearch API key / env-block secret
+ * fields across cliproxy / accounts / settings / profile editor.
+ */
+export function MaskedInput({
+  label,
+  hideSensitivePill = false,
+  className,
+  ...props
+}: MaskedInputProps) {
+  const [revealed, setRevealed] = useState(false);
 
   return (
-    <div className="space-y-1">
-      {label && <label className="text-sm font-medium">{label}</label>}
+    <div className="group/masked space-y-1.5">
+      {label && (
+        <div className="flex items-center justify-between gap-2">
+          <label className="flex items-center gap-1.5 text-sm font-medium">
+            <Lock aria-hidden className="size-3 text-accent/70" />
+            {label}
+          </label>
+          {!hideSensitivePill && (
+            <span className="rounded border border-accent/40 bg-accent/10 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wider text-accent">
+              sensitive
+            </span>
+          )}
+        </div>
+      )}
       <div className="relative">
-        <Input type={visible ? 'text' : 'password'} className="pr-10 font-mono" {...props} />
-        <Button
+        <Input
+          type={revealed ? 'text' : 'password'}
+          className={cn(
+            'pr-9 font-mono transition-all',
+            'focus-visible:ring-1 focus-visible:ring-accent/40 focus-visible:border-accent/50',
+            className
+          )}
+          {...props}
+        />
+        <button
           type="button"
-          variant="ghost"
-          size="sm"
-          className="absolute right-0 top-0 h-full px-3"
-          onClick={() => setVisible(!visible)}
+          onClick={() => setRevealed((v) => !v)}
           tabIndex={-1}
+          aria-label={revealed ? 'Hide value' : 'Reveal value'}
+          className="absolute right-1.5 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-accent"
         >
-          {visible ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-        </Button>
+          {revealed ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+        </button>
       </div>
     </div>
   );
