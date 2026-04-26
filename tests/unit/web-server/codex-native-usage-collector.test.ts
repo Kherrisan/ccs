@@ -173,4 +173,15 @@ describe('codex native usage collector', () => {
 
     expect(entries).toHaveLength(0);
   });
+
+  it('also skips ccs_runtime-backed codex bridge sessions by default', async () => {
+    writeCodexRollout(tempRoot, { modelProvider: 'ccs_runtime' });
+
+    const entries = await scanCodexNativeUsageEntries({
+      env: { CODEX_HOME: tempRoot },
+      homeDir: tempRoot,
+    });
+
+    expect(entries).toHaveLength(0);
+  });
 });

@@ -20,6 +20,8 @@ interface DroidSessionMetadata {
   version?: string;
 }
 
+const DROID_COST_BATCH_SIZE = 1000;
+
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
@@ -149,11 +151,19 @@ export async function scanDroidNativeUsageEntries(
   const costsDbPath = path.join(factoryDir, 'costs.db');
   if (!fs.existsSync(costsDbPath)) return [];
 
-  const rows =
-    (await query(
+  const rows: Array<Record<string, unknown>> = [];
+  let offset = 0;
+  while (true) {
+    const batch = await query(
       costsDbPath,
-      'SELECT session_id, timestamp, input_tokens, output_tokens FROM costs ORDER BY timestamp ASC;'
-    )) ?? [];
+      `SELECT session_id, timestamp, input_tokens, output_tokens FROM costs ` +
+        `ORDER BY timestamp ASC LIMIT ${DROID_COST_BATCH_SIZE} OFFSET ${offset};`
+    );
+    if (!batch.length) break;
+    rows.push(...batch);
+    if (batch.length < DROID_COST_BATCH_SIZE) break;
+    offset += batch.length;
+  }
   if (!rows.length) return [];
 
   const metadata = loadSessionMetadata(factoryDir);
@@ -168,11 +178,11 @@ export async function scanDroidNativeUsageEntries(
     if (!sessionId || !timestamp || inputTokens === null || outputTokens === null) continue;
 
     const session = metadata.get(sessionId);
-    if (
-      session &&
-      !options.includeCcsManagedSessions &&
-      isCcsManagedSelector(session.rawSelector)
-    ) {
+    if (!session) {
+      continue;
+    }
+
+    if (!options.includeCcsManagedSessions && isCcsManagedSelector(session.rawSelector)) {
       continue;
     }
 
@@ -181,11 +191,11 @@ export async function scanDroidNativeUsageEntries(
       outputTokens,
       cacheCreationTokens: 0,
       cacheReadTokens: 0,
-      model: session?.model ?? 'unknown-droid-model',
+      model: session.model,
       sessionId,
       timestamp,
-      projectPath: session?.projectPath ?? '/',
-      version: session?.version,
+      projectPath: session.projectPath,
+      version: session.version,
       target: 'droid',
     });
   }

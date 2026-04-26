@@ -131,4 +131,21 @@ describe('droid native usage collector', () => {
 
     expect(entries).toHaveLength(0);
   });
+
+  it('surfaces sqlite failures instead of flattening them into an empty result', async () => {
+    writeDroidGlobalSettings(tempRoot);
+    writeDroidSessionFixture(tempRoot);
+
+    const querySqliteJson: DroidSqliteQuery = async () => {
+      throw new Error('sqlite blew up');
+    };
+
+    await expect(
+      scanDroidNativeUsageEntries({
+        env: { CCS_HOME: tempRoot },
+        homeDir: tempRoot,
+        querySqliteJson,
+      })
+    ).rejects.toThrow('sqlite blew up');
+  });
 });

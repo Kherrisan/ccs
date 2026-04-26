@@ -16,6 +16,10 @@ interface CodexTokenSnapshot {
   outputTokens: number;
 }
 
+function isCliProxyBackedProvider(value: string | undefined): boolean {
+  return value === 'cliproxy' || value === 'ccs_runtime';
+}
+
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
@@ -123,7 +127,7 @@ async function parseRolloutFile(
         !isObject(parsed.payload) ||
         parsed.payload.type !== 'token_count' ||
         !sessionId ||
-        (modelProvider === 'cliproxy' && !includeCliproxySessions)
+        (isCliProxyBackedProvider(modelProvider) && !includeCliproxySessions)
       ) {
         continue;
       }

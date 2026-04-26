@@ -13,10 +13,7 @@ function isCommandMissing(error: unknown): boolean {
   return nodeError.code === 'ENOENT' || /not found/i.test(nodeError.message);
 }
 
-export async function querySqliteJson(
-  dbPath: string,
-  sql: string
-): Promise<SqliteJsonRow[] | null> {
+export async function querySqliteJson(dbPath: string, sql: string): Promise<SqliteJsonRow[]> {
   if (!fs.existsSync(dbPath)) {
     return [];
   }
@@ -34,8 +31,10 @@ export async function querySqliteJson(
     return Array.isArray(parsed) ? (parsed as SqliteJsonRow[]) : [];
   } catch (error) {
     if (isCommandMissing(error)) {
-      return null;
+      throw new Error('sqlite3 command not available');
     }
-    return [];
+
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`sqlite3 query failed for ${dbPath}: ${message}`);
   }
 }

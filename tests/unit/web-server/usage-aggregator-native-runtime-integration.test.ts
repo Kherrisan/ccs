@@ -280,4 +280,19 @@ describe('usage aggregator native runtime integration', () => {
     });
     expect(daily[0].modelsUsed).not.toContain('gpt-5');
   });
+
+  it('ignores ccs_runtime-backed codex bridge rollouts to avoid double counting', async () => {
+    writeCodexFixture('ccs_runtime');
+    aggregator.clearUsageCache();
+
+    const daily = await aggregator.getCachedDailyData();
+
+    expect(daily).toHaveLength(1);
+    expect(daily[0]).toMatchObject({
+      inputTokens: 150,
+      outputTokens: 50,
+      cacheReadTokens: 5,
+    });
+    expect(daily[0].modelsUsed).not.toContain('gpt-5');
+  });
 });
