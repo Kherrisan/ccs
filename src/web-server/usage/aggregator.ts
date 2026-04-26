@@ -7,7 +7,13 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { loadAllUsageData } from './data-aggregator';
+import {
+  aggregateDailyUsage,
+  aggregateHourlyUsage,
+  aggregateMonthlyUsage,
+  aggregateSessionUsage,
+  loadAllUsageData,
+} from './data-aggregator';
 import type { DailyUsage, HourlyUsage, MonthlyUsage, SessionUsage } from './types';
 import {
   readDiskCache,
@@ -26,6 +32,8 @@ import {
   stopCliproxySync,
   syncCliproxyUsage,
 } from './cliproxy-usage-syncer';
+import { scanCodexNativeUsageEntries } from './codex-native-usage-collector';
+import { scanDroidNativeUsageEntries } from './droid-native-usage-collector';
 
 // ============================================================================
 // Multi-Instance Support - Aggregate usage from CCS profiles
@@ -381,6 +389,32 @@ async function refreshFromSource(): Promise<{
 
   if (instanceDataResults.length > 0) {
     console.log(info(`Aggregated usage data from ${instanceDataResults.length} CCS instance(s)`));
+  }
+
+  try {
+    const codexEntries = await scanCodexNativeUsageEntries();
+    if (codexEntries.length > 0) {
+      allDailySources.push(aggregateDailyUsage(codexEntries, 'codex-native'));
+      allHourlySources.push(aggregateHourlyUsage(codexEntries, 'codex-native'));
+      allMonthlySources.push(aggregateMonthlyUsage(codexEntries, 'codex-native'));
+      allSessionSources.push(aggregateSessionUsage(codexEntries, 'codex-native'));
+      console.log(info(`Included native Codex usage data (${codexEntries.length} event(s))`));
+    }
+  } catch (err) {
+    console.error(fail(`Failed to load native Codex usage data: ${err}`));
+  }
+
+  try {
+    const droidEntries = await scanDroidNativeUsageEntries();
+    if (droidEntries.length > 0) {
+      allDailySources.push(aggregateDailyUsage(droidEntries, 'droid-native'));
+      allHourlySources.push(aggregateHourlyUsage(droidEntries, 'droid-native'));
+      allMonthlySources.push(aggregateMonthlyUsage(droidEntries, 'droid-native'));
+      allSessionSources.push(aggregateSessionUsage(droidEntries, 'droid-native'));
+      console.log(info(`Included native Droid usage data (${droidEntries.length} event(s))`));
+    }
+  } catch (err) {
+    console.error(fail(`Failed to load native Droid usage data: ${err}`));
   }
 
   // Load CLIProxy usage data (from local snapshot cache)

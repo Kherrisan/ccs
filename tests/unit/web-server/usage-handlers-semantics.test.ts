@@ -26,10 +26,12 @@ interface MockResponse {
 
 let tempHome = '';
 let claudeDir = '';
+let codexDir = '';
 let handlers: HandlersModule;
 let aggregator: AggregatorModule;
 let originalCcsHome: string | undefined;
 let originalClaudeConfigDir: string | undefined;
+let originalCodexHome: string | undefined;
 
 function writeUnifiedConfigFixture(): void {
   const yaml = `version: 2
@@ -103,11 +105,14 @@ function createMockResponse(): MockResponse {
 beforeEach(async () => {
   tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'ccs-usage-handlers-'));
   claudeDir = path.join(tempHome, '.claude');
+  codexDir = path.join(tempHome, '.codex');
 
   originalCcsHome = process.env.CCS_HOME;
   originalClaudeConfigDir = process.env.CLAUDE_CONFIG_DIR;
+  originalCodexHome = process.env.CODEX_HOME;
   process.env.CCS_HOME = tempHome;
   process.env.CLAUDE_CONFIG_DIR = claudeDir;
+  process.env.CODEX_HOME = codexDir;
 
   writeUnifiedConfigFixture();
 
@@ -131,6 +136,12 @@ afterEach(() => {
     process.env.CLAUDE_CONFIG_DIR = originalClaudeConfigDir;
   } else {
     delete process.env.CLAUDE_CONFIG_DIR;
+  }
+
+  if (originalCodexHome !== undefined) {
+    process.env.CODEX_HOME = originalCodexHome;
+  } else {
+    delete process.env.CODEX_HOME;
   }
 
   fs.rmSync(tempHome, { recursive: true, force: true });

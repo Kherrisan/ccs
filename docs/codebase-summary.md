@@ -1,8 +1,8 @@
 # CCS Codebase Summary
 
-Last Updated: 2026-04-07
+Last Updated: 2026-04-26
 
-Comprehensive overview of the modularized CCS codebase structure following the Phase 9 modularization effort (Settings, Analytics, Auth Monitor splits + Test Infrastructure), v7.1 Remote CLIProxy feature, v7.2 Kiro + GitHub Copilot (ghcp) OAuth providers, v7.14 Hybrid Quota Management, v7.34 Image Analysis Hook, account-context validation hardening, Official Claude Channels runtime support, and native Codex runtime target support.
+Comprehensive overview of the modularized CCS codebase structure following the Phase 9 modularization effort (Settings, Analytics, Auth Monitor splits + Test Infrastructure), v7.1 Remote CLIProxy feature, v7.2 Kiro + GitHub Copilot (ghcp) OAuth providers, v7.14 Hybrid Quota Management, v7.34 Image Analysis Hook, account-context validation hardening, Official Claude Channels runtime support, native Codex runtime target support, and native Codex/Droid usage collectors.
 
 ## Repository Structure
 
@@ -212,10 +212,12 @@ src/
     │   └── [more routes...]
     ├── health/               # Health check system
     │   └── index.ts
-    ├── usage/                # Usage analytics module
+    ├── usage/                # Usage analytics module (default Claude, CCS instances, native Codex/Droid, CLIProxy snapshots)
     │   ├── index.ts
     │   ├── handlers.ts       # Request handlers (633 lines)
     │   ├── aggregator.ts     # Data aggregation (538 lines)
+    │   ├── codex-native-usage-collector.ts  # Native Codex rollout JSONL collector
+    │   ├── droid-native-usage-collector.ts  # Native Droid SQLite collector
     │   └── data-aggregator.ts
     ├── services/             # Shared services
     │   └── index.ts

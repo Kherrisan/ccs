@@ -6,10 +6,12 @@ import * as path from 'path';
 let tempRoot = '';
 let ccsDir = '';
 let claudeDir = '';
+let codexDir = '';
 let aggregator: typeof import('../../../src/web-server/usage/aggregator');
 let originalCcsDir: string | undefined;
 let originalClaudeConfigDir: string | undefined;
 let originalCcsHome: string | undefined;
+let originalCodexHome: string | undefined;
 
 function writeClaudeJsonlFixture(): void {
   const projectDir = path.join(claudeDir, 'projects', 'project-one');
@@ -153,13 +155,16 @@ beforeEach(async () => {
   tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ccs-usage-agg-'));
   ccsDir = path.join(tempRoot, '.ccs');
   claudeDir = path.join(tempRoot, '.claude');
+  codexDir = path.join(tempRoot, '.codex');
 
   originalCcsDir = process.env.CCS_DIR;
   originalClaudeConfigDir = process.env.CLAUDE_CONFIG_DIR;
   originalCcsHome = process.env.CCS_HOME;
+  originalCodexHome = process.env.CODEX_HOME;
   process.env.CCS_DIR = ccsDir;
   process.env.CCS_HOME = tempRoot;
   process.env.CLAUDE_CONFIG_DIR = claudeDir;
+  process.env.CODEX_HOME = codexDir;
 
   writeUnifiedConfigFixture();
   writeClaudeJsonlFixture();
@@ -189,6 +194,12 @@ afterEach(() => {
     process.env.CCS_HOME = originalCcsHome;
   } else {
     delete process.env.CCS_HOME;
+  }
+
+  if (originalCodexHome !== undefined) {
+    process.env.CODEX_HOME = originalCodexHome;
+  } else {
+    delete process.env.CODEX_HOME;
   }
 
   fs.rmSync(tempRoot, { recursive: true, force: true });
