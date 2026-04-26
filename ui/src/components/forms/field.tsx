@@ -44,8 +44,9 @@ export function Field({
           <button
             type="button"
             onClick={() => setRevealed((v) => !v)}
-            className="absolute right-1.5 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-accent"
             aria-label={revealed ? 'Hide value' : 'Reveal value'}
+            aria-pressed={revealed}
+            className="absolute right-1.5 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/60"
           >
             {revealed ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
           </button>

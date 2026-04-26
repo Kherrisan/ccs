@@ -37,12 +37,14 @@ interface ConfigLayoutProps {
   /** Right pane: raw JSON / effective config. Omit to hide. */
   json?: ReactNode;
   /**
-   * Persistence key for the form↔json split ratio (per §0e). REQUIRED.
-   * Use a stable per-page id like "config-layout.cliproxy" so each page
-   * persists its own ratio in localStorage. A shared/default key would
-   * cause split-ratio state to bleed across unrelated Config pages.
+   * Persistence key for the form↔json split ratio (per §0e). Optional —
+   * defaults to a key derived from `window.location.pathname` so each
+   * route gets its own localStorage slot automatically. Pass an explicit
+   * key only when sub-routes should share split state, or to opt out of
+   * pathname coupling. Avoid hardcoded shared keys: they cause split
+   * ratios to bleed across unrelated Config pages.
    */
-  storageKey: string;
+  storageKey?: string;
   className?: string;
 }
 
@@ -64,6 +66,16 @@ interface ConfigLayoutProps {
  */
 export function ConfigLayout({ left, form, json, storageKey, className }: ConfigLayoutProps) {
   const isDesktop = useIsDesktop();
+  // Per-route default so pages get unique localStorage slots automatically
+  // (prevents the cross-page state bleed that a hardcoded shared default
+  // would cause). SSR-safe: falls back to a stable string when window is
+  // unavailable. Pages can still pass an explicit storageKey to opt out of
+  // pathname coupling (e.g. when sub-routes should share split state).
+  const effectiveKey =
+    storageKey ??
+    (typeof window === 'undefined'
+      ? 'config-layout.default'
+      : `config-layout${window.location.pathname.replace(/\//g, '.')}`);
 
   // CRITICAL: render exactly one layout at a time. Rendering both and
   // toggling visibility via Tailwind `hidden lg:grid` would mount two copies
@@ -85,7 +97,7 @@ export function ConfigLayout({ left, form, json, storageKey, className }: Config
             {left}
           </aside>
         )}
-        <PanelGroup direction="horizontal" autoSaveId={storageKey} className="min-w-0 flex-1">
+        <PanelGroup direction="horizontal" autoSaveId={effectiveKey} className="min-w-0 flex-1">
           <Panel defaultSize={json ? 45 : 100} minSize={json ? 30 : 100} order={1}>
             <main className="h-full overflow-hidden rounded-xl border bg-card">{form}</main>
           </Panel>

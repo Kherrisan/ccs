@@ -52,6 +52,25 @@ After the v1.1 restructure, the `health` page received a separate, focused redes
 
 ---
 
+## v1.8 revision (2026-04-26) — PR-Agent round 2: storageKey default, MaskedInput type-safety, keyboard-accessible reveal toggle
+
+Three more substantive issues from upstream review on PR #1109 after the v1.7 fix push. Each is encoded in code + spec:
+
+**Required `storageKey` was the wrong fix.** v1.7 made `storageKey: string` REQUIRED to prevent cross-page state bleed, but that turned every future production-page migration into a build-breaking event. Better engineering: keep the prop optional and **default to a key derived from `window.location.pathname`** so each route gets its own localStorage slot automatically. The cross-page bleed concern still holds for hardcoded shared keys, but a pathname-derived default is unique by construction. SSR-safe (falls back to a stable string when `window` is unavailable). Pages can still pass an explicit `storageKey` to opt out of pathname coupling (e.g. when sub-routes should share split state).
+
+**`MaskedInput` type was overridable by callers.** The spread `{...props}` came AFTER the hardcoded `type={revealed ? 'text' : 'password'}`, so a caller passing `type="text"` would silently render a credential in plaintext — a real leakage risk that defeated the component's purpose. Two-layer fix:
+- Compile-time: `MaskedInputProps` now extends `Omit<InputHTMLAttributes, 'type'>` so callers literally cannot pass `type`. Type system enforces the contract.
+- Runtime: the `type` attribute on `<Input>` is now placed AFTER the spread so even if the compile-time check is bypassed (e.g. via `as`-cast), the component still wins. Belt-and-braces.
+
+**Reveal toggle was keyboard-inaccessible.** Both `MaskedInput` and `Field` had `tabIndex={-1}` on the eye-icon button, which removed it from the tab order — keyboard-only users couldn't show or hide the secret. Resolution:
+- Drop `tabIndex={-1}` so the button joins the natural tab order.
+- Add `aria-pressed={revealed}` so screen readers announce toggle state.
+- Add a focus-visible accent ring so the focused state is visible without a mouse.
+
+These are accessibility regressions that should never have shipped; the new tests-of-record for §5g are: (a) `type` cannot be overridden, (b) the toggle is reachable via Tab and announces state.
+
+---
+
 ## v1.7 revision (2026-04-26) — PR-Agent feedback: enforce mins, require storageKey, broaden sensitive heuristic
 
 Three substantive issues surfaced by upstream PR review on PR #1109. Each is encoded in code + spec:
