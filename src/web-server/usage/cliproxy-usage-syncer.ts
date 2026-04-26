@@ -34,7 +34,8 @@ interface CliproxyUsageSnapshot {
 
 type FetchCliproxyUsageRaw = typeof fetchCliproxyUsageRaw;
 
-const SNAPSHOT_VERSION = 1;
+const SNAPSHOT_VERSION = 2;
+const SNAPSHOT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 /** Sync interval in ms, configurable via CCS_CLIPROXY_SYNC_INTERVAL env var (default: 5 min) */
 const SYNC_INTERVAL_MS = Math.max(
@@ -44,6 +45,7 @@ const SYNC_INTERVAL_MS = Math.max(
 
 // Module-level interval ID
 let syncIntervalId: ReturnType<typeof setInterval> | null = null;
+let snapshotTimestampOrdinal = 0;
 
 // ---------------------------------------------------------------------------
 // Cache directory helpers
@@ -64,6 +66,44 @@ function ensureCliproxyCacheDir(): void {
   }
 }
 
+function getSnapshotTimestamp(): number {
+  snapshotTimestampOrdinal = (snapshotTimestampOrdinal + 1) % 1000;
+  return Date.now() + snapshotTimestampOrdinal / 1000;
+}
+
+function readSnapshot(emitWarnings = true): CliproxyUsageSnapshot | null {
+  try {
+    const snapshotPath = getLatestSnapshotPath();
+    if (!fs.existsSync(snapshotPath)) {
+      return null;
+    }
+
+    const raw = fs.readFileSync(snapshotPath, 'utf-8');
+    const snapshot = JSON.parse(raw) as CliproxyUsageSnapshot;
+
+    if (snapshot.version !== SNAPSHOT_VERSION) {
+      if (emitWarnings) {
+        console.log(info('CLIProxy snapshot version mismatch, will refresh on next sync'));
+      }
+      return null;
+    }
+
+    if (!Number.isFinite(snapshot.timestamp)) {
+      if (emitWarnings) {
+        console.log(info('CLIProxy snapshot timestamp invalid, will refresh on next sync'));
+      }
+      return null;
+    }
+
+    return snapshot;
+  } catch (err) {
+    if (emitWarnings) {
+      console.log(warn('Failed to read CLIProxy snapshot:') + ` ${(err as Error).message}`);
+    }
+    return null;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Load cached data
 // ---------------------------------------------------------------------------
@@ -79,25 +119,17 @@ export async function loadCachedCliproxyData(): Promise<{
 }> {
   const empty = { daily: [], hourly: [], monthly: [] };
 
-  try {
-    const snapshotPath = getLatestSnapshotPath();
-    if (!fs.existsSync(snapshotPath)) {
-      return empty;
-    }
-
-    const raw = fs.readFileSync(snapshotPath, 'utf-8');
-    const snapshot: CliproxyUsageSnapshot = JSON.parse(raw);
-
-    if (snapshot.version !== SNAPSHOT_VERSION) {
-      console.log(info('CLIProxy snapshot version mismatch, will refresh on next sync'));
-      return empty;
-    }
-
-    return { daily: snapshot.daily, hourly: snapshot.hourly, monthly: snapshot.monthly };
-  } catch (err) {
-    console.log(warn('Failed to read CLIProxy snapshot:') + ` ${(err as Error).message}`);
+  const snapshot = readSnapshot();
+  if (!snapshot) {
     return empty;
   }
+
+  const age = Date.now() - snapshot.timestamp;
+  if (age > SNAPSHOT_MAX_AGE_MS) {
+    console.log(info('Using stale CLIProxy snapshot while proxy sync is unavailable'));
+  }
+
+  return { daily: snapshot.daily, hourly: snapshot.hourly, monthly: snapshot.monthly };
 }
 
 // ---------------------------------------------------------------------------
@@ -111,6 +143,7 @@ export async function loadCachedCliproxyData(): Promise<{
 export async function syncCliproxyUsage(
   fetchRaw: FetchCliproxyUsageRaw = fetchCliproxyUsageRaw
 ): Promise<void> {
+  const syncStartedAt = getSnapshotTimestamp();
   const raw = await fetchRaw();
 
   if (raw === null) {
@@ -127,16 +160,28 @@ export async function syncCliproxyUsage(
 
     const snapshot: CliproxyUsageSnapshot = {
       version: SNAPSHOT_VERSION,
-      timestamp: Date.now(),
+      timestamp: syncStartedAt,
       daily,
       hourly,
       monthly,
     };
 
-    // Atomic write: temp file + rename
     const snapshotPath = getLatestSnapshotPath();
-    const tempFile = snapshotPath + '.tmp';
+    const tempFile = `${snapshotPath}.${process.pid}.${syncStartedAt}.tmp`;
+    const currentSnapshot = readSnapshot(false);
+    if (currentSnapshot && currentSnapshot.timestamp > snapshot.timestamp) {
+      console.log(info('Skipping stale CLIProxy snapshot write'));
+      return;
+    }
+
     fs.writeFileSync(tempFile, JSON.stringify(snapshot), 'utf-8');
+    const latestSnapshot = readSnapshot(false);
+    if (latestSnapshot && latestSnapshot.timestamp > snapshot.timestamp) {
+      fs.rmSync(tempFile, { force: true });
+      console.log(info('Skipping stale CLIProxy snapshot write'));
+      return;
+    }
+
     fs.renameSync(tempFile, snapshotPath);
 
     console.log(ok('CLIProxy usage snapshot updated'));

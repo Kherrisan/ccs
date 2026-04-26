@@ -18,6 +18,8 @@ import {
   type ModelUsage,
 } from '@/hooks/use-usage';
 
+const RECENT_SESSION_SAMPLE_LIMIT = 50;
+
 export function useAnalyticsPage() {
   // Default to last 30 days
   const [dateRange, setDateRange] = useState<DateRange | undefined>({
@@ -55,7 +57,10 @@ export function useAnalyticsPage() {
   const { data: trends, isLoading: isTrendsLoading } = useUsageTrends(apiOptions);
   const { data: hourlyData, isLoading: isHourlyLoading } = useHourlyUsage(apiOptions);
   const { data: models, isLoading: isModelsLoading } = useModelUsage(apiOptions);
-  const { data: sessions, isLoading: isSessionsLoading } = useSessions({ ...apiOptions, limit: 3 });
+  const { data: sessions, isLoading: isSessionsLoading } = useSessions({
+    ...apiOptions,
+    limit: RECENT_SESSION_SAMPLE_LIMIT,
+  });
   const { data: status } = useUsageStatus();
 
   // Handle "24H" preset click

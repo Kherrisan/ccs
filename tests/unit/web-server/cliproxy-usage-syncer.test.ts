@@ -20,6 +20,48 @@ function fetchRawResponse(): Promise<CliproxyUsageApiResponse | null> {
   return Promise.resolve(rawResponse);
 }
 
+function buildResponse(inputTokens: number, timestamp = '2026-03-02T12:00:00.000Z'): CliproxyUsageApiResponse {
+  return {
+    usage: {
+      apis: {
+        gemini: {
+          models: {
+            'gemini-2.5-pro': {
+              details: [
+                {
+                  timestamp,
+                  source: 'account-a',
+                  auth_index: 0,
+                  tokens: {
+                    input_tokens: inputTokens,
+                    output_tokens: 20,
+                    reasoning_tokens: 0,
+                    cached_tokens: 10,
+                    total_tokens: inputTokens + 30,
+                  },
+                  failed: false,
+                },
+              ],
+            },
+          },
+        },
+      },
+    },
+  };
+}
+
+function createDeferredFetch(response: CliproxyUsageApiResponse | null) {
+  let resolveFetch: ((value: CliproxyUsageApiResponse | null) => void) | undefined;
+  return {
+    fetch: () =>
+      new Promise<CliproxyUsageApiResponse | null>((resolve) => {
+        fetchCalls++;
+        resolveFetch = resolve;
+      }),
+    resolve: () => resolveFetch?.(response),
+  };
+}
+
 beforeEach(() => {
   ccsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ccs-cliproxy-syncer-'));
   fetchCalls = 0;
@@ -91,5 +133,44 @@ describe('cliproxy usage syncer', () => {
 
     stopCliproxySync();
     intervalSpy.mockRestore();
+  });
+
+  it('keeps stale cached snapshots available for historical analytics reads', async () => {
+    await runWithScopedConfigDir(ccsDir, async () => {
+      await syncCliproxyUsage(fetchRawResponse);
+
+      const snapshotPath = path.join(ccsDir, 'cache', 'cliproxy-usage', 'latest.json');
+      const snapshot = JSON.parse(fs.readFileSync(snapshotPath, 'utf-8')) as {
+        timestamp: number;
+      };
+
+      snapshot.timestamp = Date.now() - 8 * 24 * 60 * 60 * 1000;
+      fs.writeFileSync(snapshotPath, JSON.stringify(snapshot), 'utf-8');
+
+      const cached = await loadCachedCliproxyData();
+      expect(cached.daily).toHaveLength(1);
+      expect(cached.hourly).toHaveLength(1);
+      expect(cached.monthly).toHaveLength(1);
+    });
+  });
+
+  it('keeps the newer overlapping snapshot when an older sync finishes last', async () => {
+    const olderSync = createDeferredFetch(buildResponse(100, '2026-03-02T10:00:00.000Z'));
+    const newerSync = createDeferredFetch(buildResponse(200, '2026-03-02T11:00:00.000Z'));
+
+    await runWithScopedConfigDir(ccsDir, async () => {
+      const olderWrite = syncCliproxyUsage(olderSync.fetch);
+      const newerWrite = syncCliproxyUsage(newerSync.fetch);
+
+      newerSync.resolve();
+      await Promise.resolve();
+      olderSync.resolve();
+
+      await Promise.all([olderWrite, newerWrite]);
+
+      const cached = await loadCachedCliproxyData();
+      expect(cached.daily).toHaveLength(1);
+      expect(cached.daily[0].inputTokens).toBe(200);
+    });
   });
 });

@@ -244,6 +244,7 @@ export function aggregateHourlyUsage(
       totalCost,
       modelsUsed: Array.from(modelMap.keys()),
       modelBreakdowns,
+      requestCount: hourEntries.length,
     });
   }
 

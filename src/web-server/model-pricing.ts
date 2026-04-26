@@ -828,9 +828,9 @@ function getDirectOrAliasPricing(model: string): ModelPricing | undefined {
 }
 
 /**
- * Get pricing for a model with fuzzy matching fallback
- * @param model - Model name (exact or with provider prefix)
- * @returns ModelPricing for the model or fallback pricing
+ * Get pricing for a model with narrow fuzzy matching fallback.
+ * Unknown future model families should fall back instead of inheriting the
+ * first known family tier that happens to share a prefix.
  */
 export function getModelPricing(model: string): ModelPricing {
   const directOrAliasPricing = getDirectOrAliasPricing(model);
@@ -839,17 +839,9 @@ export function getModelPricing(model: string): ModelPricing {
   }
 
   for (const candidate of getLookupCandidates(model)) {
-    // Try suffix matching (e.g., "claude-sonnet-4-5" matches "*-claude-sonnet-4-5")
+    // Allow provider/routing wrappers to suffix a canonical model ID.
     for (const [key, pricing] of Object.entries(NORMALIZED_PRICING_REGISTRY)) {
-      if (candidate.endsWith(key) || key.endsWith(candidate)) {
-        return pricing;
-      }
-    }
-
-    // Try partial matching for model families
-    for (const [key, pricing] of Object.entries(NORMALIZED_PRICING_REGISTRY)) {
-      // Match by model family prefix
-      if (candidate.startsWith(key.split('-').slice(0, 2).join('-'))) {
+      if (candidate.endsWith(key)) {
         return pricing;
       }
     }

@@ -40,9 +40,19 @@ function buildModelBreakdown(modelName: string, acc: ModelAccumulator): ModelBre
 // FLATTEN
 // ============================================================================
 
+function hasTrackedUsage(detail: CliproxyRequestDetail): boolean {
+  const tokens = detail.tokens;
+  return (
+    (tokens?.input_tokens ?? 0) > 0 ||
+    (tokens?.output_tokens ?? 0) > 0 ||
+    (tokens?.cached_tokens ?? 0) > 0
+  );
+}
+
 /**
  * Flatten the nested response.usage.apis[provider].models[model].details[]
- * structure into a flat array. Failed requests are skipped.
+ * structure into a flat array. Failed requests are retained only when they
+ * still report tracked token usage that analytics can account for.
  */
 export function flattenCliproxyDetails(response: CliproxyUsageApiResponse): FlatDetail[] {
   const apis = response?.usage?.apis;
@@ -56,7 +66,7 @@ export function flattenCliproxyDetails(response: CliproxyUsageApiResponse): Flat
       const details = modelData?.details;
       if (!details) continue;
       for (const detail of details) {
-        if (detail.failed) continue;
+        if (detail.failed && !hasTrackedUsage(detail)) continue;
         results.push({ model, detail });
       }
     }
@@ -72,15 +82,17 @@ export function flattenCliproxyDetails(response: CliproxyUsageApiResponse): Flat
 function aggregateByKey<T>(
   flat: FlatDetail[],
   keyFn: (timestamp: string) => string,
-  buildRecord: (key: string, breakdowns: ModelBreakdown[]) => T,
+  buildRecord: (key: string, breakdowns: ModelBreakdown[], requestCount: number) => T,
   sortFn: (a: T, b: T) => number
 ): T[] {
   // bucket: timeKey -> modelName -> accumulator
   const buckets = new Map<string, Map<string, ModelAccumulator>>();
+  const requestCounts = new Map<string, number>();
 
   for (const { model, detail } of flat) {
     const key = keyFn(detail.timestamp);
     if (!buckets.has(key)) buckets.set(key, new Map());
+    requestCounts.set(key, (requestCounts.get(key) ?? 0) + 1);
     const modelMap = buckets.get(key) as Map<string, ModelAccumulator>;
     if (!modelMap.has(model)) {
       modelMap.set(model, { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0 });
@@ -96,7 +108,7 @@ function aggregateByKey<T>(
     const breakdowns = Array.from(modelMap.entries()).map(([name, acc]) =>
       buildModelBreakdown(name, acc)
     );
-    records.push(buildRecord(key, breakdowns));
+    records.push(buildRecord(key, breakdowns, requestCounts.get(key) ?? 0));
   });
 
   return records.sort(sortFn);
@@ -146,7 +158,7 @@ export function transformCliproxyToHourlyUsage(response: CliproxyUsageApiRespons
       const hour = ts.slice(11, 13) || '00';
       return `${date} ${hour}:00`;
     },
-    (hour, breakdowns) => {
+    (hour, breakdowns, requestCount) => {
       const totalCost = sumField(breakdowns, 'cost');
       return {
         hour,
@@ -159,6 +171,7 @@ export function transformCliproxyToHourlyUsage(response: CliproxyUsageApiRespons
         totalCost,
         modelsUsed: breakdowns.map((b) => b.modelName),
         modelBreakdowns: breakdowns,
+        requestCount,
       };
     },
     (a, b) => b.hour.localeCompare(a.hour)

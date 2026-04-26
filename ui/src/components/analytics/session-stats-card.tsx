@@ -31,26 +31,16 @@ export function SessionStatsCard({ data, isLoading, className }: SessionStatsCar
 
     const sessions = data.sessions;
     const totalSessions = data.total;
-
-    // Calculate average tokens per session
-    const totalTokens = sessions.reduce((sum, s) => sum + (s.inputTokens + s.outputTokens), 0);
-    const avgTokens = Math.round(totalTokens / sessions.length);
+    const hasPartialSample = data.hasMore || data.offset > 0;
 
     // Calculate total cost for visible sessions
     const totalCost = sessions.reduce((sum, s) => sum + s.cost, 0);
     const avgCost = totalCost / sessions.length;
 
-    // Most recent session
-    const lastSession = sessions[0];
-    const lastActive = lastSession
-      ? formatDistanceToNow(new Date(lastSession.lastActivity), { addSuffix: true })
-      : 'N/A';
-
     return {
       totalSessions,
-      avgTokens,
       avgCost,
-      lastActive,
+      hasPartialSample,
       recentSessions: sessions.slice(0, 3),
     };
   }, [data]);
@@ -122,8 +112,7 @@ export function SessionStatsCard({ data, isLoading, className }: SessionStatsCar
               </span>
             </div>
             <p className="text-[10px] text-muted-foreground uppercase tracking-wider mt-0.5">
-              {/* TODO i18n: missing key for "Avg Cost/Session" */}
-              Avg Cost/Session
+              {stats.hasPartialSample ? 'Recent Avg Cost' : 'Avg Cost/Session'}
             </p>
           </div>
         </div>
@@ -159,7 +148,8 @@ export function SessionStatsCard({ data, isLoading, className }: SessionStatsCar
                 <div className={cn('text-right shrink-0 ml-2', privacyMode && PRIVACY_BLUR_CLASS)}>
                   <div className="font-mono">${session.cost.toFixed(2)}</div>
                   <div className="text-[10px] text-muted-foreground">
-                    {formatCompact(session.inputTokens + session.outputTokens)} toks
+                    {formatCompact(session.tokens ?? session.inputTokens + session.outputTokens)}{' '}
+                    toks
                   </div>
                 </div>
               </div>

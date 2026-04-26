@@ -95,6 +95,7 @@ export interface UsageInsights {
 export interface Session {
   sessionId: string;
   projectPath: string;
+  tokens?: number;
   inputTokens: number;
   outputTokens: number;
   cost: number;
@@ -145,48 +146,49 @@ function formatDateForApi(date: Date): string {
   return `${year}${month}${day}`;
 }
 
+function buildUsageUrl(path: string, params: URLSearchParams): string {
+  const query = params.toString();
+  return query ? `${path}?${query}` : path;
+}
+
 export const usageApi = {
   summary: (options?: UsageQueryOptions) => {
     const params = new URLSearchParams();
     if (options?.startDate) params.append('since', formatDateForApi(options.startDate));
     if (options?.endDate) params.append('until', formatDateForApi(options.endDate));
-    if (options?.profile) params.append('profile', options.profile);
-    return request<UsageSummary>(`/usage/summary?${params}`);
+    return request<UsageSummary>(buildUsageUrl('/usage/summary', params));
   },
   trends: (options?: UsageQueryOptions) => {
     const params = new URLSearchParams();
     if (options?.startDate) params.append('since', formatDateForApi(options.startDate));
     if (options?.endDate) params.append('until', formatDateForApi(options.endDate));
-    if (options?.profile) params.append('profile', options.profile);
-    return request<DailyUsage[]>(`/usage/daily?${params}`);
+    return request<DailyUsage[]>(buildUsageUrl('/usage/daily', params));
   },
   hourly: (options?: UsageQueryOptions) => {
     const params = new URLSearchParams();
     if (options?.startDate) params.append('since', formatDateForApi(options.startDate));
     if (options?.endDate) params.append('until', formatDateForApi(options.endDate));
-    return request<HourlyUsage[]>(`/usage/hourly?${params}`);
+    return request<HourlyUsage[]>(buildUsageUrl('/usage/hourly', params));
   },
   models: (options?: UsageQueryOptions) => {
     const params = new URLSearchParams();
     if (options?.startDate) params.append('since', formatDateForApi(options.startDate));
     if (options?.endDate) params.append('until', formatDateForApi(options.endDate));
-    if (options?.profile) params.append('profile', options.profile);
-    return request<ModelUsage[]>(`/usage/models?${params}`);
+    return request<ModelUsage[]>(buildUsageUrl('/usage/models', params));
   },
   sessions: (options?: UsageQueryOptions) => {
     const params = new URLSearchParams();
     if (options?.startDate) params.append('since', formatDateForApi(options.startDate));
     if (options?.endDate) params.append('until', formatDateForApi(options.endDate));
-    if (options?.profile) params.append('profile', options.profile);
     if (options?.limit) params.append('limit', options.limit.toString());
     if (options?.offset) params.append('offset', options.offset.toString());
-    return request<PaginatedSessions>(`/usage/sessions?${params}`);
+    return request<PaginatedSessions>(buildUsageUrl('/usage/sessions', params));
   },
-  monthly: (months?: number, profile?: string) => {
+  monthly: (options?: UsageQueryOptions) => {
     const params = new URLSearchParams();
-    if (months) params.append('months', months.toString());
-    if (profile) params.append('profile', profile);
-    return request<MonthlyUsage[]>(`/usage/monthly?${params}`);
+    if (options?.startDate) params.append('since', formatDateForApi(options.startDate));
+    if (options?.endDate) params.append('until', formatDateForApi(options.endDate));
+    return request<MonthlyUsage[]>(buildUsageUrl('/usage/monthly', params));
   },
   /** Clear server-side usage cache and force fresh data fetch */
   refresh: async (): Promise<void> => {
@@ -205,8 +207,7 @@ export const usageApi = {
     const params = new URLSearchParams();
     if (options?.startDate) params.append('since', formatDateForApi(options.startDate));
     if (options?.endDate) params.append('until', formatDateForApi(options.endDate));
-    if (options?.profile) params.append('profile', options.profile);
-    return request<UsageInsights>(`/usage/insights?${params}`);
+    return request<UsageInsights>(buildUsageUrl('/usage/insights', params));
   },
 };
 

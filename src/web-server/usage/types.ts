@@ -49,6 +49,11 @@ export interface HourlyUsage {
   totalCost: number;
   modelsUsed: string[];
   modelBreakdowns: ModelBreakdown[];
+  /**
+   * Raw request count for this hour bucket.
+   * Optional for backward compatibility with previously persisted snapshots.
+   */
+  requestCount?: number;
 }
 
 /** Monthly usage aggregation (YYYY-MM) */
