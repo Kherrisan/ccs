@@ -694,6 +694,7 @@ export async function handleMonthly(
       cacheReadTokens: number;
       totalCost: number;
       modelsUsed: string[];
+      modelBreakdowns: DailyUsage['modelBreakdowns'];
     }>;
 
     if (since || until) {
@@ -708,6 +709,17 @@ export async function handleMonthly(
           cacheReadTokens: number;
           totalCost: number;
           modelsUsed: Set<string>;
+          modelBreakdowns: Map<
+            string,
+            {
+              modelName: string;
+              inputTokens: number;
+              outputTokens: number;
+              cacheCreationTokens: number;
+              cacheReadTokens: number;
+              cost: number;
+            }
+          >;
         }
       >();
 
@@ -721,6 +733,7 @@ export async function handleMonthly(
           cacheReadTokens: 0,
           totalCost: 0,
           modelsUsed: new Set<string>(),
+          modelBreakdowns: new Map(),
         };
 
         existing.inputTokens += day.inputTokens;
@@ -730,6 +743,22 @@ export async function handleMonthly(
         existing.totalCost += day.totalCost;
         for (const model of day.modelsUsed) {
           existing.modelsUsed.add(model);
+        }
+        for (const breakdown of day.modelBreakdowns) {
+          const existingBreakdown = existing.modelBreakdowns.get(breakdown.modelName) ?? {
+            modelName: breakdown.modelName,
+            inputTokens: 0,
+            outputTokens: 0,
+            cacheCreationTokens: 0,
+            cacheReadTokens: 0,
+            cost: 0,
+          };
+          existingBreakdown.inputTokens += breakdown.inputTokens;
+          existingBreakdown.outputTokens += breakdown.outputTokens;
+          existingBreakdown.cacheCreationTokens += breakdown.cacheCreationTokens;
+          existingBreakdown.cacheReadTokens += breakdown.cacheReadTokens;
+          existingBreakdown.cost += breakdown.cost;
+          existing.modelBreakdowns.set(breakdown.modelName, existingBreakdown);
         }
 
         monthMap.set(month, existing);
@@ -744,6 +773,7 @@ export async function handleMonthly(
           cacheReadTokens: month.cacheReadTokens,
           totalCost: month.totalCost,
           modelsUsed: Array.from(month.modelsUsed),
+          modelBreakdowns: Array.from(month.modelBreakdowns.values()),
         }))
         .sort((a, b) => a.month.localeCompare(b.month));
     } else {

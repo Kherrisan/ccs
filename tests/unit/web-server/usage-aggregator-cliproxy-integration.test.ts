@@ -306,4 +306,58 @@ describe('usage aggregator cliproxy integration', () => {
     expect(result[0].totalCost).toBe(3);
     expect(result[0].modelBreakdowns).toHaveLength(2);
   });
+
+  it('falls back to model cardinality when merging legacy hourly buckets without requestCount', () => {
+    const result = aggregator.mergeHourlyData([
+      [
+        {
+          hour: '2026-03-02 10:00',
+          source: 'legacy-a',
+          inputTokens: 10,
+          outputTokens: 1,
+          cacheCreationTokens: 0,
+          cacheReadTokens: 0,
+          cost: 1,
+          totalCost: 1,
+          modelsUsed: ['claude-sonnet-4-5'],
+          modelBreakdowns: [
+            {
+              modelName: 'claude-sonnet-4-5',
+              inputTokens: 10,
+              outputTokens: 1,
+              cacheCreationTokens: 0,
+              cacheReadTokens: 0,
+              cost: 1,
+            },
+          ],
+        },
+      ],
+      [
+        {
+          hour: '2026-03-02 10:00',
+          source: 'legacy-b',
+          inputTokens: 20,
+          outputTokens: 2,
+          cacheCreationTokens: 0,
+          cacheReadTokens: 0,
+          cost: 2,
+          totalCost: 2,
+          modelsUsed: ['gemini-2.5-pro'],
+          modelBreakdowns: [
+            {
+              modelName: 'gemini-2.5-pro',
+              inputTokens: 20,
+              outputTokens: 2,
+              cacheCreationTokens: 0,
+              cacheReadTokens: 0,
+              cost: 2,
+            },
+          ],
+        },
+      ],
+    ]);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].requestCount).toBe(2);
+  });
 });

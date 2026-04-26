@@ -99,6 +99,10 @@ async function loadInstanceData(instancePath: string): Promise<{
   }
 }
 
+function getHourlyRequestCount(hour: HourlyUsage): number {
+  return hour.requestCount ?? hour.modelBreakdowns.length;
+}
+
 /**
  * Merge daily usage data from multiple sources
  * Combines entries with same date by aggregating tokens
@@ -208,7 +212,7 @@ export function mergeHourlyData(sources: HourlyUsage[][]): HourlyUsage[] {
         existing.cacheCreationTokens += hour.cacheCreationTokens;
         existing.cacheReadTokens += hour.cacheReadTokens;
         existing.totalCost += hour.totalCost;
-        existing.requestCount = (existing.requestCount ?? 0) + (hour.requestCount ?? 0);
+        existing.requestCount = getHourlyRequestCount(existing) + getHourlyRequestCount(hour);
         const modelSet = new Set([...existing.modelsUsed, ...hour.modelsUsed]);
         existing.modelsUsed = Array.from(modelSet);
         // Merge model breakdowns
@@ -231,7 +235,7 @@ export function mergeHourlyData(sources: HourlyUsage[][]): HourlyUsage[] {
           ...hour,
           modelsUsed: [...hour.modelsUsed],
           modelBreakdowns: hour.modelBreakdowns.map((b) => ({ ...b })),
-          requestCount: hour.requestCount ?? 0,
+          requestCount: getHourlyRequestCount(hour),
         });
       }
     }
