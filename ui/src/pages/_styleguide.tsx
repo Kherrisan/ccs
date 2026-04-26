@@ -210,7 +210,7 @@ function Intro() {
       </div>
       <p className="text-xs text-muted-foreground">
         Full spec: <code>ui/docs/design-system.md</code> · revision history:{' '}
-        <code>ui/docs/design-decisions.md</code> (current: v1.6, 2026-04-26). Color rules: §5.
+        <code>ui/docs/design-decisions.md</code> (current: v1.7, 2026-04-26). Color rules: §5.
       </p>
     </header>
   );

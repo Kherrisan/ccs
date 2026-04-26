@@ -42,8 +42,8 @@ The **middle (form) and right (json) panes of `ConfigLayout` MUST be horizontall
 
 - The left rail is **unified across pages but content-fit** — same envelope, same primitives, but the actual width adapts to its header content. Constraints: `min-w-[240px]` (floor — header controls never squeeze into a wrap) and `max-w-[360px]` (cap — rail can't dominate the body even when an entity label is unusually long; per-item `truncate` inside `ListPane` handles labels beyond that). The rail is NOT user-resizable — only the form↔json split is.
 - The form ↔ json divider is the **only adjustable split**. Users frequently want a wide form for entering env values OR a wide json pane for reading effective config — never both at the design-time defaults.
-- **Default ratio: form ~45% / json ~55%** of the body width remaining after the rail. The json pane is **slightly larger by default** because the canonical cliproxy reference shows users spend more time reading effective configuration than editing one field at a time. Persist the user's chosen ratio per-page via `react-resizable-panels` `autoSaveId` (resolves to a `localStorage` key).
-- Each pane has an enforced **minimum width** (form ≥ 360px, json ≥ 320px) so neither collapses to unreadable.
+- **Default ratio: form ~45% / json ~55%** of the body width remaining after the rail. The json pane is **slightly larger by default** because the canonical cliproxy reference shows users spend more time reading effective configuration than editing one field at a time. Persist the user's chosen ratio **per page** via `react-resizable-panels` `autoSaveId` — `ConfigLayout`'s `storageKey` prop is **required**, no default, so each page must pass a stable identifier (e.g. `storageKey="config-layout.cliproxy"`). A shared default would bleed split-ratio state across unrelated pages, so the type system enforces explicit keys.
+- Each pane has an enforced **minimum size of 30%** of the resizable container (the body width after the rail), via `react-resizable-panels`' percentage-based `minSize`. On a 1280px viewport with a 280px rail this lands around 300px per pane — readable but not generous; on standard 1500px+ viewports it lands at 360px+, the practical comfort floor. The library's `minSize` API does NOT support pixel values in v3; if hard pixel floors become necessary later, layer a `onResize` clamp on top.
 - When the json pane is omitted (`json={undefined}`), the form expands to fill the remaining width — no divider rendered.
 - Below the `<1024px` breakpoint the layout collapses to tabs (Browse / Configure / JSON) — resizing is irrelevant in tab mode.
 
@@ -361,7 +361,9 @@ Sticky headers (`FormPane.header`) include a soft inset bottom shadow so when th
 
 ### 5g. Sensitive fields
 
-Fields whose label matches `AUTH_TOKEN|API_KEY|SECRET|PASSWORD|PRIVATE_KEY` are **automatically** rendered as sensitive. The treatment:
+Fields whose label matches the heuristic in `src/lib/sensitive-label.ts` (`isSensitiveLabel(label)`) are **automatically** rendered as sensitive. The pattern covers the common conventions: `AUTH_TOKEN | ACCESS_TOKEN | REFRESH_TOKEN | BEARER_TOKEN | API_KEY | API_TOKEN | API_SECRET | CLIENT_ID | CLIENT_SECRET | AWS_ACCESS_KEY_ID | AWS_SECRET_ACCESS_KEY | GCP/AZURE/GITHUB/GITLAB/OPENAI/ANTHROPIC/GEMINI variants of the above | PRIVATE_KEY | SSH_KEY | JWT | OAUTH | CREDENTIAL | PAT | PASSWORD | PASSPHRASE | WEBHOOK_SECRET | HMAC_KEY | SIGNING_KEY`. The match is case-insensitive and tolerates `_` / `-` separators. If the heuristic doesn't match a label that IS a credential, pass `sensitive` explicitly. Adding a new pattern means editing one regex in `sensitive-label.ts` — every consumer (Field, MaskedInput callers that delegate, future helpers) picks it up automatically.
+
+The treatment:
 
 - Lock glyph (`lucide-react/Lock`) prefixing the label, tinted `accent/70`
 - "sensitive" status pill on the right of the label row (accent tones per §5c)
@@ -387,4 +389,4 @@ These remain bespoke and are out of scope:
 
 ## 7. Decisions
 
-See [`design-decisions.md`](./design-decisions.md) for the resolved open questions and the v1.1 / v1.2 / v1.3 / v1.4 / v1.5 / v1.6 revision rationale.
+See [`design-decisions.md`](./design-decisions.md) for the resolved open questions and the v1.1 / v1.2 / v1.3 / v1.4 / v1.5 / v1.6 / v1.7 revision rationale.

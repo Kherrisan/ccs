@@ -37,17 +37,20 @@ interface ConfigLayoutProps {
   /** Right pane: raw JSON / effective config. Omit to hide. */
   json?: ReactNode;
   /**
-   * Persistence key for the form↔json split ratio (per §0e). Use a stable
-   * per-page id like "config-layout.cliproxy". Falls back to a global key.
+   * Persistence key for the form↔json split ratio (per §0e). REQUIRED.
+   * Use a stable per-page id like "config-layout.cliproxy" so each page
+   * persists its own ratio in localStorage. A shared/default key would
+   * cause split-ratio state to bleed across unrelated Config pages.
    */
-  storageKey?: string;
+  storageKey: string;
   className?: string;
 }
 
 /**
  * ConfigLayout - Strict 3-pane shell for every Config archetype page.
  *
- * - >=1024px: rail (260px fixed) + resizable form/json split (§0e)
+ * - >=1024px: content-fit rail (§0a, w-fit min 240 / max 360) + resizable
+ *   form/json split (§0e); rail itself is NOT user-resizable
  * - <1024px: tabs (left | form | json)
  *
  * Single component, prop-controlled left rail. The contract:
@@ -59,13 +62,7 @@ interface ConfigLayoutProps {
  * chosen ratio persists in localStorage via `autoSaveId={storageKey}`. Min
  * sizes prevent either pane from collapsing to unreadable.
  */
-export function ConfigLayout({
-  left,
-  form,
-  json,
-  storageKey = 'ccs.config-layout',
-  className,
-}: ConfigLayoutProps) {
+export function ConfigLayout({ left, form, json, storageKey, className }: ConfigLayoutProps) {
   const isDesktop = useIsDesktop();
 
   // CRITICAL: render exactly one layout at a time. Rendering both and
@@ -89,12 +86,12 @@ export function ConfigLayout({
           </aside>
         )}
         <PanelGroup direction="horizontal" autoSaveId={storageKey} className="min-w-0 flex-1">
-          <Panel defaultSize={json ? 45 : 100} minSize={json ? 25 : 100} order={1}>
+          <Panel defaultSize={json ? 45 : 100} minSize={json ? 30 : 100} order={1}>
             <main className="h-full overflow-hidden rounded-xl border bg-card">{form}</main>
           </Panel>
           {json && <ResizeDivider />}
           {json && (
-            <Panel defaultSize={55} minSize={25} order={2}>
+            <Panel defaultSize={55} minSize={30} order={2}>
               <aside className="h-full overflow-hidden rounded-xl border bg-card">{json}</aside>
             </Panel>
           )}

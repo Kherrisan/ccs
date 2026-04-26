@@ -3,6 +3,7 @@ import { Eye, EyeOff, Lock } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
+import { isSensitiveLabel } from '@/lib/sensitive-label';
 
 export function Field({
   label,
@@ -14,8 +15,7 @@ export function Field({
   sensitive?: boolean;
 }) {
   const [revealed, setRevealed] = useState(false);
-  // Heuristic: any *AUTH_TOKEN* / *_KEY / *_SECRET label is sensitive by default.
-  const isSensitive = sensitive ?? /AUTH_TOKEN|API_KEY|SECRET|PASSWORD|PRIVATE_KEY/i.test(label);
+  const isSensitive = sensitive ?? isSensitiveLabel(label);
 
   return (
     <div className="group/field space-y-1.5">

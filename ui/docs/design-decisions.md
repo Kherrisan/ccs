@@ -52,6 +52,20 @@ After the v1.1 restructure, the `health` page received a separate, focused redes
 
 ---
 
+## v1.7 revision (2026-04-26) — PR-Agent feedback: enforce mins, require storageKey, broaden sensitive heuristic
+
+Three substantive issues surfaced by upstream PR review on PR #1109. Each is encoded in code + spec:
+
+**Width floor — pixel claim was unenforceable.** The previous spec wording said "form ≥ 360px / json ≥ 320px" but `react-resizable-panels` v3 only accepts percentage `minSize`. On a 1280px viewport this could let a user drag a pane down to ~250px — well below the documented floor. Resolution: bump `minSize` from 25 to **30**, restate the floor as percentage (≥ 30% of body width after the rail), document the actual 300–360px range across realistic viewports, note the v3 API constraint, and leave the door open for a future `onResize` clamp if hard pixel floors become necessary.
+
+**`storageKey` was no longer optional.** The previous default `storageKey="ccs.config-layout"` meant any `<ConfigLayout>` without an explicit key would share localStorage state with every other Config page — split ratios bleeding across unrelated pages. Resolution: make `storageKey` REQUIRED in the `ConfigLayout` props (no default). TypeScript now enforces explicit per-page keys. Pages MUST pass e.g. `storageKey="config-layout.cliproxy"` — this is checked at compile time, not at runtime.
+
+**Sensitive-field heuristic was too narrow.** The previous regex `AUTH_TOKEN|API_KEY|SECRET|PASSWORD|PRIVATE_KEY` missed common secret names: `ACCESS_TOKEN`, `REFRESH_TOKEN`, `BEARER_TOKEN`, `CLIENT_SECRET`, `CLIENT_ID`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, GCP/Azure/GitHub/OpenAI/Anthropic variants, `JWT`, `OAUTH`, `CREDENTIAL`, `PAT`, `WEBHOOK_SECRET`, `HMAC_KEY`, `SIGNING_KEY`, `SSH_KEY`. Resolution: extract the heuristic to `src/lib/sensitive-label.ts` (`isSensitiveLabel(label)`) and broaden the pattern to cover all of those; case-insensitive; tolerates `_`/`-` separators. The Field component imports the shared helper. Adding a new pattern means editing one regex; every consumer inherits.
+
+The shared helper is the Single Source of Truth so future drift can't reintroduce per-component heuristics that disagree with each other.
+
+---
+
 ## v1.6 revision (2026-04-26) — content-fit rail (unified envelope, not fixed width)
 
 Live review of the rail-anchored pattern on the API Profiles page surfaced a regression: at the previously-mandated fixed `260px` rail width, the rail header "API Profiles" wrapped onto two lines, the description band wrapped, and the action buttons crowded each other — i.e. the rail was overflowing its own content even though the system mandated that exact width.
