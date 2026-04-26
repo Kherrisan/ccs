@@ -174,6 +174,7 @@ process.exit(0);
       CI: '1',
       NO_COLOR: '1',
       CCS_HOME: tmpHome,
+      CODEX_HOME: undefined,
       CCS_CODEX_PATH: fakeCodexPath,
       CCS_TEST_CODEX_ARGS_OUT: codexArgsLogPath,
       CCS_TEST_CODEX_ENV_OUT: codexEnvLogPath,
@@ -654,7 +655,9 @@ process.exit(0);
 
     expect(result.status).toBe(0);
     expect(result.stdout).toContain('codex-cli 9.9.9-test');
-    expect(readLoggedCodexCalls(codexArgsLogPath)).toEqual([['--version']]);
+    expect(readLoggedCodexCalls(codexArgsLogPath)).toEqual([
+      ['--config', 'model_provider="cliproxy"', '--version'],
+    ]);
   });
 
   it('pins ccsxp Codex history to native default instead of inherited CODEX_HOME', () => {
@@ -685,6 +688,71 @@ process.exit(0);
         CCS_BROWSER_DEVTOOLS_WS_URL: undefined,
       },
     ]);
+  });
+
+  it('routes default ccsxp launches through native Codex with the cliproxy provider override', () => {
+    if (process.platform === 'win32') return;
+
+    const result = runCcsxpAlias(['fix failing tests'], {
+      ...process.env,
+      CI: '1',
+      NO_COLOR: '1',
+      CCS_HOME: tmpHome,
+      CCS_CODEX_PATH: fakeCodexPath,
+      CCS_TEST_CODEX_ARGS_OUT: codexArgsLogPath,
+      CCS_TEST_CODEX_ENV_OUT: codexEnvLogPath,
+    });
+
+    expect(result.status).toBe(0);
+    expect(readLoggedCodexCalls(codexArgsLogPath)).toEqual([
+      ['--config', 'model_provider="cliproxy"', 'fix failing tests'],
+    ]);
+    expect(readLoggedCodexEnv(codexEnvLogPath)).toEqual([
+      {
+        CODEX_HOME: path.join(os.homedir(), '.codex'),
+        CODEX_CI: undefined,
+        CODEX_MANAGED_BY_BUN: undefined,
+        CODEX_THREAD_ID: undefined,
+        ANTHROPIC_BASE_URL: undefined,
+        CCS_BROWSER_USER_DATA_DIR: undefined,
+        CCS_BROWSER_PROFILE_DIR: undefined,
+        CCS_BROWSER_DEVTOOLS_WS_URL: undefined,
+      },
+    ]);
+  });
+
+  it('rejects conflicting native provider config overrides for ccsxp', () => {
+    if (process.platform === 'win32') return;
+
+    const result = runCcsxpAlias(['--config', 'model_provider="openai"', '--version'], {
+      ...process.env,
+      CI: '1',
+      NO_COLOR: '1',
+      CCS_HOME: tmpHome,
+      CCS_CODEX_PATH: fakeCodexPath,
+      CCS_TEST_CODEX_ARGS_OUT: codexArgsLogPath,
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('ccsxp does not allow');
+    expect(readLoggedCodexCalls(codexArgsLogPath)).toEqual([]);
+  });
+
+  it('rejects native profile selection flags for ccsxp', () => {
+    if (process.platform === 'win32') return;
+
+    const result = runCcsxpAlias(['--profile', 'other', '--version'], {
+      ...process.env,
+      CI: '1',
+      NO_COLOR: '1',
+      CCS_HOME: tmpHome,
+      CCS_CODEX_PATH: fakeCodexPath,
+      CCS_TEST_CODEX_ARGS_OUT: codexArgsLogPath,
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('ccsxp does not allow');
+    expect(readLoggedCodexCalls(codexArgsLogPath)).toEqual([]);
   });
 
   it('honors CCSXP_CODEX_HOME for intentionally separate ccsxp history', () => {

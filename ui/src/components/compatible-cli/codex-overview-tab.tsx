@@ -361,9 +361,7 @@ export function CodexOverviewTab({ diagnostics }: CodexOverviewTabProps) {
                       <code>ccs codex --target codex</code>
                     </li>
                   </ul>
-                  <Badge variant="secondary" className="mt-4 w-fit justify-center font-normal">
-                    {t('codex.usesTransientOverrides')}
-                  </Badge>
+                  <p className="mt-4 text-muted-foreground">{t('codex.transientOverridesDesc')}</p>
                 </>
               ) : (
                 <p className="mt-2 text-muted-foreground">{t('codex.unavailableNoConfig')}</p>

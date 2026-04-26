@@ -201,7 +201,7 @@ Resolves which adapter to use via `resolveTargetType()`:
 2. explicit runtime entrypoint (`CCS_INTERNAL_ENTRY_TARGET`):
    - ccs-droid / ccsd → droid
    - ccs-codex / ccsx → codex
-   - ccsxp → codex (provider shortcut)
+   - ccsxp → codex (native cliproxy shortcut)
    ↓
 3. argv[0] detection (runtime alias pattern / custom alias map):
    - ccs-droid → droid

@@ -70,9 +70,9 @@ const BASE_SUPPORT_NOTICES: SupportNotice[] = [
     entryIds: ['codex-target', 'codex-cliproxy'],
     highlights: [
       'Use ccs-codex or ccsx for native Codex runs.',
-      'Use ccsxp for the built-in CCS Codex provider shortcut on native Codex.',
-      'Built-in Codex and Codex bridge profiles can run on native Codex with --target codex.',
-      'Saved default targets for API profiles and variants can now be claude, droid, or codex.',
+      'Use ccsxp for native Codex with the cliproxy provider shortcut.',
+      'Use ccs codex --target codex when you want the explicit CCS-managed Codex bridge.',
+      'Codex remains runtime-only for saved defaults; use runtime aliases or --target codex at launch time.',
     ],
     actions: [
       {
@@ -84,15 +84,15 @@ const BASE_SUPPORT_NOTICES: SupportNotice[] = [
       },
       {
         id: 'copy-codex-provider-command',
-        label: 'Run built-in Codex on Codex',
-        description: 'Use the built-in Codex provider shortcut on native Codex.',
+        label: 'Run native Codex with cliproxy',
+        description: 'Use the native Codex cliproxy shortcut through CCS.',
         type: 'command',
         command: 'ccsxp "your prompt"',
       },
       {
         id: 'copy-codex-provider-command-explicit',
-        label: 'Run built-in Codex on Codex (explicit)',
-        description: 'Use the explicit built-in Codex provider route on native Codex.',
+        label: 'Run the managed Codex bridge explicitly',
+        description: 'Use the explicit CCS-managed Codex bridge on native Codex.',
         type: 'command',
         command: 'ccs codex --target codex "your prompt"',
       },
@@ -258,7 +258,7 @@ const BASE_CLI_SUPPORT_ENTRIES: CliSupportEntry[] = [
     routes: [{ label: 'Codex CLI', path: '/codex' }],
     commands: ['ccs-codex', 'ccsx', 'ccs codex --target codex', 'ccs codex-api --target codex'],
     notes:
-      'Saved default targets for API profiles and CLIProxy variants can now be claude, droid, or codex.',
+      'Codex is still runtime-only for saved defaults; use --target codex or the runtime aliases at launch time.',
   },
   {
     id: 'codex-cliproxy',
@@ -283,7 +283,7 @@ const BASE_CLI_SUPPORT_ENTRIES: CliSupportEntry[] = [
       'ccs api create codex-api --cliproxy-provider codex',
     ],
     notes:
-      'Use ccsxp when you want the built-in Codex provider on native Codex without retyping --target codex.',
+      'Use ccsxp when you want native Codex with the cliproxy shortcut; use ccs codex --target codex for the explicit managed bridge.',
   },
   {
     id: 'gemini-cliproxy',
