@@ -343,16 +343,16 @@ export type CodexWindowKind =
 export function getCodexWindowKind(labelOrWindow: string | CodexQuotaWindow): CodexWindowKind {
   if (typeof labelOrWindow === 'object' && labelOrWindow !== null) {
     const w = labelOrWindow;
-    if (w.category === 'additional') {
+    if (w.category === 'additional' && w.cadence) {
       return w.cadence === 'weekly' ? 'additional-weekly' : 'additional-5h';
     }
-    if (w.category === 'code-review') {
+    if (w.category === 'code-review' && w.cadence) {
       return w.cadence === 'weekly' ? 'code-review-weekly' : 'code-review-5h';
     }
-    if (w.category === 'usage') {
+    if (w.category === 'usage' && w.cadence) {
       return w.cadence === 'weekly' ? 'usage-weekly' : 'usage-5h';
     }
-    // No category metadata -> fall through to label sniffing.
+    // Missing or incomplete category metadata -> fall through to label sniffing.
     return getCodexWindowKindFromLabel(w.label);
   }
   return getCodexWindowKindFromLabel(labelOrWindow);

@@ -302,7 +302,7 @@ function getCodexWindowDisplayLabel(
   }
 
   if (window.category === 'additional') {
-    const pretty = prettifyCodexFeatureLabel(window.featureLabel || 'Additional');
+    const pretty = prettifyCodexFeatureLabel(window.featureLabel || window.label || 'Additional');
     if (window.cadence === '5h') return `${pretty} (5h)`;
     if (window.cadence === 'weekly') return `${pretty} (weekly)`;
     return pretty;
