@@ -94,7 +94,7 @@ function clampUnit(value: number): number {
  *
  * Anthropic exposes utilization in two different units depending on the
  * payload form:
- *   - `restrictions[]` (array or object map) returns a 0..1 ratio
+ *   - The `restrictions` payload (array or object map) returns a 0..1 ratio
  *     (e.g. 0.25 for 25% used).
  *   - The OAuth `oauth/usage` endpoint returns a percent value 0..100
  *     (e.g. 25 for 25% used; values like 1 for 1% used).
