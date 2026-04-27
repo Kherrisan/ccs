@@ -123,7 +123,6 @@ export interface MonthlyUsage {
 export interface UsageQueryOptions {
   startDate?: Date;
   endDate?: Date;
-  profile?: string;
   limit?: number;
   offset?: number;
 }

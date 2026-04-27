@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -147,5 +147,38 @@ describe('droid native usage collector', () => {
         querySqliteJson,
       })
     ).rejects.toThrow('sqlite blew up');
+  });
+
+  it('warns when cost rows are skipped because local session metadata is missing', async () => {
+    writeDroidGlobalSettings(tempRoot);
+    const sessionId = writeDroidSessionFixture(tempRoot);
+    const consoleSpy = spyOn(console, 'log').mockImplementation(() => {});
+
+    const querySqliteJson: DroidSqliteQuery = async () => [
+      {
+        session_id: 'missing-session',
+        timestamp: '2026-03-02T09:00:00.000Z',
+        input_tokens: 50,
+        output_tokens: 10,
+      },
+      {
+        session_id: sessionId,
+        timestamp: '2026-03-02T10:00:00.000Z',
+        input_tokens: 120,
+        output_tokens: 30,
+      },
+    ];
+
+    const entries = await scanDroidNativeUsageEntries({
+      env: { CCS_HOME: tempRoot },
+      homeDir: tempRoot,
+      querySqliteJson,
+    });
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.sessionId).toBe(sessionId);
+    expect(consoleSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Skipped 1 Droid native cost row(s) without local session metadata')
+    );
   });
 });

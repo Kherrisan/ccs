@@ -58,7 +58,7 @@ describe('SessionStatsCard', () => {
     expect(screen.getByText('No session data available')).toBeInTheDocument();
   });
 
-  it('uses the API total for overall session count while labeling subset averages as recent', () => {
+  it('keeps subset session metrics explicitly sample-scoped when pagination truncates the result set', () => {
     const data = buildPaginatedSessions({
       sessions: [
         buildSession({ sessionId: 'session-1', cost: 0.08 }),
@@ -84,8 +84,9 @@ describe('SessionStatsCard', () => {
 
     render(<SessionStatsCard data={data} />, { wrapper: AllProviders });
 
-    expect(screen.getByText('Total Sessions')).toBeInTheDocument();
-    expect(screen.getByText('9')).toBeInTheDocument();
+    expect(screen.getByText('Sampled Sessions')).toBeInTheDocument();
+    expect(screen.getByText('3')).toBeInTheDocument();
+    expect(screen.getByText('9 total')).toBeInTheDocument();
     expect(screen.getByText('Recent Avg Cost')).toBeInTheDocument();
     expect(screen.getAllByText('$0.08').length).toBeGreaterThan(0);
     expect(screen.getByText('codex')).toBeInTheDocument();

@@ -206,7 +206,7 @@ function readSnapshot(emitWarnings = true): CliproxyUsageSnapshot | null {
       return snapshot as CliproxyUsageSnapshot;
     }
 
-    if (snapshot.version === 2) {
+    if (snapshot.version === 1 || snapshot.version === 2) {
       return migrateLegacySnapshot(snapshot as LegacyCliproxyUsageSnapshot, emitWarnings);
     }
 

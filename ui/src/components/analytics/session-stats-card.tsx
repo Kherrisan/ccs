@@ -31,6 +31,7 @@ export function SessionStatsCard({ data, isLoading, className }: SessionStatsCar
 
     const sessions = data.sessions;
     const totalSessions = data.total;
+    const sampledSessions = sessions.length;
     const hasPartialSample = data.hasMore || data.offset > 0;
 
     // Calculate total cost for visible sessions
@@ -38,6 +39,7 @@ export function SessionStatsCard({ data, isLoading, className }: SessionStatsCar
     const avgCost = totalCost / sessions.length;
 
     return {
+      displayedSessions: hasPartialSample ? sampledSessions : totalSessions,
       totalSessions,
       avgCost,
       hasPartialSample,
@@ -95,12 +97,16 @@ export function SessionStatsCard({ data, isLoading, className }: SessionStatsCar
           <div className="p-2 rounded-md bg-muted/50 border text-center">
             <div className="flex items-center justify-center gap-1.5 text-blue-600 dark:text-blue-400">
               <Users className="w-4 h-4" />
-              <span className="text-xl font-bold">{stats.totalSessions}</span>
+              <span className="text-xl font-bold">{stats.displayedSessions}</span>
             </div>
             <p className="text-[10px] text-muted-foreground uppercase tracking-wider mt-0.5">
-              {/* TODO i18n: missing key for "Total Sessions" */}
-              Total Sessions
+              {stats.hasPartialSample ? 'Sampled Sessions' : 'Total Sessions'}
             </p>
+            {stats.hasPartialSample && (
+              <p className="text-[10px] text-muted-foreground mt-0.5">
+                {stats.totalSessions} total
+              </p>
+            )}
           </div>
 
           {/* Avg Cost */}

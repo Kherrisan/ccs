@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { RawUsageEntry } from '../jsonl-parser';
 import { resolveDroidConfigPaths } from '../services/droid-dashboard-service';
+import { warn } from '../../utils/ui';
 import { querySqliteJson } from './sqlite-cli';
 
 export type DroidSqliteQuery = typeof querySqliteJson;
@@ -168,6 +169,7 @@ export async function scanDroidNativeUsageEntries(
 
   const metadata = loadSessionMetadata(factoryDir);
   const entries: RawUsageEntry[] = [];
+  let skippedRowsWithoutMetadata = 0;
 
   for (const row of rows) {
     if (!isObject(row)) continue;
@@ -179,6 +181,7 @@ export async function scanDroidNativeUsageEntries(
 
     const session = metadata.get(sessionId);
     if (!session) {
+      skippedRowsWithoutMetadata++;
       continue;
     }
 
@@ -198,6 +201,14 @@ export async function scanDroidNativeUsageEntries(
       version: session.version,
       target: 'droid',
     });
+  }
+
+  if (skippedRowsWithoutMetadata > 0) {
+    console.log(
+      warn(
+        `Skipped ${skippedRowsWithoutMetadata} Droid native cost row(s) without local session metadata`
+      )
+    );
   }
 
   return entries;
