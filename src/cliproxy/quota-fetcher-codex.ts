@@ -39,8 +39,10 @@ interface CodexUsageResponse {
   planType?: string;
   rate_limit?: CodexRateLimitWindow;
   rateLimit?: CodexRateLimitWindow;
-  code_review_rate_limit?: CodexRateLimitWindow;
-  codeReviewRateLimit?: CodexRateLimitWindow;
+  code_review_rate_limit?: CodexRateLimitWindow | null;
+  codeReviewRateLimit?: CodexRateLimitWindow | null;
+  additional_rate_limits?: CodexAdditionalRateLimit[] | null;
+  additionalRateLimits?: CodexAdditionalRateLimit[] | null;
 }
 
 /** Rate limit window from API */
@@ -49,6 +51,19 @@ interface CodexRateLimitWindow {
   primaryWindow?: CodexWindowData;
   secondary_window?: CodexWindowData;
   secondaryWindow?: CodexWindowData;
+}
+
+/**
+ * Additional rate limit entry from API (introduced for features like GPT-5.3 Codex Spark).
+ * Each entry surfaces its own primary/secondary windows under a feature-specific limit name.
+ */
+interface CodexAdditionalRateLimit {
+  limit_name?: string;
+  limitName?: string;
+  metered_feature?: string;
+  meteredFeature?: string;
+  rate_limit?: CodexRateLimitWindow;
+  rateLimit?: CodexRateLimitWindow;
 }
 
 /** Individual window data */
@@ -92,7 +107,11 @@ function getCodexWindowKind(label: string): CodexWindowKind {
 
 function getUnknownCodexWindowLabels(windows: CodexQuotaWindow[]): string[] {
   const unknownLabels = windows
-    .filter((window) => getCodexWindowKind(window.label) === 'unknown')
+    .filter((window) => {
+      // Windows with explicit category metadata are always classified.
+      if (window.category) return false;
+      return getCodexWindowKind(window.label) === 'unknown';
+    })
     .map((window) => window.label)
     .filter((label): label is string => typeof label === 'string' && label.trim().length > 0);
   return Array.from(new Set(unknownLabels));
@@ -106,7 +125,8 @@ function shouldLogCodexWindowWarnings(verbose: boolean): boolean {
 
 /**
  * Build explicit 5h + weekly usage summary from raw Codex windows.
- * Falls back to shortest/longest reset windows if API labels change.
+ * Prefers explicit `category`/`cadence` metadata when present.
+ * Falls back to label sniffing for legacy cached windows.
  */
 export function buildCodexCoreUsageSummary(windows: CodexQuotaWindow[]): CodexCoreUsageSummary {
   if (!windows || windows.length === 0) {
@@ -117,20 +137,36 @@ export function buildCodexCoreUsageSummary(windows: CodexQuotaWindow[]): CodexCo
   let weeklyWindow: CodexQuotaWindow | null = null;
   const nonCodeReviewWindows: CodexQuotaWindow[] = [];
 
-  for (const window of windows) {
-    const kind = getCodexWindowKind(window.label);
-    if (kind === 'usage-5h') {
-      if (!fiveHourWindow) fiveHourWindow = window;
-      nonCodeReviewWindows.push(window);
-      continue;
+  // Determine if any window carries category metadata. If so, prefer category-based
+  // selection so 'additional' windows (e.g. Spark) do not pollute the main usage summary.
+  const hasCategoryMetadata = windows.some((window) => Boolean(window.category));
+
+  if (hasCategoryMetadata) {
+    for (const window of windows) {
+      if (window.category === 'usage') {
+        if (window.cadence === '5h' && !fiveHourWindow) fiveHourWindow = window;
+        else if (window.cadence === 'weekly' && !weeklyWindow) weeklyWindow = window;
+        nonCodeReviewWindows.push(window);
+      }
+      // 'code-review' and 'additional' windows are intentionally excluded from the main
+      // usage summary — they represent feature-specific quotas, not core usage.
     }
-    if (kind === 'usage-weekly') {
-      if (!weeklyWindow) weeklyWindow = window;
-      nonCodeReviewWindows.push(window);
-      continue;
-    }
-    if (kind === 'unknown') {
-      nonCodeReviewWindows.push(window);
+  } else {
+    for (const window of windows) {
+      const kind = getCodexWindowKind(window.label);
+      if (kind === 'usage-5h') {
+        if (!fiveHourWindow) fiveHourWindow = window;
+        nonCodeReviewWindows.push(window);
+        continue;
+      }
+      if (kind === 'usage-weekly') {
+        if (!weeklyWindow) weeklyWindow = window;
+        nonCodeReviewWindows.push(window);
+        continue;
+      }
+      if (kind === 'unknown') {
+        nonCodeReviewWindows.push(window);
+      }
     }
   }
 
@@ -270,9 +306,18 @@ function buildCodexQuotaWindows(payload: CodexUsageResponse): CodexQuotaWindow[]
   // Get rate limit object (handles both cases)
   const rateLimit = payload.rate_limit || payload.rateLimit;
   const codeReviewRateLimit = payload.code_review_rate_limit || payload.codeReviewRateLimit;
+  const additionalRateLimits = payload.additional_rate_limits || payload.additionalRateLimits;
 
   // Helper to extract window data
-  const addWindow = (label: string, windowData: CodexWindowData | undefined): void => {
+  const addWindow = (
+    label: string,
+    windowData: CodexWindowData | undefined,
+    meta: {
+      category: NonNullable<CodexQuotaWindow['category']>;
+      cadence: NonNullable<CodexQuotaWindow['cadence']>;
+      featureLabel?: string;
+    }
+  ): void => {
     if (!windowData) return;
 
     // Clamp usedPercent to [0, 100] range
@@ -287,31 +332,66 @@ function buildCodexQuotaWindows(payload: CodexUsageResponse): CodexQuotaWindow[]
       resetAt = new Date(Date.now() + resetAfterSeconds * 1000).toISOString();
     }
 
-    windows.push({
+    const window: CodexQuotaWindow = {
       label,
       usedPercent,
       remainingPercent: Math.max(0, 100 - usedPercent),
       resetAfterSeconds,
       resetAt,
-    });
+      category: meta.category,
+      cadence: meta.cadence,
+    };
+    if (meta.featureLabel) {
+      window.featureLabel = meta.featureLabel;
+    }
+    windows.push(window);
   };
 
   // Add main rate limit windows
   if (rateLimit) {
-    addWindow('Primary', rateLimit.primary_window || rateLimit.primaryWindow);
-    addWindow('Secondary', rateLimit.secondary_window || rateLimit.secondaryWindow);
+    addWindow('Primary', rateLimit.primary_window || rateLimit.primaryWindow, {
+      category: 'usage',
+      cadence: '5h',
+    });
+    addWindow('Secondary', rateLimit.secondary_window || rateLimit.secondaryWindow, {
+      category: 'usage',
+      cadence: 'weekly',
+    });
   }
 
   // Add code review rate limit windows
   if (codeReviewRateLimit) {
     addWindow(
       'Code Review (Primary)',
-      codeReviewRateLimit.primary_window || codeReviewRateLimit.primaryWindow
+      codeReviewRateLimit.primary_window || codeReviewRateLimit.primaryWindow,
+      { category: 'code-review', cadence: '5h', featureLabel: 'Code Review' }
     );
     addWindow(
       'Code Review (Secondary)',
-      codeReviewRateLimit.secondary_window || codeReviewRateLimit.secondaryWindow
+      codeReviewRateLimit.secondary_window || codeReviewRateLimit.secondaryWindow,
+      { category: 'code-review', cadence: 'weekly', featureLabel: 'Code Review' }
     );
+  }
+
+  // Add additional rate limit windows (e.g. GPT-5.3 Codex Spark)
+  if (Array.isArray(additionalRateLimits)) {
+    for (const entry of additionalRateLimits) {
+      if (!entry) continue;
+      const entryRateLimit = entry.rate_limit || entry.rateLimit;
+      if (!entryRateLimit) continue;
+
+      const featureLabel = entry.limit_name || entry.limitName || 'Additional';
+      addWindow(
+        `${featureLabel} (Primary)`,
+        entryRateLimit.primary_window || entryRateLimit.primaryWindow,
+        { category: 'additional', cadence: '5h', featureLabel }
+      );
+      addWindow(
+        `${featureLabel} (Secondary)`,
+        entryRateLimit.secondary_window || entryRateLimit.secondaryWindow,
+        { category: 'additional', cadence: 'weekly', featureLabel }
+      );
+    }
   }
 
   return windows;
