@@ -196,6 +196,17 @@ describe('Claude Quota Fetcher', () => {
       expect(windows[0].label).toBe('Seven Day Haiku');
       expect(windows[0].remainingPercent).toBe(84);
     });
+
+    it('treats OAuth usage utilization as percent (regression for issue: Sonnet weekly shown as 0% when 1% used)', () => {
+      const windows = buildClaudeQuotaWindows({
+        five_hour: { utilization: 34.0, resets_at: '2026-04-27T06:50:01Z' },
+        seven_day: { utilization: 8.0, resets_at: '2026-04-27T18:00:00Z' },
+        seven_day_sonnet: { utilization: 1.0, resets_at: '2026-04-27T18:00:00Z' },
+      });
+      const sonnet = windows.find((w) => w.rateLimitType === 'seven_day_sonnet');
+      expect(sonnet?.usedPercent).toBe(1);
+      expect(sonnet?.remainingPercent).toBe(99);
+    });
   });
 
   describe('buildClaudeCoreUsageSummary', () => {
