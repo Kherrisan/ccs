@@ -31,6 +31,7 @@ const STEERING_PROMPT_SNIPPET =
   'prefer the CCS MCP tool WebSearch instead of Bash/curl/http fetches';
 const spawnCalls: SpawnCall[] = [];
 const spawnSyncCalls: SpawnSyncCall[] = [];
+const launchSettingsSnapshots: Array<{ path: string; content: string }> = [];
 const originalPlatform = process.platform;
 let baselineSigintListeners: Array<(...args: unknown[]) => void> = [];
 let baselineSigtermListeners: Array<(...args: unknown[]) => void> = [];
@@ -99,6 +100,16 @@ function registerChildProcessMock(): void {
       }
 
       spawnCalls.push({ command, args, options });
+      const settingsIndex = args.indexOf('--settings');
+      if (settingsIndex >= 0) {
+        const settingsPath = args[settingsIndex + 1];
+        if (settingsPath && fs.existsSync(settingsPath)) {
+          launchSettingsSnapshots.push({
+            path: settingsPath,
+            content: fs.readFileSync(settingsPath, 'utf8'),
+          });
+        }
+      }
 
       const child = createMockChild();
       setTimeout(() => child.emit('close', 0), 0);
@@ -193,6 +204,7 @@ describe('CLAUDECODE environment stripping', () => {
   beforeEach(() => {
     spawnCalls.length = 0;
     spawnSyncCalls.length = 0;
+    launchSettingsSnapshots.length = 0;
     process.env.CCS_QUIET = '1';
 
     // Save original env values for restoration in afterEach
@@ -651,6 +663,14 @@ describe('CLAUDECODE environment stripping', () => {
             ANTHROPIC_MODEL: 'gpt-5.4',
             CLAUDE_CODE_MAX_OUTPUT_TOKENS: '12345',
           },
+          hooks: {
+            PreToolUse: [
+              {
+                matcher: 'Read',
+                hooks: [{ type: 'command', command: 'echo headless-bridge-hook' }],
+              },
+            ],
+          },
         },
         null,
         2
@@ -679,6 +699,37 @@ describe('CLAUDECODE environment stripping', () => {
     expect(env.ANTHROPIC_AUTH_TOKEN).not.toBe('parent-routing-token');
     expect(env.ANTHROPIC_MODEL).toBe('gpt-5.4');
     expect(env.CLAUDE_CODE_MAX_OUTPUT_TOKENS).toBe('12345');
+
+    const args = spawnCalls[0].args;
+    const settingsIndex = args.indexOf('--settings');
+    expect(settingsIndex).toBeGreaterThanOrEqual(0);
+
+    const launchSettingsPath = args[settingsIndex + 1];
+    expect(launchSettingsPath).toBeDefined();
+    expect(launchSettingsPath).not.toBe(path.join(ccsDir, 'bridge.settings.json'));
+    const launchSettingsSnapshot = launchSettingsSnapshots.find(
+      (snapshot) => snapshot.path === launchSettingsPath
+    );
+    expect(launchSettingsSnapshot).toBeDefined();
+
+    const persistedLaunchSettings = JSON.parse(launchSettingsSnapshot?.content || '{}') as {
+      env?: Record<string, string>;
+      hooks?: {
+        PreToolUse?: Array<{
+          matcher?: string;
+          hooks?: Array<{ command?: string }>;
+        }>;
+      };
+    };
+
+    expect(persistedLaunchSettings.env?.ANTHROPIC_BASE_URL).toBeUndefined();
+    expect(persistedLaunchSettings.env?.ANTHROPIC_AUTH_TOKEN).toBeUndefined();
+    expect(persistedLaunchSettings.env?.ANTHROPIC_API_KEY).toBeUndefined();
+    expect(persistedLaunchSettings.env?.ANTHROPIC_MODEL).toBe('gpt-5.4');
+    expect(
+      persistedLaunchSettings.hooks?.PreToolUse?.[0]?.hooks?.[0]?.command
+    ).toBe('echo headless-bridge-hook');
+    expect(fs.existsSync(launchSettingsPath)).toBe(false);
   });
 
   it('headless executor prepares image-analysis MCP and suppresses the legacy hook on healthy launches', async () => {

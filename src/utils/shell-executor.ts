@@ -208,7 +208,8 @@ export function getWindowsEscapedCommandShell(): SpawnOptions['shell'] {
 export function execClaude(
   claudeCli: string,
   args: string[],
-  envVars: NodeJS.ProcessEnv | null = null
+  envVars: NodeJS.ProcessEnv | null = null,
+  onExitCleanup?: () => void
 ): void {
   const isWindows = process.platform === 'win32';
   const isPowerShellScript = isWindows && /\.ps1$/i.test(claudeCli);
@@ -285,6 +286,17 @@ export function execClaude(
       env,
     });
   }
+
+  let cleanedUp = false;
+  const runExitCleanup = (): void => {
+    if (cleanedUp) {
+      return;
+    }
+    cleanedUp = true;
+    onExitCleanup?.();
+  };
+  child.once('exit', runExitCleanup);
+  child.once('error', runExitCleanup);
 
   wireChildProcessSignals(child, async (err: NodeJS.ErrnoException) => {
     if (err.code === 'EACCES') {

@@ -82,6 +82,7 @@ import { tryHandleRootCommand } from './commands/root-command-router';
 // Import extracted utility functions
 import { execClaude, stripAnthropicRoutingEnv, stripBrowserEnv } from './utils/shell-executor';
 import { isDeprecatedGlmtProfileName, normalizeDeprecatedGlmtEnv } from './utils/glmt-deprecation';
+import { createOpenAICompatLaunchSettings } from './utils/openai-compat-launch-settings';
 import { maybeWarnAboutResumeLaneMismatch } from './auth/resume-lane-warning';
 import { createLogger } from './services/logging';
 import { buildCodexBrowserMcpOverrides } from './utils/browser-codex-overrides';
@@ -1459,10 +1460,11 @@ async function main(): Promise<void> {
           ),
         };
         delete proxyEnv.ANTHROPIC_API_KEY;
+        const launchSettings = createOpenAICompatLaunchSettings(expandedSettingsPath, settings);
 
         const launchArgs = [
           '--settings',
-          expandedSettingsPath,
+          launchSettings.settingsPath,
           ...appendThirdPartyWebSearchToolArgs(browserArgs),
         ];
         const traceEnv = createWebSearchTraceContext({
@@ -1473,7 +1475,7 @@ async function main(): Promise<void> {
           settingsPath: expandedSettingsPath,
         });
 
-        execClaude(claudeCli, launchArgs, { ...proxyEnv, ...traceEnv });
+        execClaude(claudeCli, launchArgs, { ...proxyEnv, ...traceEnv }, launchSettings.cleanup);
         return;
       }
       const launchArgs = [
