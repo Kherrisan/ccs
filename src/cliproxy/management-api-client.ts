@@ -20,6 +20,7 @@ import type { CliproxyRoutingStrategy } from './types';
 
 /** Default timeout for management operations (longer than health check) */
 const DEFAULT_TIMEOUT_MS = 5000;
+const ROUTING_STRATEGY_PATH = '/v0/management/routing/strategy';
 
 /** Default port for HTTPS protocol */
 const DEFAULT_HTTPS_PORT = 443;
@@ -232,7 +233,7 @@ export class ManagementApiClient {
    * Get the global credential routing strategy from CLIProxy.
    */
   async getRoutingStrategy(): Promise<CliproxyRoutingStrategy> {
-    const response = await this.request<{ strategy?: string }>('GET', '/routing/strategy');
+    const response = await this.request<{ strategy?: string }>('GET', ROUTING_STRATEGY_PATH);
     return response.data?.strategy === 'fill-first' ? 'fill-first' : 'round-robin';
   }
 
@@ -240,7 +241,7 @@ export class ManagementApiClient {
    * Update the global credential routing strategy on CLIProxy.
    */
   async putRoutingStrategy(strategy: CliproxyRoutingStrategy): Promise<CliproxyRoutingStrategy> {
-    await this.request('PUT', '/routing/strategy', { value: strategy });
+    await this.request('PUT', ROUTING_STRATEGY_PATH, { value: strategy });
     return strategy;
   }
 
