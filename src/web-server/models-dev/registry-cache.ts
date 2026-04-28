@@ -9,6 +9,8 @@ const CACHE_FILE_NAME = 'models-dev-registry-cache.json';
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const LIVE_FETCH_TIMEOUT_MS = 3000;
 
+let pendingBackgroundRefresh: Promise<ModelsDevRegistry | null> | null = null;
+
 export interface RegistryCacheReadOptions {
   allowStale?: boolean;
   now?: number;
@@ -130,4 +132,18 @@ export async function refreshModelsDevRegistry(
   } finally {
     clearTimeout(timeoutId);
   }
+}
+
+export function startModelsDevRegistryRefresh(
+  options: RegistryRefreshOptions = {}
+): Promise<ModelsDevRegistry | null> {
+  if (!pendingBackgroundRefresh) {
+    pendingBackgroundRefresh = refreshModelsDevRegistry(options)
+      .catch(() => null)
+      .finally(() => {
+        pendingBackgroundRefresh = null;
+      });
+  }
+
+  return pendingBackgroundRefresh;
 }

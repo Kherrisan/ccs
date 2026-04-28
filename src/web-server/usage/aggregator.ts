@@ -34,7 +34,8 @@ import {
 } from './cliproxy-usage-syncer';
 import { scanCodexNativeUsageEntries } from './codex-native-usage-collector';
 import { scanDroidNativeUsageEntries } from './droid-native-usage-collector';
-import { refreshModelsDevRegistry } from '../models-dev/registry-cache';
+import { startModelsDevRegistryRefresh } from '../models-dev/registry-cache';
+import { getModelsUsed, getProviderModelKey } from './model-identity';
 
 // ============================================================================
 // Multi-Instance Support - Aggregate usage from CCS profiles
@@ -112,10 +113,6 @@ function getHourlyRequestCount(hour: HourlyUsage): number {
   return hour.requestCount ?? hour.modelBreakdowns.length;
 }
 
-function getModelBreakdownKey(breakdown: { modelName: string; provider?: string }): string {
-  return `${breakdown.provider ?? ''}\u0000${breakdown.modelName}`;
-}
-
 /**
  * Merge daily usage data from multiple sources
  * Combines entries with same date by aggregating tokens
@@ -133,14 +130,11 @@ export function mergeDailyData(sources: DailyUsage[][]): DailyUsage[] {
         existing.cacheCreationTokens += day.cacheCreationTokens;
         existing.cacheReadTokens += day.cacheReadTokens;
         existing.totalCost += day.totalCost;
-        // Merge unique models
-        const modelSet = new Set([...existing.modelsUsed, ...day.modelsUsed]);
-        existing.modelsUsed = Array.from(modelSet);
         // Merge model breakdowns by aggregating same modelName
         for (const breakdown of day.modelBreakdowns) {
-          const breakdownKey = getModelBreakdownKey(breakdown);
+          const breakdownKey = getProviderModelKey(breakdown);
           const existingBreakdown = existing.modelBreakdowns.find(
-            (b) => getModelBreakdownKey(b) === breakdownKey
+            (b) => getProviderModelKey(b) === breakdownKey
           );
           if (existingBreakdown) {
             existingBreakdown.inputTokens += breakdown.inputTokens;
@@ -152,12 +146,14 @@ export function mergeDailyData(sources: DailyUsage[][]): DailyUsage[] {
             existing.modelBreakdowns.push({ ...breakdown });
           }
         }
+        existing.modelsUsed = getModelsUsed(existing.modelBreakdowns);
       } else {
         // Clone to avoid mutating original
+        const modelBreakdowns = day.modelBreakdowns.map((b) => ({ ...b }));
         dateMap.set(day.date, {
           ...day,
-          modelsUsed: [...day.modelsUsed],
-          modelBreakdowns: day.modelBreakdowns.map((b) => ({ ...b })),
+          modelsUsed: getModelsUsed(modelBreakdowns),
+          modelBreakdowns,
         });
       }
     }
@@ -181,12 +177,10 @@ export function mergeMonthlyData(sources: MonthlyUsage[][]): MonthlyUsage[] {
         existing.cacheCreationTokens += month.cacheCreationTokens;
         existing.cacheReadTokens += month.cacheReadTokens;
         existing.totalCost += month.totalCost;
-        const modelSet = new Set([...existing.modelsUsed, ...month.modelsUsed]);
-        existing.modelsUsed = Array.from(modelSet);
         for (const breakdown of month.modelBreakdowns) {
-          const breakdownKey = getModelBreakdownKey(breakdown);
+          const breakdownKey = getProviderModelKey(breakdown);
           const existingBreakdown = existing.modelBreakdowns.find(
-            (item) => getModelBreakdownKey(item) === breakdownKey
+            (item) => getProviderModelKey(item) === breakdownKey
           );
           if (existingBreakdown) {
             existingBreakdown.inputTokens += breakdown.inputTokens;
@@ -198,11 +192,13 @@ export function mergeMonthlyData(sources: MonthlyUsage[][]): MonthlyUsage[] {
             existing.modelBreakdowns.push({ ...breakdown });
           }
         }
+        existing.modelsUsed = getModelsUsed(existing.modelBreakdowns);
       } else {
+        const modelBreakdowns = month.modelBreakdowns.map((breakdown) => ({ ...breakdown }));
         monthMap.set(month.month, {
           ...month,
-          modelsUsed: [...month.modelsUsed],
-          modelBreakdowns: month.modelBreakdowns.map((breakdown) => ({ ...breakdown })),
+          modelsUsed: getModelsUsed(modelBreakdowns),
+          modelBreakdowns,
         });
       }
     }
@@ -228,13 +224,11 @@ export function mergeHourlyData(sources: HourlyUsage[][]): HourlyUsage[] {
         existing.cacheReadTokens += hour.cacheReadTokens;
         existing.totalCost += hour.totalCost;
         existing.requestCount = getHourlyRequestCount(existing) + getHourlyRequestCount(hour);
-        const modelSet = new Set([...existing.modelsUsed, ...hour.modelsUsed]);
-        existing.modelsUsed = Array.from(modelSet);
         // Merge model breakdowns
         for (const breakdown of hour.modelBreakdowns) {
-          const breakdownKey = getModelBreakdownKey(breakdown);
+          const breakdownKey = getProviderModelKey(breakdown);
           const existingBreakdown = existing.modelBreakdowns.find(
-            (b) => getModelBreakdownKey(b) === breakdownKey
+            (b) => getProviderModelKey(b) === breakdownKey
           );
           if (existingBreakdown) {
             existingBreakdown.inputTokens += breakdown.inputTokens;
@@ -246,11 +240,13 @@ export function mergeHourlyData(sources: HourlyUsage[][]): HourlyUsage[] {
             existing.modelBreakdowns.push({ ...breakdown });
           }
         }
+        existing.modelsUsed = getModelsUsed(existing.modelBreakdowns);
       } else {
+        const modelBreakdowns = hour.modelBreakdowns.map((b) => ({ ...b }));
         hourMap.set(hour.hour, {
           ...hour,
-          modelsUsed: [...hour.modelsUsed],
-          modelBreakdowns: hour.modelBreakdowns.map((b) => ({ ...b })),
+          modelsUsed: getModelsUsed(modelBreakdowns),
+          modelBreakdowns,
           requestCount: getHourlyRequestCount(hour),
         });
       }
@@ -356,9 +352,9 @@ async function refreshFromSource(): Promise<{
   monthly: MonthlyUsage[];
   session: SessionUsage[];
 }> {
-  // Refresh model metadata before cost derivation. This is best-effort and
-  // falls back to stale cache/static pricing when models.dev is unavailable.
-  await refreshModelsDevRegistry();
+  // Keep model metadata warming off the analytics request path. Current
+  // refreshes use cached/static pricing; the background result helps future runs.
+  void startModelsDevRegistryRefresh();
 
   // Try to sync CLIProxy snapshot before reading it.
   // Non-fatal: syncer handles unavailability and stale fallback.

@@ -14,6 +14,7 @@ import {
   type MonthlyUsage,
   type SessionUsage,
 } from './types';
+import { getModelsUsed } from './model-identity';
 
 // ============================================================================
 // HELPER FUNCTIONS
@@ -89,10 +90,6 @@ function createModelAccumulator(entry: RawUsageEntry): ModelAccumulator {
     cacheCreationTokens: 0,
     cacheReadTokens: 0,
   };
-}
-
-function getModelsUsed(modelMap: Map<string, ModelAccumulator>): string[] {
-  return [...new Set(Array.from(modelMap.values()).map((acc) => acc.modelName))];
 }
 
 // ============================================================================
@@ -173,7 +170,7 @@ export function aggregateDailyUsage(
       cacheReadTokens: totalCacheRead,
       cost: totalCost,
       totalCost,
-      modelsUsed: getModelsUsed(modelMap),
+      modelsUsed: getModelsUsed(modelBreakdowns),
       modelBreakdowns,
     });
   }
@@ -262,7 +259,7 @@ export function aggregateHourlyUsage(
       cacheReadTokens: totalCacheRead,
       cost: totalCost,
       totalCost,
-      modelsUsed: getModelsUsed(modelMap),
+      modelsUsed: getModelsUsed(modelBreakdowns),
       modelBreakdowns,
       requestCount: hourEntries.length,
     });
@@ -351,7 +348,7 @@ export function aggregateMonthlyUsage(
       cacheCreationTokens: totalCacheCreation,
       cacheReadTokens: totalCacheRead,
       totalCost,
-      modelsUsed: getModelsUsed(modelMap),
+      modelsUsed: getModelsUsed(modelBreakdowns),
       modelBreakdowns,
     });
   }
@@ -469,7 +466,7 @@ export function aggregateSessionUsage(
       totalCost,
       lastActivity,
       versions: Array.from(versions),
-      modelsUsed: getModelsUsed(modelMap),
+      modelsUsed: getModelsUsed(modelBreakdowns),
       modelBreakdowns,
       source,
       target,

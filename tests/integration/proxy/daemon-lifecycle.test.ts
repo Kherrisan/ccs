@@ -395,13 +395,13 @@ describe('openai proxy daemon lifecycle', () => {
   });
 
   it('keeps the existing proxy running if replacement startup fails', async () => {
-    const firstPort = await getPort();
     const busyServer = Bun.serve({
       port: 0,
       hostname: '127.0.0.1',
       fetch: () => new Response('busy'),
     });
     const occupiedPort = busyServer.port;
+    const firstPort = await getPort({ exclude: [occupiedPort] });
 
     try {
       const settingsPath = path.join(tempDir, 'rollback.settings.json');

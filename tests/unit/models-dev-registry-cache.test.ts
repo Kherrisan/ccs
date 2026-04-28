@@ -8,6 +8,7 @@ import {
   getCachedModelsDevRegistry,
   refreshModelsDevRegistry,
   setCachedModelsDevRegistry,
+  startModelsDevRegistryRefresh,
 } from '../../src/web-server/models-dev/registry-cache';
 
 describe('models.dev registry cache', () => {
@@ -89,5 +90,49 @@ describe('models.dev registry cache', () => {
     fs.mkdirSync(getCcsDir(), { recursive: true });
     fs.writeFileSync(path.join(getCcsDir(), 'models-dev-registry-cache.json'), '{not json');
     expect(getCachedModelsDevRegistry({ allowStale: true })).toBeNull();
+  });
+
+  it('starts and coalesces background refreshes without requiring callers to await', async () => {
+    let fetchCalls = 0;
+    let resolveResponse: (response: Response) => void = () => undefined;
+    const responsePromise = new Promise<Response>((resolve) => {
+      resolveResponse = resolve;
+    });
+    const fetchImpl: typeof fetch = async () => {
+      fetchCalls += 1;
+      return responsePromise;
+    };
+
+    const first = startModelsDevRegistryRefresh({
+      force: true,
+      fetchImpl,
+      now: () => 456,
+    });
+    const second = startModelsDevRegistryRefresh({
+      force: true,
+      fetchImpl,
+      now: () => 789,
+    });
+
+    expect(first).toBe(second);
+    expect(fetchCalls).toBe(1);
+    expect(getCachedModelsDevRegistry({ allowStale: true })).toBeNull();
+
+    resolveResponse(
+      new Response(
+        JSON.stringify({
+          openai: {
+            id: 'openai',
+            models: {
+              'gpt-5.5': { id: 'gpt-5.5', cost: { input: 5, output: 30 } },
+            },
+          },
+        }),
+        { status: 200 }
+      )
+    );
+
+    await first;
+    expect(getCachedModelsDevRegistry({ allowStale: true })?.openai.id).toBe('openai');
   });
 });

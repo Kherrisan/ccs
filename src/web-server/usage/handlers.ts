@@ -17,6 +17,7 @@ import {
   getLastFetchTimestamp,
   refreshUsageCache,
 } from './aggregator';
+import { getModelsUsed } from './model-identity';
 
 // ============================================================================
 // Types
@@ -716,7 +717,6 @@ export async function handleMonthly(
           cacheCreationTokens: number;
           cacheReadTokens: number;
           totalCost: number;
-          modelsUsed: Set<string>;
           modelBreakdowns: Map<
             string,
             {
@@ -741,7 +741,6 @@ export async function handleMonthly(
           cacheCreationTokens: 0,
           cacheReadTokens: 0,
           totalCost: 0,
-          modelsUsed: new Set<string>(),
           modelBreakdowns: new Map(),
         };
 
@@ -750,9 +749,6 @@ export async function handleMonthly(
         existing.cacheCreationTokens += day.cacheCreationTokens;
         existing.cacheReadTokens += day.cacheReadTokens;
         existing.totalCost += day.totalCost;
-        for (const model of day.modelsUsed) {
-          existing.modelsUsed.add(model);
-        }
         for (const breakdown of day.modelBreakdowns) {
           const breakdownKey = getBreakdownKey(breakdown);
           const existingBreakdown = existing.modelBreakdowns.get(breakdownKey) ?? {
@@ -783,8 +779,8 @@ export async function handleMonthly(
           cacheCreationTokens: month.cacheCreationTokens,
           cacheReadTokens: month.cacheReadTokens,
           totalCost: month.totalCost,
-          modelsUsed: Array.from(month.modelsUsed),
           modelBreakdowns: Array.from(month.modelBreakdowns.values()),
+          modelsUsed: getModelsUsed(Array.from(month.modelBreakdowns.values())),
         }))
         .sort((a, b) => a.month.localeCompare(b.month));
     } else {

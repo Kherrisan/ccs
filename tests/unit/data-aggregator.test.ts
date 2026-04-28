@@ -5,6 +5,7 @@
 import { describe, expect, test } from 'bun:test';
 import {
   aggregateDailyUsage,
+  aggregateHourlyUsage,
   aggregateMonthlyUsage,
   aggregateSessionUsage,
 } from '../../src/web-server/data-aggregator';
@@ -106,6 +107,36 @@ describe('aggregateDailyUsage', () => {
     const entries: RawUsageEntry[] = [createEntry()];
     const result = aggregateDailyUsage(entries, 'test-source');
     expect(result[0].source).toBe('test-source');
+  });
+
+  test('keeps provider identity when same model appears under multiple providers', () => {
+    const entries: RawUsageEntry[] = [
+      createEntry({ model: 'gpt-5.5', target: 'openai' }),
+      createEntry({ model: 'gpt-5.5', target: 'github-copilot' }),
+    ];
+
+    const daily = aggregateDailyUsage(entries);
+    const hourly = aggregateHourlyUsage(entries);
+    const monthly = aggregateMonthlyUsage(entries);
+    const session = aggregateSessionUsage(entries);
+
+    expect(daily[0].modelsUsed).toEqual(['openai/gpt-5.5', 'github-copilot/gpt-5.5']);
+    expect(hourly[0].modelsUsed).toEqual(['openai/gpt-5.5', 'github-copilot/gpt-5.5']);
+    expect(monthly[0].modelsUsed).toEqual(['openai/gpt-5.5', 'github-copilot/gpt-5.5']);
+    expect(session[0].modelsUsed).toEqual(['openai/gpt-5.5', 'github-copilot/gpt-5.5']);
+    expect(daily[0].modelBreakdowns.map((item) => item.provider)).toEqual([
+      'openai',
+      'github-copilot',
+    ]);
+  });
+
+  test('preserves model-only modelsUsed entries when provider is unambiguous', () => {
+    const result = aggregateDailyUsage([
+      createEntry({ model: 'gpt-5.5', target: 'openai' }),
+      createEntry({ model: 'gpt-5.5', target: 'openai' }),
+    ]);
+
+    expect(result[0].modelsUsed).toEqual(['gpt-5.5']);
   });
 });
 

@@ -8,6 +8,7 @@
 import type { CliproxyUsageApiResponse, CliproxyRequestDetail } from '../../cliproxy/stats-fetcher';
 import { calculateCost } from '../model-pricing';
 import type { ModelBreakdown, DailyUsage, HourlyUsage, MonthlyUsage } from './types';
+import { getModelsUsed } from './model-identity';
 
 // ============================================================================
 // INTERNAL HELPERS
@@ -255,10 +256,6 @@ function aggregateByKey<T>(
 /** Sum token field across all breakdowns */
 function sumField(breakdowns: ModelBreakdown[], field: keyof ModelBreakdown): number {
   return breakdowns.reduce((acc, b) => acc + (b[field] as number), 0);
-}
-
-function getModelsUsed(breakdowns: ModelBreakdown[]): string[] {
-  return [...new Set(breakdowns.map((breakdown) => breakdown.modelName))];
 }
 
 // ============================================================================
