@@ -99,6 +99,8 @@ const MIN_STALE_HIGH_ONLY_GEMINI_MINOR_VERSIONS = 3;
 const MIN_STALE_GUESSED_GEMINI_AVERAGE_VARIANTS_PER_MINOR = 2;
 const LEGACY_GEMINI_STALE_ALIAS_MIGRATION_VERSION = 16;
 const MAX_LEGACY_MANUAL_GEMINI_MINOR_VERSION = 2;
+const GO_DURATION_SEGMENT = String.raw`(?:\d+(?:\.\d+)?(?:ns|us|µs|μs|ms|s|m|h))`;
+const GO_DURATION_PATTERN = new RegExp(`^${GO_DURATION_SEGMENT}+$`);
 
 /**
  * Get provider configuration
@@ -139,7 +141,7 @@ function getSessionAffinityEnabled(): boolean {
 
 function getSessionAffinityTtl(): string {
   const ttl = loadOrCreateUnifiedConfig().cliproxy?.routing?.session_affinity_ttl?.trim();
-  return ttl || '1h';
+  return ttl && GO_DURATION_PATTERN.test(ttl) ? ttl : '1h';
 }
 
 function sanitizeYamlScalar(rawValue: string): string {

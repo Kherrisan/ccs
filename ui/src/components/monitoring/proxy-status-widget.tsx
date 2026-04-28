@@ -168,12 +168,20 @@ export function ProxyStatusWidget() {
   } = useCliproxySessionAffinity();
   const updateSessionAffinity = useUpdateCliproxySessionAffinity();
   const isSavingRoutingConfig = updateRouting.isPending || updateSessionAffinity.isPending;
-  const routingConfigError =
-    routingError instanceof Error
-      ? routingError
-      : sessionAffinityError instanceof Error
-        ? sessionAffinityError
-        : null;
+  const routingConfigError = routingError instanceof Error ? routingError : null;
+  const effectiveSessionAffinityState =
+    sessionAffinityState ??
+    (sessionAffinityError instanceof Error
+      ? {
+          source: 'unsupported' as const,
+          target: (routingState?.target ?? (isRemoteMode ? 'remote' : 'local')) as
+            | 'local'
+            | 'remote',
+          reachable: false,
+          manageable: false,
+          message: sessionAffinityError.message,
+        }
+      : undefined);
   const startProxy = useStartProxy();
   const stopProxy = useStopProxy();
   const restartProxy = useRestartProxy();
@@ -330,11 +338,11 @@ export function ProxyStatusWidget() {
         </div>
 
         <RoutingGuidanceCard
-          key={`remote:${routingState?.strategy ?? 'round-robin'}:${sessionAffinityState?.enabled ?? 'na'}:${sessionAffinityState?.ttl ?? 'na'}:${sessionAffinityState?.manageable ?? 'na'}`}
+          key={`remote:${routingState?.strategy ?? 'round-robin'}:${effectiveSessionAffinityState?.enabled ?? 'na'}:${effectiveSessionAffinityState?.ttl ?? 'na'}:${effectiveSessionAffinityState?.manageable ?? 'na'}`}
           compact
           className="mt-3"
           state={routingState}
-          sessionAffinityState={sessionAffinityState}
+          sessionAffinityState={effectiveSessionAffinityState}
           isLoading={routingLoading || sessionAffinityLoading}
           isSaving={isSavingRoutingConfig}
           error={routingConfigError}
@@ -488,11 +496,11 @@ export function ProxyStatusWidget() {
         </div>
 
         <RoutingGuidanceCard
-          key={`local:${routingState?.strategy ?? 'round-robin'}:${sessionAffinityState?.enabled ?? 'na'}:${sessionAffinityState?.ttl ?? 'na'}:${sessionAffinityState?.manageable ?? 'na'}`}
+          key={`local:${routingState?.strategy ?? 'round-robin'}:${effectiveSessionAffinityState?.enabled ?? 'na'}:${effectiveSessionAffinityState?.ttl ?? 'na'}:${effectiveSessionAffinityState?.manageable ?? 'na'}`}
           compact
           className="mt-3"
           state={routingState}
-          sessionAffinityState={sessionAffinityState}
+          sessionAffinityState={effectiveSessionAffinityState}
           isLoading={routingLoading || sessionAffinityLoading}
           isSaving={isSavingRoutingConfig}
           error={routingConfigError}
