@@ -340,7 +340,7 @@ export type CodexWindowKind =
  * Map a Codex window into a semantic bucket. Prefers explicit category metadata
  * (post-2026-04 windows) and falls back to label sniffing for legacy cached data.
  */
-export function getCodexWindowKind(labelOrWindow: string | CodexQuotaWindow): CodexWindowKind {
+export function getCodexWindowKind(labelOrWindow: string | CodexWindowSummary): CodexWindowKind {
   if (typeof labelOrWindow === 'object' && labelOrWindow !== null) {
     const w = labelOrWindow;
     if (w.category === 'additional' && w.cadence) {
