@@ -2,7 +2,7 @@
 
 Last Updated: 2026-04-26
 
-Comprehensive overview of the modularized CCS codebase structure following the Phase 9 modularization effort (Settings, Analytics, Auth Monitor splits + Test Infrastructure), v7.1 Remote CLIProxy feature, v7.2 Kiro + GitHub Copilot (ghcp) OAuth providers, v7.14 Hybrid Quota Management, v7.34 Image Analysis Hook, account-context validation hardening, Official Claude Channels runtime support, native Codex runtime target support, and native Codex/Droid usage collectors.
+Comprehensive overview of the modularized CCS codebase structure following the Phase 9 modularization effort (Settings, Analytics, Auth Monitor splits + Test Infrastructure), v7.1 Remote CLIProxy feature, v7.2 Kiro + GitHub Copilot (ghcp) OAuth providers, v7.14 Hybrid Quota Management, v7.34 Image Analysis Hook, account-context validation hardening, Official Claude Channels runtime support, native Codex runtime target support, native Codex/Droid usage collectors, and models.dev-backed model pricing metadata.
 
 ## Repository Structure
 
@@ -219,9 +219,13 @@ src/
     │   ├── codex-native-usage-collector.ts  # Native Codex rollout JSONL collector
     │   ├── droid-native-usage-collector.ts  # Native Droid SQLite collector
     │   └── data-aggregator.ts
+    ├── models-dev/           # Cached models.dev metadata/pricing registry integration
+    │   ├── registry-cache.ts
+    │   ├── pricing-resolver.ts
+    │   └── types.ts
     ├── services/             # Shared services
     │   └── index.ts
-    └── model-pricing.ts      # Model cost definitions (676 lines)
+    └── model-pricing.ts      # Static pricing fallback + models.dev resolver
 ```
 
 ### Module Categories
@@ -550,7 +554,7 @@ ui/src/
 
 | File | Lines | Status |
 |------|-------|--------|
-| model-pricing.ts | 676 | Data file - acceptable |
+| model-pricing.ts | 920 | Static pricing fallback and resolver entrypoint |
 | glmt-proxy.ts | 675 | Legacy internal compatibility path - acceptable for now |
 | cliproxy-executor.ts | 666 | Core logic - acceptable |
 | cliproxy-command.ts | 634 | Could split if needed |

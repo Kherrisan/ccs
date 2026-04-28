@@ -1,5 +1,12 @@
-import { describe, expect, it } from 'bun:test';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import type { CliproxyUsageApiResponse } from '../../../src/cliproxy/stats-fetcher';
+import {
+  clearModelsDevRegistryCache,
+  setCachedModelsDevRegistry,
+} from '../../../src/web-server/models-dev/registry-cache';
 import {
   buildCliproxyUsageHistoryAggregates,
   extractCliproxyUsageHistoryDetails,
@@ -101,6 +108,7 @@ describe('cliproxy usage transformer', () => {
   it('retains failed requests when they carry usage and skips zero-usage failures', () => {
     const flat = extractCliproxyUsageHistoryDetails(sampleResponse);
     expect(flat).toHaveLength(4);
+    expect(flat[0].provider).toBe('gemini');
     expect(
       flat.some(
         (entry) =>
@@ -190,5 +198,103 @@ describe('cliproxy usage transformer', () => {
     expect(monthly[0].inputTokens).toBe(240);
     expect(monthly[0].outputTokens).toBe(110);
     expect(monthly[0].cacheReadTokens).toBe(35);
+  });
+
+  describe('provider-aware pricing', () => {
+    let tempRoot = '';
+    let originalCcsHome: string | undefined;
+    let originalCcsDir: string | undefined;
+
+    beforeEach(() => {
+      tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ccs-cliproxy-models-dev-'));
+      originalCcsHome = process.env.CCS_HOME;
+      originalCcsDir = process.env.CCS_DIR;
+      process.env.CCS_HOME = tempRoot;
+      delete process.env.CCS_DIR;
+      setCachedModelsDevRegistry({
+        openai: {
+          id: 'openai',
+          models: {
+            'gpt-5.5': { id: 'gpt-5.5', cost: { input: 5, output: 30, cache_read: 0.5 } },
+          },
+        },
+        'github-copilot': {
+          id: 'github-copilot',
+          models: {
+            'gpt-5.5': { id: 'gpt-5.5', cost: { input: 0, output: 0 } },
+          },
+        },
+      });
+    });
+
+    afterEach(() => {
+      clearModelsDevRegistryCache();
+      if (originalCcsHome !== undefined) process.env.CCS_HOME = originalCcsHome;
+      else delete process.env.CCS_HOME;
+      if (originalCcsDir !== undefined) process.env.CCS_DIR = originalCcsDir;
+      else delete process.env.CCS_DIR;
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+    });
+
+    it('keeps same model IDs separated by provider in CLIProxy usage', () => {
+      const response: CliproxyUsageApiResponse = {
+        usage: {
+          apis: {
+            openai: {
+              models: {
+                'gpt-5.5': {
+                  details: [
+                    {
+                      timestamp: '2026-03-03T10:00:00.000Z',
+                      source: 'api-account',
+                      auth_index: 0,
+                      tokens: {
+                        input_tokens: 1_000_000,
+                        output_tokens: 1_000_000,
+                        reasoning_tokens: 0,
+                        cached_tokens: 1_000_000,
+                        total_tokens: 3_000_000,
+                      },
+                      failed: false,
+                    },
+                  ],
+                },
+              },
+            },
+            'github-copilot': {
+              models: {
+                'gpt-5.5': {
+                  details: [
+                    {
+                      timestamp: '2026-03-03T11:00:00.000Z',
+                      source: 'copilot-account',
+                      auth_index: 1,
+                      tokens: {
+                        input_tokens: 1_000_000,
+                        output_tokens: 1_000_000,
+                        reasoning_tokens: 0,
+                        cached_tokens: 1_000_000,
+                        total_tokens: 3_000_000,
+                      },
+                      failed: false,
+                    },
+                  ],
+                },
+              },
+            },
+          },
+        },
+      };
+
+      const [daily] = transformCliproxyToDailyUsage(response);
+      const paid = daily.modelBreakdowns.find((breakdown) => breakdown.provider === 'openai');
+      const subscription = daily.modelBreakdowns.find(
+        (breakdown) => breakdown.provider === 'github-copilot'
+      );
+
+      expect(daily.totalCost).toBe(35.5);
+      expect(paid?.cost).toBe(35.5);
+      expect(subscription?.cost).toBe(0);
+    });
   });
 });

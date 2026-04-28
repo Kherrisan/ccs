@@ -34,6 +34,7 @@ import {
 } from './cliproxy-usage-syncer';
 import { scanCodexNativeUsageEntries } from './codex-native-usage-collector';
 import { scanDroidNativeUsageEntries } from './droid-native-usage-collector';
+import { refreshModelsDevRegistry } from '../models-dev/registry-cache';
 
 // ============================================================================
 // Multi-Instance Support - Aggregate usage from CCS profiles
@@ -111,6 +112,10 @@ function getHourlyRequestCount(hour: HourlyUsage): number {
   return hour.requestCount ?? hour.modelBreakdowns.length;
 }
 
+function getModelBreakdownKey(breakdown: { modelName: string; provider?: string }): string {
+  return `${breakdown.provider ?? ''}\u0000${breakdown.modelName}`;
+}
+
 /**
  * Merge daily usage data from multiple sources
  * Combines entries with same date by aggregating tokens
@@ -133,8 +138,9 @@ export function mergeDailyData(sources: DailyUsage[][]): DailyUsage[] {
         existing.modelsUsed = Array.from(modelSet);
         // Merge model breakdowns by aggregating same modelName
         for (const breakdown of day.modelBreakdowns) {
+          const breakdownKey = getModelBreakdownKey(breakdown);
           const existingBreakdown = existing.modelBreakdowns.find(
-            (b) => b.modelName === breakdown.modelName
+            (b) => getModelBreakdownKey(b) === breakdownKey
           );
           if (existingBreakdown) {
             existingBreakdown.inputTokens += breakdown.inputTokens;
@@ -178,8 +184,9 @@ export function mergeMonthlyData(sources: MonthlyUsage[][]): MonthlyUsage[] {
         const modelSet = new Set([...existing.modelsUsed, ...month.modelsUsed]);
         existing.modelsUsed = Array.from(modelSet);
         for (const breakdown of month.modelBreakdowns) {
+          const breakdownKey = getModelBreakdownKey(breakdown);
           const existingBreakdown = existing.modelBreakdowns.find(
-            (item) => item.modelName === breakdown.modelName
+            (item) => getModelBreakdownKey(item) === breakdownKey
           );
           if (existingBreakdown) {
             existingBreakdown.inputTokens += breakdown.inputTokens;
@@ -225,8 +232,9 @@ export function mergeHourlyData(sources: HourlyUsage[][]): HourlyUsage[] {
         existing.modelsUsed = Array.from(modelSet);
         // Merge model breakdowns
         for (const breakdown of hour.modelBreakdowns) {
+          const breakdownKey = getModelBreakdownKey(breakdown);
           const existingBreakdown = existing.modelBreakdowns.find(
-            (b) => b.modelName === breakdown.modelName
+            (b) => getModelBreakdownKey(b) === breakdownKey
           );
           if (existingBreakdown) {
             existingBreakdown.inputTokens += breakdown.inputTokens;
@@ -348,6 +356,10 @@ async function refreshFromSource(): Promise<{
   monthly: MonthlyUsage[];
   session: SessionUsage[];
 }> {
+  // Refresh model metadata before cost derivation. This is best-effort and
+  // falls back to stale cache/static pricing when models.dev is unavailable.
+  await refreshModelsDevRegistry();
+
   // Try to sync CLIProxy snapshot before reading it.
   // Non-fatal: syncer handles unavailability and stale fallback.
   await syncCliproxyUsage();

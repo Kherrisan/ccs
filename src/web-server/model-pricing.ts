@@ -7,6 +7,12 @@
  * All rates are in USD per MILLION tokens.
  */
 
+import {
+  getKnownModelsDevModels,
+  resolveModelsDevPricing,
+  type ModelsDevPricingLookupOptions,
+} from './models-dev/pricing-resolver';
+
 // ============================================================================
 // TYPE DEFINITIONS
 // ============================================================================
@@ -24,6 +30,8 @@ export interface TokenUsage {
   cacheCreationTokens: number;
   cacheReadTokens: number;
 }
+
+export type PricingLookupOptions = ModelsDevPricingLookupOptions;
 
 // ============================================================================
 // USER-EDITABLE PRICING TABLE
@@ -827,15 +835,36 @@ function getDirectOrAliasPricing(model: string): ModelPricing | undefined {
   return undefined;
 }
 
+function hasProviderContext(model: string, options: PricingLookupOptions): boolean {
+  return Boolean(options.provider || /^[^/]+\//.test(model.trim()));
+}
+
 /**
  * Get pricing for a model with narrow fuzzy matching fallback.
  * Unknown future model families should fall back instead of inheriting the
  * first known family tier that happens to share a prefix.
  */
-export function getModelPricing(model: string): ModelPricing {
+export function getModelPricing(model: string, options: PricingLookupOptions = {}): ModelPricing {
+  const exactPricing = PRICING_REGISTRY[model];
+  if (exactPricing !== undefined) {
+    return exactPricing;
+  }
+
+  if (hasProviderContext(model, options)) {
+    const providerPricing = resolveModelsDevPricing(model, options);
+    if (providerPricing !== undefined) {
+      return providerPricing.pricing;
+    }
+  }
+
   const directOrAliasPricing = getDirectOrAliasPricing(model);
   if (directOrAliasPricing !== undefined) {
     return directOrAliasPricing;
+  }
+
+  const modelsDevPricing = resolveModelsDevPricing(model, options);
+  if (modelsDevPricing !== undefined) {
+    return modelsDevPricing.pricing;
   }
 
   for (const candidate of getLookupCandidates(model)) {
@@ -857,8 +886,12 @@ export function getModelPricing(model: string): ModelPricing {
  * @param model - Model name for pricing lookup
  * @returns Cost in USD
  */
-export function calculateCost(usage: TokenUsage, model: string): number {
-  const pricing = getModelPricing(model);
+export function calculateCost(
+  usage: TokenUsage,
+  model: string,
+  options: PricingLookupOptions = {}
+): number {
+  const pricing = getModelPricing(model, options);
 
   const inputCost = (usage.inputTokens / 1_000_000) * pricing.inputPerMillion;
   const outputCost = (usage.outputTokens / 1_000_000) * pricing.outputPerMillion;
@@ -873,12 +906,15 @@ export function calculateCost(usage: TokenUsage, model: string): number {
  * Get list of all known models for UI display
  */
 export function getKnownModels(): string[] {
-  return Object.keys(PRICING_REGISTRY);
+  return [...new Set([...Object.keys(PRICING_REGISTRY), ...getKnownModelsDevModels()])];
 }
 
 /**
  * Check if a model has custom pricing (not using fallback)
  */
-export function hasCustomPricing(model: string): boolean {
-  return getDirectOrAliasPricing(model) !== undefined;
+export function hasCustomPricing(model: string, options: PricingLookupOptions = {}): boolean {
+  return (
+    getDirectOrAliasPricing(model) !== undefined ||
+    resolveModelsDevPricing(model, options) !== undefined
+  );
 }
