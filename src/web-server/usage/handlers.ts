@@ -17,6 +17,11 @@ import {
   getLastFetchTimestamp,
   refreshUsageCache,
 } from './aggregator';
+import {
+  coalesceLegacyProviderlessBreakdowns,
+  getModelsUsed,
+  getProviderModelKey,
+} from './model-identity';
 
 // ============================================================================
 // Types
@@ -204,7 +209,7 @@ export function calculateTokenBreakdownCosts(dailyData: DailyUsage[]): TokenBrea
 
   for (const day of dailyData) {
     for (const breakdown of day.modelBreakdowns) {
-      const pricing = getModelPricing(breakdown.modelName);
+      const pricing = getModelPricing(breakdown.modelName, { provider: breakdown.provider });
       inputTokens += breakdown.inputTokens;
       outputTokens += breakdown.outputTokens;
       cacheCreationTokens += breakdown.cacheCreationTokens;
@@ -541,6 +546,7 @@ export async function handleModels(
       string,
       {
         model: string;
+        provider?: string;
         inputTokens: number;
         outputTokens: number;
         cacheCreationTokens: number;
@@ -551,8 +557,10 @@ export async function handleModels(
 
     for (const day of filtered) {
       for (const breakdown of day.modelBreakdowns) {
-        const existing = modelMap.get(breakdown.modelName) || {
+        const modelKey = getProviderModelKey(breakdown);
+        const existing = modelMap.get(modelKey) || {
           model: breakdown.modelName,
+          provider: breakdown.provider,
           inputTokens: 0,
           outputTokens: 0,
           cacheCreationTokens: 0,
@@ -564,7 +572,7 @@ export async function handleModels(
         existing.cacheCreationTokens += breakdown.cacheCreationTokens;
         existing.cacheReadTokens += breakdown.cacheReadTokens;
         existing.cost += breakdown.cost;
-        modelMap.set(breakdown.modelName, existing);
+        modelMap.set(modelKey, existing);
       }
     }
 
@@ -583,7 +591,7 @@ export async function handleModels(
 
     const result = models
       .map((m) => {
-        const pricing = getModelPricing(m.model);
+        const pricing = getModelPricing(m.model, { provider: m.provider });
         const inputCost = (m.inputTokens / 1_000_000) * pricing.inputPerMillion;
         const outputCost = (m.outputTokens / 1_000_000) * pricing.outputPerMillion;
         const cacheCreationCost =
@@ -599,6 +607,7 @@ export async function handleModels(
 
         return {
           model: m.model,
+          provider: m.provider,
           tokens: totalModelTokens,
           inputTokens: m.inputTokens,
           outputTokens: m.outputTokens,
@@ -708,11 +717,11 @@ export async function handleMonthly(
           cacheCreationTokens: number;
           cacheReadTokens: number;
           totalCost: number;
-          modelsUsed: Set<string>;
           modelBreakdowns: Map<
             string,
             {
               modelName: string;
+              provider?: string;
               inputTokens: number;
               outputTokens: number;
               cacheCreationTokens: number;
@@ -732,7 +741,6 @@ export async function handleMonthly(
           cacheCreationTokens: 0,
           cacheReadTokens: 0,
           totalCost: 0,
-          modelsUsed: new Set<string>(),
           modelBreakdowns: new Map(),
         };
 
@@ -741,12 +749,11 @@ export async function handleMonthly(
         existing.cacheCreationTokens += day.cacheCreationTokens;
         existing.cacheReadTokens += day.cacheReadTokens;
         existing.totalCost += day.totalCost;
-        for (const model of day.modelsUsed) {
-          existing.modelsUsed.add(model);
-        }
         for (const breakdown of day.modelBreakdowns) {
-          const existingBreakdown = existing.modelBreakdowns.get(breakdown.modelName) ?? {
+          const breakdownKey = getProviderModelKey(breakdown);
+          const existingBreakdown = existing.modelBreakdowns.get(breakdownKey) ?? {
             modelName: breakdown.modelName,
+            provider: breakdown.provider,
             inputTokens: 0,
             outputTokens: 0,
             cacheCreationTokens: 0,
@@ -758,23 +765,28 @@ export async function handleMonthly(
           existingBreakdown.cacheCreationTokens += breakdown.cacheCreationTokens;
           existingBreakdown.cacheReadTokens += breakdown.cacheReadTokens;
           existingBreakdown.cost += breakdown.cost;
-          existing.modelBreakdowns.set(breakdown.modelName, existingBreakdown);
+          existing.modelBreakdowns.set(breakdownKey, existingBreakdown);
         }
 
         monthMap.set(month, existing);
       }
 
       filtered = Array.from(monthMap.values())
-        .map((month) => ({
-          month: month.month,
-          inputTokens: month.inputTokens,
-          outputTokens: month.outputTokens,
-          cacheCreationTokens: month.cacheCreationTokens,
-          cacheReadTokens: month.cacheReadTokens,
-          totalCost: month.totalCost,
-          modelsUsed: Array.from(month.modelsUsed),
-          modelBreakdowns: Array.from(month.modelBreakdowns.values()),
-        }))
+        .map((month) => {
+          const modelBreakdowns = coalesceLegacyProviderlessBreakdowns(
+            Array.from(month.modelBreakdowns.values())
+          );
+          return {
+            month: month.month,
+            inputTokens: month.inputTokens,
+            outputTokens: month.outputTokens,
+            cacheCreationTokens: month.cacheCreationTokens,
+            cacheReadTokens: month.cacheReadTokens,
+            totalCost: month.totalCost,
+            modelBreakdowns,
+            modelsUsed: getModelsUsed(modelBreakdowns),
+          };
+        })
         .sort((a, b) => a.month.localeCompare(b.month));
     } else {
       filtered = await getCachedMonthlyData();

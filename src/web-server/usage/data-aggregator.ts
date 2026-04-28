@@ -14,6 +14,7 @@ import {
   type MonthlyUsage,
   type SessionUsage,
 } from './types';
+import { getModelsUsed, normalizeUsageProvider } from './model-identity';
 
 // ============================================================================
 // HELPER FUNCTIONS
@@ -39,6 +40,7 @@ function extractHour(timestamp: string): string {
 /** Create model breakdown from accumulated data */
 function createModelBreakdown(
   modelName: string,
+  provider: string | undefined,
   inputTokens: number,
   outputTokens: number,
   cacheCreationTokens: number,
@@ -46,11 +48,13 @@ function createModelBreakdown(
 ): ModelBreakdown {
   const cost = calculateCost(
     { inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens },
-    modelName
+    modelName,
+    { provider }
   );
 
   return {
     modelName,
+    ...(provider && { provider }),
     inputTokens,
     outputTokens,
     cacheCreationTokens,
@@ -61,10 +65,31 @@ function createModelBreakdown(
 
 /** Accumulator for per-model token counts */
 interface ModelAccumulator {
+  modelName: string;
+  provider?: string;
   inputTokens: number;
   outputTokens: number;
   cacheCreationTokens: number;
   cacheReadTokens: number;
+}
+
+function getEntryProvider(entry: RawUsageEntry): string | undefined {
+  return normalizeUsageProvider(entry.target);
+}
+
+function getEntryModelKey(entry: RawUsageEntry): string {
+  return `${getEntryProvider(entry) ?? ''}\u0000${entry.model}`;
+}
+
+function createModelAccumulator(entry: RawUsageEntry): ModelAccumulator {
+  return {
+    modelName: entry.model,
+    provider: getEntryProvider(entry),
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheCreationTokens: 0,
+    cacheReadTokens: 0,
+  };
 }
 
 // ============================================================================
@@ -101,19 +126,14 @@ export function aggregateDailyUsage(
     let totalCacheRead = 0;
 
     for (const entry of dateEntries) {
-      const model = entry.model;
-      const acc = modelMap.get(model) || {
-        inputTokens: 0,
-        outputTokens: 0,
-        cacheCreationTokens: 0,
-        cacheReadTokens: 0,
-      };
+      const modelKey = getEntryModelKey(entry);
+      const acc = modelMap.get(modelKey) || createModelAccumulator(entry);
 
       acc.inputTokens += entry.inputTokens;
       acc.outputTokens += entry.outputTokens;
       acc.cacheCreationTokens += entry.cacheCreationTokens;
       acc.cacheReadTokens += entry.cacheReadTokens;
-      modelMap.set(model, acc);
+      modelMap.set(modelKey, acc);
 
       totalInput += entry.inputTokens;
       totalOutput += entry.outputTokens;
@@ -125,9 +145,10 @@ export function aggregateDailyUsage(
     const modelBreakdowns: ModelBreakdown[] = [];
     let totalCost = 0;
 
-    for (const [modelName, acc] of modelMap) {
+    for (const acc of modelMap.values()) {
       const breakdown = createModelBreakdown(
-        modelName,
+        acc.modelName,
+        acc.provider,
         acc.inputTokens,
         acc.outputTokens,
         acc.cacheCreationTokens,
@@ -149,7 +170,7 @@ export function aggregateDailyUsage(
       cacheReadTokens: totalCacheRead,
       cost: totalCost,
       totalCost,
-      modelsUsed: Array.from(modelMap.keys()),
+      modelsUsed: getModelsUsed(modelBreakdowns),
       modelBreakdowns,
     });
   }
@@ -194,19 +215,14 @@ export function aggregateHourlyUsage(
     let totalCacheRead = 0;
 
     for (const entry of hourEntries) {
-      const model = entry.model;
-      const acc = modelMap.get(model) || {
-        inputTokens: 0,
-        outputTokens: 0,
-        cacheCreationTokens: 0,
-        cacheReadTokens: 0,
-      };
+      const modelKey = getEntryModelKey(entry);
+      const acc = modelMap.get(modelKey) || createModelAccumulator(entry);
 
       acc.inputTokens += entry.inputTokens;
       acc.outputTokens += entry.outputTokens;
       acc.cacheCreationTokens += entry.cacheCreationTokens;
       acc.cacheReadTokens += entry.cacheReadTokens;
-      modelMap.set(model, acc);
+      modelMap.set(modelKey, acc);
 
       totalInput += entry.inputTokens;
       totalOutput += entry.outputTokens;
@@ -218,9 +234,10 @@ export function aggregateHourlyUsage(
     const modelBreakdowns: ModelBreakdown[] = [];
     let totalCost = 0;
 
-    for (const [modelName, acc] of modelMap) {
+    for (const acc of modelMap.values()) {
       const breakdown = createModelBreakdown(
-        modelName,
+        acc.modelName,
+        acc.provider,
         acc.inputTokens,
         acc.outputTokens,
         acc.cacheCreationTokens,
@@ -242,7 +259,7 @@ export function aggregateHourlyUsage(
       cacheReadTokens: totalCacheRead,
       cost: totalCost,
       totalCost,
-      modelsUsed: Array.from(modelMap.keys()),
+      modelsUsed: getModelsUsed(modelBreakdowns),
       modelBreakdowns,
       requestCount: hourEntries.length,
     });
@@ -288,19 +305,14 @@ export function aggregateMonthlyUsage(
     let totalCacheRead = 0;
 
     for (const entry of monthEntries) {
-      const model = entry.model;
-      const acc = modelMap.get(model) || {
-        inputTokens: 0,
-        outputTokens: 0,
-        cacheCreationTokens: 0,
-        cacheReadTokens: 0,
-      };
+      const modelKey = getEntryModelKey(entry);
+      const acc = modelMap.get(modelKey) || createModelAccumulator(entry);
 
       acc.inputTokens += entry.inputTokens;
       acc.outputTokens += entry.outputTokens;
       acc.cacheCreationTokens += entry.cacheCreationTokens;
       acc.cacheReadTokens += entry.cacheReadTokens;
-      modelMap.set(model, acc);
+      modelMap.set(modelKey, acc);
 
       totalInput += entry.inputTokens;
       totalOutput += entry.outputTokens;
@@ -312,9 +324,10 @@ export function aggregateMonthlyUsage(
     const modelBreakdowns: ModelBreakdown[] = [];
     let totalCost = 0;
 
-    for (const [modelName, acc] of modelMap) {
+    for (const acc of modelMap.values()) {
       const breakdown = createModelBreakdown(
-        modelName,
+        acc.modelName,
+        acc.provider,
         acc.inputTokens,
         acc.outputTokens,
         acc.cacheCreationTokens,
@@ -335,7 +348,7 @@ export function aggregateMonthlyUsage(
       cacheCreationTokens: totalCacheCreation,
       cacheReadTokens: totalCacheRead,
       totalCost,
-      modelsUsed: Array.from(modelMap.keys()),
+      modelsUsed: getModelsUsed(modelBreakdowns),
       modelBreakdowns,
     });
   }
@@ -388,19 +401,14 @@ export function aggregateSessionUsage(
     let target: string | undefined;
 
     for (const entry of orderedEntries) {
-      const model = entry.model;
-      const acc = modelMap.get(model) || {
-        inputTokens: 0,
-        outputTokens: 0,
-        cacheCreationTokens: 0,
-        cacheReadTokens: 0,
-      };
+      const modelKey = getEntryModelKey(entry);
+      const acc = modelMap.get(modelKey) || createModelAccumulator(entry);
 
       acc.inputTokens += entry.inputTokens;
       acc.outputTokens += entry.outputTokens;
       acc.cacheCreationTokens += entry.cacheCreationTokens;
       acc.cacheReadTokens += entry.cacheReadTokens;
-      modelMap.set(model, acc);
+      modelMap.set(modelKey, acc);
 
       totalInput += entry.inputTokens;
       totalOutput += entry.outputTokens;
@@ -431,9 +439,10 @@ export function aggregateSessionUsage(
     const modelBreakdowns: ModelBreakdown[] = [];
     let totalCost = 0;
 
-    for (const [modelName, acc] of modelMap) {
+    for (const acc of modelMap.values()) {
       const breakdown = createModelBreakdown(
-        modelName,
+        acc.modelName,
+        acc.provider,
         acc.inputTokens,
         acc.outputTokens,
         acc.cacheCreationTokens,
@@ -457,7 +466,7 @@ export function aggregateSessionUsage(
       totalCost,
       lastActivity,
       versions: Array.from(versions),
-      modelsUsed: Array.from(modelMap.keys()),
+      modelsUsed: getModelsUsed(modelBreakdowns),
       modelBreakdowns,
       source,
       target,

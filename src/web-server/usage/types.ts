@@ -12,6 +12,7 @@
 /** Per-model token and cost breakdown */
 export interface ModelBreakdown {
   modelName: string;
+  provider?: string;
   inputTokens: number;
   outputTokens: number;
   cacheCreationTokens: number;

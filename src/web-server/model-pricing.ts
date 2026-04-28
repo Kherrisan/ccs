@@ -7,6 +7,12 @@
  * All rates are in USD per MILLION tokens.
  */
 
+import {
+  getKnownModelsDevModels,
+  resolveModelsDevPricing,
+  type ModelsDevPricingLookupOptions,
+} from './models-dev/pricing-resolver';
+
 // ============================================================================
 // TYPE DEFINITIONS
 // ============================================================================
@@ -24,6 +30,8 @@ export interface TokenUsage {
   cacheCreationTokens: number;
   cacheReadTokens: number;
 }
+
+export type PricingLookupOptions = ModelsDevPricingLookupOptions;
 
 // ============================================================================
 // USER-EDITABLE PRICING TABLE
@@ -750,16 +758,25 @@ const UNKNOWN_MODEL_PRICING: ModelPricing = {
 // ============================================================================
 
 /**
- * Normalize model name for matching
- * Handles variations like provider prefixes and case differences
+ * Strip provider prefixes used by routing/catalog metadata.
+ * The CCS static table remains model-keyed, so static fallback normalizes
+ * provider-qualified model IDs before checking aliases.
+ */
+function stripProviderPrefix(model: string): string {
+  const trimmed = model.trim();
+  const slashIndex = trimmed.indexOf('/');
+  if (slashIndex <= 0) {
+    return trimmed;
+  }
+  return trimmed.slice(slashIndex + 1);
+}
+
+/**
+ * Normalize model name for matching.
+ * Handles variations like provider prefixes and case differences.
  */
 function normalizeModelName(model: string): string {
-  // Remove provider prefixes (e.g., "anthropic/claude-..." -> "claude-...")
-  const normalized = model
-    .trim()
-    .toLowerCase()
-    .replace(/^[^/]+\//, '');
-  return normalized;
+  return stripProviderPrefix(model).toLowerCase();
 }
 
 /**
@@ -827,15 +844,74 @@ function getDirectOrAliasPricing(model: string): ModelPricing | undefined {
   return undefined;
 }
 
+function getCcsStaticPricing(model: string): ModelPricing | undefined {
+  const staticPricing = getDirectOrAliasPricing(model);
+  if (staticPricing !== undefined) {
+    return staticPricing;
+  }
+
+  const providerlessModel = stripProviderPrefix(model);
+  if (providerlessModel !== model.trim()) {
+    return getDirectOrAliasPricing(providerlessModel);
+  }
+
+  return undefined;
+}
+
+function getCcsPolicyOverridePricing(model: string): ModelPricing | undefined {
+  const providerlessModel = stripProviderPrefix(model);
+  const normalized = normalizeModelName(providerlessModel);
+
+  for (const candidate of getLookupCandidates(providerlessModel)) {
+    const alias = MODEL_PRICING_ALIASES[candidate];
+    if (alias !== undefined) {
+      const aliasPricing = NORMALIZED_PRICING_REGISTRY[alias];
+      if (aliasPricing !== undefined) {
+        return aliasPricing;
+      }
+    }
+
+    if (candidate !== normalized) {
+      const variantPricing = NORMALIZED_PRICING_REGISTRY[candidate];
+      if (variantPricing !== undefined) {
+        return variantPricing;
+      }
+    }
+  }
+
+  return undefined;
+}
+
+function hasProviderContext(model: string, options: PricingLookupOptions): boolean {
+  return Boolean(options.provider || /^[^/]+\//.test(model.trim()));
+}
+
 /**
  * Get pricing for a model with narrow fuzzy matching fallback.
  * Unknown future model families should fall back instead of inheriting the
  * first known family tier that happens to share a prefix.
  */
-export function getModelPricing(model: string): ModelPricing {
-  const directOrAliasPricing = getDirectOrAliasPricing(model);
-  if (directOrAliasPricing !== undefined) {
-    return directOrAliasPricing;
+export function getModelPricing(model: string, options: PricingLookupOptions = {}): ModelPricing {
+  if (hasProviderContext(model, options)) {
+    const ccsOverridePricing = getCcsPolicyOverridePricing(model);
+    if (ccsOverridePricing !== undefined) {
+      return ccsOverridePricing;
+    }
+
+    const providerPricing = resolveModelsDevPricing(model, options);
+    if (providerPricing !== undefined) {
+      return providerPricing.pricing;
+    }
+  }
+
+  const ccsStaticPricing = getCcsStaticPricing(model);
+  if (ccsStaticPricing !== undefined) {
+    return ccsStaticPricing;
+  }
+
+  const modelsDevPricing = resolveModelsDevPricing(model, options);
+  if (modelsDevPricing !== undefined) {
+    return modelsDevPricing.pricing;
   }
 
   for (const candidate of getLookupCandidates(model)) {
@@ -857,8 +933,12 @@ export function getModelPricing(model: string): ModelPricing {
  * @param model - Model name for pricing lookup
  * @returns Cost in USD
  */
-export function calculateCost(usage: TokenUsage, model: string): number {
-  const pricing = getModelPricing(model);
+export function calculateCost(
+  usage: TokenUsage,
+  model: string,
+  options: PricingLookupOptions = {}
+): number {
+  const pricing = getModelPricing(model, options);
 
   const inputCost = (usage.inputTokens / 1_000_000) * pricing.inputPerMillion;
   const outputCost = (usage.outputTokens / 1_000_000) * pricing.outputPerMillion;
@@ -873,12 +953,15 @@ export function calculateCost(usage: TokenUsage, model: string): number {
  * Get list of all known models for UI display
  */
 export function getKnownModels(): string[] {
-  return Object.keys(PRICING_REGISTRY);
+  return [...new Set([...Object.keys(PRICING_REGISTRY), ...getKnownModelsDevModels()])];
 }
 
 /**
  * Check if a model has custom pricing (not using fallback)
  */
-export function hasCustomPricing(model: string): boolean {
-  return getDirectOrAliasPricing(model) !== undefined;
+export function hasCustomPricing(model: string, options: PricingLookupOptions = {}): boolean {
+  return (
+    getCcsStaticPricing(model) !== undefined ||
+    resolveModelsDevPricing(model, options) !== undefined
+  );
 }
