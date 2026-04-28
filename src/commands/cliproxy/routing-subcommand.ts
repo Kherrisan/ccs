@@ -173,12 +173,18 @@ export async function handleRoutingAffinityStatus(): Promise<void> {
 export async function handleRoutingAffinitySet(args: string[]): Promise<void> {
   const requested = normalizeCliproxySessionAffinityEnabled(args[0]);
   const extractedTtl = extractOption(args.slice(1), ['--ttl']);
+  const remainingArgs = extractedTtl.remainingArgs.filter((token) => token.trim().length > 0);
   const ttl: string | undefined =
     extractedTtl.found && !extractedTtl.missingValue
       ? (normalizeCliproxySessionAffinityTtl(extractedTtl.value) ?? undefined)
       : undefined;
 
-  if (requested === null || extractedTtl.missingValue || (extractedTtl.found && !ttl)) {
+  if (
+    requested === null ||
+    extractedTtl.missingValue ||
+    (extractedTtl.found && !ttl) ||
+    remainingArgs.length > 0
+  ) {
     await initUI();
     console.log('');
     console.log(

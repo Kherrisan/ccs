@@ -90,6 +90,7 @@ export function useUpdateCliproxySessionAffinity() {
     mutationFn: (data: { enabled: boolean; ttl?: string }) =>
       api.cliproxy.updateSessionAffinity(data),
     onSuccess: (result: CliproxySessionAffinityApplyResult) => {
+      queryClient.setQueryData(['cliproxy-session-affinity'], result);
       queryClient.invalidateQueries({ queryKey: ['cliproxy-session-affinity'] });
       const label = result.enabled ? 'enabled' : 'disabled';
       toast.success(result.message || `Session affinity ${label}.`);

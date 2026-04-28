@@ -59,6 +59,8 @@ const CONFIG_YAML = 'config.yaml';
 const CONFIG_JSON = 'config.json';
 const CONFIG_LOCK = 'config.yaml.lock';
 const LOCK_STALE_MS = 5000; // Lock is stale after 5 seconds
+const GO_DURATION_SEGMENT = String.raw`(?:\d+(?:\.\d+)?(?:ns|us|µs|μs|ms|s|m|h))`;
+const GO_DURATION_PATTERN = new RegExp(`^${GO_DURATION_SEGMENT}+$`);
 
 function normalizeBrowserDevtoolsPort(value: number | undefined): number {
   if (!Number.isFinite(value)) {
@@ -110,6 +112,19 @@ function canonicalizeBrowserConfig(
       eval_mode: normalizeBrowserEvalMode(config?.codex?.eval_mode ?? fallback.codex.eval_mode),
     },
   };
+}
+
+function normalizeSessionAffinityTtl(value: unknown, fallback: string): string {
+  if (typeof value !== 'string') {
+    return fallback;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed || !GO_DURATION_PATTERN.test(trimmed)) {
+    return fallback;
+  }
+
+  return trimmed;
 }
 
 /**
@@ -444,11 +459,10 @@ function mergeWithDefaults(partial: Partial<UnifiedConfig>): UnifiedConfig {
           typeof partial.cliproxy?.routing?.session_affinity === 'boolean'
             ? partial.cliproxy.routing.session_affinity
             : defaults.cliproxy.routing?.session_affinity,
-        session_affinity_ttl:
-          typeof partial.cliproxy?.routing?.session_affinity_ttl === 'string' &&
-          partial.cliproxy.routing.session_affinity_ttl.trim()
-            ? partial.cliproxy.routing.session_affinity_ttl.trim()
-            : defaults.cliproxy.routing?.session_affinity_ttl,
+        session_affinity_ttl: normalizeSessionAffinityTtl(
+          partial.cliproxy?.routing?.session_affinity_ttl,
+          defaults.cliproxy.routing?.session_affinity_ttl ?? '1h'
+        ),
       },
     },
     proxy: {
