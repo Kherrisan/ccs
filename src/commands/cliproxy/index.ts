@@ -39,6 +39,7 @@ import {
   handleRoutingExplain,
   handleRoutingSet,
   handleRoutingAffinityStatus,
+  handleRoutingAffinityHelp,
   handleRoutingAffinitySet,
 } from './routing-subcommand';
 import {
@@ -196,6 +197,10 @@ export async function handleCliproxyCommand(args: string[]): Promise<void> {
       return;
     }
     if (subcommand === 'affinity') {
+      if (hasAnyFlag(remainingArgs.slice(2), ['--help', '-h'])) {
+        await handleRoutingAffinityHelp();
+        return;
+      }
       if (remainingArgs[2]) {
         await handleRoutingAffinitySet(remainingArgs.slice(2));
         return;

@@ -170,6 +170,23 @@ export async function handleRoutingAffinityStatus(): Promise<void> {
   printSessionRecognitionGuide();
 }
 
+export async function handleRoutingAffinityHelp(): Promise<void> {
+  await initUI();
+  console.log('');
+  console.log(header('CLIProxy Session Affinity'));
+  console.log('');
+  console.log(subheader('Usage:'));
+  console.log(`  ${color('ccs cliproxy routing affinity', 'command')}`);
+  console.log(`  ${color('ccs cliproxy routing affinity on', 'command')}`);
+  console.log(`  ${color('ccs cliproxy routing affinity off', 'command')}`);
+  console.log(`  ${color('ccs cliproxy routing affinity on --ttl 1h', 'command')}`);
+  console.log('');
+  printSessionAffinityGuide();
+  console.log(`  ${dim('Accepted TTL examples: 30m, 1h, 2h30m')}`);
+  console.log('');
+  printSessionRecognitionGuide();
+}
+
 export async function handleRoutingAffinitySet(args: string[]): Promise<void> {
   const requested = normalizeCliproxySessionAffinityEnabled(args[0]);
   const extractedTtl = extractOption(args.slice(1), ['--ttl']);
