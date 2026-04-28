@@ -40,8 +40,9 @@ export const CCS_CONTROL_PANEL_SECRET = 'ccs';
  * v15: Prune stale generated Antigravity Gemini preview aliases during regeneration
  * v16: Narrow stale Gemini alias cleanup to broad multi-version guessed ranges
  * v17: Persist routing.strategy from CCS unified config
+ * v18: Persist routing.session-affinity and routing.session-affinity-ttl from CCS unified config
  */
-export const CLIPROXY_CONFIG_VERSION = 17;
+export const CLIPROXY_CONFIG_VERSION = 18;
 
 interface RegenerateConfigOptions {
   configPath?: string;
@@ -130,6 +131,15 @@ function getLoggingSettings(): { loggingToFile: boolean; requestLog: boolean } {
 function getRoutingStrategy(): 'round-robin' | 'fill-first' {
   const config = loadOrCreateUnifiedConfig();
   return config.cliproxy?.routing?.strategy === 'fill-first' ? 'fill-first' : 'round-robin';
+}
+
+function getSessionAffinityEnabled(): boolean {
+  return loadOrCreateUnifiedConfig().cliproxy?.routing?.session_affinity ?? false;
+}
+
+function getSessionAffinityTtl(): string {
+  const ttl = loadOrCreateUnifiedConfig().cliproxy?.routing?.session_affinity_ttl?.trim();
+  return ttl || '1h';
 }
 
 function sanitizeYamlScalar(rawValue: string): string {
@@ -552,6 +562,8 @@ function generateUnifiedConfigContent(
   // Get logging settings from user config (disabled by default)
   const { loggingToFile, requestLog } = getLoggingSettings();
   const routingStrategy = getRoutingStrategy();
+  const sessionAffinityEnabled = getSessionAffinityEnabled();
+  const sessionAffinityTtl = getSessionAffinityTtl();
 
   // Get effective auth tokens (respects user customization)
   const effectiveApiKey = getEffectiveApiKey();
@@ -627,6 +639,8 @@ quota-exceeded:
 # Credential selection strategy when multiple matching accounts are available
 routing:
   strategy: ${routingStrategy}
+  session-affinity: ${sessionAffinityEnabled}
+  session-affinity-ttl: "${sessionAffinityTtl}"
 
 # =============================================================================
 # Authentication

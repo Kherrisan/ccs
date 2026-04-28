@@ -521,6 +521,20 @@ export interface CliproxyRoutingApplyResult extends CliproxyRoutingState {
   applied: 'live' | 'live-and-config' | 'config-only';
 }
 
+export interface CliproxySessionAffinityState {
+  enabled?: boolean;
+  ttl?: string;
+  source: 'config' | 'unsupported';
+  target: 'local' | 'remote';
+  reachable: boolean;
+  manageable: boolean;
+  message?: string;
+}
+
+export interface CliproxySessionAffinityApplyResult extends CliproxySessionAffinityState {
+  applied: 'config-and-live' | 'config-only' | 'unsupported';
+}
+
 /** Auth file info for Config tab */
 export interface AuthFile {
   name: string;
@@ -1252,6 +1266,13 @@ export const api = {
       request<CliproxyRoutingApplyResult>('/cliproxy/routing/strategy', {
         method: 'PUT',
         body: JSON.stringify({ value: strategy }),
+      }),
+    getSessionAffinity: () =>
+      request<CliproxySessionAffinityState>('/cliproxy/routing/session-affinity'),
+    updateSessionAffinity: (data: { enabled: boolean; ttl?: string }) =>
+      request<CliproxySessionAffinityApplyResult>('/cliproxy/routing/session-affinity', {
+        method: 'PUT',
+        body: JSON.stringify(data),
       }),
     aiProviders: {
       list: () => request<ListAiProvidersResult>('/cliproxy/ai-providers'),

@@ -440,6 +440,15 @@ function mergeWithDefaults(partial: Partial<UnifiedConfig>): UnifiedConfig {
           partial.cliproxy?.routing?.strategy === 'round-robin'
             ? partial.cliproxy.routing.strategy
             : defaults.cliproxy.routing?.strategy,
+        session_affinity:
+          typeof partial.cliproxy?.routing?.session_affinity === 'boolean'
+            ? partial.cliproxy.routing.session_affinity
+            : defaults.cliproxy.routing?.session_affinity,
+        session_affinity_ttl:
+          typeof partial.cliproxy?.routing?.session_affinity_ttl === 'string' &&
+          partial.cliproxy.routing.session_affinity_ttl.trim()
+            ? partial.cliproxy.routing.session_affinity_ttl.trim()
+            : defaults.cliproxy.routing?.session_affinity_ttl,
       },
     },
     proxy: {

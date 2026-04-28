@@ -11,6 +11,7 @@ import {
   type UpdateVariant,
   type CreatePreset,
   type RoutingStrategy,
+  type CliproxySessionAffinityApplyResult,
 } from '@/lib/api-client';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
@@ -18,6 +19,7 @@ import { useTranslation } from 'react-i18next';
 function invalidateCliproxyRoutingQueries(queryClient: ReturnType<typeof useQueryClient>): void {
   queryClient.invalidateQueries({ queryKey: ['cliproxy-catalog'] });
   queryClient.invalidateQueries({ queryKey: ['cliproxy-models'] });
+  queryClient.invalidateQueries({ queryKey: ['cliproxy-session-affinity'] });
 }
 
 function invalidateCliproxyAccountQueries(queryClient: ReturnType<typeof useQueryClient>): void {
@@ -67,6 +69,30 @@ export function useUpdateCliproxyRoutingStrategy() {
       toast.success(
         result.message || t('toasts.routingStrategySet', { strategy: result.strategy })
       );
+    },
+    onError: (error: Error) => {
+      toast.error(error.message);
+    },
+  });
+}
+
+export function useCliproxySessionAffinity() {
+  return useQuery({
+    queryKey: ['cliproxy-session-affinity'],
+    queryFn: () => api.cliproxy.getSessionAffinity(),
+  });
+}
+
+export function useUpdateCliproxySessionAffinity() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: { enabled: boolean; ttl?: string }) =>
+      api.cliproxy.updateSessionAffinity(data),
+    onSuccess: (result: CliproxySessionAffinityApplyResult) => {
+      queryClient.invalidateQueries({ queryKey: ['cliproxy-session-affinity'] });
+      const label = result.enabled ? 'enabled' : 'disabled';
+      toast.success(result.message || `Session affinity ${label}.`);
     },
     onError: (error: Error) => {
       toast.error(error.message);

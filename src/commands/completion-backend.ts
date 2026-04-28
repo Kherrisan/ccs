@@ -171,7 +171,10 @@ function getSuggestionsForCommand(tokensBeforeCurrent: string[]): CompletionSugg
         if (lastToken === 'set') {
           return completeSubcommands(['round-robin', 'fill-first']);
         }
-        return completeSubcommands(['set', 'explain']);
+        if (lastToken === 'affinity') {
+          return completeSubcommands(['on', 'off', '--ttl']);
+        }
+        return completeSubcommands(['set', 'explain', 'affinity']);
       }
       if (['remove', 'edit'].includes(subcommand)) {
         return completeSubcommands(getProfileNames('cliproxyVariants'), ['--yes', '-y']);
