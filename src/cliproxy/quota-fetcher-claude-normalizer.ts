@@ -89,7 +89,27 @@ function clampUnit(value: number): number {
   return Math.max(0, Math.min(1, value));
 }
 
-function normalizeUtilization(raw: Record<string, unknown>): {
+/**
+ * Unit of the `utilization` field in a Claude quota payload.
+ *
+ * Anthropic exposes utilization in two different units depending on the
+ * payload form:
+ *   - The `restrictions` payload (array or object map) returns a 0..1 ratio
+ *     (e.g. 0.25 for 25% used).
+ *   - The OAuth `oauth/usage` endpoint returns a percent value 0..100
+ *     (e.g. 25 for 25% used; values like 1 for 1% used).
+ *
+ * The previous heuristic of "value <= 1 means ratio, otherwise percent"
+ * silently misinterpreted boundary values like 1.0 (1% used) from the
+ * OAuth payload as 100% used. Each call site now passes the unit it
+ * knows it is parsing.
+ */
+type UtilizationUnit = 'ratio' | 'percent';
+
+function normalizeUtilization(
+  raw: Record<string, unknown>,
+  unit: UtilizationUnit
+): {
   utilization: number | null;
   usedPercent: number;
   remainingPercent: number;
@@ -99,11 +119,12 @@ function normalizeUtilization(raw: Record<string, unknown>): {
   const remainingPercentRaw = asNumber(raw['remainingPercent'] ?? raw['remaining_percent']);
 
   if (utilizationRaw !== null) {
-    const ratio = utilizationRaw <= 1 ? utilizationRaw : utilizationRaw / 100;
-    const normalizedRatio = clampUnit(ratio);
-    const usedPercent = clampPercent(normalizedRatio * 100);
+    const usedPercent =
+      unit === 'ratio'
+        ? clampPercent(clampUnit(utilizationRaw) * 100)
+        : clampPercent(utilizationRaw);
     return {
-      utilization: normalizedRatio,
+      utilization: usedPercent / 100,
       usedPercent,
       remainingPercent: clampPercent(100 - usedPercent),
     };
@@ -149,7 +170,8 @@ function toObject(value: unknown): Record<string, unknown> | null {
 
 function normalizeRestriction(
   raw: Record<string, unknown>,
-  fallbackKey?: string
+  fallbackKey: string | undefined,
+  unit: UtilizationUnit
 ): ClaudeQuotaWindow | null {
   const rateLimitType = normalizeRateLimitType(
     raw['rateLimitType'] ?? raw['rate_limit_type'] ?? raw['claim'] ?? raw['claimAbbrev'],
@@ -169,7 +191,7 @@ function normalizeRestriction(
         raw['overage_reset_at']
     ) || null;
 
-  const { utilization, usedPercent, remainingPercent } = normalizeUtilization(raw);
+  const { utilization, usedPercent, remainingPercent } = normalizeUtilization(raw, unit);
 
   return {
     rateLimitType,
@@ -211,14 +233,16 @@ export function buildClaudeQuotaWindows(payload: Record<string, unknown>): Claud
     for (const item of rawRestrictions) {
       const raw = toObject(item);
       if (!raw) continue;
-      const window = normalizeRestriction(raw);
+      // policy-limits restrictions[] returns utilization as a 0..1 ratio.
+      const window = normalizeRestriction(raw, undefined, 'ratio');
       if (window) windows.push(window);
     }
   } else if (toObject(rawRestrictions)) {
     for (const [key, value] of Object.entries(rawRestrictions as Record<string, unknown>)) {
       const raw = toObject(value);
       if (!raw) continue;
-      const window = normalizeRestriction(raw, key);
+      // policy-limits restrictions{} returns utilization as a 0..1 ratio.
+      const window = normalizeRestriction(raw, key, 'ratio');
       if (window) windows.push(window);
     }
   } else if (toObject(payload)) {
@@ -226,13 +250,15 @@ export function buildClaudeQuotaWindows(payload: Record<string, unknown>): Claud
       const raw = toObject(value);
       if (!raw) continue;
       if (!isClaudeOAuthUsageWindowCandidate(key, raw)) continue;
-      const window = normalizeRestriction(raw, key);
+      // OAuth /oauth/usage payloads return utilization as percent 0..100.
+      const window = normalizeRestriction(raw, key, 'percent');
       if (window) windows.push(window);
     }
 
-    // Some responses may contain a single restriction object directly.
+    // Some responses may contain a single restriction object directly,
+    // matching the policy-limits ratio shape.
     if (windows.length === 0) {
-      const direct = normalizeRestriction(payload);
+      const direct = normalizeRestriction(payload, undefined, 'ratio');
       if (direct) windows.push(direct);
     }
   }
