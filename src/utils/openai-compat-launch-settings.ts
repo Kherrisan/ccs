@@ -5,10 +5,15 @@ import * as path from 'path';
 import type { Settings } from '../types/config';
 import { stripAnthropicRoutingEnv } from './shell-executor';
 
-export function createOpenAICompatLaunchSettingsPath(
+export interface OpenAICompatLaunchSettings {
+  settingsPath: string;
+  cleanup: () => void;
+}
+
+export function createOpenAICompatLaunchSettings(
   settingsPath: string,
   settings: Settings
-): string {
+): OpenAICompatLaunchSettings {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ccs-openai-compat-settings-'));
   fs.chmodSync(tempDir, 0o700);
 
@@ -31,5 +36,17 @@ export function createOpenAICompatLaunchSettingsPath(
     mode: 0o600,
   });
 
-  return launchSettingsPath;
+  let cleanedUp = false;
+  const cleanup = (): void => {
+    if (cleanedUp) {
+      return;
+    }
+    cleanedUp = true;
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  };
+
+  return {
+    settingsPath: launchSettingsPath,
+    cleanup,
+  };
 }

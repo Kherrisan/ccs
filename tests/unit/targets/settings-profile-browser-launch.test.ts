@@ -92,6 +92,8 @@ describe('settings profile browser launch', () => {
   let fakeClaudePath = '';
   let claudeArgsLogPath = '';
   let claudeEnvLogPath = '';
+  let claudeSettingsPathLogPath = '';
+  let claudeSettingsSnapshotPath = '';
   let browserProfileDir = '';
   let devtoolsServer: ChildProcess | undefined;
   let baseEnv: NodeJS.ProcessEnv;
@@ -107,6 +109,8 @@ describe('settings profile browser launch', () => {
     fakeClaudePath = path.join(tmpHome, 'fake-claude.sh');
     claudeArgsLogPath = path.join(tmpHome, 'claude-args.txt');
     claudeEnvLogPath = path.join(tmpHome, 'claude-env.txt');
+    claudeSettingsPathLogPath = path.join(tmpHome, 'claude-settings-path.txt');
+    claudeSettingsSnapshotPath = path.join(tmpHome, 'claude-settings-snapshot.json');
     browserProfileDir = path.join(tmpHome, 'chrome-user-data');
 
     fs.mkdirSync(ccsDir, { recursive: true });
@@ -138,6 +142,19 @@ describe('settings profile browser launch', () => {
       fakeClaudePath,
       `#!/bin/sh
 printf "%s\n" "$@" > "${claudeArgsLogPath}"
+settings_path=""
+prev=""
+for arg in "$@"; do
+  if [ "$prev" = "--settings" ]; then
+    settings_path="$arg"
+    break
+  fi
+  prev="$arg"
+done
+printf "%s" "$settings_path" > "${claudeSettingsPathLogPath}"
+if [ -n "$settings_path" ] && [ -f "$settings_path" ]; then
+  cat "$settings_path" > "${claudeSettingsSnapshotPath}"
+fi
 {
   printf "userDataDir=%s\n" "$CCS_BROWSER_USER_DATA_DIR"
   printf "legacyProfileDir=%s\n" "$CCS_BROWSER_PROFILE_DIR"
@@ -308,7 +325,7 @@ exit 0
     expect(launchSettingsPath).not.toBe(settingsPath);
 
     const persistedLaunchSettings = JSON.parse(
-      fs.readFileSync(launchSettingsPath as string, 'utf8')
+      fs.readFileSync(claudeSettingsSnapshotPath, 'utf8')
     ) as {
       env?: Record<string, string>;
       hooks?: {
@@ -333,6 +350,8 @@ exit 0
     expect(launchedEnv).not.toContain('anthropicBaseUrl=https://api.openai.com/v1');
     expect(launchedEnv).toContain('anthropicModel=gpt-5.4');
     expect(launchedEnv).toContain('maxOutputTokens=12345');
+    expect(fs.readFileSync(claudeSettingsPathLogPath, 'utf8')).toBe(launchSettingsPath);
+    expect(fs.existsSync(launchSettingsPath as string)).toBe(false);
   });
 
   it('does not auto-enable browser reuse for settings-profile launches from env overrides alone', async () => {

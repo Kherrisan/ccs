@@ -31,6 +31,7 @@ const STEERING_PROMPT_SNIPPET =
   'prefer the CCS MCP tool WebSearch instead of Bash/curl/http fetches';
 const spawnCalls: SpawnCall[] = [];
 const spawnSyncCalls: SpawnSyncCall[] = [];
+const launchSettingsSnapshots: Array<{ path: string; content: string }> = [];
 const originalPlatform = process.platform;
 let baselineSigintListeners: Array<(...args: unknown[]) => void> = [];
 let baselineSigtermListeners: Array<(...args: unknown[]) => void> = [];
@@ -99,6 +100,16 @@ function registerChildProcessMock(): void {
       }
 
       spawnCalls.push({ command, args, options });
+      const settingsIndex = args.indexOf('--settings');
+      if (settingsIndex >= 0) {
+        const settingsPath = args[settingsIndex + 1];
+        if (settingsPath && fs.existsSync(settingsPath)) {
+          launchSettingsSnapshots.push({
+            path: settingsPath,
+            content: fs.readFileSync(settingsPath, 'utf8'),
+          });
+        }
+      }
 
       const child = createMockChild();
       setTimeout(() => child.emit('close', 0), 0);
@@ -193,6 +204,7 @@ describe('CLAUDECODE environment stripping', () => {
   beforeEach(() => {
     spawnCalls.length = 0;
     spawnSyncCalls.length = 0;
+    launchSettingsSnapshots.length = 0;
     process.env.CCS_QUIET = '1';
 
     // Save original env values for restoration in afterEach
@@ -695,8 +707,12 @@ describe('CLAUDECODE environment stripping', () => {
     const launchSettingsPath = args[settingsIndex + 1];
     expect(launchSettingsPath).toBeDefined();
     expect(launchSettingsPath).not.toBe(path.join(ccsDir, 'bridge.settings.json'));
+    const launchSettingsSnapshot = launchSettingsSnapshots.find(
+      (snapshot) => snapshot.path === launchSettingsPath
+    );
+    expect(launchSettingsSnapshot).toBeDefined();
 
-    const persistedLaunchSettings = JSON.parse(fs.readFileSync(launchSettingsPath, 'utf8')) as {
+    const persistedLaunchSettings = JSON.parse(launchSettingsSnapshot?.content || '{}') as {
       env?: Record<string, string>;
       hooks?: {
         PreToolUse?: Array<{
@@ -713,6 +729,7 @@ describe('CLAUDECODE environment stripping', () => {
     expect(
       persistedLaunchSettings.hooks?.PreToolUse?.[0]?.hooks?.[0]?.command
     ).toBe('echo headless-bridge-hook');
+    expect(fs.existsSync(launchSettingsPath)).toBe(false);
   });
 
   it('headless executor prepares image-analysis MCP and suppresses the legacy hook on healthy launches', async () => {
