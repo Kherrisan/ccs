@@ -327,6 +327,11 @@ describe('model-pricing', () => {
               name: 'GPT-5.5',
               cost: { input: 5, output: 30, cache_read: 0.5 },
             },
+            'openai-exclusive-model': {
+              id: 'openai-exclusive-model',
+              name: 'OpenAI Exclusive Model',
+              cost: { input: 9, output: 18 },
+            },
           },
         },
         'github-copilot': {
@@ -371,6 +376,18 @@ describe('model-pricing', () => {
       expect(pricing).toEqual(getModelPricing('unknown-model-xyz'));
       expect(hasCustomPricing('gpt-5.5')).toBe(false);
       expect(hasCustomPricing('gpt-5.5', { provider: 'openai' })).toBe(true);
+    });
+
+    it('does not use another provider pricing when explicit provider lookup misses', () => {
+      const fallback = getModelPricing('unknown-model-xyz');
+
+      expect(getModelPricing('openai-exclusive-model', { provider: 'github-copilot' })).toEqual(
+        fallback
+      );
+      expect(getModelPricing('github-copilot/openai-exclusive-model')).toEqual(fallback);
+      expect(hasCustomPricing('openai-exclusive-model', { provider: 'github-copilot' })).toBe(
+        false
+      );
     });
 
     it('calculates cost with provider-aware models.dev pricing', () => {

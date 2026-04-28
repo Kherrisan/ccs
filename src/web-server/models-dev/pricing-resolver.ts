@@ -174,9 +174,11 @@ export function resolveModelsDevPricing(
   const provider = options.provider ?? prefixed.provider;
   const modelId = prefixed.model;
 
-  return (
-    resolveProviderModel(registry, provider, modelId) ?? resolveUnambiguousModel(registry, modelId)
-  );
+  if (provider) {
+    return resolveProviderModel(registry, provider, modelId);
+  }
+
+  return resolveUnambiguousModel(registry, modelId);
 }
 
 export function getKnownModelsDevModels(): string[] {
