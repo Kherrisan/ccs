@@ -758,16 +758,25 @@ const UNKNOWN_MODEL_PRICING: ModelPricing = {
 // ============================================================================
 
 /**
- * Normalize model name for matching
- * Handles variations like provider prefixes and case differences
+ * Strip provider prefixes used by routing/catalog metadata.
+ * The CCS static table remains model-keyed, so static fallback normalizes
+ * provider-qualified model IDs before checking aliases.
+ */
+function stripProviderPrefix(model: string): string {
+  const trimmed = model.trim();
+  const slashIndex = trimmed.indexOf('/');
+  if (slashIndex <= 0) {
+    return trimmed;
+  }
+  return trimmed.slice(slashIndex + 1);
+}
+
+/**
+ * Normalize model name for matching.
+ * Handles variations like provider prefixes and case differences.
  */
 function normalizeModelName(model: string): string {
-  // Remove provider prefixes (e.g., "anthropic/claude-..." -> "claude-...")
-  const normalized = model
-    .trim()
-    .toLowerCase()
-    .replace(/^[^/]+\//, '');
-  return normalized;
+  return stripProviderPrefix(model).toLowerCase();
 }
 
 /**
@@ -835,6 +844,20 @@ function getDirectOrAliasPricing(model: string): ModelPricing | undefined {
   return undefined;
 }
 
+function getCcsStaticPricing(model: string): ModelPricing | undefined {
+  const staticPricing = getDirectOrAliasPricing(model);
+  if (staticPricing !== undefined) {
+    return staticPricing;
+  }
+
+  const providerlessModel = stripProviderPrefix(model);
+  if (providerlessModel !== model.trim()) {
+    return getDirectOrAliasPricing(providerlessModel);
+  }
+
+  return undefined;
+}
+
 function hasProviderContext(model: string, options: PricingLookupOptions): boolean {
   return Boolean(options.provider || /^[^/]+\//.test(model.trim()));
 }
@@ -852,14 +875,9 @@ export function getModelPricing(model: string, options: PricingLookupOptions = {
     }
   }
 
-  const exactPricing = PRICING_REGISTRY[model];
-  if (exactPricing !== undefined) {
-    return exactPricing;
-  }
-
-  const directOrAliasPricing = getDirectOrAliasPricing(model);
-  if (directOrAliasPricing !== undefined) {
-    return directOrAliasPricing;
+  const ccsStaticPricing = getCcsStaticPricing(model);
+  if (ccsStaticPricing !== undefined) {
+    return ccsStaticPricing;
   }
 
   const modelsDevPricing = resolveModelsDevPricing(model, options);
@@ -914,7 +932,7 @@ export function getKnownModels(): string[] {
  */
 export function hasCustomPricing(model: string, options: PricingLookupOptions = {}): boolean {
   return (
-    getDirectOrAliasPricing(model) !== undefined ||
+    getCcsStaticPricing(model) !== undefined ||
     resolveModelsDevPricing(model, options) !== undefined
   );
 }

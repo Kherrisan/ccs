@@ -388,6 +388,16 @@ describe('model-pricing', () => {
       expect(getModelPricing('gpt-4o').inputPerMillion).toBe(2.5);
     });
 
+    it('falls back to CCS static pricing when provider-aware models.dev lookup misses a known model', () => {
+      const staticPricing = getModelPricing('claude-sonnet-4-5');
+
+      expect(getModelPricing('anthropic/claude-sonnet-4-5')).toEqual(staticPricing);
+      expect(getModelPricing('claude-sonnet-4-5', { provider: 'anthropic' })).toEqual(
+        staticPricing
+      );
+      expect(hasCustomPricing('anthropic/claude-sonnet-4-5')).toBe(true);
+    });
+
     it('does not use ambiguous model-only models.dev matches', () => {
       const pricing = getModelPricing('gpt-5.5');
       expect(pricing).toEqual(getModelPricing('unknown-model-xyz'));
