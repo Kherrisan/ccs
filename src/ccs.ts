@@ -82,6 +82,7 @@ import { tryHandleRootCommand } from './commands/root-command-router';
 // Import extracted utility functions
 import { execClaude, stripAnthropicRoutingEnv, stripBrowserEnv } from './utils/shell-executor';
 import { isDeprecatedGlmtProfileName, normalizeDeprecatedGlmtEnv } from './utils/glmt-deprecation';
+import { createOpenAICompatLaunchSettingsPath } from './utils/openai-compat-launch-settings';
 import { maybeWarnAboutResumeLaneMismatch } from './auth/resume-lane-warning';
 import { createLogger } from './services/logging';
 import { buildCodexBrowserMcpOverrides } from './utils/browser-codex-overrides';
@@ -1459,8 +1460,16 @@ async function main(): Promise<void> {
           ),
         };
         delete proxyEnv.ANTHROPIC_API_KEY;
+        const launchSettingsPath = createOpenAICompatLaunchSettingsPath(
+          expandedSettingsPath,
+          settings
+        );
 
-        const launchArgs = [...appendThirdPartyWebSearchToolArgs(browserArgs)];
+        const launchArgs = [
+          '--settings',
+          launchSettingsPath,
+          ...appendThirdPartyWebSearchToolArgs(browserArgs),
+        ];
         const traceEnv = createWebSearchTraceContext({
           launcher: 'ccs.settings-profile.proxy',
           args: launchArgs,

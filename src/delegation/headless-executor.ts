@@ -23,6 +23,7 @@ import {
   stripAnthropicRoutingEnv,
   stripClaudeCodeEnv,
 } from '../utils/shell-executor';
+import { createOpenAICompatLaunchSettingsPath } from '../utils/openai-compat-launch-settings';
 import { resolveProfileContinuityInheritance } from '../auth/profile-continuity-inheritance';
 import {
   appendThirdPartyImageAnalysisToolArgs,
@@ -255,8 +256,12 @@ export class HeadlessExecutor {
     // Smart slash command detection and preservation
     const processedPrompt = this._processSlashCommand(enhancedPrompt);
 
+    const launchSettingsPath = openAICompatProfile
+      ? createOpenAICompatLaunchSettingsPath(settingsPath, settings)
+      : settingsPath;
+
     // Prepare arguments
-    const args: string[] = ['-p', processedPrompt, '--settings', settingsPath];
+    const args: string[] = ['-p', processedPrompt, '--settings', launchSettingsPath];
 
     // Always use stream-json for real-time progress visibility
     args.push('--output-format', 'stream-json', '--verbose');

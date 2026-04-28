@@ -651,6 +651,14 @@ describe('CLAUDECODE environment stripping', () => {
             ANTHROPIC_MODEL: 'gpt-5.4',
             CLAUDE_CODE_MAX_OUTPUT_TOKENS: '12345',
           },
+          hooks: {
+            PreToolUse: [
+              {
+                matcher: 'Read',
+                hooks: [{ type: 'command', command: 'echo headless-bridge-hook' }],
+              },
+            ],
+          },
         },
         null,
         2
@@ -679,6 +687,32 @@ describe('CLAUDECODE environment stripping', () => {
     expect(env.ANTHROPIC_AUTH_TOKEN).not.toBe('parent-routing-token');
     expect(env.ANTHROPIC_MODEL).toBe('gpt-5.4');
     expect(env.CLAUDE_CODE_MAX_OUTPUT_TOKENS).toBe('12345');
+
+    const args = spawnCalls[0].args;
+    const settingsIndex = args.indexOf('--settings');
+    expect(settingsIndex).toBeGreaterThanOrEqual(0);
+
+    const launchSettingsPath = args[settingsIndex + 1];
+    expect(launchSettingsPath).toBeDefined();
+    expect(launchSettingsPath).not.toBe(path.join(ccsDir, 'bridge.settings.json'));
+
+    const persistedLaunchSettings = JSON.parse(fs.readFileSync(launchSettingsPath, 'utf8')) as {
+      env?: Record<string, string>;
+      hooks?: {
+        PreToolUse?: Array<{
+          matcher?: string;
+          hooks?: Array<{ command?: string }>;
+        }>;
+      };
+    };
+
+    expect(persistedLaunchSettings.env?.ANTHROPIC_BASE_URL).toBeUndefined();
+    expect(persistedLaunchSettings.env?.ANTHROPIC_AUTH_TOKEN).toBeUndefined();
+    expect(persistedLaunchSettings.env?.ANTHROPIC_API_KEY).toBeUndefined();
+    expect(persistedLaunchSettings.env?.ANTHROPIC_MODEL).toBe('gpt-5.4');
+    expect(
+      persistedLaunchSettings.hooks?.PreToolUse?.[0]?.hooks?.[0]?.command
+    ).toBe('echo headless-bridge-hook');
   });
 
   it('headless executor prepares image-analysis MCP and suppresses the legacy hook on healthy launches', async () => {

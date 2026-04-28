@@ -5,6 +5,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { mutateUnifiedConfig } from '../../../src/config/unified-config-loader';
+import { stopOpenAICompatProxy } from '../../../src/proxy/proxy-daemon';
 
 const BROWSER_PROMPT_SNIPPET = 'prefer the CCS MCP Browser tool';
 setDefaultTimeout(30000);
@@ -28,6 +29,14 @@ function runCcs(args: string[], env: NodeJS.ProcessEnv): RunResult {
     stdout: result.stdout || '',
     stderr: result.stderr || '',
   };
+}
+
+function readLaunchedArgs(argsLogPath: string): string[] {
+  return fs
+    .readFileSync(argsLogPath, 'utf8')
+    .split('\n')
+    .map((arg) => arg.trim())
+    .filter((arg) => arg.length > 0);
 }
 
 function reserveClosedPort(): number {
@@ -167,7 +176,7 @@ exit 0
     };
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     if (devtoolsServer) {
       devtoolsServer.kill();
       devtoolsServer = undefined;
@@ -176,6 +185,7 @@ exit 0
       return;
     }
 
+    await stopOpenAICompatProxy();
     fs.rmSync(tmpHome, { recursive: true, force: true });
   });
 
@@ -255,6 +265,74 @@ exit 0
         delete process.env.CCS_HOME;
       }
     }
+  });
+
+  it('passes a sanitized settings copy for local OpenAI-compatible proxy launches', () => {
+    if (process.platform === 'win32') return;
+
+    fs.writeFileSync(
+      settingsPath,
+      JSON.stringify(
+        {
+          env: {
+            ANTHROPIC_BASE_URL: 'https://api.openai.com/v1',
+            ANTHROPIC_AUTH_TOKEN: 'profile-token',
+            ANTHROPIC_API_KEY: 'profile-api-key',
+            ANTHROPIC_MODEL: 'gpt-5.4',
+            CLAUDE_CODE_MAX_OUTPUT_TOKENS: '12345',
+          },
+          hooks: {
+            PreToolUse: [
+              {
+                matcher: 'Read',
+                hooks: [{ type: 'command', command: 'echo keep-profile-settings' }],
+              },
+            ],
+          },
+        },
+        null,
+        2
+      ) + '\n'
+    );
+
+    const result = runCcs(['glm', 'smoke'], baseEnv);
+
+    expect(result.status).toBe(0);
+
+    const launchedArgs = readLaunchedArgs(claudeArgsLogPath);
+    const settingsIndex = launchedArgs.indexOf('--settings');
+    expect(settingsIndex).toBeGreaterThanOrEqual(0);
+
+    const launchSettingsPath = launchedArgs[settingsIndex + 1];
+    expect(launchSettingsPath).toBeDefined();
+    expect(launchSettingsPath).not.toBe(settingsPath);
+
+    const persistedLaunchSettings = JSON.parse(
+      fs.readFileSync(launchSettingsPath as string, 'utf8')
+    ) as {
+      env?: Record<string, string>;
+      hooks?: {
+        PreToolUse?: Array<{
+          matcher?: string;
+          hooks?: Array<{ command?: string }>;
+        }>;
+      };
+    };
+
+    expect(persistedLaunchSettings.env?.ANTHROPIC_BASE_URL).toBeUndefined();
+    expect(persistedLaunchSettings.env?.ANTHROPIC_AUTH_TOKEN).toBeUndefined();
+    expect(persistedLaunchSettings.env?.ANTHROPIC_API_KEY).toBeUndefined();
+    expect(persistedLaunchSettings.env?.ANTHROPIC_MODEL).toBe('gpt-5.4');
+    expect(
+      persistedLaunchSettings.hooks?.PreToolUse?.[0]?.hooks?.[0]?.command
+    ).toBe('echo keep-profile-settings');
+
+    const launchedEnv = fs.readFileSync(claudeEnvLogPath, 'utf8');
+    expect(launchedEnv).toContain('stripAnthropic=');
+    expect(launchedEnv).toContain('anthropicBaseUrl=http://127.0.0.1:');
+    expect(launchedEnv).not.toContain('anthropicBaseUrl=https://api.openai.com/v1');
+    expect(launchedEnv).toContain('anthropicModel=gpt-5.4');
+    expect(launchedEnv).toContain('maxOutputTokens=12345');
   });
 
   it('does not auto-enable browser reuse for settings-profile launches from env overrides alone', async () => {
