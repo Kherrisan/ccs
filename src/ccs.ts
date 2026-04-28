@@ -1460,10 +1460,7 @@ async function main(): Promise<void> {
           ),
         };
         delete proxyEnv.ANTHROPIC_API_KEY;
-        const launchSettings = createOpenAICompatLaunchSettings(
-          expandedSettingsPath,
-          settings
-        );
+        const launchSettings = createOpenAICompatLaunchSettings(expandedSettingsPath, settings);
 
         const launchArgs = [
           '--settings',
