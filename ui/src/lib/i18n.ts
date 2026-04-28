@@ -1626,6 +1626,9 @@ const resources = {
         codeReview5h: 'Code review (5h)',
         codeReviewWeekly: 'Code review (weekly)',
         codeReview: 'Code review',
+        codexAdditional5h: '{{name}} (5h)',
+        codexAdditionalWeekly: '{{name}} (weekly)',
+        codexAdditional: '{{name}}',
       },
       sponsorButton: {
         title: 'Sponsor this project on GitHub',
@@ -4098,6 +4101,9 @@ const resources = {
         codeReview5h: '代码审查（5 小时）',
         codeReviewWeekly: '代码审查（每周）',
         codeReview: '代码审查',
+        codexAdditional5h: '{{name}}（5 小时）',
+        codexAdditionalWeekly: '{{name}}（每周）',
+        codexAdditional: '{{name}}',
       },
       sponsorButton: {
         title: '在 GitHub 上赞助此项目',
@@ -6630,6 +6636,9 @@ const resources = {
         codeReview5h: 'Đánh giá mã (5h)',
         codeReviewWeekly: 'Đánh giá mã (hàng tuần)',
         codeReview: 'Đánh giá mã',
+        codexAdditional5h: '{{name}} (5h)',
+        codexAdditionalWeekly: '{{name}} (hàng tuần)',
+        codexAdditional: '{{name}}',
       },
       sponsorButton: {
         title: 'Tài trợ dự án này trên GitHub',
@@ -9766,6 +9775,9 @@ const resources = {
         codeReview5h: 'コードレビュー（5時間）',
         codeReviewWeekly: 'コードレビュー（週次）',
         codeReview: 'コードレビュー',
+        codexAdditional5h: '{{name}}（5時間）',
+        codexAdditionalWeekly: '{{name}}（週次）',
+        codexAdditional: '{{name}}',
       },
       rawEditorSection: {
         rawConfig: 'Raw 設定',

@@ -238,7 +238,10 @@ function getCodexWindowKind(label: string): CodexWindowKind {
   return 'unknown';
 }
 
-type CodexWindowSummary = Pick<CodexQuotaResult['windows'][number], 'label' | 'resetAfterSeconds'>;
+type CodexWindowSummary = Pick<
+  CodexQuotaResult['windows'][number],
+  'label' | 'resetAfterSeconds' | 'category' | 'cadence' | 'featureLabel'
+>;
 
 function inferCodeReviewCadence(
   window: CodexWindowSummary,
@@ -272,12 +275,46 @@ function inferCodeReviewCadence(
   return diffToWeekly <= diffTo5h ? 'weekly' : '5h';
 }
 
+/**
+ * Strip a leading "GPT-X.Y-Codex-" prefix from a feature label and turn the
+ * remainder into a Codex-prefixed display name. Other labels pass through unchanged.
+ */
+function prettifyCodexFeatureLabel(featureLabel: string): string {
+  const trimmed = featureLabel.trim();
+  if (!trimmed) return 'Additional';
+  const stripped = trimmed.replace(/^GPT-[\d.]+-Codex-/i, '');
+  if (stripped !== trimmed && stripped.length > 0) {
+    return `Codex ${stripped}`;
+  }
+  return trimmed;
+}
+
 function getCodexWindowDisplayLabel(
   window: CodexWindowSummary,
   allWindows: CodexWindowSummary[] = []
 ): string {
   const context = allWindows.length > 0 ? allWindows : [window];
 
+  // Prefer explicit category metadata when present (post-2026-04 windows).
+  if (window.category === 'usage') {
+    if (window.cadence === '5h') return '5h usage limit';
+    if (window.cadence === 'weekly') return 'Weekly usage limit';
+  }
+
+  if (window.category === 'additional') {
+    const pretty = prettifyCodexFeatureLabel(window.featureLabel || window.label || 'Additional');
+    if (window.cadence === '5h') return `${pretty} (5h)`;
+    if (window.cadence === 'weekly') return `${pretty} (weekly)`;
+    return pretty;
+  }
+
+  if (window.category === 'code-review') {
+    if (window.cadence === '5h') return 'Code review (5h)';
+    if (window.cadence === 'weekly') return 'Code review (weekly)';
+    return 'Code review';
+  }
+
+  // Legacy fallback: classify via label sniffing for cached windows without metadata.
   switch (getCodexWindowKind(window.label)) {
     case 'usage-5h':
       return '5h usage limit';
@@ -304,20 +341,35 @@ function getCodexCoreUsageWindows(windows: CodexQuotaResult['windows']): {
   let weeklyWindow: CodexQuotaResult['windows'][number] | null = null;
   const nonCodeReviewWindows: CodexQuotaResult['windows'] = [];
 
-  for (const window of windows) {
-    const kind = getCodexWindowKind(window.label);
-    if (kind === 'usage-5h') {
-      if (!fiveHourWindow) fiveHourWindow = window;
-      nonCodeReviewWindows.push(window);
-      continue;
+  // Prefer explicit category metadata when present so 'additional' windows
+  // (e.g. GPT-5.3 Codex Spark) do not displace core usage windows in the summary.
+  const hasCategoryMetadata = windows.some((window) => Boolean(window.category));
+
+  if (hasCategoryMetadata) {
+    for (const window of windows) {
+      if (window.category === 'usage') {
+        if (window.cadence === '5h' && !fiveHourWindow) fiveHourWindow = window;
+        else if (window.cadence === 'weekly' && !weeklyWindow) weeklyWindow = window;
+        nonCodeReviewWindows.push(window);
+      }
+      // 'code-review' and 'additional' are excluded from the core usage summary.
     }
-    if (kind === 'usage-weekly') {
-      if (!weeklyWindow) weeklyWindow = window;
-      nonCodeReviewWindows.push(window);
-      continue;
-    }
-    if (kind === 'unknown') {
-      nonCodeReviewWindows.push(window);
+  } else {
+    for (const window of windows) {
+      const kind = getCodexWindowKind(window.label);
+      if (kind === 'usage-5h') {
+        if (!fiveHourWindow) fiveHourWindow = window;
+        nonCodeReviewWindows.push(window);
+        continue;
+      }
+      if (kind === 'usage-weekly') {
+        if (!weeklyWindow) weeklyWindow = window;
+        nonCodeReviewWindows.push(window);
+        continue;
+      }
+      if (kind === 'unknown') {
+        nonCodeReviewWindows.push(window);
+      }
     }
   }
 

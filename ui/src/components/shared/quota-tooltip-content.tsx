@@ -259,11 +259,17 @@ export function QuotaTooltipContent({ quota, resetTime }: QuotaTooltipContentPro
 
   // Codex provider tooltip
   if (isCodexQuotaResult(quota)) {
-    const { fiveHourWindow, weeklyWindow, codeReviewWindows, unknownWindows } =
+    const { fiveHourWindow, weeklyWindow, codeReviewWindows, additionalWindows, unknownWindows } =
       getCodexQuotaBreakdown(quota.windows);
     const fiveHourResetAt = quota.coreUsage?.fiveHour?.resetAt ?? fiveHourWindow?.resetAt ?? null;
     const weeklyResetAt = quota.coreUsage?.weekly?.resetAt ?? weeklyWindow?.resetAt ?? null;
-    const orderedWindows = [fiveHourWindow, weeklyWindow, ...codeReviewWindows, ...unknownWindows]
+    const orderedWindows = [
+      fiveHourWindow,
+      weeklyWindow,
+      ...codeReviewWindows,
+      ...additionalWindows,
+      ...unknownWindows,
+    ]
       .filter((w): w is NonNullable<typeof w> => !!w)
       .filter(
         (w, index, arr) =>

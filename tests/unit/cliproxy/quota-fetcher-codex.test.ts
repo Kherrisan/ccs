@@ -246,6 +246,122 @@ describe('Codex Quota Fetcher', () => {
       expect(windows[0].usedPercent).toBe(0);
       expect(windows[0].remainingPercent).toBe(100);
     });
+
+    it('should attach category and cadence metadata to standard usage windows', () => {
+      const response = {
+        rate_limit: {
+          primary_window: { used_percent: 5, reset_after_seconds: 18000 },
+          secondary_window: { used_percent: 25, reset_after_seconds: 604800 },
+        },
+      };
+
+      const windows = buildCodexQuotaWindows(response);
+
+      expect(windows).toHaveLength(2);
+      expect(windows[0].category).toBe('usage');
+      expect(windows[0].cadence).toBe('5h');
+      expect(windows[0].featureLabel).toBeUndefined();
+      expect(windows[1].category).toBe('usage');
+      expect(windows[1].cadence).toBe('weekly');
+    });
+
+    it('should mark code review windows with code-review category and Code Review feature label', () => {
+      const response = {
+        code_review_rate_limit: {
+          primary_window: { used_percent: 12, reset_after_seconds: 1800 },
+          secondary_window: { used_percent: 60, reset_after_seconds: 604800 },
+        },
+      };
+
+      const windows = buildCodexQuotaWindows(response);
+
+      expect(windows).toHaveLength(2);
+      expect(windows[0].category).toBe('code-review');
+      expect(windows[0].cadence).toBe('5h');
+      expect(windows[0].featureLabel).toBe('Code Review');
+      expect(windows[1].category).toBe('code-review');
+      expect(windows[1].cadence).toBe('weekly');
+      expect(windows[1].featureLabel).toBe('Code Review');
+    });
+
+    it('should parse additional_rate_limits entries (e.g. GPT-5.3 Codex Spark)', () => {
+      const response = {
+        rate_limit: {
+          primary_window: { used_percent: 0, reset_after_seconds: 18000 },
+          secondary_window: { used_percent: 1, reset_after_seconds: 254493 },
+        },
+        code_review_rate_limit: null,
+        additional_rate_limits: [
+          {
+            limit_name: 'GPT-5.3-Codex-Spark',
+            metered_feature: 'codex_bengalfox',
+            rate_limit: {
+              primary_window: { used_percent: 0, reset_after_seconds: 18000 },
+              secondary_window: { used_percent: 1, reset_after_seconds: 254493 },
+            },
+          },
+        ],
+      };
+
+      const windows = buildCodexQuotaWindows(response);
+
+      // 2 standard usage windows + 2 additional windows.
+      expect(windows).toHaveLength(4);
+
+      const additionalWindows = windows.filter((w) => w.category === 'additional');
+      expect(additionalWindows).toHaveLength(2);
+
+      const sparkPrimary = additionalWindows.find((w) => w.cadence === '5h');
+      const sparkSecondary = additionalWindows.find((w) => w.cadence === 'weekly');
+
+      expect(sparkPrimary).toBeDefined();
+      expect(sparkPrimary?.featureLabel).toBe('GPT-5.3-Codex-Spark');
+      expect(sparkPrimary?.label).toBe('GPT-5.3-Codex-Spark (Primary)');
+      expect(sparkPrimary?.usedPercent).toBe(0);
+      expect(sparkPrimary?.remainingPercent).toBe(100);
+
+      expect(sparkSecondary).toBeDefined();
+      expect(sparkSecondary?.featureLabel).toBe('GPT-5.3-Codex-Spark');
+      expect(sparkSecondary?.label).toBe('GPT-5.3-Codex-Spark (Secondary)');
+      expect(sparkSecondary?.usedPercent).toBe(1);
+      expect(sparkSecondary?.remainingPercent).toBe(99);
+    });
+
+    it('should handle additional_rate_limits set to null without breaking', () => {
+      const response = {
+        rate_limit: {
+          primary_window: { used_percent: 10, reset_after_seconds: 3600 },
+        },
+        additional_rate_limits: null,
+      };
+
+      const windows = buildCodexQuotaWindows(response);
+
+      expect(windows).toHaveLength(1);
+      expect(windows[0].category).toBe('usage');
+      expect(windows.find((w) => w.category === 'additional')).toBeUndefined();
+    });
+
+    it('should accept camelCase additionalRateLimits and rateLimit fields', () => {
+      const response = {
+        additionalRateLimits: [
+          {
+            limitName: 'Custom-Feature',
+            rateLimit: {
+              primaryWindow: { usedPercent: 50, resetAfterSeconds: 3600 },
+            },
+          },
+        ],
+      };
+
+      const windows = buildCodexQuotaWindows(response);
+
+      expect(windows).toHaveLength(1);
+      expect(windows[0].category).toBe('additional');
+      expect(windows[0].cadence).toBe('5h');
+      expect(windows[0].featureLabel).toBe('Custom-Feature');
+      expect(windows[0].usedPercent).toBe(50);
+    });
   });
 
   describe('buildCodexCoreUsageSummary', () => {
@@ -310,6 +426,36 @@ describe('Codex Quota Fetcher', () => {
       const summary = buildCodexCoreUsageSummary([]);
       expect(summary.fiveHour).toBeNull();
       expect(summary.weekly).toBeNull();
+    });
+
+    it('excludes additional and code-review windows from the core usage summary', () => {
+      const windows = buildCodexQuotaWindows({
+        rate_limit: {
+          primary_window: { used_percent: 35, reset_after_seconds: 18000 },
+          secondary_window: { used_percent: 60, reset_after_seconds: 604800 },
+        },
+        code_review_rate_limit: {
+          primary_window: { used_percent: 70, reset_after_seconds: 1800 },
+        },
+        additional_rate_limits: [
+          {
+            limit_name: 'GPT-5.3-Codex-Spark',
+            rate_limit: {
+              primary_window: { used_percent: 90, reset_after_seconds: 100 },
+              secondary_window: { used_percent: 95, reset_after_seconds: 7200 },
+            },
+          },
+        ],
+      });
+
+      const summary = buildCodexCoreUsageSummary(windows);
+
+      // Should pick the 'usage' windows, NOT the Spark windows even though they
+      // have shorter reset cadences.
+      expect(summary.fiveHour?.label).toBe('Primary');
+      expect(summary.fiveHour?.resetAfterSeconds).toBe(18000);
+      expect(summary.weekly?.label).toBe('Secondary');
+      expect(summary.weekly?.resetAfterSeconds).toBe(604800);
     });
   });
 
