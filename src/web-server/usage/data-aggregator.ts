@@ -14,7 +14,7 @@ import {
   type MonthlyUsage,
   type SessionUsage,
 } from './types';
-import { getModelsUsed } from './model-identity';
+import { getModelsUsed, normalizeUsageProvider } from './model-identity';
 
 // ============================================================================
 // HELPER FUNCTIONS
@@ -74,7 +74,7 @@ interface ModelAccumulator {
 }
 
 function getEntryProvider(entry: RawUsageEntry): string | undefined {
-  return entry.target?.trim().toLowerCase() || undefined;
+  return normalizeUsageProvider(entry.target);
 }
 
 function getEntryModelKey(entry: RawUsageEntry): string {

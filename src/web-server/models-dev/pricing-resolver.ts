@@ -36,7 +36,9 @@ function normalizeId(value: string): string {
   return value.trim().toLowerCase();
 }
 
-function normalizeProvider(provider: string | undefined): string | undefined {
+export function normalizeModelsDevProviderId(
+  provider: string | null | undefined
+): string | undefined {
   if (!provider) return undefined;
   const normalized = normalizeId(provider);
   return PROVIDER_ALIASES[normalized] ?? normalized;
@@ -78,7 +80,7 @@ function findProvider(
   registry: ModelsDevRegistry,
   provider: string | undefined
 ): ModelsDevProvider | undefined {
-  const normalizedProvider = normalizeProvider(provider);
+  const normalizedProvider = normalizeModelsDevProviderId(provider);
   if (!normalizedProvider) return undefined;
   return registry[normalizedProvider];
 }

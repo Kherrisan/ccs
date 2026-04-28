@@ -12,6 +12,8 @@ import {
 import { resolveOpenAICompatProxyPreferredPort } from '../../../src/proxy/proxy-port-resolver';
 import { resolveOpenAICompatProfileConfig } from '../../../src/proxy/profile-router';
 import {
+  OPENAI_COMPAT_PROXY_ADAPTIVE_PORT_END,
+  OPENAI_COMPAT_PROXY_ADAPTIVE_PORT_START,
   getLegacyOpenAICompatProxyPidPath,
   getLegacyOpenAICompatProxySessionPath,
   getOpenAICompatProxyPidPath,
@@ -37,6 +39,37 @@ afterEach(async () => {
   }
   fs.rmSync(tempDir, { recursive: true, force: true });
 });
+
+async function findProfileNameWithFreeAdaptivePort(prefix: string): Promise<string> {
+  for (let index = 0; index < 200; index += 1) {
+    const profileName = `${prefix}-${index}`;
+    const preferredPort = resolveOpenAICompatProxyPreferredPort(profileName);
+    const availablePort = await getPort({ port: preferredPort, host: '127.0.0.1' });
+    if (availablePort === preferredPort) {
+      return profileName;
+    }
+  }
+
+  throw new Error(`No free adaptive proxy port found for ${prefix}`);
+}
+
+async function getPortOutsideOpenAICompatAdaptiveRange(): Promise<number> {
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const rangeStart = 45_000 + attempt * 101;
+    const port = await getPort({
+      port: getPort.makeRange(rangeStart, rangeStart + 100),
+      host: '127.0.0.1',
+    });
+    if (
+      port < OPENAI_COMPAT_PROXY_ADAPTIVE_PORT_START ||
+      port > OPENAI_COMPAT_PROXY_ADAPTIVE_PORT_END
+    ) {
+      return port;
+    }
+  }
+
+  throw new Error('No stale proxy fixture port found outside the adaptive range');
+}
 
 describe('openai proxy daemon lifecycle', () => {
   it('starts, reports status, serves health/models, and stops', async () => {
@@ -444,8 +477,9 @@ describe('openai proxy daemon lifecycle', () => {
   });
 
   it('returns to the adaptive canonical port after a stale fallback session', async () => {
-    const stalePort = await getPort();
-    const settingsPath = path.join(tempDir, 'outside-range.settings.json');
+    const profileName = await findProfileNameWithFreeAdaptivePort('outside-range');
+    const stalePort = await getPortOutsideOpenAICompatAdaptiveRange();
+    const settingsPath = path.join(tempDir, `${profileName}.settings.json`);
     fs.writeFileSync(
       settingsPath,
       JSON.stringify({
@@ -459,7 +493,7 @@ describe('openai proxy daemon lifecycle', () => {
       'utf8'
     );
 
-    const profile = resolveOpenAICompatProfileConfig('outside-range', settingsPath, {
+    const profile = resolveOpenAICompatProfileConfig(profileName, settingsPath, {
       ANTHROPIC_BASE_URL: 'http://127.0.0.1:11434',
       ANTHROPIC_AUTH_TOKEN: 'ollama-outside-range',
       ANTHROPIC_MODEL: 'qwen3-coder',
@@ -469,9 +503,9 @@ describe('openai proxy daemon lifecycle', () => {
       throw new Error('Expected an outside-range OpenAI-compatible profile');
     }
 
-    fs.mkdirSync(path.dirname(getOpenAICompatProxySessionPath('outside-range')), { recursive: true });
+    fs.mkdirSync(path.dirname(getOpenAICompatProxySessionPath(profileName)), { recursive: true });
     fs.writeFileSync(
-      getOpenAICompatProxySessionPath('outside-range'),
+      getOpenAICompatProxySessionPath(profileName),
       JSON.stringify(
         {
           profileName: profile.profileName,
@@ -490,7 +524,7 @@ describe('openai proxy daemon lifecycle', () => {
 
     const started = await startOpenAICompatProxy(profile);
     expect(started.success).toBe(true);
-    expect(started.port).toBe(resolveOpenAICompatProxyPreferredPort('outside-range'));
+    expect(started.port).toBe(resolveOpenAICompatProxyPreferredPort(profileName));
     expect(started.port).not.toBe(stalePort);
   });
 

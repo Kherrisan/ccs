@@ -138,6 +138,18 @@ describe('aggregateDailyUsage', () => {
 
     expect(result[0].modelsUsed).toEqual(['gpt-5.5']);
   });
+
+  test('canonicalizes provider aliases before grouping usage', () => {
+    const result = aggregateDailyUsage([
+      createEntry({ model: 'gpt-5.5', target: 'ghcp', inputTokens: 1000 }),
+      createEntry({ model: 'gpt-5.5', target: 'github-copilot', inputTokens: 2000 }),
+    ]);
+
+    expect(result[0].modelsUsed).toEqual(['gpt-5.5']);
+    expect(result[0].modelBreakdowns).toHaveLength(1);
+    expect(result[0].modelBreakdowns[0].provider).toBe('github-copilot');
+    expect(result[0].modelBreakdowns[0].inputTokens).toBe(3000);
+  });
 });
 
 // ============================================================================

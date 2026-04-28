@@ -1,10 +1,16 @@
+import { normalizeModelsDevProviderId } from '../models-dev/pricing-resolver';
+
 export interface ProviderModelIdentity {
   modelName: string;
   provider?: string;
 }
 
+export function normalizeUsageProvider(provider: string | undefined): string | undefined {
+  return normalizeModelsDevProviderId(provider);
+}
+
 function getProviderKey(provider: string | undefined): string {
-  return provider?.trim().toLowerCase() ?? '';
+  return normalizeUsageProvider(provider) ?? '';
 }
 
 function getModelUsageLabel(item: ProviderModelIdentity, ambiguousModelNames: Set<string>): string {
