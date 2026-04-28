@@ -13,6 +13,8 @@ export function ModelDetailsContent({ model }: ModelDetailsContentProps) {
   const { privacyMode } = usePrivacy();
   const { t } = useTranslation();
   const ioRatioStatus = getIoRatioStatus(model.ioRatio);
+  const cacheTokens = model.cacheCreationTokens + model.cacheReadTokens;
+  const totalTokensLabel = cacheTokens > 0 ? 'All Tokens' : t('analyticsCards.totalTokens');
 
   return (
     <div className="space-y-4">
@@ -49,7 +51,7 @@ export function ModelDetailsContent({ model }: ModelDetailsContentProps) {
             {formatCompactNumber(model.tokens)}
           </p>
           <p className="text-[10px] text-muted-foreground uppercase tracking-wider">
-            {t('analyticsCards.totalTokens')}
+            {totalTokensLabel}
           </p>
         </div>
       </div>

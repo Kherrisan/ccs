@@ -160,6 +160,13 @@ describe('model-pricing', () => {
       expect(opus47dated.inputPerMillion).toBe(5.0);
       expect(opus47dated.outputPerMillion).toBe(25.0);
     });
+
+    it('should not map unknown future model families onto known family pricing', () => {
+      const fallback = getModelPricing('unknown-model-xyz');
+
+      expect(getModelPricing('claude-opus-5-20270101')).toEqual(fallback);
+      expect(getModelPricing('gemini-3.2-pro')).toEqual(fallback);
+    });
   });
 
   describe('calculateCost', () => {

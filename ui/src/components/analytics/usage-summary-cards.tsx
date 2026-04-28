@@ -22,6 +22,11 @@ interface UsageSummaryCardsProps {
 export function UsageSummaryCards({ data, isLoading }: UsageSummaryCardsProps) {
   const { privacyMode } = usePrivacy();
   const { t } = useTranslation();
+  const totalTokens = data?.totalTokens ?? 0;
+  const totalInputTokens = data?.totalInputTokens ?? 0;
+  const totalOutputTokens = data?.totalOutputTokens ?? 0;
+  const totalCacheTokens = data?.totalCacheTokens ?? 0;
+  const totalIoTokens = totalInputTokens + totalOutputTokens;
 
   if (isLoading) {
     return (
@@ -47,19 +52,27 @@ export function UsageSummaryCards({ data, isLoading }: UsageSummaryCardsProps) {
   const cacheCost =
     (data?.tokenBreakdown?.cacheCreation?.cost ?? 0) + (data?.tokenBreakdown?.cacheRead?.cost ?? 0);
   const cacheCostPercent = data?.totalCost ? Math.round((cacheCost / data.totalCost) * 100) : 0;
+  const totalTokensIncludesCache = totalCacheTokens > 0 && totalTokens > totalIoTokens;
+  const totalTokensTitle =
+    totalCacheTokens > 0 && !totalTokensIncludesCache
+      ? 'Total Tokens (I/O)'
+      : t('analyticsSummary.totalTokens');
+  const totalTokensSubtitle = totalTokensIncludesCache
+    ? `${formatNumber(totalInputTokens)} in / ${formatNumber(totalOutputTokens)} out / ${formatNumber(totalCacheTokens)} cache`
+    : t('analyticsSummary.totalTokensSubtitle', {
+        input: formatNumber(totalInputTokens),
+        output: formatNumber(totalOutputTokens),
+      });
 
   const cards = [
     {
-      title: t('analyticsSummary.totalTokens'),
-      value: data?.totalTokens ?? 0,
+      title: totalTokensTitle,
+      value: totalTokens,
       icon: FileText,
       format: (v: number) => formatNumber(v),
       color: 'text-blue-600',
       bgColor: 'bg-blue-100 dark:bg-blue-900/20',
-      subtitle: t('analyticsSummary.totalTokensSubtitle', {
-        input: formatNumber(data?.totalInputTokens ?? 0),
-        output: formatNumber(data?.totalOutputTokens ?? 0),
-      }),
+      subtitle: totalTokensSubtitle,
     },
     {
       title: t('analyticsSummary.totalCost'),

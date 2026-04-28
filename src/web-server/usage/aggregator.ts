@@ -7,7 +7,13 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { loadAllUsageData } from './data-aggregator';
+import {
+  aggregateDailyUsage,
+  aggregateHourlyUsage,
+  aggregateMonthlyUsage,
+  aggregateSessionUsage,
+  loadAllUsageData,
+} from './data-aggregator';
 import type { DailyUsage, HourlyUsage, MonthlyUsage, SessionUsage } from './types';
 import {
   readDiskCache,
@@ -19,12 +25,15 @@ import {
 } from './disk-cache';
 import { ok, info, fail } from '../../utils/ui';
 import { getCcsDir } from '../../utils/config-manager';
+import { getClaudeConfigDir, getDefaultClaudeConfigDir } from '../../utils/claude-config-path';
 import {
   loadCachedCliproxyData,
   startCliproxySync,
   stopCliproxySync,
   syncCliproxyUsage,
 } from './cliproxy-usage-syncer';
+import { scanCodexNativeUsageEntries } from './codex-native-usage-collector';
+import { scanDroidNativeUsageEntries } from './droid-native-usage-collector';
 
 // ============================================================================
 // Multi-Instance Support - Aggregate usage from CCS profiles
@@ -33,6 +42,21 @@ import {
 /** Path to CCS instances directory */
 function getCcsInstancesDir() {
   return path.join(getCcsDir(), 'instances');
+}
+
+function isPathWithinDir(childPath: string, parentPath: string): boolean {
+  const relative = path.relative(parentPath, childPath);
+  return relative.length > 0 && !relative.startsWith('..') && !path.isAbsolute(relative);
+}
+
+function getDefaultProjectsDirForAnalytics(): string {
+  const activeClaudeConfigDir = getClaudeConfigDir();
+  const instancesDir = getCcsInstancesDir();
+  const claudeConfigDir = isPathWithinDir(activeClaudeConfigDir, instancesDir)
+    ? getDefaultClaudeConfigDir()
+    : activeClaudeConfigDir;
+
+  return path.join(claudeConfigDir, 'projects');
 }
 
 /**
@@ -81,6 +105,10 @@ async function loadInstanceData(instancePath: string): Promise<{
     console.log(info(`No usage data in instance: ${instanceName}`));
     return { daily: [], hourly: [], monthly: [], session: [] };
   }
+}
+
+function getHourlyRequestCount(hour: HourlyUsage): number {
+  return hour.requestCount ?? hour.modelBreakdowns.length;
 }
 
 /**
@@ -149,8 +177,26 @@ export function mergeMonthlyData(sources: MonthlyUsage[][]): MonthlyUsage[] {
         existing.totalCost += month.totalCost;
         const modelSet = new Set([...existing.modelsUsed, ...month.modelsUsed]);
         existing.modelsUsed = Array.from(modelSet);
+        for (const breakdown of month.modelBreakdowns) {
+          const existingBreakdown = existing.modelBreakdowns.find(
+            (item) => item.modelName === breakdown.modelName
+          );
+          if (existingBreakdown) {
+            existingBreakdown.inputTokens += breakdown.inputTokens;
+            existingBreakdown.outputTokens += breakdown.outputTokens;
+            existingBreakdown.cacheCreationTokens += breakdown.cacheCreationTokens;
+            existingBreakdown.cacheReadTokens += breakdown.cacheReadTokens;
+            existingBreakdown.cost += breakdown.cost;
+          } else {
+            existing.modelBreakdowns.push({ ...breakdown });
+          }
+        }
       } else {
-        monthMap.set(month.month, { ...month, modelsUsed: [...month.modelsUsed] });
+        monthMap.set(month.month, {
+          ...month,
+          modelsUsed: [...month.modelsUsed],
+          modelBreakdowns: month.modelBreakdowns.map((breakdown) => ({ ...breakdown })),
+        });
       }
     }
   }
@@ -174,6 +220,7 @@ export function mergeHourlyData(sources: HourlyUsage[][]): HourlyUsage[] {
         existing.cacheCreationTokens += hour.cacheCreationTokens;
         existing.cacheReadTokens += hour.cacheReadTokens;
         existing.totalCost += hour.totalCost;
+        existing.requestCount = getHourlyRequestCount(existing) + getHourlyRequestCount(hour);
         const modelSet = new Set([...existing.modelsUsed, ...hour.modelsUsed]);
         existing.modelsUsed = Array.from(modelSet);
         // Merge model breakdowns
@@ -196,6 +243,7 @@ export function mergeHourlyData(sources: HourlyUsage[][]): HourlyUsage[] {
           ...hour,
           modelsUsed: [...hour.modelsUsed],
           modelBreakdowns: hour.modelBreakdowns.map((b) => ({ ...b })),
+          requestCount: getHourlyRequestCount(hour),
         });
       }
     }
@@ -251,6 +299,10 @@ export function getLastFetchTimestamp(): number | null {
   return lastFetchTimestamp;
 }
 
+export function getUsageCacheSize(): number {
+  return cache.size;
+}
+
 // In-memory cache
 const cache = new Map<string, CacheEntry<unknown>>();
 
@@ -300,8 +352,8 @@ async function refreshFromSource(): Promise<{
   // Non-fatal: syncer handles unavailability and stale fallback.
   await syncCliproxyUsage();
 
-  // Load default data (from ~/.claude/projects/ or CLAUDE_CONFIG_DIR)
-  const defaultData = await loadAllUsageData();
+  // Load canonical default data and avoid counting the active instance twice
+  const defaultData = await loadAllUsageData({ projectsDir: getDefaultProjectsDirForAnalytics() });
 
   // Load data from all CCS instances sequentially
   const instancePaths = getInstancePaths();
@@ -337,6 +389,32 @@ async function refreshFromSource(): Promise<{
 
   if (instanceDataResults.length > 0) {
     console.log(info(`Aggregated usage data from ${instanceDataResults.length} CCS instance(s)`));
+  }
+
+  try {
+    const codexEntries = await scanCodexNativeUsageEntries();
+    if (codexEntries.length > 0) {
+      allDailySources.push(aggregateDailyUsage(codexEntries, 'codex-native'));
+      allHourlySources.push(aggregateHourlyUsage(codexEntries, 'codex-native'));
+      allMonthlySources.push(aggregateMonthlyUsage(codexEntries, 'codex-native'));
+      allSessionSources.push(aggregateSessionUsage(codexEntries, 'codex-native'));
+      console.log(info(`Included native Codex usage data (${codexEntries.length} event(s))`));
+    }
+  } catch (err) {
+    console.error(fail(`Failed to load native Codex usage data: ${err}`));
+  }
+
+  try {
+    const droidEntries = await scanDroidNativeUsageEntries();
+    if (droidEntries.length > 0) {
+      allDailySources.push(aggregateDailyUsage(droidEntries, 'droid-native'));
+      allHourlySources.push(aggregateHourlyUsage(droidEntries, 'droid-native'));
+      allMonthlySources.push(aggregateMonthlyUsage(droidEntries, 'droid-native'));
+      allSessionSources.push(aggregateSessionUsage(droidEntries, 'droid-native'));
+      console.log(info(`Included native Droid usage data (${droidEntries.length} event(s))`));
+    }
+  } catch (err) {
+    console.error(fail(`Failed to load native Droid usage data: ${err}`));
   }
 
   // Load CLIProxy usage data (from local snapshot cache)

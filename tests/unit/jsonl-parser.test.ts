@@ -146,6 +146,16 @@ describe('parseUsageEntry', () => {
 
   test('includes project path in result', () => {
     const result = parseUsageEntry(VALID_ASSISTANT_ENTRY, '/custom/project/path');
+    expect(result!.projectPath).toBe('/home/user/project');
+  });
+
+  test('falls back to the decoded project path when cwd is missing', () => {
+    const withoutCwd = JSON.stringify({
+      ...JSON.parse(VALID_ASSISTANT_ENTRY),
+      cwd: undefined,
+    });
+
+    const result = parseUsageEntry(withoutCwd, '/custom/project/path');
     expect(result!.projectPath).toBe('/custom/project/path');
   });
 
@@ -169,7 +179,7 @@ describe('parseUsageEntry', () => {
     expect(result!.target).toBeUndefined();
   });
 
-  test('coerces token fields to non-negative numbers', () => {
+  test('returns null when required token fields are invalid', () => {
     const withInvalidUsage = JSON.stringify({
       ...JSON.parse(VALID_ASSISTANT_ENTRY),
       message: {
@@ -184,11 +194,16 @@ describe('parseUsageEntry', () => {
     });
 
     const result = parseUsageEntry(withInvalidUsage, '/test');
-    expect(result).not.toBeNull();
-    expect(result!.inputTokens).toBe(1500);
-    expect(result!.outputTokens).toBe(0);
-    expect(result!.cacheCreationTokens).toBe(0);
-    expect(result!.cacheReadTokens).toBe(0);
+    expect(result).toBeNull();
+  });
+
+  test('returns null when timestamp is missing', () => {
+    const withoutTimestamp = JSON.stringify({
+      ...JSON.parse(VALID_ASSISTANT_ENTRY),
+      timestamp: undefined,
+    });
+
+    expect(parseUsageEntry(withoutTimestamp, '/test')).toBeNull();
   });
 });
 
@@ -314,8 +329,12 @@ describe('parseProjectDirectory', () => {
 
   test('sanitizes derived projectPath from dashed directory names', async () => {
     const projectDir = path.join(tempDir, '-..-etc-passwd');
+    const withoutCwd = JSON.stringify({
+      ...JSON.parse(VALID_ASSISTANT_ENTRY),
+      cwd: undefined,
+    });
     fs.mkdirSync(projectDir);
-    fs.writeFileSync(path.join(projectDir, 'session.jsonl'), VALID_ASSISTANT_ENTRY);
+    fs.writeFileSync(path.join(projectDir, 'session.jsonl'), withoutCwd);
 
     const entries = await parseProjectDirectory(projectDir);
 

@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'bun:test';
 import type { CliproxyUsageApiResponse } from '../../../src/cliproxy/stats-fetcher';
 import {
-  flattenCliproxyDetails,
+  buildCliproxyUsageHistoryAggregates,
+  extractCliproxyUsageHistoryDetails,
+  mergeCliproxyUsageHistoryDetails,
   transformCliproxyToDailyUsage,
   transformCliproxyToHourlyUsage,
   transformCliproxyToMonthlyUsage,
@@ -37,6 +39,19 @@ const sampleResponse: CliproxyUsageApiResponse = {
                   reasoning_tokens: 0,
                   cached_tokens: 5,
                   total_tokens: 55,
+                },
+                failed: true,
+              },
+              {
+                timestamp: '2026-03-01T12:15:00.000Z',
+                source: 'account-a',
+                auth_index: 0,
+                tokens: {
+                  input_tokens: 0,
+                  output_tokens: 0,
+                  reasoning_tokens: 0,
+                  cached_tokens: 0,
+                  total_tokens: 0,
                 },
                 failed: true,
               },
@@ -83,10 +98,57 @@ const sampleResponse: CliproxyUsageApiResponse = {
 };
 
 describe('cliproxy usage transformer', () => {
-  it('flattens nested API details and skips failed requests', () => {
-    const flat = flattenCliproxyDetails(sampleResponse);
-    expect(flat).toHaveLength(3);
-    expect(flat.every((entry) => entry.detail.failed === false)).toBe(true);
+  it('retains failed requests when they carry usage and skips zero-usage failures', () => {
+    const flat = extractCliproxyUsageHistoryDetails(sampleResponse);
+    expect(flat).toHaveLength(4);
+    expect(
+      flat.some(
+        (entry) =>
+          entry.failed === true &&
+          entry.inputTokens === 40 &&
+          entry.outputTokens === 10
+      )
+    ).toBe(true);
+    expect(
+      flat.some(
+        (entry) =>
+          entry.failed === true &&
+          entry.inputTokens === 0 &&
+          entry.outputTokens === 0
+      )
+    ).toBe(false);
+  });
+
+  it('deduplicates repeated snapshot details when merging history', () => {
+    const details = extractCliproxyUsageHistoryDetails(sampleResponse);
+    const merged = mergeCliproxyUsageHistoryDetails(details, details);
+
+    expect(merged).toHaveLength(details.length);
+  });
+
+  it('preserves legitimate duplicate requests when the incoming batch has more occurrences', () => {
+    const details = extractCliproxyUsageHistoryDetails(sampleResponse);
+    const repeated = [details[0], { ...details[0] }];
+    const merged = mergeCliproxyUsageHistoryDetails([details[0]], repeated);
+
+    expect(merged).toHaveLength(2);
+  });
+
+  it('uses persisted cost from history instead of recomputing from current pricing', () => {
+    const details = extractCliproxyUsageHistoryDetails(sampleResponse);
+    const seeded = details.map((detail) => ({ ...detail, cost: 999 }));
+    const { daily } = buildCliproxyUsageHistoryAggregates(seeded);
+
+    expect(daily[0].modelBreakdowns[0]?.cost).toBe(999);
+  });
+
+  it('rebuilds daily history aggregates from merged detail history', () => {
+    const details = extractCliproxyUsageHistoryDetails(sampleResponse);
+    const { daily } = buildCliproxyUsageHistoryAggregates(details);
+
+    expect(daily).toHaveLength(2);
+    expect(daily[0].date).toBe('2026-03-02');
+    expect(daily[1].date).toBe('2026-03-01');
   });
 
   it('transforms daily usage with aggregated model totals', () => {
@@ -98,21 +160,25 @@ describe('cliproxy usage transformer', () => {
     expect(daily[1].date).toBe('2026-03-01');
 
     const marchFirst = daily.find((d) => d.date === '2026-03-01');
-    expect(marchFirst?.inputTokens).toBe(130);
-    expect(marchFirst?.outputTokens).toBe(70);
-    expect(marchFirst?.cacheReadTokens).toBe(30);
+    expect(marchFirst?.inputTokens).toBe(170);
+    expect(marchFirst?.outputTokens).toBe(80);
+    expect(marchFirst?.cacheReadTokens).toBe(35);
     expect(marchFirst?.modelsUsed).toContain('gemini-2.5-pro');
   });
 
   it('transforms hourly usage with hour buckets', () => {
     const hourly = transformCliproxyToHourlyUsage(sampleResponse);
 
-    expect(hourly).toHaveLength(2);
+    expect(hourly).toHaveLength(3);
     expect(hourly[0].hour).toBe('2026-03-02 01:00');
 
     const tenAm = hourly.find((h) => h.hour === '2026-03-01 10:00');
     expect(tenAm?.inputTokens).toBe(130);
     expect(tenAm?.outputTokens).toBe(70);
+
+    const elevenAm = hourly.find((h) => h.hour === '2026-03-01 11:00');
+    expect(elevenAm?.inputTokens).toBe(40);
+    expect(elevenAm?.outputTokens).toBe(10);
   });
 
   it('transforms monthly usage with cliproxy source', () => {
@@ -121,8 +187,8 @@ describe('cliproxy usage transformer', () => {
     expect(monthly).toHaveLength(1);
     expect(monthly[0].month).toBe('2026-03');
     expect(monthly[0].source).toBe('cliproxy');
-    expect(monthly[0].inputTokens).toBe(200);
-    expect(monthly[0].outputTokens).toBe(100);
-    expect(monthly[0].cacheReadTokens).toBe(30);
+    expect(monthly[0].inputTokens).toBe(240);
+    expect(monthly[0].outputTokens).toBe(110);
+    expect(monthly[0].cacheReadTokens).toBe(35);
   });
 });
