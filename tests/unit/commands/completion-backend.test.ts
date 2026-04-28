@@ -128,6 +128,22 @@ describe('completion backend', () => {
     expect(values).toContain('my-codex');
   });
 
+  test('suggests the correct routing affinity completion shape', () => {
+    expect(suggestionValues(['cliproxy', 'routing'])).toEqual(
+      expect.arrayContaining(['set', 'explain', 'affinity'])
+    );
+    expect(suggestionValues(['cliproxy', 'routing', 'affinity'])).toEqual(
+      expect.arrayContaining(['on', 'off'])
+    );
+    expect(suggestionValues(['cliproxy', 'routing', 'affinity', 'on'])).toEqual(
+      expect.arrayContaining(['--ttl'])
+    );
+    expect(suggestionValues(['cliproxy', 'routing', 'affinity', 'off'])).toEqual(
+      expect.arrayContaining(['--ttl'])
+    );
+    expect(suggestionValues(['cliproxy', 'routing', 'affinity', '--ttl'])).not.toContain('--ttl');
+  });
+
   test('suggests env format values after the format flag', () => {
     const values = suggestionValues(['env', '--format']);
     expect(values).toEqual(

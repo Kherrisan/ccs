@@ -194,6 +194,9 @@ export interface CLIProxyConfig {
   debug: boolean;
   routing?: {
     strategy?: CliproxyRoutingStrategy;
+    'session-affinity'?: boolean;
+    'session-affinity-ttl'?: string;
+    'claude-code-session-affinity'?: boolean;
   };
   'gemini-api-key'?: Array<{
     'api-key': string;

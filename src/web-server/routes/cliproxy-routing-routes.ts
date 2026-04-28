@@ -1,8 +1,12 @@
 import { Router, Request, Response } from 'express';
 import {
   applyCliproxyRoutingStrategy,
+  applyCliproxySessionAffinitySettings,
   normalizeCliproxyRoutingStrategy,
+  normalizeCliproxySessionAffinityEnabled,
+  normalizeCliproxySessionAffinityTtl,
   readCliproxyRoutingState,
+  readCliproxySessionAffinityState,
 } from '../../cliproxy/routing-strategy';
 import { requireLocalAccessWhenAuthDisabled } from '../middleware/auth-middleware';
 
@@ -37,6 +41,44 @@ router.put('/routing/strategy', async (req: Request, res: Response): Promise<voi
 
   try {
     res.json(await applyCliproxyRoutingStrategy(strategy));
+  } catch (error) {
+    res.status(502).json({ error: (error as Error).message });
+  }
+});
+
+router.get('/routing/session-affinity', async (_req: Request, res: Response): Promise<void> => {
+  try {
+    res.json(await readCliproxySessionAffinityState());
+  } catch (error) {
+    res.status(502).json({ error: (error as Error).message });
+  }
+});
+
+router.put('/routing/session-affinity', async (req: Request, res: Response): Promise<void> => {
+  const enabled = normalizeCliproxySessionAffinityEnabled(req.body?.enabled ?? req.body?.value);
+  const ttl = req.body?.ttl;
+  const normalizedTtl: string | undefined =
+    ttl === undefined ? undefined : (normalizeCliproxySessionAffinityTtl(ttl) ?? undefined);
+
+  if (enabled === null || (ttl !== undefined && !normalizedTtl)) {
+    res.status(400).json({
+      error: 'Invalid session affinity payload. Use enabled=true|false and ttl like 30m or 1h.',
+    });
+    return;
+  }
+
+  try {
+    const result = await applyCliproxySessionAffinitySettings({
+      enabled,
+      ttl: normalizedTtl,
+    });
+    if (!result.manageable || result.applied === 'unsupported') {
+      res.status(400).json({
+        error: result.message || 'Session affinity is not supported for this target.',
+      });
+      return;
+    }
+    res.json(result);
   } catch (error) {
     res.status(502).json({ error: (error as Error).message });
   }

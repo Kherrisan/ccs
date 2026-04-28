@@ -34,7 +34,14 @@ import {
 } from './proxy-lifecycle-subcommand';
 import { showStatus, handleInstallVersion, handleInstallLatest } from './install-subcommand';
 import { showHelp } from './help-subcommand';
-import { handleRoutingStatus, handleRoutingExplain, handleRoutingSet } from './routing-subcommand';
+import {
+  handleRoutingStatus,
+  handleRoutingExplain,
+  handleRoutingSet,
+  handleRoutingAffinityStatus,
+  handleRoutingAffinityHelp,
+  handleRoutingAffinitySet,
+} from './routing-subcommand';
 import {
   handleCatalogStatus,
   handleCatalogRefresh,
@@ -187,6 +194,18 @@ export async function handleCliproxyCommand(args: string[]): Promise<void> {
     }
     if (subcommand === 'explain') {
       await handleRoutingExplain();
+      return;
+    }
+    if (subcommand === 'affinity') {
+      if (hasAnyFlag(remainingArgs.slice(2), ['--help', '-h'])) {
+        await handleRoutingAffinityHelp();
+        return;
+      }
+      if (remainingArgs[2]) {
+        await handleRoutingAffinitySet(remainingArgs.slice(2));
+        return;
+      }
+      await handleRoutingAffinityStatus();
       return;
     }
     await handleRoutingStatus();

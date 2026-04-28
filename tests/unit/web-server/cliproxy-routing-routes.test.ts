@@ -7,6 +7,8 @@ describe('cliproxy routing routes', () => {
   let baseUrl = '';
   let readStateMock: ReturnType<typeof mock>;
   let applyStrategyMock: ReturnType<typeof mock>;
+  let readAffinityStateMock: ReturnType<typeof mock>;
+  let applyAffinityMock: ReturnType<typeof mock>;
 
   beforeEach(async () => {
     readStateMock = mock(async () => ({
@@ -22,14 +24,41 @@ describe('cliproxy routing routes', () => {
       reachable: true,
       applied: 'live-and-config',
     }));
+    readAffinityStateMock = mock(async () => ({
+      enabled: true,
+      ttl: '1h',
+      source: 'config',
+      target: 'local',
+      reachable: true,
+      manageable: true,
+    }));
+    applyAffinityMock = mock(async () => ({
+      enabled: false,
+      ttl: '30m',
+      source: 'config',
+      target: 'local',
+      reachable: true,
+      manageable: true,
+      applied: 'config-only',
+    }));
 
     mock.module('../../../src/cliproxy/routing-strategy', () => ({
       readCliproxyRoutingState: readStateMock,
       applyCliproxyRoutingStrategy: applyStrategyMock,
+      readCliproxySessionAffinityState: readAffinityStateMock,
+      applyCliproxySessionAffinitySettings: applyAffinityMock,
       normalizeCliproxyRoutingStrategy: (value: unknown) => {
         if (value === 'round-robin' || value === 'fill-first') {
           return value;
         }
+        return null;
+      },
+      normalizeCliproxySessionAffinityEnabled: (value: unknown) => {
+        if (value === true || value === false) return value;
+        return null;
+      },
+      normalizeCliproxySessionAffinityTtl: (value: unknown) => {
+        if (value === '30m' || value === '1h') return value;
         return null;
       },
     }));
@@ -101,6 +130,54 @@ describe('cliproxy routing routes', () => {
       target: 'local',
       reachable: true,
       applied: 'live-and-config',
+    });
+  });
+
+  it('returns the current session-affinity state', async () => {
+    const response = await fetch(`${baseUrl}/api/cliproxy/routing/session-affinity`);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      enabled: true,
+      ttl: '1h',
+      source: 'config',
+      target: 'local',
+      reachable: true,
+      manageable: true,
+    });
+    expect(readAffinityStateMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects invalid session-affinity payloads', async () => {
+    const response = await fetch(`${baseUrl}/api/cliproxy/routing/session-affinity`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: 'auto', ttl: 'forever' }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: 'Invalid session affinity payload. Use enabled=true|false and ttl like 30m or 1h.',
+    });
+    expect(applyAffinityMock).not.toHaveBeenCalled();
+  });
+
+  it('applies valid session-affinity settings', async () => {
+    const response = await fetch(`${baseUrl}/api/cliproxy/routing/session-affinity`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: false, ttl: '30m' }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(applyAffinityMock).toHaveBeenCalledWith({ enabled: false, ttl: '30m' });
+    expect(await response.json()).toEqual({
+      enabled: false,
+      ttl: '30m',
+      source: 'config',
+      target: 'local',
+      reachable: true,
+      manageable: true,
+      applied: 'config-only',
     });
   });
 });
