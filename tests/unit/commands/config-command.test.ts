@@ -1,4 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test';
+import * as os from 'os';
 import { handleConfigCommand } from '../../../src/commands/config-command';
 import { resolveNamedCommand } from '../../../src/commands/named-command-router';
 
@@ -104,7 +105,9 @@ describe('config command dashboard startup', () => {
       throw new Error(`process.exit(${code ?? 0})`);
     }) as typeof process.exit;
 
-    await expect(handleConfigCommand(['help'], createTestDeps())).rejects.toThrow('process.exit(0)');
+    await expect(handleConfigCommand(['help'], createTestDeps())).rejects.toThrow(
+      'process.exit(0)'
+    );
 
     expect(startServerCalls).toHaveLength(0);
     expect(logLines.join('\n')).toContain('Usage: ccs config [command] [options]');
@@ -189,6 +192,25 @@ describe('config command dashboard startup', () => {
       'CLIProxy not available: Failed to prepare binary: CLIProxy Plus binary is not installed locally. Run "ccs cliproxy install" when you have network access.'
     );
     expect(rendered).toContain('Dashboard will work but Control Panel/Stats may be limited');
+  });
+
+  it('still opens the dashboard when wildcard network detection is unavailable', async () => {
+    const networkInterfacesSpy = spyOn(os, 'networkInterfaces').mockImplementation(() => {
+      throw new Error('uv_interface_addresses returned Unknown system error 13');
+    });
+
+    try {
+      await handleConfigCommand([], createTestDeps());
+
+      expect(startServerCalls).toHaveLength(1);
+
+      const rendered = logLines.join('\n');
+      expect(rendered).toContain('Dashboard: http://localhost:3000');
+      expect(rendered).toContain('Bind host: ::');
+      expect(errorLines).toHaveLength(0);
+    } finally {
+      networkInterfacesSpy.mockRestore();
+    }
   });
 
   it('fails cleanly when the server cannot bind the requested host', async () => {
