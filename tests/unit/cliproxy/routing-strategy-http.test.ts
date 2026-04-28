@@ -1,9 +1,15 @@
 import { describe, expect, it } from 'bun:test';
-import { getCliproxyRoutingManagementUrl } from '../../../src/cliproxy/routing-strategy-http';
 import type { ProxyTarget } from '../../../src/cliproxy/proxy-target-resolver';
 
+async function loadRoutingHttpModule() {
+  return import(
+    `../../../src/cliproxy/routing-strategy-http?test=${Date.now()}-${Math.random()}`
+  ) as Promise<typeof import('../../../src/cliproxy/routing-strategy-http')>;
+}
+
 describe('routing-strategy-http', () => {
-  it('builds the local management URL for routing strategy reads', () => {
+  it('builds the local management URL for routing strategy reads', async () => {
+    const { getCliproxyRoutingManagementUrl } = await loadRoutingHttpModule();
     const target: ProxyTarget = {
       host: '127.0.0.1',
       port: 8317,
@@ -16,7 +22,8 @@ describe('routing-strategy-http', () => {
     );
   });
 
-  it('builds the remote management URL for routing strategy writes', () => {
+  it('builds the remote management URL for routing strategy writes', async () => {
+    const { getCliproxyRoutingManagementUrl } = await loadRoutingHttpModule();
     const target: ProxyTarget = {
       host: 'proxy.example.com',
       port: 443,
