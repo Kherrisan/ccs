@@ -318,6 +318,39 @@ describe('cliproxy session-affinity ttl normalization', () => {
       fs.rmSync(tempHome, { recursive: true, force: true });
     }
   });
+
+  it('normalizes non-positive stored ttl values back to the safe default', () => {
+    const originalCcsHome = process.env.CCS_HOME;
+    const tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'ccs-affinity-zero-ttl-home-'));
+    const ccsDir = path.join(tempHome, '.ccs');
+    fs.mkdirSync(ccsDir, { recursive: true });
+
+    fs.writeFileSync(
+      path.join(ccsDir, 'config.yaml'),
+      [
+        'version: 8',
+        'cliproxy:',
+        '  routing:',
+        '    strategy: round-robin',
+        '    session_affinity: true',
+        '    session_affinity_ttl: 0s',
+        '',
+      ].join('\n')
+    );
+
+    process.env.CCS_HOME = tempHome;
+    try {
+      const config = loadOrCreateUnifiedConfig();
+      expect(config.cliproxy.routing.session_affinity_ttl).toBe('1h');
+    } finally {
+      if (originalCcsHome === undefined) {
+        delete process.env.CCS_HOME;
+      } else {
+        process.env.CCS_HOME = originalCcsHome;
+      }
+      fs.rmSync(tempHome, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('official-channels-config', () => {

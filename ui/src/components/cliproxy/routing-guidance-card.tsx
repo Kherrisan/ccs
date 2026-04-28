@@ -59,10 +59,11 @@ export function RoutingGuidanceCard({
   const affinityControlDisabled = isLoading || isSaving || !!error || !sessionAffinityManageable;
   const affinityActionLabel = sessionAffinityManageable
     ? selectedAffinityEnabled
-      ? 'Disable session affinity'
-      : 'Enable session affinity'
-    : 'Session affinity unavailable';
+      ? t('routingGuidance.disableSessionAffinity')
+      : t('routingGuidance.enableSessionAffinity')
+    : t('routingGuidance.sessionAffinityUnavailable');
   const pendingAffinityRef = useRef<{ enabled: boolean; ttl: string } | null>(null);
+  const suppressNextAffinityBlurRef = useRef(false);
 
   useEffect(() => {
     setSelected(currentStrategy);
@@ -101,6 +102,10 @@ export function RoutingGuidanceCard({
 
   const handleAffinityTtlBlur = () => {
     if (!sessionAffinityManageable || !!error) return;
+    if (suppressNextAffinityBlurRef.current) {
+      suppressNextAffinityBlurRef.current = false;
+      return;
+    }
     const nextTtl = selectedAffinityTtl.trim() || '1h';
     if (nextTtl === currentAffinityTtl) {
       return;
@@ -169,9 +174,13 @@ export function RoutingGuidanceCard({
 
         <div className="flex items-center justify-between gap-2 rounded-lg border border-border/60 bg-muted/20 px-2 py-1.5">
           <div className="min-w-0">
-            <div className="text-[10px] font-medium text-foreground">Session affinity</div>
+            <div className="text-[10px] font-medium text-foreground">
+              {t('routingGuidance.sessionAffinity')}
+            </div>
             <div className="text-[10px] text-muted-foreground">
-              {sessionAffinityManageable ? `TTL ${currentAffinityTtl}` : 'Local-only setting'}
+              {sessionAffinityManageable
+                ? t('routingGuidance.ttlBadge', { ttl: currentAffinityTtl })
+                : t('routingGuidance.localOnlySetting')}
             </div>
           </div>
           <div className="flex items-center gap-1">
@@ -194,11 +203,18 @@ export function RoutingGuidanceCard({
                   ? 'border-border/70 bg-background text-foreground hover:border-primary/40 hover:text-primary'
                   : 'border-border/60 bg-muted/40 text-muted-foreground'
               )}
+              onMouseDown={() => {
+                suppressNextAffinityBlurRef.current = true;
+              }}
               onClick={handleAffinityToggle}
               disabled={affinityControlDisabled}
               title={sessionAffinityState?.message}
             >
-              {sessionAffinityManageable ? (selectedAffinityEnabled ? 'On' : 'Off') : 'Unavailable'}
+              {sessionAffinityManageable
+                ? selectedAffinityEnabled
+                  ? t('routingGuidance.sessionAffinityOn')
+                  : t('routingGuidance.sessionAffinityOff')
+                : t('routingGuidance.sessionAffinityUnavailable')}
             </button>
           </div>
         </div>
@@ -287,17 +303,23 @@ export function RoutingGuidanceCard({
 
         <div className="grid gap-3 rounded-lg border border-border/70 bg-muted/20 px-3 py-3 xl:col-span-2">
           <div className="flex flex-wrap items-center gap-2">
-            <div className="text-sm font-medium">Session affinity</div>
-            <Badge variant="secondary">{selectedAffinityEnabled ? 'on' : 'off'}</Badge>
+            <div className="text-sm font-medium">{t('routingGuidance.sessionAffinity')}</div>
+            <Badge variant="secondary">
+              {selectedAffinityEnabled
+                ? t('routingGuidance.sessionAffinityOn')
+                : t('routingGuidance.sessionAffinityOff')}
+            </Badge>
             {sessionAffinityState?.ttl ? (
-              <Badge variant="outline">TTL {currentAffinityTtl}</Badge>
+              <Badge variant="outline">
+                {t('routingGuidance.ttlBadge', { ttl: currentAffinityTtl })}
+              </Badge>
             ) : null}
-            {!sessionAffinityManageable ? <Badge variant="outline">Local only</Badge> : null}
+            {!sessionAffinityManageable ? (
+              <Badge variant="outline">{t('routingGuidance.localOnly')}</Badge>
+            ) : null}
           </div>
           <p className="text-xs leading-5 text-muted-foreground">
-            Keep one conversation pinned to the same account when possible. CLIProxy prefers
-            explicit session or thread identifiers when clients send them, then falls back to
-            request metadata or the opening prompt history when it has to infer a stable key.
+            {t('routingGuidance.sessionAffinityDescription')}
           </p>
           <div className="flex flex-wrap items-center gap-2">
             <input
@@ -311,15 +333,14 @@ export function RoutingGuidanceCard({
             <Button
               type="button"
               variant="outline"
+              onMouseDown={() => {
+                suppressNextAffinityBlurRef.current = true;
+              }}
               onClick={handleAffinityToggle}
               disabled={affinityControlDisabled}
               aria-label={affinityActionLabel}
             >
-              {sessionAffinityManageable
-                ? selectedAffinityEnabled
-                  ? 'Disable session affinity'
-                  : 'Enable session affinity'
-                : 'Session affinity unavailable'}
+              {affinityActionLabel}
             </Button>
           </div>
           {sessionAffinityState?.message ? (
@@ -359,11 +380,11 @@ export function RoutingGuidanceCard({
               );
             })}
             <div className="space-y-1 md:col-span-2">
-              <div className="text-sm font-medium">Session recognition order</div>
+              <div className="text-sm font-medium">
+                {t('routingGuidance.sessionRecognitionTitle')}
+              </div>
               <p className="text-xs leading-5 text-muted-foreground">
-                CCS does not promise one universal precedence order here. In practice, upstream
-                backends prefer explicit session or thread ids first, then fall back to metadata
-                fields and finally a hash based on the opening prompt history.
+                {t('routingGuidance.sessionRecognitionDescription')}
               </p>
             </div>
           </div>

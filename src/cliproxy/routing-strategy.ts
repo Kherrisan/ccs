@@ -99,7 +99,7 @@ export function normalizeCliproxySessionAffinityTtl(value: unknown): string | nu
   }
 
   const trimmed = value.trim();
-  if (!trimmed || !GO_DURATION_PATTERN.test(trimmed)) {
+  if (!trimmed || !GO_DURATION_PATTERN.test(trimmed) || !hasPositiveDuration(trimmed)) {
     return null;
   }
 
@@ -176,18 +176,20 @@ export async function readCliproxySessionAffinityState(): Promise<CliproxySessio
   const target = getCliproxyRoutingTarget();
 
   if (target.isRemote) {
+    const reachable = await isLiveCliproxyRoutingReachable();
     return {
       source: 'unsupported',
       target: 'remote',
-      reachable: true,
+      reachable,
       manageable: false,
-      message:
-        'Remote session-affinity management is not supported from CCS yet because upstream management APIs only expose routing.strategy.',
+      message: reachable
+        ? 'Remote session-affinity management is not supported from CCS yet because upstream management APIs only expose routing.strategy.'
+        : 'Remote session-affinity management is not supported from CCS yet, and the remote CLIProxy routing endpoint is not reachable.',
     };
   }
 
   const settings = getConfiguredCliproxySessionAffinitySettings();
-  const reachable = await isLocalCliproxyReachable();
+  const reachable = await isLiveCliproxyRoutingReachable();
 
   return {
     enabled: settings.enabled,
@@ -197,7 +199,7 @@ export async function readCliproxySessionAffinityState(): Promise<CliproxySessio
     reachable,
     manageable: true,
     message: reachable
-      ? 'CCS manages session affinity through the generated local CLIProxy config. Running local CLIProxy should hot-reload this setting.'
+      ? 'Showing the saved local session-affinity setting. Running local CLIProxy may hot-reload config changes, but CCS does not verify live selector state.'
       : 'Local CLIProxy is not reachable. Showing the saved local startup default.',
   };
 }
@@ -255,14 +257,16 @@ export async function applyCliproxySessionAffinitySettings(
 ): Promise<CliproxySessionAffinityApplyResult> {
   const target = getCliproxyRoutingTarget();
   if (target.isRemote) {
+    const reachable = await isLiveCliproxyRoutingReachable();
     return {
       source: 'unsupported',
       target: 'remote',
-      reachable: true,
+      reachable,
       manageable: false,
       applied: 'unsupported',
-      message:
-        'Remote session-affinity management is not supported from CCS yet because upstream management APIs only expose routing.strategy.',
+      message: reachable
+        ? 'Remote session-affinity management is not supported from CCS yet because upstream management APIs only expose routing.strategy.'
+        : 'Remote session-affinity management is not supported from CCS yet, and the remote CLIProxy routing endpoint is not reachable.',
     };
   }
 
@@ -285,7 +289,7 @@ export async function applyCliproxySessionAffinitySettings(
   });
   regenerateConfig(target.port, { configPath, authDir });
 
-  const reachable = await isLocalCliproxyReachable();
+  const reachable = await isLiveCliproxyRoutingReachable();
   return {
     enabled: settings.enabled,
     ttl,
@@ -314,7 +318,19 @@ async function updateLiveCliproxyRoutingStrategy(strategy: CliproxyRoutingStrate
   }
 }
 
-async function isLocalCliproxyReachable(): Promise<boolean> {
+function hasPositiveDuration(value: string): boolean {
+  const segments = value.match(new RegExp(GO_DURATION_SEGMENT, 'g'));
+  if (!segments) {
+    return false;
+  }
+
+  return segments.some((segment) => {
+    const numeric = parseFloat(segment);
+    return Number.isFinite(numeric) && numeric > 0;
+  });
+}
+
+async function isLiveCliproxyRoutingReachable(): Promise<boolean> {
   try {
     await fetchLiveCliproxyRoutingStrategy();
     return true;

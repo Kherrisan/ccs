@@ -157,6 +157,9 @@ export async function handleRoutingAffinityStatus(): Promise<void> {
   } else {
     console.log(`  Status: ${color(state.enabled ? 'on' : 'off', 'command')}`);
   }
+  console.log(
+    `  Source: ${state.manageable ? color('saved local setting', 'info') : color('unsupported', 'warning')}`
+  );
   console.log(`  Target: ${color(state.target, 'info')}`);
   if (state.ttl) {
     console.log(`  TTL:    ${color(state.ttl, 'info')}`);
@@ -228,6 +231,7 @@ export async function handleRoutingAffinitySet(args: string[]): Promise<void> {
   if (!result.manageable) {
     console.log(fail(result.message || 'Session affinity is not supported for this target.'));
     console.log('');
+    process.exitCode = 1;
     return;
   }
 

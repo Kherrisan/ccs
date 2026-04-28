@@ -141,7 +141,19 @@ function getSessionAffinityEnabled(): boolean {
 
 function getSessionAffinityTtl(): string {
   const ttl = loadOrCreateUnifiedConfig().cliproxy?.routing?.session_affinity_ttl?.trim();
-  return ttl && GO_DURATION_PATTERN.test(ttl) ? ttl : '1h';
+  return ttl && GO_DURATION_PATTERN.test(ttl) && hasPositiveDuration(ttl) ? ttl : '1h';
+}
+
+function hasPositiveDuration(value: string): boolean {
+  const segments = value.match(new RegExp(GO_DURATION_SEGMENT, 'g'));
+  if (!segments) {
+    return false;
+  }
+
+  return segments.some((segment) => {
+    const numeric = parseFloat(segment);
+    return Number.isFinite(numeric) && numeric > 0;
+  });
 }
 
 function sanitizeYamlScalar(rawValue: string): string {

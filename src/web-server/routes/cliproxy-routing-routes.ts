@@ -68,12 +68,17 @@ router.put('/routing/session-affinity', async (req: Request, res: Response): Pro
   }
 
   try {
-    res.json(
-      await applyCliproxySessionAffinitySettings({
-        enabled,
-        ttl: normalizedTtl,
-      })
-    );
+    const result = await applyCliproxySessionAffinitySettings({
+      enabled,
+      ttl: normalizedTtl,
+    });
+    if (!result.manageable || result.applied === 'unsupported') {
+      res.status(400).json({
+        error: result.message || 'Session affinity is not supported for this target.',
+      });
+      return;
+    }
+    res.json(result);
   } catch (error) {
     res.status(502).json({ error: (error as Error).message });
   }

@@ -120,11 +120,23 @@ function normalizeSessionAffinityTtl(value: unknown, fallback: string): string {
   }
 
   const trimmed = value.trim();
-  if (!trimmed || !GO_DURATION_PATTERN.test(trimmed)) {
+  if (!trimmed || !GO_DURATION_PATTERN.test(trimmed) || !hasPositiveDuration(trimmed)) {
     return fallback;
   }
 
   return trimmed;
+}
+
+function hasPositiveDuration(value: string): boolean {
+  const segments = value.match(new RegExp(GO_DURATION_SEGMENT, 'g'));
+  if (!segments) {
+    return false;
+  }
+
+  return segments.some((segment) => {
+    const numeric = parseFloat(segment);
+    return Number.isFinite(numeric) && numeric > 0;
+  });
 }
 
 /**

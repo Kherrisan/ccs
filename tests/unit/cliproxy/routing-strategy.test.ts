@@ -164,6 +164,7 @@ describe('cliproxy routing strategy service', () => {
       expect(mod.normalizeCliproxySessionAffinityTtl('1h')).toBe('1h');
       expect(mod.normalizeCliproxySessionAffinityTtl('2h30m')).toBe('2h30m');
       expect(mod.normalizeCliproxySessionAffinityTtl('  15m  ')).toBe('15m');
+      expect(mod.normalizeCliproxySessionAffinityTtl('0s')).toBeNull();
       expect(mod.normalizeCliproxySessionAffinityTtl('tomorrow')).toBeNull();
     });
   });
@@ -241,12 +242,19 @@ describe('cliproxy routing strategy service', () => {
         isRemote: true,
       };
 
+      responseFactory = async () =>
+        new Response(JSON.stringify({ strategy: 'round-robin' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+
       const mod = await loadRoutingModule();
       const state = await mod.readCliproxySessionAffinityState();
 
       expect(state.source).toBe('unsupported');
       expect(state.target).toBe('remote');
       expect(state.manageable).toBe(false);
+      expect(state.reachable).toBe(true);
       expect(state.enabled).toBeUndefined();
 
       const result = await mod.applyCliproxySessionAffinitySettings({
@@ -256,6 +264,25 @@ describe('cliproxy routing strategy service', () => {
 
       expect(result.applied).toBe('unsupported');
       expect(result.manageable).toBe(false);
+    });
+  });
+
+  it('reports unsupported remote session-affinity as unreachable when remote routing probe fails', async () => {
+    await withScopedConfig(async () => {
+      routingTarget = {
+        host: 'remote.example.com',
+        port: 8080,
+        protocol: 'http',
+        isRemote: true,
+      };
+      responseFactory = null;
+
+      const mod = await loadRoutingModule();
+      const state = await mod.readCliproxySessionAffinityState();
+
+      expect(state.source).toBe('unsupported');
+      expect(state.reachable).toBe(false);
+      expect(state.message).toContain('not reachable');
     });
   });
 });

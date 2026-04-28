@@ -85,6 +85,7 @@ export function useCliproxySessionAffinity() {
 
 export function useUpdateCliproxySessionAffinity() {
   const queryClient = useQueryClient();
+  const { t } = useTranslation();
 
   return useMutation({
     mutationFn: (data: { enabled: boolean; ttl?: string }) =>
@@ -92,8 +93,12 @@ export function useUpdateCliproxySessionAffinity() {
     onSuccess: (result: CliproxySessionAffinityApplyResult) => {
       queryClient.setQueryData(['cliproxy-session-affinity'], result);
       queryClient.invalidateQueries({ queryKey: ['cliproxy-session-affinity'] });
-      const label = result.enabled ? 'enabled' : 'disabled';
-      toast.success(result.message || `Session affinity ${label}.`);
+      const stateLabel = result.enabled
+        ? t('routingGuidance.sessionAffinityEnabled')
+        : t('routingGuidance.sessionAffinityDisabled');
+      toast.success(
+        result.message || t('toasts.sessionAffinityUpdated', { state: stateLabel.toLowerCase() })
+      );
     },
     onError: (error: Error) => {
       toast.error(error.message);
