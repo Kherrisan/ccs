@@ -17,7 +17,11 @@ import {
   getLastFetchTimestamp,
   refreshUsageCache,
 } from './aggregator';
-import { getModelsUsed } from './model-identity';
+import {
+  coalesceLegacyProviderlessBreakdowns,
+  getModelsUsed,
+  getProviderModelKey,
+} from './model-identity';
 
 // ============================================================================
 // Types
@@ -140,10 +144,6 @@ function calculateUsageTotalTokens(
   cacheRead: number
 ): number {
   return input + output + cacheCreation + cacheRead;
-}
-
-function getBreakdownKey(breakdown: { modelName: string; provider?: string }): string {
-  return `${breakdown.provider ?? ''}\u0000${breakdown.modelName}`;
 }
 
 function parseDateKey(dateString: string): Date {
@@ -557,7 +557,7 @@ export async function handleModels(
 
     for (const day of filtered) {
       for (const breakdown of day.modelBreakdowns) {
-        const modelKey = getBreakdownKey(breakdown);
+        const modelKey = getProviderModelKey(breakdown);
         const existing = modelMap.get(modelKey) || {
           model: breakdown.modelName,
           provider: breakdown.provider,
@@ -750,7 +750,7 @@ export async function handleMonthly(
         existing.cacheReadTokens += day.cacheReadTokens;
         existing.totalCost += day.totalCost;
         for (const breakdown of day.modelBreakdowns) {
-          const breakdownKey = getBreakdownKey(breakdown);
+          const breakdownKey = getProviderModelKey(breakdown);
           const existingBreakdown = existing.modelBreakdowns.get(breakdownKey) ?? {
             modelName: breakdown.modelName,
             provider: breakdown.provider,
@@ -772,16 +772,21 @@ export async function handleMonthly(
       }
 
       filtered = Array.from(monthMap.values())
-        .map((month) => ({
-          month: month.month,
-          inputTokens: month.inputTokens,
-          outputTokens: month.outputTokens,
-          cacheCreationTokens: month.cacheCreationTokens,
-          cacheReadTokens: month.cacheReadTokens,
-          totalCost: month.totalCost,
-          modelBreakdowns: Array.from(month.modelBreakdowns.values()),
-          modelsUsed: getModelsUsed(Array.from(month.modelBreakdowns.values())),
-        }))
+        .map((month) => {
+          const modelBreakdowns = coalesceLegacyProviderlessBreakdowns(
+            Array.from(month.modelBreakdowns.values())
+          );
+          return {
+            month: month.month,
+            inputTokens: month.inputTokens,
+            outputTokens: month.outputTokens,
+            cacheCreationTokens: month.cacheCreationTokens,
+            cacheReadTokens: month.cacheReadTokens,
+            totalCost: month.totalCost,
+            modelBreakdowns,
+            modelsUsed: getModelsUsed(modelBreakdowns),
+          };
+        })
         .sort((a, b) => a.month.localeCompare(b.month));
     } else {
       filtered = await getCachedMonthlyData();

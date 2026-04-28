@@ -355,6 +355,17 @@ describe('model-pricing', () => {
             },
           },
         },
+        google: {
+          id: 'google',
+          name: 'Google',
+          models: {
+            'gemini-3-flash-preview': {
+              id: 'gemini-3-flash-preview',
+              name: 'Gemini 3 Flash Preview',
+              cost: { input: 99, output: 99 },
+            },
+          },
+        },
       });
     });
 
@@ -386,6 +397,14 @@ describe('model-pricing', () => {
       expect(pricing.inputPerMillion).toBe(0);
       expect(pricing.outputPerMillion).toBe(0);
       expect(getModelPricing('gpt-4o').inputPerMillion).toBe(2.5);
+    });
+
+    it('keeps CCS compatibility aliases ahead of provider-aware models.dev matches', () => {
+      const pricing = getModelPricing('gemini-3-flash-preview', { provider: 'google' });
+      const canonical = getModelPricing('gemini-2.5-flash');
+
+      expect(pricing).toEqual(canonical);
+      expect(pricing.inputPerMillion).not.toBe(99);
     });
 
     it('falls back to CCS static pricing when provider-aware models.dev lookup misses a known model', () => {

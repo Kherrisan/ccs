@@ -35,7 +35,11 @@ import {
 import { scanCodexNativeUsageEntries } from './codex-native-usage-collector';
 import { scanDroidNativeUsageEntries } from './droid-native-usage-collector';
 import { startModelsDevRegistryRefresh } from '../models-dev/registry-cache';
-import { getModelsUsed, getProviderModelKey } from './model-identity';
+import {
+  coalesceLegacyProviderlessBreakdowns,
+  getModelsUsed,
+  getProviderModelKey,
+} from './model-identity';
 
 // ============================================================================
 // Multi-Instance Support - Aggregate usage from CCS profiles
@@ -113,6 +117,33 @@ function getHourlyRequestCount(hour: HourlyUsage): number {
   return hour.requestCount ?? hour.modelBreakdowns.length;
 }
 
+function finalizeDailyUsage(day: DailyUsage): DailyUsage {
+  const modelBreakdowns = coalesceLegacyProviderlessBreakdowns(day.modelBreakdowns);
+  return {
+    ...day,
+    modelsUsed: getModelsUsed(modelBreakdowns),
+    modelBreakdowns,
+  };
+}
+
+function finalizeMonthlyUsage(month: MonthlyUsage): MonthlyUsage {
+  const modelBreakdowns = coalesceLegacyProviderlessBreakdowns(month.modelBreakdowns);
+  return {
+    ...month,
+    modelsUsed: getModelsUsed(modelBreakdowns),
+    modelBreakdowns,
+  };
+}
+
+function finalizeHourlyUsage(hour: HourlyUsage): HourlyUsage {
+  const modelBreakdowns = coalesceLegacyProviderlessBreakdowns(hour.modelBreakdowns);
+  return {
+    ...hour,
+    modelsUsed: getModelsUsed(modelBreakdowns),
+    modelBreakdowns,
+  };
+}
+
 /**
  * Merge daily usage data from multiple sources
  * Combines entries with same date by aggregating tokens
@@ -146,7 +177,6 @@ export function mergeDailyData(sources: DailyUsage[][]): DailyUsage[] {
             existing.modelBreakdowns.push({ ...breakdown });
           }
         }
-        existing.modelsUsed = getModelsUsed(existing.modelBreakdowns);
       } else {
         // Clone to avoid mutating original
         const modelBreakdowns = day.modelBreakdowns.map((b) => ({ ...b }));
@@ -159,7 +189,9 @@ export function mergeDailyData(sources: DailyUsage[][]): DailyUsage[] {
     }
   }
 
-  return Array.from(dateMap.values()).sort((a, b) => a.date.localeCompare(b.date));
+  return Array.from(dateMap.values())
+    .map(finalizeDailyUsage)
+    .sort((a, b) => a.date.localeCompare(b.date));
 }
 
 /**
@@ -192,7 +224,6 @@ export function mergeMonthlyData(sources: MonthlyUsage[][]): MonthlyUsage[] {
             existing.modelBreakdowns.push({ ...breakdown });
           }
         }
-        existing.modelsUsed = getModelsUsed(existing.modelBreakdowns);
       } else {
         const modelBreakdowns = month.modelBreakdowns.map((breakdown) => ({ ...breakdown }));
         monthMap.set(month.month, {
@@ -204,7 +235,9 @@ export function mergeMonthlyData(sources: MonthlyUsage[][]): MonthlyUsage[] {
     }
   }
 
-  return Array.from(monthMap.values()).sort((a, b) => a.month.localeCompare(b.month));
+  return Array.from(monthMap.values())
+    .map(finalizeMonthlyUsage)
+    .sort((a, b) => a.month.localeCompare(b.month));
 }
 
 /**
@@ -240,7 +273,6 @@ export function mergeHourlyData(sources: HourlyUsage[][]): HourlyUsage[] {
             existing.modelBreakdowns.push({ ...breakdown });
           }
         }
-        existing.modelsUsed = getModelsUsed(existing.modelBreakdowns);
       } else {
         const modelBreakdowns = hour.modelBreakdowns.map((b) => ({ ...b }));
         hourMap.set(hour.hour, {
@@ -253,7 +285,9 @@ export function mergeHourlyData(sources: HourlyUsage[][]): HourlyUsage[] {
     }
   }
 
-  return Array.from(hourMap.values()).sort((a, b) => a.hour.localeCompare(b.hour));
+  return Array.from(hourMap.values())
+    .map(finalizeHourlyUsage)
+    .sort((a, b) => a.hour.localeCompare(b.hour));
 }
 
 /**

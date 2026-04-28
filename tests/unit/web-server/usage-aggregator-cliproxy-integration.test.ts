@@ -330,6 +330,136 @@ describe('usage aggregator cliproxy integration', () => {
     expect(result[0].modelBreakdowns).toHaveLength(2);
   });
 
+  it('coalesces legacy providerless breakdowns into the only known provider', () => {
+    const result = aggregator.mergeDailyData([
+      [
+        {
+          date: '2026-03-02',
+          source: 'legacy-cache',
+          inputTokens: 10,
+          outputTokens: 1,
+          cacheCreationTokens: 0,
+          cacheReadTokens: 0,
+          cost: 1,
+          totalCost: 1,
+          modelsUsed: ['gpt-5.5'],
+          modelBreakdowns: [
+            {
+              modelName: 'gpt-5.5',
+              inputTokens: 10,
+              outputTokens: 1,
+              cacheCreationTokens: 0,
+              cacheReadTokens: 0,
+              cost: 1,
+            },
+          ],
+        },
+      ],
+      [
+        {
+          date: '2026-03-02',
+          source: 'cliproxy',
+          inputTokens: 20,
+          outputTokens: 2,
+          cacheCreationTokens: 0,
+          cacheReadTokens: 0,
+          cost: 2,
+          totalCost: 2,
+          modelsUsed: ['gpt-5.5'],
+          modelBreakdowns: [
+            {
+              modelName: 'gpt-5.5',
+              provider: 'openai',
+              inputTokens: 20,
+              outputTokens: 2,
+              cacheCreationTokens: 0,
+              cacheReadTokens: 0,
+              cost: 2,
+            },
+          ],
+        },
+      ],
+    ]);
+
+    expect(result[0].modelBreakdowns).toHaveLength(1);
+    expect(result[0].modelBreakdowns[0]).toMatchObject({
+      modelName: 'gpt-5.5',
+      provider: 'openai',
+      inputTokens: 30,
+      outputTokens: 3,
+      cost: 3,
+    });
+    expect(result[0].modelsUsed).toEqual(['gpt-5.5']);
+  });
+
+  it('keeps legacy providerless breakdowns separate when providers are ambiguous', () => {
+    const result = aggregator.mergeHourlyData([
+      [
+        {
+          hour: '2026-03-02 10:00',
+          source: 'legacy-cache',
+          inputTokens: 10,
+          outputTokens: 1,
+          cacheCreationTokens: 0,
+          cacheReadTokens: 0,
+          cost: 1,
+          totalCost: 1,
+          modelsUsed: ['gpt-5.5'],
+          modelBreakdowns: [
+            {
+              modelName: 'gpt-5.5',
+              inputTokens: 10,
+              outputTokens: 1,
+              cacheCreationTokens: 0,
+              cacheReadTokens: 0,
+              cost: 1,
+            },
+          ],
+        },
+      ],
+      [
+        {
+          hour: '2026-03-02 10:00',
+          source: 'providers',
+          inputTokens: 50,
+          outputTokens: 5,
+          cacheCreationTokens: 0,
+          cacheReadTokens: 0,
+          cost: 5,
+          totalCost: 5,
+          modelsUsed: ['openai/gpt-5.5', 'github-copilot/gpt-5.5'],
+          modelBreakdowns: [
+            {
+              modelName: 'gpt-5.5',
+              provider: 'openai',
+              inputTokens: 20,
+              outputTokens: 2,
+              cacheCreationTokens: 0,
+              cacheReadTokens: 0,
+              cost: 2,
+            },
+            {
+              modelName: 'gpt-5.5',
+              provider: 'github-copilot',
+              inputTokens: 30,
+              outputTokens: 3,
+              cacheCreationTokens: 0,
+              cacheReadTokens: 0,
+              cost: 3,
+            },
+          ],
+        },
+      ],
+    ]);
+
+    expect(result[0].modelBreakdowns).toHaveLength(3);
+    expect(result[0].modelsUsed).toEqual([
+      'gpt-5.5',
+      'openai/gpt-5.5',
+      'github-copilot/gpt-5.5',
+    ]);
+  });
+
   it('falls back to model cardinality when merging legacy hourly buckets without requestCount', () => {
     const result = aggregator.mergeHourlyData([
       [

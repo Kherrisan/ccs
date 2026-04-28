@@ -858,6 +858,30 @@ function getCcsStaticPricing(model: string): ModelPricing | undefined {
   return undefined;
 }
 
+function getCcsPolicyOverridePricing(model: string): ModelPricing | undefined {
+  const providerlessModel = stripProviderPrefix(model);
+  const normalized = normalizeModelName(providerlessModel);
+
+  for (const candidate of getLookupCandidates(providerlessModel)) {
+    const alias = MODEL_PRICING_ALIASES[candidate];
+    if (alias !== undefined) {
+      const aliasPricing = NORMALIZED_PRICING_REGISTRY[alias];
+      if (aliasPricing !== undefined) {
+        return aliasPricing;
+      }
+    }
+
+    if (candidate !== normalized) {
+      const variantPricing = NORMALIZED_PRICING_REGISTRY[candidate];
+      if (variantPricing !== undefined) {
+        return variantPricing;
+      }
+    }
+  }
+
+  return undefined;
+}
+
 function hasProviderContext(model: string, options: PricingLookupOptions): boolean {
   return Boolean(options.provider || /^[^/]+\//.test(model.trim()));
 }
@@ -869,6 +893,11 @@ function hasProviderContext(model: string, options: PricingLookupOptions): boole
  */
 export function getModelPricing(model: string, options: PricingLookupOptions = {}): ModelPricing {
   if (hasProviderContext(model, options)) {
+    const ccsOverridePricing = getCcsPolicyOverridePricing(model);
+    if (ccsOverridePricing !== undefined) {
+      return ccsOverridePricing;
+    }
+
     const providerPricing = resolveModelsDevPricing(model, options);
     if (providerPricing !== undefined) {
       return providerPricing.pricing;
