@@ -45,7 +45,7 @@ export function normalizeDashboardHost(host: string | undefined): string | undef
 export function resolveDashboardUrls(
   host: string | undefined,
   port: number,
-  networkInterfaces: NetworkInterfacesMap = os.networkInterfaces()
+  networkInterfaces?: NetworkInterfacesMap
 ): DashboardUrls {
   const bindHost = normalizeDashboardHost(host);
   if (!bindHost) {
@@ -58,7 +58,7 @@ export function resolveDashboardUrls(
     return {
       bindHost,
       browserUrl: `http://localhost:${port}`,
-      networkUrls: getExternalIpv4Urls(port, networkInterfaces),
+      networkUrls: getExternalIpv4Urls(port, networkInterfaces ?? getNetworkInterfacesSafe()),
     };
   }
 
@@ -70,8 +70,12 @@ export function resolveDashboardUrls(
 
 function getExternalIpv4Urls(
   port: number,
-  networkInterfaces: NetworkInterfacesMap
+  networkInterfaces: NetworkInterfacesMap | undefined
 ): string[] | undefined {
+  if (!networkInterfaces) {
+    return undefined;
+  }
+
   const urls: string[] = [];
   const seen = new Set<string>();
 
@@ -95,6 +99,15 @@ function getExternalIpv4Urls(
   }
 
   return urls.length > 0 ? urls : undefined;
+}
+
+function getNetworkInterfacesSafe(): NetworkInterfacesMap | undefined {
+  try {
+    // Some constrained environments (for example proot) throw here; keep the local dashboard URL.
+    return os.networkInterfaces();
+  } catch {
+    return undefined;
+  }
 }
 
 function formatHostForUrl(host: string): string {

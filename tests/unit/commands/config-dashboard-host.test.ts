@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it, spyOn } from 'bun:test';
+import * as os from 'os';
 
 import {
   isLoopbackHost,
@@ -65,5 +66,21 @@ describe('config dashboard host helpers', () => {
     expect(normalizeDashboardHost('[::1]')).toBe('::1');
     expect(urls.bindHost).toBe('::1');
     expect(urls.browserUrl).toBe('http://[::1]:3000');
+  });
+
+  it('falls back to localhost-only URLs when interface enumeration fails', () => {
+    const networkInterfacesSpy = spyOn(os, 'networkInterfaces').mockImplementation(() => {
+      throw new Error('uv_interface_addresses returned Unknown system error 13');
+    });
+
+    try {
+      const urls = resolveDashboardUrls('::', 3000);
+
+      expect(urls.bindHost).toBe('::');
+      expect(urls.browserUrl).toBe('http://localhost:3000');
+      expect(urls.networkUrls).toBeUndefined();
+    } finally {
+      networkInterfacesSpy.mockRestore();
+    }
   });
 });
