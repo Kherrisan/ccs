@@ -8,7 +8,7 @@
 import type { CliproxyUsageApiResponse, CliproxyRequestDetail } from '../../cliproxy/stats-fetcher';
 import { calculateCost } from '../model-pricing';
 import type { ModelBreakdown, DailyUsage, HourlyUsage, MonthlyUsage } from './types';
-import { getModelsUsed } from './model-identity';
+import { getModelsUsed, normalizeUsageProvider } from './model-identity';
 
 // ============================================================================
 // INTERNAL HELPERS
@@ -60,7 +60,7 @@ function createHistoryDetail(
   model: string,
   detail: CliproxyRequestDetail
 ): CliproxyUsageHistoryDetail {
-  const pricingProvider = provider.trim().toLowerCase();
+  const pricingProvider = normalizeUsageProvider(provider) ?? provider.trim().toLowerCase();
   return {
     model,
     provider: pricingProvider,

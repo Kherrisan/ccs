@@ -845,16 +845,16 @@ function hasProviderContext(model: string, options: PricingLookupOptions): boole
  * first known family tier that happens to share a prefix.
  */
 export function getModelPricing(model: string, options: PricingLookupOptions = {}): ModelPricing {
-  const exactPricing = PRICING_REGISTRY[model];
-  if (exactPricing !== undefined) {
-    return exactPricing;
-  }
-
   if (hasProviderContext(model, options)) {
     const providerPricing = resolveModelsDevPricing(model, options);
     if (providerPricing !== undefined) {
       return providerPricing.pricing;
     }
+  }
+
+  const exactPricing = PRICING_REGISTRY[model];
+  if (exactPricing !== undefined) {
+    return exactPricing;
   }
 
   const directOrAliasPricing = getDirectOrAliasPricing(model);

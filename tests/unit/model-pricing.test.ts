@@ -327,6 +327,11 @@ describe('model-pricing', () => {
               name: 'GPT-5.5',
               cost: { input: 5, output: 30, cache_read: 0.5 },
             },
+            'gpt-4o': {
+              id: 'gpt-4o',
+              name: 'GPT-4o',
+              cost: { input: 2.5, output: 10, cache_read: 1.25 },
+            },
             'openai-exclusive-model': {
               id: 'openai-exclusive-model',
               name: 'OpenAI Exclusive Model',
@@ -341,6 +346,11 @@ describe('model-pricing', () => {
             'gpt-5.5': {
               id: 'gpt-5.5',
               name: 'GPT-5.5',
+              cost: { input: 0, output: 0 },
+            },
+            'gpt-4o': {
+              id: 'gpt-4o',
+              name: 'GPT-4o',
               cost: { input: 0, output: 0 },
             },
           },
@@ -369,6 +379,13 @@ describe('model-pricing', () => {
       const pricing = getModelPricing('gpt-5.5', { provider: 'github-copilot' });
       expect(pricing.inputPerMillion).toBe(0);
       expect(pricing.outputPerMillion).toBe(0);
+    });
+
+    it('prefers provider-aware models.dev pricing over exact static table matches', () => {
+      const pricing = getModelPricing('gpt-4o', { provider: 'github-copilot' });
+      expect(pricing.inputPerMillion).toBe(0);
+      expect(pricing.outputPerMillion).toBe(0);
+      expect(getModelPricing('gpt-4o').inputPerMillion).toBe(2.5);
     });
 
     it('does not use ambiguous model-only models.dev matches', () => {

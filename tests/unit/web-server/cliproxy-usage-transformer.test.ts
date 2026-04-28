@@ -108,7 +108,7 @@ describe('cliproxy usage transformer', () => {
   it('retains failed requests when they carry usage and skips zero-usage failures', () => {
     const flat = extractCliproxyUsageHistoryDetails(sampleResponse);
     expect(flat).toHaveLength(4);
-    expect(flat[0].provider).toBe('gemini');
+    expect(flat[0].provider).toBe('google');
     expect(
       flat.some(
         (entry) =>
@@ -295,6 +295,72 @@ describe('cliproxy usage transformer', () => {
       expect(daily.totalCost).toBe(35.5);
       expect(paid?.cost).toBe(35.5);
       expect(subscription?.cost).toBe(0);
+    });
+
+    it('canonicalizes CLIProxy provider aliases before grouping history details', () => {
+      const response: CliproxyUsageApiResponse = {
+        usage: {
+          apis: {
+            ghcp: {
+              models: {
+                'gpt-5.5': {
+                  details: [
+                    {
+                      timestamp: '2026-03-03T10:00:00.000Z',
+                      source: 'copilot-alias',
+                      auth_index: 0,
+                      tokens: {
+                        input_tokens: 1_000_000,
+                        output_tokens: 0,
+                        reasoning_tokens: 0,
+                        cached_tokens: 0,
+                        total_tokens: 1_000_000,
+                      },
+                      failed: false,
+                    },
+                  ],
+                },
+              },
+            },
+            'github-copilot': {
+              models: {
+                'gpt-5.5': {
+                  details: [
+                    {
+                      timestamp: '2026-03-03T11:00:00.000Z',
+                      source: 'copilot-canonical',
+                      auth_index: 1,
+                      tokens: {
+                        input_tokens: 2_000_000,
+                        output_tokens: 0,
+                        reasoning_tokens: 0,
+                        cached_tokens: 0,
+                        total_tokens: 2_000_000,
+                      },
+                      failed: false,
+                    },
+                  ],
+                },
+              },
+            },
+          },
+        },
+      };
+
+      const details = extractCliproxyUsageHistoryDetails(response);
+      expect(details.map((detail) => detail.provider)).toEqual([
+        'github-copilot',
+        'github-copilot',
+      ]);
+
+      const [daily] = transformCliproxyToDailyUsage(response);
+      expect(daily.modelBreakdowns).toHaveLength(1);
+      expect(daily.modelBreakdowns[0]).toMatchObject({
+        modelName: 'gpt-5.5',
+        provider: 'github-copilot',
+        inputTokens: 3_000_000,
+      });
+      expect(daily.modelsUsed).toEqual(['gpt-5.5']);
     });
   });
 });
