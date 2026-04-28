@@ -128,7 +128,7 @@ describe('management-api-client', () => {
 
         expect(strategy).toBe('round-robin');
         expect(fetchMock).toHaveBeenCalledWith(
-          'http://localhost:8317/routing/strategy',
+          'http://localhost:8317/v0/management/routing/strategy',
           expect.objectContaining({
             method: 'PUT',
             body: JSON.stringify({ value: 'round-robin' }),
