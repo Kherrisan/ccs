@@ -39,12 +39,16 @@ function startCleanupInterval(): void {
         authSessionEvents.emit('session:expired', sessionId);
       }
     }
-    // Stop interval if no active sessions
-    if (activeSessions.size === 0 && cleanupInterval) {
-      clearInterval(cleanupInterval);
-      cleanupInterval = null;
-    }
+    stopCleanupIfEmpty();
   }, 60000); // Check every minute
+}
+
+/** Clear the cleanup interval when no sessions remain. */
+function stopCleanupIfEmpty(): void {
+  if (activeSessions.size === 0 && cleanupInterval) {
+    clearInterval(cleanupInterval);
+    cleanupInterval = null;
+  }
 }
 
 /**
@@ -82,6 +86,7 @@ export function attachProcessToSession(sessionId: string, process: ChildProcess)
 export function unregisterAuthSession(sessionId: string): void {
   activeSessions.delete(sessionId);
   authSessionEvents.emit('session:ended', sessionId);
+  stopCleanupIfEmpty();
 }
 
 /**
@@ -101,6 +106,7 @@ export function cancelAuthSession(sessionId: string): boolean {
 
   activeSessions.delete(sessionId);
   authSessionEvents.emit('session:cancelled', sessionId);
+  stopCleanupIfEmpty();
   return true;
 }
 
@@ -112,15 +118,16 @@ export function getActiveSession(sessionId: string): ActiveAuthSession | null {
 }
 
 /**
- * Get active session for a provider (most recent)
+ * Get active session for a provider (most recent by startedAt)
  */
 export function getActiveSessionForProvider(provider: string): ActiveAuthSession | null {
+  let latest: ActiveAuthSession | null = null;
   for (const session of activeSessions.values()) {
-    if (session.provider === provider) {
-      return session;
+    if (session.provider === provider && (!latest || session.startedAt > latest.startedAt)) {
+      latest = session;
     }
   }
-  return null;
+  return latest;
 }
 
 /**
@@ -145,5 +152,6 @@ export function cancelAllSessionsForProvider(provider: string): number {
       count++;
     }
   }
+  stopCleanupIfEmpty();
   return count;
 }

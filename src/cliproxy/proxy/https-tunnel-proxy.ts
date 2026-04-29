@@ -162,8 +162,12 @@ export class HttpsTunnelProxy {
       headers[key] = value;
     }
 
-    // Set correct host header for remote
-    headers['Host'] = this.config.remoteHost;
+    // Set correct host header for remote (include port when non-default)
+    if (this.config.remotePort === 443) {
+      headers['Host'] = this.config.remoteHost;
+    } else {
+      headers['Host'] = `${this.config.remoteHost}:${this.config.remotePort}`;
+    }
 
     // Inject Authorization header if not present but authToken is configured
     // This is a fallback - normally the client (CodexReasoningProxy) forwards the header
