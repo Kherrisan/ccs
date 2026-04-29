@@ -101,12 +101,33 @@ export function smartTruncate(name: string, maxLen: number = GEMINI_MAX_TOOL_NAM
 }
 
 /**
+ * Force a string to comply with Gemini tool name character rules.
+ * Replaces invalid characters with underscores and ensures the name
+ * starts with a letter or underscore.
+ */
+function forceValidChars(name: string): string {
+  // Replace any character not in [a-zA-Z0-9_.:/-] with underscore
+  let fixed = name.replace(/[^a-zA-Z0-9_.:/-]/g, '_');
+
+  // Collapse multiple consecutive underscores from replacement
+  fixed = fixed.replace(/_+/g, '_');
+
+  // Ensure starts with letter or underscore
+  if (fixed.length > 0 && /^[0-9]/.test(fixed)) {
+    fixed = '_' + fixed;
+  }
+
+  return fixed || '_';
+}
+
+/**
  * Sanitize a tool name to comply with Gemini API constraints.
  *
  * Process:
  * 1. Remove duplicate segments (always, as duplicates are likely unintentional)
  * 2. Truncate with hash if >64 chars
- * 3. Return result with changed flag
+ * 3. Force valid characters if still invalid
+ * 4. Truncate again if forced-valid name exceeds limit
  *
  * @param name The original tool name
  * @returns Sanitization result with sanitized name and changed flag
@@ -121,9 +142,12 @@ export function sanitizeToolName(name: string): SanitizeResult {
     sanitized = smartTruncate(sanitized);
   }
 
-  // Step 3: If still invalid after sanitization, apply truncation to original
+  // Step 3: If still invalid, fix characters and truncate if needed
   if (!isValidToolName(sanitized)) {
-    sanitized = smartTruncate(name);
+    sanitized = forceValidChars(sanitized);
+    if (sanitized.length > GEMINI_MAX_TOOL_NAME_LENGTH) {
+      sanitized = smartTruncate(sanitized);
+    }
   }
 
   return {

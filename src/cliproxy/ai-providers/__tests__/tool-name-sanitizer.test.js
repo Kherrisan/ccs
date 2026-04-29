@@ -10,7 +10,7 @@ const {
   smartTruncate,
   sanitizeToolName,
   GEMINI_MAX_TOOL_NAME_LENGTH,
-} = require('../../../../dist/cliproxy/tool-name-sanitizer');
+} = require('../../../../dist/cliproxy/ai-providers/tool-name-sanitizer');
 
 describe('Tool Name Sanitizer', () => {
   describe('GEMINI_MAX_TOOL_NAME_LENGTH', () => {
@@ -169,6 +169,39 @@ describe('Tool Name Sanitizer', () => {
       assert.ok(result.sanitized.length <= 64);
       assert.strictEqual(result.changed, true);
       assert.strictEqual(result.sanitized, 'gitmcp__plus-pro-components');
+    });
+
+    it('forces valid characters when name contains spaces', () => {
+      const result = sanitizeToolName('has space');
+
+      assert.strictEqual(result.sanitized, 'has_space');
+      assert.strictEqual(result.changed, true);
+      assert.ok(isValidToolName(result.sanitized));
+    });
+
+    it('forces valid characters when name starts with digit', () => {
+      const result = sanitizeToolName('123start');
+
+      assert.ok(result.sanitized.startsWith('_'));
+      assert.strictEqual(result.changed, true);
+      assert.ok(isValidToolName(result.sanitized));
+    });
+
+    it('forces valid characters when name contains symbols', () => {
+      const result = sanitizeToolName('tool@name#here');
+
+      assert.ok(!result.sanitized.includes('@'));
+      assert.ok(!result.sanitized.includes('#'));
+      assert.strictEqual(result.changed, true);
+      assert.ok(isValidToolName(result.sanitized));
+    });
+
+    it('produces valid name for digit-starting long name', () => {
+      const name = '1' + 'a'.repeat(100);
+      const result = sanitizeToolName(name);
+
+      assert.ok(isValidToolName(result.sanitized), `Expected valid name, got: ${result.sanitized}`);
+      assert.ok(result.sanitized.length <= 64);
     });
   });
 });

@@ -41,8 +41,12 @@ export interface SanitizationChange {
 
 /** Record of a hash collision */
 export interface HashCollision {
-  sanitized: string;
+  /** The base sanitized name before disambiguation */
+  base: string;
+  /** All original names that collided */
   originals: string[];
+  /** The sanitized name used (after disambiguation) */
+  sanitized: string;
 }
 
 /**
@@ -63,7 +67,8 @@ export class ToolNameMapper {
 
   /**
    * Register tools and sanitize their names.
-   * Stores mapping for later restoration.
+   * Stores mapping for later restoration. On collision (two originals
+   * sanitizing to the same name), disambiguates with a numeric suffix.
    *
    * @param tools Array of tool definitions
    * @returns Array of tools with sanitized names
@@ -71,36 +76,49 @@ export class ToolNameMapper {
   registerTools(tools: Tool[]): Tool[] {
     return tools.map((tool) => {
       const result: SanitizeResult = sanitizeToolName(tool.name);
+      let finalName = result.sanitized;
 
-      if (result.changed) {
-        // Check for collision: sanitized name already maps to different original
-        const existingOriginal = this.mapping.get(result.sanitized);
-        if (existingOriginal && existingOriginal !== tool.name) {
-          // Record collision
-          const existing = this.collisions.find((c) => c.sanitized === result.sanitized);
-          if (existing) {
-            if (!existing.originals.includes(tool.name)) {
-              existing.originals.push(tool.name);
-            }
-          } else {
-            this.collisions.push({
-              sanitized: result.sanitized,
-              originals: [existingOriginal, tool.name],
-            });
+      // Check for collision regardless of whether the name changed.
+      // An unchanged name can still collide with a previously sanitized name.
+      const existingOriginal = this.mapping.get(finalName);
+      if (existingOriginal && existingOriginal !== tool.name) {
+        // Record collision for logging
+        const existing = this.collisions.find((c) => c.base === finalName);
+        if (existing) {
+          if (!existing.originals.includes(tool.name)) {
+            existing.originals.push(tool.name);
           }
+        } else {
+          this.collisions.push({
+            base: finalName,
+            originals: [existingOriginal, tool.name],
+            sanitized: finalName,
+          });
         }
 
-        // Store mapping: sanitized → original
-        this.mapping.set(result.sanitized, tool.name);
+        // Disambiguate: append _N suffix to make unique
+        let suffix = 2;
+        let disambiguated: string;
+        do {
+          disambiguated = `${finalName}_${suffix}`;
+          suffix++;
+        } while (this.mapping.has(disambiguated) && this.mapping.get(disambiguated) !== tool.name);
+
+        finalName = disambiguated;
+      }
+
+      // Store mapping if name changed or was disambiguated
+      if (finalName !== tool.name) {
+        this.mapping.set(finalName, tool.name);
         this.changes.push({
           original: tool.name,
-          sanitized: result.sanitized,
+          sanitized: finalName,
         });
       }
 
       return {
         ...tool,
-        name: result.sanitized,
+        name: finalName,
       };
     });
   }

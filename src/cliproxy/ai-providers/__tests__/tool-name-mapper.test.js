@@ -4,7 +4,7 @@
 
 const assert = require('assert');
 
-const { ToolNameMapper } = require('../../../../dist/cliproxy/tool-name-mapper');
+const { ToolNameMapper } = require('../../../../dist/cliproxy/ai-providers/tool-name-mapper');
 
 describe('Tool Name Mapper', () => {
   describe('registerTools', () => {
@@ -241,6 +241,64 @@ describe('Tool Name Mapper', () => {
       assert.strictEqual(mapper.hasChanges(), false);
       assert.deepStrictEqual(mapper.getChanges(), []);
       assert.strictEqual(mapper.restoreName('foo__bar'), 'foo__bar');
+    });
+  });
+
+  describe('collision handling', () => {
+    it('disambiguates when sanitized name collides with unchanged name', () => {
+      const mapper = new ToolNameMapper();
+      // 'abc__def__def' sanitizes to 'abc__def' (changed)
+      // 'abc__def' is unchanged but collides with the sanitized name
+      const tools = [{ name: 'abc__def__def' }, { name: 'abc__def' }];
+
+      const result = mapper.registerTools(tools);
+
+      assert.strictEqual(result[0].name, 'abc__def');
+      assert.strictEqual(result[1].name, 'abc__def_2');
+      assert.strictEqual(mapper.hasCollisions(), true);
+    });
+
+    it('disambiguates different originals that sanitize to the same name', () => {
+      const mapper = new ToolNameMapper();
+      const tools = [{ name: 'abc__def__def' }, { name: 'abc__def' }];
+
+      const result = mapper.registerTools(tools);
+
+      // 'abc__def__def' → 'abc__def' (deduped)
+      // 'abc__def' → 'abc__def_2' (disambiguated, unchanged but collides)
+      assert.strictEqual(result[0].name, 'abc__def');
+      assert.strictEqual(result[1].name, 'abc__def_2');
+    });
+
+    it('restores both colliding tools to correct originals', () => {
+      const mapper = new ToolNameMapper();
+      const tools = [{ name: 'a__b__b' }, { name: 'a__b' }];
+
+      mapper.registerTools(tools);
+
+      const content = [
+        { type: 'tool_use', id: '1', name: 'a__b', input: {} },
+        { type: 'tool_use', id: '2', name: 'a__b_2', input: {} },
+      ];
+
+      const restored = mapper.restoreToolUse(content);
+
+      assert.strictEqual(restored[0].name, 'a__b__b');
+      assert.strictEqual(restored[1].name, 'a__b');
+    });
+
+    it('records collision metadata for logging', () => {
+      const mapper = new ToolNameMapper();
+      const tools = [{ name: 'x__y__y' }, { name: 'x__y' }];
+
+      mapper.registerTools(tools);
+
+      assert.strictEqual(mapper.hasCollisions(), true);
+      const collisions = mapper.getCollisions();
+      assert.strictEqual(collisions.length, 1);
+      assert.strictEqual(collisions[0].base, 'x__y');
+      assert.ok(collisions[0].originals.includes('x__y__y'));
+      assert.ok(collisions[0].originals.includes('x__y'));
     });
   });
 });
