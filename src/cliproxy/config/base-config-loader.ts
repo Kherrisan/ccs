@@ -33,7 +33,7 @@ const configCache: Map<CLIProxyProvider, BaseSettings> = new Map();
 function getBaseConfigPath(provider: CLIProxyProvider): string {
   // __dirname points to dist/cliproxy at runtime
   // Config files are at package root: ../config/
-  const configDir = path.join(__dirname, '..', '..', 'config');
+  const configDir = path.join(__dirname, '..', '..', '..', 'config');
   return path.join(configDir, `base-${provider}.settings.json`);
 }
 

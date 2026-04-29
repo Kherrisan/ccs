@@ -42,7 +42,7 @@ describe('cliproxy routing routes', () => {
       applied: 'config-only',
     }));
 
-    mock.module('../../../src/cliproxy/routing-strategy', () => ({
+    mock.module('../../../src/cliproxy/routing/routing-strategy', () => ({
       readCliproxyRoutingState: readStateMock,
       applyCliproxyRoutingStrategy: applyStrategyMock,
       readCliproxySessionAffinityState: readAffinityStateMock,
