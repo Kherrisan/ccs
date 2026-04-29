@@ -14,6 +14,14 @@ import { ok, info, warn } from '../utils/ui';
 import { DEFAULT_ACCOUNT_CONTEXT_GROUP } from '../auth/account-context';
 import type { AccountContextPolicy } from '../auth/account-context';
 import { getCcsDir } from '../utils/config-manager';
+import {
+  normalizePluginMetadataContent,
+  normalizePluginMetadataValue,
+} from './plugin-path-normalizer';
+export {
+  normalizePluginMetadataContent,
+  normalizePluginMetadataPathString,
+} from './plugin-path-normalizer';
 
 interface SharedItem {
   name: string;
@@ -28,85 +36,6 @@ const DEFAULT_INSTALLED_PLUGIN_REGISTRY = JSON.stringify(
   null,
   2
 );
-
-function getPluginPathModule(
-  targetConfigDir: string,
-  input: string
-): typeof path.posix | typeof path.win32 {
-  return targetConfigDir.includes('\\') || input.includes('\\') ? path.win32 : path.posix;
-}
-
-function normalizeTargetConfigDir(targetConfigDir: string, input: string): string {
-  const pathModule = getPluginPathModule(targetConfigDir, input);
-  return pathModule.normalize(
-    pathModule === path.win32
-      ? targetConfigDir.replace(/\//g, '\\')
-      : targetConfigDir.replace(/\\/g, '/')
-  );
-}
-
-export function normalizePluginMetadataPathString(
-  input: string,
-  targetConfigDir = path.join(os.homedir(), '.claude')
-): string {
-  const match = input.match(
-    /^(.*?)([\\/])(?:\.claude|\.ccs\2shared|\.ccs\2instances\2[^\\/]+)\2plugins(?:(\2.*))?$/
-  );
-
-  if (!match) {
-    return input;
-  }
-
-  const pathModule = getPluginPathModule(targetConfigDir, input);
-  const normalizedTargetConfigDir = normalizeTargetConfigDir(targetConfigDir, input);
-  const suffix = match[3] ?? '';
-  const suffixSegments = suffix.split(/[\\/]+/).filter(Boolean);
-
-  return pathModule.join(normalizedTargetConfigDir, 'plugins', ...suffixSegments);
-}
-
-function normalizePluginMetadataValue(
-  value: unknown,
-  targetConfigDir: string
-): { normalized: unknown; changed: boolean } {
-  if (typeof value === 'string') {
-    const normalized = normalizePluginMetadataPathString(value, targetConfigDir);
-    return { normalized, changed: normalized !== value };
-  }
-
-  if (Array.isArray(value)) {
-    let changed = false;
-    const normalized = value.map((item) => {
-      const result = normalizePluginMetadataValue(item, targetConfigDir);
-      changed = changed || result.changed;
-      return result.normalized;
-    });
-    return { normalized, changed };
-  }
-
-  if (value && typeof value === 'object') {
-    let changed = false;
-    const normalized = Object.fromEntries(
-      Object.entries(value as Record<string, unknown>).map(([key, item]) => {
-        const result = normalizePluginMetadataValue(item, targetConfigDir);
-        changed = changed || result.changed;
-        return [key, result.normalized];
-      })
-    );
-    return { normalized, changed };
-  }
-
-  return { normalized: value, changed: false };
-}
-
-export function normalizePluginMetadataContent(
-  original: string,
-  targetConfigDir = path.join(os.homedir(), '.claude')
-): string {
-  const parsed = JSON.parse(original) as unknown;
-  const result = normalizePluginMetadataValue(parsed, targetConfigDir);
-  return result.changed ? JSON.stringify(result.normalized, null, 2) : original;
-}
 
 /**
  * SharedManager Class
