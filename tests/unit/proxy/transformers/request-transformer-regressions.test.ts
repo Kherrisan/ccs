@@ -220,7 +220,7 @@ describe('ProxyRequestTransformer regressions', () => {
       role: 'tool',
       tool_call_id: 'toolu_1',
       content:
-        'screenshot captured\n[tool_result image omitted: https://example.com/error.png]\n[tool_result image omitted: image/png base64 payload]',
+        'screenshot captured\n[tool_result image omitted: url image payload]\n[tool_result image omitted: image/png base64 payload]',
     });
   });
 

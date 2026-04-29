@@ -224,8 +224,8 @@ function convertToolResultContent(content: unknown, isError: boolean, label: str
           ? (parsed.source as Record<string, unknown>)
           : undefined;
       const description =
-        source?.type === 'url' && typeof source.url === 'string'
-          ? source.url
+        source?.type === 'url'
+          ? 'url image payload'
           : source?.type === 'base64' && typeof source.media_type === 'string'
             ? `${source.media_type} base64 payload`
             : 'unsupported image payload';
