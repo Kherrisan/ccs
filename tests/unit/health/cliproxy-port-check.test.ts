@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, mock } from 'bun:test';
-import type { ProxyStatus } from '../../../src/cliproxy/proxy-detector';
+import type { ProxyStatus } from '../../../src/cliproxy/proxy/proxy-detector';
 
 // Mutable holder so each test can override the resolved value
 let mockStatus: ProxyStatus = { running: false, verified: false };
