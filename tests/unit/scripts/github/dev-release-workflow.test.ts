@@ -24,6 +24,8 @@ describe('dev release workflow', () => {
 
     expect(workflow).toContain('name: Dev Release');
     expect(workflow).toContain('branches: [dev]');
+    expect(workflow.match(/runs-on: \[self-hosted, linux, x64\]/g)).toHaveLength(2);
+    expect(workflow).not.toContain('runs-on: ubuntu-latest');
     expect(checkoutSection).toContain("token: ${{ secrets.PAT_TOKEN }}");
     expect(checkoutSection).not.toContain('token: ${{ github.token }}');
     expect(releaseSection).toContain('GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}');
@@ -39,7 +41,11 @@ describe('dev release workflow', () => {
     const workflow = fs.readFileSync(workflowPath, 'utf8');
     const script = fs.readFileSync(scriptPath, 'utf8');
 
-    expect(workflow).toContain("!startsWith(github.event.head_commit.message, 'chore(release): ')");
+    expect(workflow).toContain('should_release: ${{ steps.release-guard.outputs.should_release }}');
+    expect(workflow).toContain('"chore(release): "*)');
+    expect(workflow).toContain("needs.guard.outputs.should_release == 'true'");
+    expect(workflow).not.toContain('github.event.head_commit.message');
+    expect(workflow).not.toContain('!startsWith(');
     expect(workflow).not.toContain("contains(github.event.head_commit.message, '[skip ci]')");
     expect(script).toContain('LEGACY_CURRENT_RELEASE_SUBJECT="${CURRENT_RELEASE_SUBJECT} [skip ci]"');
     expect(script).toContain('[[ "$HEAD_SUBJECT" == "$CURRENT_RELEASE_SUBJECT" ]]');
