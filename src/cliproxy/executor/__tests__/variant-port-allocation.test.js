@@ -164,10 +164,7 @@ describe('Variant Port Allocation', function () {
         assert.fail('Should have thrown error');
       } catch (err) {
         assert.ok(err.message.includes('100/100'), 'Should include variant count');
-        assert.ok(
-          err.message.includes('ccs cliproxy remove'),
-          'Should include recovery hint'
-        );
+        assert.ok(err.message.includes('ccs cliproxy remove'), 'Should include recovery hint');
       }
     });
   });

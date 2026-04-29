@@ -44,7 +44,9 @@ describe('Default Port Sync', () => {
   });
 
   test('Device code providers are synced between backend and UI', () => {
-    expect(sorted(UI_DEVICE_CODE_PROVIDERS)).toEqual(sorted(getProvidersByOAuthFlow('device_code')));
+    expect(sorted(UI_DEVICE_CODE_PROVIDERS)).toEqual(
+      sorted(getProvidersByOAuthFlow('device_code'))
+    );
   });
 
   test('plus-extra providers are synced between backend and UI', () => {
@@ -60,13 +62,17 @@ describe('Default Port Sync', () => {
 
   test('Provider display names are synced between backend and UI', () => {
     for (const provider of BACKEND_CLIPROXY_PROVIDER_IDS) {
-      expect(UI_PROVIDER_METADATA[provider].displayName).toBe(getBackendProviderDisplayName(provider));
+      expect(UI_PROVIDER_METADATA[provider].displayName).toBe(
+        getBackendProviderDisplayName(provider)
+      );
     }
   });
 
   test('Provider descriptions are synced between backend and UI', () => {
     for (const provider of BACKEND_CLIPROXY_PROVIDER_IDS) {
-      expect(UI_PROVIDER_METADATA[provider].description).toBe(getBackendProviderDescription(provider));
+      expect(UI_PROVIDER_METADATA[provider].description).toBe(
+        getBackendProviderDescription(provider)
+      );
     }
   });
 });

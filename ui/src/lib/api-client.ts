@@ -9,7 +9,7 @@ import type {
   ListAiProvidersResult,
   UpsertAiProviderEntryInput,
 } from '../../../src/cliproxy/ai-providers';
-import type { ProviderEntitlementEvidence } from '../../../src/cliproxy/provider-entitlement-types';
+import type { ProviderEntitlementEvidence } from '../../../src/cliproxy/auth/provider-entitlement-types';
 import type { BrowserRuntimeEnv } from '../../../src/utils/browser/chrome-reuse';
 
 export const API_BASE_URL = '/api';

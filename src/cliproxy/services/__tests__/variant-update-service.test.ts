@@ -6,10 +6,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
-import {
-  updateVariant,
-  validateProviderBackend,
-} from '../variant-service';
+import { updateVariant, validateProviderBackend } from '../variant-service';
 import { loadOrCreateUnifiedConfig } from '../../../config/unified-config-loader';
 
 describe('updateVariant - provider/model consistency', () => {
@@ -84,7 +81,10 @@ cliproxy:
   function setConfiguredBackend(backend: 'original' | 'plus'): void {
     const configPath = path.join(tmpDir, 'config.yaml');
     const current = fs.readFileSync(configPath, 'utf-8');
-    fs.writeFileSync(configPath, current.replace(/backend: (original|plus)/, `backend: ${backend}`));
+    fs.writeFileSync(
+      configPath,
+      current.replace(/backend: (original|plus)/, `backend: ${backend}`)
+    );
   }
 
   it('rejects provider change without model update', () => {

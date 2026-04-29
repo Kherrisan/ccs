@@ -2,15 +2,16 @@ import { afterEach, beforeEach, describe, expect, it, jest } from 'bun:test';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import {
-  execClaudeWithCLIProxy,
-  hasGitLabTokenLoginFlag,
-  readOptionValue,
-} from '../index';
+import { execClaudeWithCLIProxy, hasGitLabTokenLoginFlag, readOptionValue } from '../index';
 
 describe('readOptionValue', () => {
   it('parses split-token option values', () => {
-    expect(readOptionValue(['--kiro-idc-start-url', 'https://d-123.awsapps.com/start'], '--kiro-idc-start-url')).toEqual({
+    expect(
+      readOptionValue(
+        ['--kiro-idc-start-url', 'https://d-123.awsapps.com/start'],
+        '--kiro-idc-start-url'
+      )
+    ).toEqual({
       present: true,
       value: 'https://d-123.awsapps.com/start',
       missingValue: false,
@@ -78,7 +79,9 @@ describe('execClaudeWithCLIProxy browser flag validation', () => {
       await execClaudeWithCLIProxy(fakeClaudePath, 'gemini', ['--browser', '--no-browser'], {});
 
       expect(exitSpy).toHaveBeenCalledWith(1);
-      expect(errorSpy).toHaveBeenCalledWith('[X] Use either `--browser` or `--no-browser`, not both.');
+      expect(errorSpy).toHaveBeenCalledWith(
+        '[X] Use either `--browser` or `--no-browser`, not both.'
+      );
     } finally {
       exitSpy.mockRestore();
       errorSpy.mockRestore();

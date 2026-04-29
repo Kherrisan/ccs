@@ -15,7 +15,11 @@ import {
   type GeminiCliParsedBucket,
 } from './gemini-cli-quota-normalizer';
 import { mapExternalProviderName } from '../provider-capabilities';
-import { buildManagementHeaders, buildProxyUrl, getProxyTarget } from '../proxy/proxy-target-resolver';
+import {
+  buildManagementHeaders,
+  buildProxyUrl,
+  getProxyTarget,
+} from '../proxy/proxy-target-resolver';
 import type { GeminiCliQuotaResult, GeminiCliBucket } from './quota-types';
 import {
   buildProviderEntitlementEvidence,

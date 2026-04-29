@@ -32,7 +32,10 @@ import { stripBrowserEnv, stripClaudeCodeEnv } from '../../utils/shell-executor'
 import { CodexReasoningProxy } from '../ai-providers/codex-reasoning-proxy';
 import { ToolSanitizationProxy } from '../proxy/tool-sanitization-proxy';
 import { HttpsTunnelProxy } from '../proxy/https-tunnel-proxy';
-import { MODEL_ENV_VAR_KEYS, normalizeModelIdForProvider } from '../ai-providers/model-id-normalizer';
+import {
+  MODEL_ENV_VAR_KEYS,
+  normalizeModelIdForProvider,
+} from '../ai-providers/model-id-normalizer';
 import type { ProxyTarget } from '../proxy/proxy-target-resolver';
 import { getEffectiveApiKey } from '../auth/auth-token-manager';
 import { isSettings, type Settings } from '../../types/config';

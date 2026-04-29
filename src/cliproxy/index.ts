@@ -108,7 +108,11 @@ export {
 } from './ai-providers/codex-plan-compatibility';
 
 // Executor
-export { execClaudeWithCLIProxy, isPortAvailable, findAvailablePort } from './executor/cliproxy-executor';
+export {
+  execClaudeWithCLIProxy,
+  isPortAvailable,
+  findAvailablePort,
+} from './executor/cliproxy-executor';
 
 // Authentication
 export type { AuthStatus } from './auth/auth-handler';
@@ -167,7 +171,11 @@ export { ensureCliproxyService, stopCliproxyService, getServiceStatus } from './
 
 // Proxy detector (unified detection with multiple fallbacks)
 export type { ProxyStatus, DetectionMethod } from './proxy/proxy-detector';
-export { detectRunningProxy, waitForProxyHealthy, reclaimOrphanedProxy } from './proxy/proxy-detector';
+export {
+  detectRunningProxy,
+  waitForProxyHealthy,
+  reclaimOrphanedProxy,
+} from './proxy/proxy-detector';
 
 // Startup lock (prevents race conditions between CCS processes)
 export type { LockResult } from './services/startup-lock';
@@ -246,7 +254,12 @@ export {
   GEMINI_MAX_TOOL_NAME_LENGTH,
 } from './ai-providers/tool-name-sanitizer';
 
-export type { Tool, ToolUseBlock, ContentBlock, SanitizationChange } from './ai-providers/tool-name-mapper';
+export type {
+  Tool,
+  ToolUseBlock,
+  ContentBlock,
+  SanitizationChange,
+} from './ai-providers/tool-name-mapper';
 export { ToolNameMapper } from './ai-providers/tool-name-mapper';
 
 export type { ToolSanitizationProxyConfig } from './proxy/tool-sanitization-proxy';

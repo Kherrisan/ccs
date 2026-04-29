@@ -52,9 +52,7 @@ describe('installCliproxyVersion', () => {
   });
 
   it('returns plus and emits an informational notice when plus backend is resolved locally', async () => {
-    const binaryManager = await import(
-      `../../binary-manager?binary-manager-warning=${Date.now()}`
-    );
+    const binaryManager = await import(`../../binary-manager?binary-manager-warning=${Date.now()}`);
 
     const writes: string[] = [];
     const originalWrite = process.stderr.write.bind(process.stderr);
@@ -146,9 +144,7 @@ describe('installCliproxyVersion', () => {
       ensureBinary: 0,
     };
 
-    const binaryManager = await import(
-      `../../binary-manager?binary-manager-install=${Date.now()}`
-    );
+    const binaryManager = await import(`../../binary-manager?binary-manager-install=${Date.now()}`);
 
     await binaryManager.installCliproxyVersion('6.7.1', false, 'plus', {
       createManager: () => ({
@@ -181,9 +177,7 @@ describe('installCliproxyVersion', () => {
   });
 
   it('fails fast when runtime startup forbids installing a missing binary', async () => {
-    const binaryManager = await import(
-      `../../binary-manager?binary-manager-runtime=${Date.now()}`
-    );
+    const binaryManager = await import(`../../binary-manager?binary-manager-runtime=${Date.now()}`);
 
     await expect(
       binaryManager.ensureCLIProxyBinary(false, {

@@ -148,11 +148,9 @@ describe('findNewTokenSnapshotForManualAuth', () => {
     const newFile = path.join(tokenDir, 'kiro-new.json');
     fs.writeFileSync(newFile, JSON.stringify({ type: 'kiro', email: 'new@example.com' }));
 
-    const snapshot = findNewTokenSnapshotForManualAuth(
-      'kiro',
-      tokenDir,
-      [{ file: 'kiro-existing.json', mtimeMs: existingMtimeMs }]
-    );
+    const snapshot = findNewTokenSnapshotForManualAuth('kiro', tokenDir, [
+      { file: 'kiro-existing.json', mtimeMs: existingMtimeMs },
+    ]);
 
     expect(snapshot?.file).toBe('kiro-new.json');
     fs.rmSync(tokenDir, { recursive: true, force: true });
@@ -168,7 +166,10 @@ describe('findNewTokenSnapshotForManualAuth', () => {
       `../oauth-handler?manual-auth-updated-token=${Date.now()}`
     );
 
-    fs.writeFileSync(tokenFile, JSON.stringify({ type: 'kiro', email: 'existing@example.com', refreshed: true }));
+    fs.writeFileSync(
+      tokenFile,
+      JSON.stringify({ type: 'kiro', email: 'existing@example.com', refreshed: true })
+    );
     const bumpedTime = new Date(existingMtimeMs + 10_000);
     fs.utimesSync(tokenFile, bumpedTime, bumpedTime);
 
@@ -231,7 +232,9 @@ describe('getCliAuthNicknameError', () => {
     ];
 
     expect(getCliAuthNicknameError('kiro', 'work', existingAccounts, 'github-ABC123')).toBeNull();
-    expect(getCliAuthNicknameError('kiro', 'github-ABC123', existingAccounts, 'github-ABC123')).toBeNull();
+    expect(
+      getCliAuthNicknameError('kiro', 'github-ABC123', existingAccounts, 'github-ABC123')
+    ).toBeNull();
   });
 });
 

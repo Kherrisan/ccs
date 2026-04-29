@@ -121,7 +121,8 @@ describe('registerAccount optional nickname flow', () => {
     const result = await withIsolatedHome(async (homeDir) => {
       writeTokenFile(homeDir, 'codex-04a0f049-kaidu.kd@gmail.com-team.json');
       writeTokenFile(homeDir, 'codex-kaidu.kd@gmail.com-free.json');
-      const { registerAccount, getProviderAccounts, findAccountByQuery } = await loadAccountManager();
+      const { registerAccount, getProviderAccounts, findAccountByQuery } =
+        await loadAccountManager();
       const team = registerAccount(
         'codex',
         'codex-04a0f049-kaidu.kd@gmail.com-team.json',

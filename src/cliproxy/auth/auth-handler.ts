@@ -43,12 +43,7 @@ export {
 } from '.';
 
 // Re-export environment detection functions
-export {
-  isHeadlessEnvironment,
-  killProcessOnPort,
-  getTimeoutTroubleshooting,
-  showStep,
-} from '.';
+export { isHeadlessEnvironment, killProcessOnPort, getTimeoutTroubleshooting, showStep } from '.';
 
 // Re-export OAuth handling functions
 export { triggerOAuth, ensureAuth } from '.';

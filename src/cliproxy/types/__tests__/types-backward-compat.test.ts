@@ -48,9 +48,14 @@ describe('types.ts backward compatibility', () => {
 
   it('exports all binary types', () => {
     const cfg: BinaryManagerConfig = {
-      version: '1.0.0', releaseUrl: '', binPath: '/tmp',
-      maxRetries: 3, verbose: false, forceVersion: false,
-      skipAutoUpdate: false, allowInstall: true,
+      version: '1.0.0',
+      releaseUrl: '',
+      binPath: '/tmp',
+      maxRetries: 3,
+      verbose: false,
+      forceVersion: false,
+      skipAutoUpdate: false,
+      allowInstall: true,
     };
     expect(cfg.version).toBe('1.0.0');
     const progress: DownloadProgress = { total: 100, downloaded: 50, percentage: 50 };

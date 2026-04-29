@@ -56,8 +56,15 @@ describe('openai-compat manager', () => {
     });
 
     const afterWrite = fs.readFileSync(configPath, 'utf8');
-    assert.strictEqual(afterWrite.split('\n')[0], initialHeader, 'Should preserve the generated header');
-    assert(afterWrite.includes('openai-compatibility:'), 'Should write the openai-compatibility section');
+    assert.strictEqual(
+      afterWrite.split('\n')[0],
+      initialHeader,
+      'Should preserve the generated header'
+    );
+    assert(
+      afterWrite.includes('openai-compatibility:'),
+      'Should write the openai-compatibility section'
+    );
     assert.strictEqual(
       configGenerator.configNeedsRegeneration(),
       false,
@@ -67,7 +74,10 @@ describe('openai-compat manager', () => {
     configGenerator.regenerateConfig();
 
     const afterRegen = fs.readFileSync(configPath, 'utf8');
-    assert(afterRegen.includes('openai-compatibility:'), 'Connector section should survive regeneration');
+    assert(
+      afterRegen.includes('openai-compatibility:'),
+      'Connector section should survive regeneration'
+    );
     assert(afterRegen.includes('name: mimo'), 'Connector name should survive regeneration');
     assert(
       afterRegen.includes('base-url: https://api.xiaomimimo.com/v1'),

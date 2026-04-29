@@ -66,9 +66,7 @@ describe('Gemini CLI Quota Fetcher', () => {
       fetchGeminiCliQuota,
       resolveGeminiCliProjectId,
       __testExports: geminiTestExports,
-    } = await import(
-      `../quota-fetcher-gemini-cli?gemini-quota-fetcher=${moduleVersion}`
-    ));
+    } = await import(`../quota-fetcher-gemini-cli?gemini-quota-fetcher=${moduleVersion}`));
     ({ getProviderAuthDir } = configGenerator);
   });
 
@@ -1000,5 +998,4 @@ describe('Gemini CLI Quota Fetcher', () => {
       ).toContain('project');
     });
   });
-
 });

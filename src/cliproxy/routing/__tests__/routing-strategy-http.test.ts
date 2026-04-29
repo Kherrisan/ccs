@@ -2,9 +2,9 @@ import { describe, expect, it } from 'bun:test';
 import type { ProxyTarget } from '../../proxy/proxy-target-resolver';
 
 async function loadRoutingHttpModule() {
-  return import(
-    `../routing-strategy-http?test=${Date.now()}-${Math.random()}`
-  ) as Promise<typeof import('../routing-strategy-http')>;
+  return import(`../routing-strategy-http?test=${Date.now()}-${Math.random()}`) as Promise<
+    typeof import('../routing-strategy-http')
+  >;
 }
 
 describe('routing-strategy-http', () => {

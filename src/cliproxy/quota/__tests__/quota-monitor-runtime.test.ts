@@ -11,11 +11,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import {
-  startQuotaMonitor,
-  stopQuotaMonitor,
-  clearQuotaCache,
-} from '../quota-manager';
+import { startQuotaMonitor, stopQuotaMonitor, clearQuotaCache } from '../quota-manager';
 import { __testExports as executorTestExports } from '../../executor';
 
 // Setup test isolation

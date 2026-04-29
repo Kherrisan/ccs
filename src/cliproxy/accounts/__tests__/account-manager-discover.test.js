@@ -183,7 +183,11 @@ describe('Account Manager - discoverExistingAccounts', () => {
 
       const accountIds = Object.keys(accounts.providers.kiro.accounts);
       // For kiro/ghcp without email, generates unique ID like "kiro-1"
-      assert.strictEqual(accountIds[0], 'kiro-1', 'Should generate unique ID for kiro without email');
+      assert.strictEqual(
+        accountIds[0],
+        'kiro-1',
+        'Should generate unique ID for kiro without email'
+      );
     });
 
     it('handles dots in email local part', () => {

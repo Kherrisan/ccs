@@ -1,5 +1,9 @@
 import { getManagedModelPrefix } from '../../shared/cliproxy-model-routing';
-import { buildManagementHeaders, buildProxyUrl, getProxyTarget } from '../proxy/proxy-target-resolver';
+import {
+  buildManagementHeaders,
+  buildProxyUrl,
+  getProxyTarget,
+} from '../proxy/proxy-target-resolver';
 import { mapExternalProviderName } from '../provider-capabilities';
 import type { CLIProxyProvider } from '../types';
 

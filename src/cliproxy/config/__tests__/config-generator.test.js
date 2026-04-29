@@ -473,7 +473,10 @@ openai-compatibility:
       const newConfig = fs.readFileSync(path.join(cliproxyDir, 'config.yaml'), 'utf-8');
       assert(newConfig.includes('openai-compatibility:'), 'Should preserve openai-compatibility');
       assert(newConfig.includes('name: mimo'), 'Should preserve connector name');
-      assert(newConfig.includes('base-url: https://api.xiaomimimo.com/v1'), 'Should preserve base URL');
+      assert(
+        newConfig.includes('base-url: https://api.xiaomimimo.com/v1'),
+        'Should preserve base URL'
+      );
       assert(newConfig.includes('alias: mimo-v2-flash'), 'Should preserve model aliases');
     });
 

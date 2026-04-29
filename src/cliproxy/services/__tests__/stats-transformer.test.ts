@@ -23,9 +23,7 @@ function createDetail(overrides: Partial<CliproxyRequestDetail> = {}): CliproxyR
   };
 }
 
-function createInternallyBucketedUsage(
-  details: CliproxyRequestDetail[]
-): CliproxyUsageApiResponse {
+function createInternallyBucketedUsage(details: CliproxyRequestDetail[]): CliproxyUsageApiResponse {
   return {
     usage: {
       total_requests: details.length,
@@ -225,7 +223,9 @@ describe('buildCliproxyStatsFromUsageResponse', () => {
       { label: 'empty authFiles', authFiles: [] },
       {
         label: 'missing auth_index match',
-        authFiles: [{ auth_index: 'other-auth-index', provider: 'codex', email: 'shared@example.com' }],
+        authFiles: [
+          { auth_index: 'other-auth-index', provider: 'codex', email: 'shared@example.com' },
+        ],
       },
       {
         label: 'matching auth_index without provider metadata',
@@ -236,7 +236,10 @@ describe('buildCliproxyStatsFromUsageResponse', () => {
     for (const scenario of scenarios) {
       const stats = buildCliproxyStatsFromUsageResponse(usage, { authFiles: scenario.authFiles });
 
-      expect(stats.accountStats['ccs-internal-managed:shared@example.com'], scenario.label).toMatchObject({
+      expect(
+        stats.accountStats['ccs-internal-managed:shared@example.com'],
+        scenario.label
+      ).toMatchObject({
         provider: 'ccs-internal-managed',
         source: 'shared@example.com',
         successCount: 1,
@@ -280,7 +283,9 @@ describe('buildCliproxyStatsFromUsageResponse', () => {
       successCount: 1,
       failureCount: 0,
     });
-    expect(stats.accountStats['ccs-internal-managed:providerless-fallback@example.com']).toMatchObject({
+    expect(
+      stats.accountStats['ccs-internal-managed:providerless-fallback@example.com']
+    ).toMatchObject({
       provider: 'ccs-internal-managed',
       source: 'providerless-fallback@example.com',
       successCount: 0,

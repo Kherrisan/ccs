@@ -2,10 +2,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
-import {
-  ensureProviderSettings,
-  getEffectiveEnvVars,
-} from '../env-builder';
+import { ensureProviderSettings, getEffectiveEnvVars } from '../env-builder';
 
 interface EnvSettings {
   ANTHROPIC_BASE_URL: string;

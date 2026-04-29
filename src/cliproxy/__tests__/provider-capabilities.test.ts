@@ -167,9 +167,13 @@ describe('provider-capabilities', () => {
     expect(getKiroCLIAuthFlag('aws-authcode')).toBe('--kiro-aws-authcode');
     expect(getKiroCLIAuthFlag('google')).toBe('--kiro-google-login');
     expect(getKiroCLIAuthFlag('idc')).toBe('--kiro-idc-login');
-    expect(getKiroCLIAuthArgs('idc', { idcStartUrl: 'https://d-123.awsapps.com/start' })).toEqual(
-      ['--kiro-idc-login', '--kiro-idc-start-url', 'https://d-123.awsapps.com/start', '--kiro-idc-flow', 'authcode']
-    );
+    expect(getKiroCLIAuthArgs('idc', { idcStartUrl: 'https://d-123.awsapps.com/start' })).toEqual([
+      '--kiro-idc-login',
+      '--kiro-idc-start-url',
+      'https://d-123.awsapps.com/start',
+      '--kiro-idc-flow',
+      'authcode',
+    ]);
 
     expect(getKiroCallbackPort('aws')).toBeNull();
     expect(getKiroCallbackPort('google')).toBe(9876);

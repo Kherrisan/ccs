@@ -5,11 +5,7 @@
  */
 
 import { describe, it, expect } from 'bun:test';
-import {
-  isProviderError,
-  detectFailedTier,
-  PROVIDER_ERROR_PATTERNS,
-} from '../retry-handler';
+import { isProviderError, detectFailedTier, PROVIDER_ERROR_PATTERNS } from '../retry-handler';
 import { applyFallback } from '../env-resolver';
 import { CompositeTierConfig } from '../../../config/unified-config-types';
 

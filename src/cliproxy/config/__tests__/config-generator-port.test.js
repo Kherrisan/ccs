@@ -77,8 +77,15 @@ describe('Config Generator Port', function () {
     it('returns config.yaml for default port (8317)', function () {
       const configPath = getConfigPathForPort(CLIPROXY_DEFAULT_PORT);
       const filename = path.basename(configPath);
-      assert.ok(configPath.endsWith('config.yaml'), `Expected path to end with config.yaml but got: ${configPath}`);
-      assert.strictEqual(filename, 'config.yaml', `Expected filename to be config.yaml but got: ${filename}`);
+      assert.ok(
+        configPath.endsWith('config.yaml'),
+        `Expected path to end with config.yaml but got: ${configPath}`
+      );
+      assert.strictEqual(
+        filename,
+        'config.yaml',
+        `Expected filename to be config.yaml but got: ${filename}`
+      );
     });
 
     it('returns config-{port}.yaml for variant ports', function () {

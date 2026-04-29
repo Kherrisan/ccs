@@ -28,10 +28,7 @@ describe('version-checker stale cache fallback', () => {
   });
 
   it('uses a stale latest-version cache when GitHub lookup fails', async () => {
-    const {
-      getVersionCachePath,
-      writeInstalledVersion,
-    } = await import('../version-cache');
+    const { getVersionCachePath, writeInstalledVersion } = await import('../version-cache');
     const { VERSION_CACHE_DURATION_MS } = await import('../types');
     const { checkForUpdates } = await import('../version-checker');
     const plusBinDir = path.join(tempHome, '.ccs', 'cliproxy', 'bin', 'plus');

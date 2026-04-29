@@ -1,10 +1,6 @@
 import { describe, it, expect } from 'bun:test';
 import { findModel, supportsThinking } from '../model-catalog';
-import {
-  PROVIDER_TO_CHANNEL,
-  SYNCABLE_PROVIDERS,
-  mergeCatalog,
-} from '../services/catalog-cache';
+import { PROVIDER_TO_CHANNEL, SYNCABLE_PROVIDERS, mergeCatalog } from '../services/catalog-cache';
 
 describe('model-catalog compatibility lookups', () => {
   it('finds agy Claude models using dotted major.minor IDs', () => {

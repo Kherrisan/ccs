@@ -10,7 +10,11 @@ import type {
   RemoteThinkingSupport,
 } from '../management/management-api-types';
 import { getDeniedModelIdReasonForProvider } from '../ai-providers/model-id-normalizer';
-import { buildManagementHeaders, buildProxyUrl, getProxyTarget } from '../proxy/proxy-target-resolver';
+import {
+  buildManagementHeaders,
+  buildProxyUrl,
+  getProxyTarget,
+} from '../proxy/proxy-target-resolver';
 
 const CACHE_FILE_NAME = 'model-catalog-cache.json';
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours

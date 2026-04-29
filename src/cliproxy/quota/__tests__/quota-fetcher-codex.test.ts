@@ -516,13 +516,17 @@ describe('Codex Quota Fetcher', () => {
       accountId = `workspace-${email}`,
       tokenFile?: string
     ): void {
-      createCodexAccount(email, {
-        access_token: 'test-token',
-        account_id: accountId,
-        expired: '2099-01-01T00:00:00.000Z',
+      createCodexAccount(
         email,
-        type: 'codex',
-      }, tokenFile);
+        {
+          access_token: 'test-token',
+          account_id: accountId,
+          expired: '2099-01-01T00:00:00.000Z',
+          email,
+          type: 'codex',
+        },
+        tokenFile
+      );
     }
 
     it('maps deactivated workspace 402 responses to structured metadata', async () => {
@@ -573,11 +577,7 @@ describe('Codex Quota Fetcher', () => {
         'codex-kaidu.kd@gmail.com-free.json'
       );
 
-      registerAccount(
-        'codex',
-        'codex-04a0f049-kaidu.kd@gmail.com-team.json',
-        'kaidu.kd@gmail.com'
-      );
+      registerAccount('codex', 'codex-04a0f049-kaidu.kd@gmail.com-team.json', 'kaidu.kd@gmail.com');
       const freeAccount = registerAccount(
         'codex',
         'codex-kaidu.kd@gmail.com-free.json',
@@ -611,16 +611,8 @@ describe('Codex Quota Fetcher', () => {
     });
 
     it('does not guess a duplicate-email Codex auth file when the registry entry is missing', async () => {
-      createValidCodexAccount(
-        'kaidu.kd@gmail.com',
-        'workspace-team',
-        'codex-legacy-slot-a.json'
-      );
-      createValidCodexAccount(
-        'kaidu.kd@gmail.com',
-        'workspace-free',
-        'codex-legacy-slot-b.json'
-      );
+      createValidCodexAccount('kaidu.kd@gmail.com', 'workspace-team', 'codex-legacy-slot-a.json');
+      createValidCodexAccount('kaidu.kd@gmail.com', 'workspace-free', 'codex-legacy-slot-b.json');
 
       const fetchSpy = mock(() =>
         Promise.resolve(

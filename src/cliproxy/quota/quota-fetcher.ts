@@ -23,7 +23,11 @@ import {
   normalizeProviderTierId,
 } from '../auth/provider-entitlement-evidence';
 import type { ProviderEntitlementEvidence } from '../auth/provider-entitlement-types';
-import { buildManagementHeaders, buildProxyUrl, getProxyTarget } from '../proxy/proxy-target-resolver';
+import {
+  buildManagementHeaders,
+  buildProxyUrl,
+  getProxyTarget,
+} from '../proxy/proxy-target-resolver';
 
 /** Individual model quota info */
 export interface ModelQuota {

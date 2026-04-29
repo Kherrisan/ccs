@@ -21,7 +21,9 @@ async function loadAccountManager() {
   return import(`../account-manager?account-registry-integrity=${Date.now()}`);
 }
 
-async function captureConsoleError<T>(fn: () => Promise<T> | T): Promise<{ result: T; messages: string[] }> {
+async function captureConsoleError<T>(
+  fn: () => Promise<T> | T
+): Promise<{ result: T; messages: string[] }> {
   const originalError = console.error;
   const messages: string[] = [];
 
@@ -351,7 +353,9 @@ describe('account registry integrity', () => {
       fs.writeFileSync(registryPath, '{"providers":', 'utf8');
 
       const { loadAccountsRegistry } = await loadRegistryModule();
-      const { result: registry, messages } = await captureConsoleError(() => loadAccountsRegistry());
+      const { result: registry, messages } = await captureConsoleError(() =>
+        loadAccountsRegistry()
+      );
 
       expect(registry).toEqual({
         version: 1,

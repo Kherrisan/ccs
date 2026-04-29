@@ -48,8 +48,7 @@ describe('deleteBinary ETXTBSY guard', () => {
     // We can't reliably trigger ETXTBSY in tests (need a running Go binary),
     // so we verify the code structure matches the expected behavior.
     const err = Object.assign(new Error('ETXTBSY: text file busy'), { code: 'ETXTBSY' });
-    const code =
-      err instanceof Error && 'code' in err ? (err as { code: string }).code : '';
+    const code = err instanceof Error && 'code' in err ? (err as { code: string }).code : '';
     expect(code).toBe('ETXTBSY');
     // The guard only catches ETXTBSY, not EBUSY
     expect(code === 'ETXTBSY').toBe(true);
@@ -59,8 +58,7 @@ describe('deleteBinary ETXTBSY guard', () => {
   it('EBUSY is not treated as "binary in use"', () => {
     // Verify that EBUSY (Windows mount/directory) is distinguished from ETXTBSY
     const err = Object.assign(new Error('EBUSY: resource busy'), { code: 'EBUSY' });
-    const code =
-      err instanceof Error && 'code' in err ? (err as { code: string }).code : '';
+    const code = err instanceof Error && 'code' in err ? (err as { code: string }).code : '';
     expect(code).toBe('EBUSY');
     expect(code === 'ETXTBSY').toBe(false);
   });

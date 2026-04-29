@@ -5,11 +5,7 @@
  */
 
 import { describe, it, expect } from 'bun:test';
-import {
-  getTokenExpiryTimestamp,
-  isTokenExpired,
-  sanitizeEmail,
-} from '../../auth/auth-utils';
+import { getTokenExpiryTimestamp, isTokenExpired, sanitizeEmail } from '../../auth/auth-utils';
 
 describe('Auth Utilities', () => {
   describe('sanitizeEmail', () => {

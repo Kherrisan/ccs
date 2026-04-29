@@ -71,11 +71,7 @@ describe('Tool Name Mapper', () => {
 
     it('handles mixed valid and invalid names', () => {
       const mapper = new ToolNameMapper();
-      const tools = [
-        { name: 'valid_tool' },
-        { name: 'foo__bar__bar' },
-        { name: 'another_valid' },
-      ];
+      const tools = [{ name: 'valid_tool' }, { name: 'foo__bar__bar' }, { name: 'another_valid' }];
 
       const result = mapper.registerTools(tools);
 
@@ -92,9 +88,7 @@ describe('Tool Name Mapper', () => {
       const mapper = new ToolNameMapper();
       mapper.registerTools([{ name: 'foo__bar__bar' }]);
 
-      const content = [
-        { type: 'tool_use', id: 'call_1', name: 'foo__bar', input: {} },
-      ];
+      const content = [{ type: 'tool_use', id: 'call_1', name: 'foo__bar', input: {} }];
 
       const result = mapper.restoreToolUse(content);
 
@@ -121,9 +115,7 @@ describe('Tool Name Mapper', () => {
       const mapper = new ToolNameMapper();
       mapper.registerTools([{ name: 'foo__bar__bar' }]);
 
-      const content = [
-        { type: 'tool_use', id: 'call_1', name: 'unknown_tool', input: {} },
-      ];
+      const content = [{ type: 'tool_use', id: 'call_1', name: 'unknown_tool', input: {} }];
 
       const result = mapper.restoreToolUse(content);
 
@@ -196,10 +188,7 @@ describe('Tool Name Mapper', () => {
 
     it('returns list of all changes', () => {
       const mapper = new ToolNameMapper();
-      mapper.registerTools([
-        { name: 'foo__bar__bar' },
-        { name: 'baz__qux__qux' },
-      ]);
+      mapper.registerTools([{ name: 'foo__bar__bar' }, { name: 'baz__qux__qux' }]);
 
       const changes = mapper.getChanges();
 

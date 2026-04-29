@@ -118,10 +118,7 @@ describe('Model Config', () => {
 
       assert(parsed.env, 'Should have env object');
       assert(parsed.env.ANTHROPIC_MODEL, 'Should have ANTHROPIC_MODEL');
-      assert.strictEqual(
-        parsed.env.ANTHROPIC_MODEL,
-        'claude-opus-4-5-thinking'
-      );
+      assert.strictEqual(parsed.env.ANTHROPIC_MODEL, 'claude-opus-4-5-thinking');
     });
 
     it('all env values should be strings (PowerShell safety)', () => {

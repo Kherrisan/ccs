@@ -2,10 +2,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { afterEach, describe, expect, it } from 'bun:test';
-import {
-  buildClaudeEnvironment,
-  resolveCliproxyImageAnalysisEnv,
-} from '../env-resolver';
+import { buildClaudeEnvironment, resolveCliproxyImageAnalysisEnv } from '../env-resolver';
 import type { ImageAnalysisStatus } from '../../../utils/hooks';
 
 const tempDirs: string[] = [];

@@ -342,16 +342,12 @@ describe('Quota Exhaustion Handlers', () => {
       }) as typeof fetch;
 
       const result = await handleQuotaExhaustion('claude', 'exhausted@example.com', 10);
-      const { getAccount, getDefaultAccount } = await import(
-        '../account-manager'
-      );
+      const { getAccount, getDefaultAccount } = await import('../account-manager');
 
       expect(result.switchedTo).toBe('fallback@example.com');
       expect(getDefaultAccount('claude')?.id).toBe('fallback@example.com');
       expect(getAccount('claude', 'exhausted@example.com')?.paused).not.toBe(true);
-      expect(fs.existsSync(path.join(tmpDir, '.ccs', 'cliproxy', 'quota-paused.json'))).toBe(
-        false
-      );
+      expect(fs.existsSync(path.join(tmpDir, '.ccs', 'cliproxy', 'quota-paused.json'))).toBe(false);
       expect(
         fs.existsSync(
           path.join(
@@ -429,9 +425,7 @@ describe('Quota Exhaustion Handlers', () => {
       }) as typeof fetch;
 
       const result = await handleQuotaExhaustion('codex', 'exhausted@example.com', 10);
-      const { getAccount, getDefaultAccount } = await import(
-        '../account-manager'
-      );
+      const { getAccount, getDefaultAccount } = await import('../account-manager');
 
       expect(result.switchedTo).toBe('fallback@example.com');
       expect(getDefaultAccount('codex')?.id).toBe('fallback@example.com');
@@ -569,9 +563,7 @@ describe('Quota Exhaustion Handlers', () => {
 
       const { preflightCheck } = await import('../../quota/quota-manager');
       const result = await preflightCheck('codex');
-      const { getAccount, getDefaultAccount } = await import(
-        '../account-manager'
-      );
+      const { getAccount, getDefaultAccount } = await import('../account-manager');
 
       expect(result.switchedFrom).toBe('preflight-exhausted@example.com');
       expect(result.accountId).toBe('preflight-fallback@example.com');
@@ -649,16 +641,12 @@ describe('Quota Exhaustion Handlers', () => {
 
       const { preflightCheck } = await import('../../quota/quota-manager');
       const result = await preflightCheck('codex');
-      const { getAccount, getDefaultAccount } = await import(
-        '../account-manager'
-      );
+      const { getAccount, getDefaultAccount } = await import('../account-manager');
 
       expect(result.switchedFrom).toBe('preflight-unknown-exhausted@example.com');
       expect(result.accountId).toBe('preflight-unknown-fallback@example.com');
       expect(getDefaultAccount('codex')?.id).toBe('preflight-unknown-fallback@example.com');
-      expect(getAccount('codex', 'preflight-unknown-exhausted@example.com')?.paused).not.toBe(
-        true
-      );
+      expect(getAccount('codex', 'preflight-unknown-exhausted@example.com')?.paused).not.toBe(true);
       expect(
         fs.existsSync(
           path.join(tmpDir, '.ccs', 'cliproxy', 'auth', 'codex-preflight-unknown-exhausted.json')
@@ -675,9 +663,7 @@ describe('Quota Exhaustion Handlers', () => {
           )
         )
       ).toBe(false);
-      expect(fs.existsSync(path.join(tmpDir, '.ccs', 'cliproxy', 'quota-paused.json'))).toBe(
-        false
-      );
+      expect(fs.existsSync(path.join(tmpDir, '.ccs', 'cliproxy', 'quota-paused.json'))).toBe(false);
     });
 
     it('should self-pause exhausted Gemini accounts when a healthy fallback exists', async () => {
@@ -736,9 +722,7 @@ describe('Quota Exhaustion Handlers', () => {
       }) as typeof fetch;
 
       const result = await handleQuotaExhaustion('gemini', 'gemini-exhausted@example.com', 10);
-      const { getAccount, getDefaultAccount } = await import(
-        '../account-manager'
-      );
+      const { getAccount, getDefaultAccount } = await import('../account-manager');
 
       expect(result.switchedTo).toBe('gemini-fallback@example.com');
       expect(getDefaultAccount('gemini')?.id).toBe('gemini-fallback@example.com');
@@ -804,9 +788,7 @@ describe('Quota Exhaustion Handlers', () => {
       }) as typeof fetch;
 
       const result = await handleQuotaExhaustion('ghcp', 'ghcp-exhausted', 10);
-      const { getAccount, getDefaultAccount } = await import(
-        '../account-manager'
-      );
+      const { getAccount, getDefaultAccount } = await import('../account-manager');
 
       expect(result.switchedTo).toBe('ghcp-fallback');
       expect(getDefaultAccount('ghcp')?.id).toBe('ghcp-fallback');
@@ -868,9 +850,7 @@ describe('Quota Exhaustion Handlers', () => {
       }) as typeof fetch;
 
       const result = await handleQuotaExhaustion('ghcp', 'ghcp-partial-exhausted', 10);
-      const { getAccount, getDefaultAccount } = await import(
-        '../account-manager'
-      );
+      const { getAccount, getDefaultAccount } = await import('../account-manager');
 
       expect(result.switchedTo).toBe('ghcp-partial-fallback');
       expect(getDefaultAccount('ghcp')?.id).toBe('ghcp-partial-fallback');

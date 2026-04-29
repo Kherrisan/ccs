@@ -153,7 +153,10 @@ describe('Codex Reasoning Proxy', () => {
     });
 
     it('preserves query strings after stripping', () => {
-      const result = stripPathPrefix('/api/provider/codex/v1/messages?stream=true', '/api/provider/codex');
+      const result = stripPathPrefix(
+        '/api/provider/codex/v1/messages?stream=true',
+        '/api/provider/codex'
+      );
       assert.strictEqual(result, '/v1/messages?stream=true');
     });
 

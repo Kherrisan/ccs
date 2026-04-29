@@ -16,7 +16,8 @@ function writeCliproxyConfig(homeDir: string, value: Record<string, unknown>): v
 
 function readCliproxyConfig(homeDir: string): Record<string, any> {
   return (
-    (yaml.load(fs.readFileSync(getCliproxyConfigPath(homeDir), 'utf8')) as Record<string, any>) || {}
+    (yaml.load(fs.readFileSync(getCliproxyConfigPath(homeDir), 'utf8')) as Record<string, any>) ||
+    {}
   );
 }
 
@@ -62,7 +63,9 @@ describe('ai-provider service stable ids', () => {
     expect(family?.entries[1]?.id).toBeTruthy();
     expect(family?.entries[0]?.id).not.toBe(family?.entries[1]?.id);
 
-    const persisted = readCliproxyConfig(tempHome)['gemini-api-key'] as Array<Record<string, unknown>>;
+    const persisted = readCliproxyConfig(tempHome)['gemini-api-key'] as Array<
+      Record<string, unknown>
+    >;
     expect(persisted[0]?.id).toBe(family?.entries[0]?.id);
     expect(persisted[1]?.id).toBe(family?.entries[1]?.id);
   });
@@ -82,7 +85,9 @@ describe('ai-provider service stable ids', () => {
       baseUrl: 'https://example.test/gemini',
     });
 
-    let persisted = readCliproxyConfig(tempHome)['gemini-api-key'] as Array<Record<string, unknown>>;
+    let persisted = readCliproxyConfig(tempHome)['gemini-api-key'] as Array<
+      Record<string, unknown>
+    >;
     expect(persisted[0]?.id).toBe('gemini-a');
     expect(persisted[0]?.['api-key']).toBe('gamma');
     expect(persisted[0]?.['base-url']).toBe('https://example.test/gemini');
@@ -105,7 +110,9 @@ describe('ai-provider service stable ids', () => {
       apiKey: 'legacy-index-update',
     });
 
-    const persisted = readCliproxyConfig(tempHome)['gemini-api-key'] as Array<Record<string, unknown>>;
+    const persisted = readCliproxyConfig(tempHome)['gemini-api-key'] as Array<
+      Record<string, unknown>
+    >;
     expect(persisted[0]?.id).toBe('gemini-a');
     expect(persisted[0]?.['api-key']).toBe('legacy-index-update');
   });
@@ -140,9 +147,9 @@ describe('ai-provider service stable ids', () => {
     >;
     expect(persisted[0]?.id).toBe(connectorId);
     expect(persisted[0]?.['base-url']).toBe('https://router.example/v1');
-    expect((persisted[0]?.['api-key-entries'] as Array<Record<string, unknown>>)[0]?.['api-key']).toBe(
-      'sk-openrouter'
-    );
+    expect(
+      (persisted[0]?.['api-key-entries'] as Array<Record<string, unknown>>)[0]?.['api-key']
+    ).toBe('sk-openrouter');
   });
 
   it('normalizes plain openai-compatible model rules without aliases', async () => {
