@@ -1,3 +1,98 @@
+## [7.75.0](https://github.com/kaitranntt/ccs/compare/v7.74.0...v7.75.0) (2026-04-29)
+
+### Features
+
+* add extra models support for API profiles ([2915ab0](https://github.com/kaitranntt/ccs/commit/2915ab0c40e8c22027884ff95f14a7df78ee275b))
+* add gpt-5.5 to codex model catalogs ([4efd61e](https://github.com/kaitranntt/ccs/commit/4efd61ee3477e2b80e0074c2ef1683d53c8b411c))
+* **cliproxy:** add local session affinity controls ([4309db8](https://github.com/kaitranntt/ccs/commit/4309db89c33d7021e6ba1ceb6045a95082c47805))
+* **cliproxy:** self-pause exhausted quota accounts ([5013d41](https://github.com/kaitranntt/ccs/commit/5013d411a73af19c37a8e8ac3665e22589857696))
+* **codex:** align ccsxp with native cliproxy shortcut ([82c92aa](https://github.com/kaitranntt/ccs/commit/82c92aa940afc0b87a7e57a3aa092b4fdb850e46))
+* integrate models.dev pricing metadata ([a38c1a7](https://github.com/kaitranntt/ccs/commit/a38c1a75ba73606c68262a16d2e488c30f939da8))
+* **ui/design-system:** codify rail-anchored layout invariants and palette ([5303089](https://github.com/kaitranntt/ccs/commit/53030891c6bae10abe9e8bdf4ef3ed6acc3bb925))
+* **ui:** add design system foundations ([64e78f6](https://github.com/kaitranntt/ccs/commit/64e78f6e69e11ea43ce14baa62cd82ef0c9458c4))
+* **ui:** migrate cliproxy page to design system Config archetype ([9a2c093](https://github.com/kaitranntt/ccs/commit/9a2c09357a2e728894f672d51b0fc9fdb6e26259))
+* **ui:** migrate health page to design system Monitor archetype ([5e3e554](https://github.com/kaitranntt/ccs/commit/5e3e554693195a3f11ca3fc90cdd7020a249c35d))
+* **ui:** migrate home page to design system Monitor archetype ([3ae5f20](https://github.com/kaitranntt/ccs/commit/3ae5f20dc8faf9687d5c9da62a4c55cae14486d9))
+* **ui:** redesign health page with prioritized layout and premium aesthetics ([36ed091](https://github.com/kaitranntt/ccs/commit/36ed091e4d02d9422474f536fda2fe1b33157723))
+
+### Bug Fixes
+
+* address analytics review follow-ups ([286b578](https://github.com/kaitranntt/ccs/commit/286b5781a755a2238e2a8f0083ca58420715bd42))
+* **analytics:** add native codex and droid collectors ([fe7cc6f](https://github.com/kaitranntt/ccs/commit/fe7cc6f9baaecffa94015d0be77f8834562a1ad8))
+* **analytics:** avoid bridge double counting in native collectors ([e95b354](https://github.com/kaitranntt/ccs/commit/e95b35429760bc6bd0c16099a2965b6ca016e753))
+* **analytics:** correct token accounting and usage aggregation ([e2f1363](https://github.com/kaitranntt/ccs/commit/e2f1363708c0bea9a6462699d9beb259627937eb))
+* **browser:** 修复 DevTools 页面创建和截图诊断 ([4c46d6c](https://github.com/kaitranntt/ccs/commit/4c46d6c5aede763d51b7bfb4cc025f601d0a8a48))
+* **ci:** guard generated dev release commits ([8d4a776](https://github.com/kaitranntt/ccs/commit/8d4a7761b1b4184927527dd177eb69757666f6a4))
+* **ci:** keep dev release commits visible to PR checks ([fea7f18](https://github.com/kaitranntt/ccs/commit/fea7f186870f01c341f212882cd9e56600f7e310))
+* **cli-proxy:** durable analytics history persistence and dedupe migration ([69b75c0](https://github.com/kaitranntt/ccs/commit/69b75c0449184351de84afeea84bcc7d1ac82ae3))
+* **cli-proxy:** preserve historical analytics across syncs ([01fcd77](https://github.com/kaitranntt/ccs/commit/01fcd775734671c3947c67d3a4458e62394590a9))
+* **cliproxy/sync:** dedup ANTHROPIC_EXTRA_MODELS entries against primary model ([b1a0d1a](https://github.com/kaitranntt/ccs/commit/b1a0d1a175f830783b71a28f3b074ba2ff77700e))
+* **cliproxy:** harden session affinity behavior ([5267c42](https://github.com/kaitranntt/ccs/commit/5267c421ca4dca2d1f92312e569e93bd22d9c1a1))
+* **cliproxy:** parse Codex additional_rate_limits for Spark quota ([942a8ce](https://github.com/kaitranntt/ccs/commit/942a8ce12d26e58e61978aa5052f0dff3d1b5926))
+* **cliproxy:** polish session affinity controls ([148cf35](https://github.com/kaitranntt/ccs/commit/148cf3556045823a3a3d5a34f7745d420d93d825))
+* **cliproxy:** probe routing via management endpoint ([8ef7030](https://github.com/kaitranntt/ccs/commit/8ef703024b7972d6c369cc13c6ef3d9f08f10a26))
+* **cliproxy:** tighten Codex window classification on incomplete metadata ([a90aadd](https://github.com/kaitranntt/ccs/commit/a90aadd202737ecc2e1124d9bc99c5007d63d6c7))
+* **cliproxy:** tighten session affinity review issues ([c277955](https://github.com/kaitranntt/ccs/commit/c277955762864c4271021a9a32e7ff1013bc788a))
+* **cliproxy:** tighten session affinity status handling ([20f3916](https://github.com/kaitranntt/ccs/commit/20f3916d55046e44de58982a7905ca3ad4e8fc7d))
+* **cliproxy:** tolerate plain AI provider model rules ([c40dd3e](https://github.com/kaitranntt/ccs/commit/c40dd3ecbcf0eb0bdf77543827703c546ae800cd))
+* **cliproxy:** tolerate plain AI provider model rules ([9a28ca5](https://github.com/kaitranntt/ccs/commit/9a28ca55d805c653f87b96e0dc38b8450b350565))
+* **cliproxy:** use explicit utilization unit per Claude payload form ([9808ebf](https://github.com/kaitranntt/ccs/commit/9808ebfe3692de578cd59bb9455122802f442bea))
+* **codex:** align ccsxp history with native codex ([8ffda02](https://github.com/kaitranntt/ccs/commit/8ffda0268d58f6202a41b0bd0b2688d90cec0416))
+* **codex:** resolve ccsxp argv alias as codex ([cd94119](https://github.com/kaitranntt/ccs/commit/cd941195d1b4a52d2d59b547beb4e56c9af5aa4e))
+* **codex:** resolve PR review contract and i18n drift ([8911906](https://github.com/kaitranntt/ccs/commit/8911906e9f06d55a2ce5742337ca77c07b14be1f))
+* keep config dashboard alive when interface detection fails ([119aa3b](https://github.com/kaitranntt/ccs/commit/119aa3be984042a354a216582bc566a4b715a3ff))
+* **proxy:** avoid settings override and nested reasoning for openai-compat ([1c91c46](https://github.com/kaitranntt/ccs/commit/1c91c46326cbcf7fd4c2546183b5c6a495198a8d))
+* **proxy:** clean up temp launch settings ([47fbe8b](https://github.com/kaitranntt/ccs/commit/47fbe8bb3a5e09af6d439be9115174ce942f079c))
+* **proxy:** preserve settings-profile launches for openai bridge ([3dcf150](https://github.com/kaitranntt/ccs/commit/3dcf150978f3c2207fd39329d2447a2dbc105b11))
+* **ui/design-system:** address PR-Agent feedback on PR [#1109](https://github.com/kaitranntt/ccs/issues/1109) ([839997d](https://github.com/kaitranntt/ccs/commit/839997d08effb3a18712c13657f109e670e369ca))
+* **ui/design-system:** address PR-Agent round 2 on PR [#1109](https://github.com/kaitranntt/ccs/issues/1109) ([aec5267](https://github.com/kaitranntt/ccs/commit/aec52676519131bcd069583eab7259b9454dd481))
+* **ui/profiles:** latch extraModels touch state for explicit-clear ([bc16c51](https://github.com/kaitranntt/ccs/commit/bc16c5168c75cf4202372f5912385208cd676bdc))
+* **ui/profiles:** preserve ANTHROPIC_EXTRA_MODELS on untouched edit-dialog save ([9122f68](https://github.com/kaitranntt/ccs/commit/9122f68dd44b4ac128a3bea5b26fb632b02aeb03))
+* **ui:** address PR-Agent feedback on health redesign ([525c4f9](https://github.com/kaitranntt/ccs/commit/525c4f981208766bb248a3d9274e38f7650259d7))
+* **ui:** address PR-Agent review feedback on JsonPane and SectionRail ([37de42d](https://github.com/kaitranntt/ccs/commit/37de42d463a1c81b06f852b036e7c9d1e40a2d72))
+* **ui:** address PR-Agent round 2 on health redesign ([e64060f](https://github.com/kaitranntt/ccs/commit/e64060fe0dc707f6307ba06dcdb78e034cd3f5d3))
+* **ui:** address PR-Agent round 2 review feedback ([caef89a](https://github.com/kaitranntt/ccs/commit/caef89a7aa7d6aafe9133dfbc6ce1814d67e0b57))
+* **ui:** address PR-Agent round 3 review on ConfigLayout duplicate DOM ([6261e15](https://github.com/kaitranntt/ccs/commit/6261e150e34769cbba9d65e8059c5146798e7e37))
+* **ui:** polish health page background and priority card layout ([90a3d33](https://github.com/kaitranntt/ccs/commit/90a3d330df906a56832942e0e99a0340118ad312))
+* **ui:** restore click-through navigation on home KPI cards ([c59622f](https://github.com/kaitranntt/ccs/commit/c59622fabdeefadf041924418476376c474ce21b))
+* **ui:** surface Codex Spark windows in dashboard quota views ([725d95b](https://github.com/kaitranntt/ccs/commit/725d95b0d25d171d6087f7288ff14362b51dbd87))
+* **ui:** tighten analytics session and query contracts ([b2e4be3](https://github.com/kaitranntt/ccs/commit/b2e4be310d19dec83810e15f11a770deda4b4cd8))
+* **ui:** widen getCodexWindowKind parameter to accept CodexWindowSummary ([0e60293](https://github.com/kaitranntt/ccs/commit/0e602932f21230111dd5f6b663e7634b7df2dffa))
+* **usage:** avoid cross-provider pricing fallback ([f736190](https://github.com/kaitranntt/ccs/commit/f736190196f02764aa8998275c8b829403b31b7c))
+* **usage:** clarify static pricing fallback ([42fc528](https://github.com/kaitranntt/ccs/commit/42fc5281a1e996b3cd0772383187929a610afa34))
+* **usage:** harden models.dev analytics integration ([a538627](https://github.com/kaitranntt/ccs/commit/a53862793305a9b66a49be83b9f440ddb7c75283))
+* **usage:** honor provider-aware pricing precedence ([c7141b3](https://github.com/kaitranntt/ccs/commit/c7141b3d3af2d23b725efcf1cb02892f5e64ff67))
+* **usage:** normalize provider aliases in aggregation ([fc90b6f](https://github.com/kaitranntt/ccs/commit/fc90b6f473fd6f78116ab133d75a982debd13f56))
+* **usage:** preserve pricing overrides and legacy merges ([30f350a](https://github.com/kaitranntt/ccs/commit/30f350a74fac47ec67547fe51325785b1a03ee78))
+
+### Documentation
+
+* **api:** document --extra-models flag in ccs api --help ([a28d544](https://github.com/kaitranntt/ccs/commit/a28d544abbba8f3246a7adea41d97010d22cd6d7))
+* **codex:** document ccsxp history root ([5094c23](https://github.com/kaitranntt/ccs/commit/5094c23c43a99e978862e18f1e719f4f9d686c86))
+* **ui:** add design system visual preview + screenshots ([e0d2ab0](https://github.com/kaitranntt/ccs/commit/e0d2ab0444b8ade65428db39f3d60f3d00ffc9b3))
+* **ui:** add health redesign verification report and screenshots ([63198ab](https://github.com/kaitranntt/ccs/commit/63198ab1ff6e2d8d8a5eec98487114ac0d206171))
+* **ui:** add HeroBar and rail-anchored demos to styleguide ([ba4fbcf](https://github.com/kaitranntt/ccs/commit/ba4fbcf75f03a45fe5d7fdfe07e802bb563d40d7))
+* **ui:** add phase 2 visual preview with before/after screenshots ([339fcd8](https://github.com/kaitranntt/ccs/commit/339fcd81e687fb8be755bd705101a7fb7fa741e8))
+* **ui:** drop redundant home/cliproxy screenshots from phase2 report ([d933290](https://github.com/kaitranntt/ccs/commit/d9332907cca085840ba4395d606630e3d9660381))
+* **ui:** sync design system docs with bespoke health redesign ([dd9854b](https://github.com/kaitranntt/ccs/commit/dd9854bfd7bf6306ce90ef02d973f861a962d0d3))
+
+### Styles
+
+* apply prettier formatting to extra-models changes ([f01210f](https://github.com/kaitranntt/ccs/commit/f01210fbf27f1f8c6f75d77c3f0e647576034625))
+* **proxy:** format openai bridge launch settings ([328d53e](https://github.com/kaitranntt/ccs/commit/328d53e3834d2f9dba89da1e81d5807e3347edb9))
+
+### Code Refactoring
+
+* **ui:** revert home/cliproxy migrations and restructure design system ([1a2fd84](https://github.com/kaitranntt/ccs/commit/1a2fd848f06ca72a8f36310a20d58411e45efa55))
+
+### Tests
+
+* **cliproxy:** isolate routing HTTP module test ([fe29714](https://github.com/kaitranntt/ccs/commit/fe297142dadeda925ae0bd709ae2d42fa869d808))
+* **cliproxy:** replace process-wide mock.module with DI seams ([a787128](https://github.com/kaitranntt/ccs/commit/a7871283d4da52ee4f4dddfed59e60c270407705))
+* **cliproxy:** stabilize routing endpoint coverage ([aa7f155](https://github.com/kaitranntt/ccs/commit/aa7f15516157d55ddf40c723bf72cbe1e3e35cc6))
+* cover --extra-models parsing and CLIProxy sync dedup ([7f14c56](https://github.com/kaitranntt/ccs/commit/7f14c565df8d629d92ba85e4b430db7ac0b9bbc4))
+* **image-analysis:** 隔离 hook e2e 环境变量 ([785f439](https://github.com/kaitranntt/ccs/commit/785f439e9bef7166d5ddc70ae518eb31d59ddfc5))
+
 ## [7.74.0](https://github.com/kaitranntt/ccs/compare/v7.73.1...v7.74.0) (2026-04-24)
 
 ### Features
