@@ -31,9 +31,9 @@ describe('version-checker stale cache fallback', () => {
     const {
       getVersionCachePath,
       writeInstalledVersion,
-    } = await import('../../../src/cliproxy/binary/version-cache');
-    const { VERSION_CACHE_DURATION_MS } = await import('../../../src/cliproxy/binary/types');
-    const { checkForUpdates } = await import('../../../src/cliproxy/binary/version-checker');
+    } = await import('../version-cache');
+    const { VERSION_CACHE_DURATION_MS } = await import('../types');
+    const { checkForUpdates } = await import('../version-checker');
     const plusBinDir = path.join(tempHome, '.ccs', 'cliproxy', 'bin', 'plus');
 
     fs.mkdirSync(plusBinDir, { recursive: true });
@@ -60,9 +60,9 @@ describe('version-checker stale cache fallback', () => {
   });
 
   it('uses a stale release-list cache when GitHub list lookup fails', async () => {
-    const { getVersionListCachePath } = await import('../../../src/cliproxy/binary/version-cache');
-    const { VERSION_CACHE_DURATION_MS } = await import('../../../src/cliproxy/binary/types');
-    const { fetchAllVersions } = await import('../../../src/cliproxy/binary/version-checker');
+    const { getVersionListCachePath } = await import('../version-cache');
+    const { VERSION_CACHE_DURATION_MS } = await import('../types');
+    const { fetchAllVersions } = await import('../version-checker');
     const plusBinDir = path.join(tempHome, '.ccs', 'cliproxy', 'bin', 'plus');
 
     fs.mkdirSync(plusBinDir, { recursive: true });
@@ -90,8 +90,8 @@ describe('version-checker stale cache fallback', () => {
   });
 
   it('skips update lookups when runtime startup prefers the installed binary', async () => {
-    const { getExecutableName } = await import('../../../src/cliproxy/platform-detector');
-    const { ensureBinary } = await import('../../../src/cliproxy/binary/lifecycle');
+    const { getExecutableName } = await import('../platform-detector');
+    const { ensureBinary } = await import('../lifecycle');
 
     const plusBinDir = path.join(tempHome, '.ccs', 'cliproxy', 'bin', 'plus');
     fs.mkdirSync(plusBinDir, { recursive: true });

@@ -17,7 +17,7 @@ let buildCodexQuotaWindows: typeof import('../quota-fetcher-codex').buildCodexQu
 let buildCodexCoreUsageSummary: typeof import('../quota-fetcher-codex').buildCodexCoreUsageSummary;
 let fetchCodexQuota: typeof import('../quota-fetcher-codex').fetchCodexQuota;
 let getUnknownCodexWindowLabels: typeof import('../quota-fetcher-codex').getUnknownCodexWindowLabels;
-let registerAccount: typeof import('../accounts/account-manager').registerAccount;
+let registerAccount: typeof import('../../accounts/account-manager').registerAccount;
 
 function createCodexAccount(
   accountId: string,
@@ -34,13 +34,13 @@ beforeEach(async () => {
   mock.restore();
 
   const configGenerator = await import(
-    `../config/config-generator?codex-config-generator=${moduleVersion}`
+    `../../config/config-generator?codex-config-generator=${moduleVersion}`
   );
   const accountManager = await import(
-    `../accounts/account-manager?codex-account-manager=${moduleVersion}`
+    `../../accounts/account-manager?codex-account-manager=${moduleVersion}`
   );
-  mock.module('../config/config-generator', () => configGenerator);
-  mock.module('../accounts/account-manager', () => accountManager);
+  mock.module('../../config/config-generator', () => configGenerator);
+  mock.module('../../accounts/account-manager', () => accountManager);
   ({ registerAccount } = accountManager);
 
   ({

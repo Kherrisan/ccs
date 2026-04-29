@@ -11,7 +11,7 @@ import {
   detectTierFromModel,
   getThinkingValueForTier,
 } from '../../config/thinking-config';
-import { CLIProxyProvider } from '../types';
+import { CLIProxyProvider } from '../../types';
 
 // ========================================
 // applyThinkingSuffix

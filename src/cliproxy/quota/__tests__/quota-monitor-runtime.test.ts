@@ -16,7 +16,7 @@ import {
   stopQuotaMonitor,
   clearQuotaCache,
 } from '../quota-manager';
-import { __testExports as executorTestExports } from '../executor';
+import { __testExports as executorTestExports } from '../../executor';
 
 // Setup test isolation
 let tmpDir: string;

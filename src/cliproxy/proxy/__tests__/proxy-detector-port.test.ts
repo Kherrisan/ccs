@@ -7,7 +7,7 @@
 
 import { describe, it, expect } from 'bun:test';
 import { detectRunningProxy } from '../proxy-detector';
-import { CLIPROXY_DEFAULT_PORT } from '../config/config-generator';
+import { CLIPROXY_DEFAULT_PORT } from '../../config/config-generator';
 
 describe('Proxy Detector Port Validation', () => {
   describe('detectRunningProxy with invalid ports', () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import type { ProxyTarget } from '../proxy/proxy-target-resolver';
+import type { ProxyTarget } from '../../proxy/proxy-target-resolver';
 
 async function loadRoutingHttpModule() {
   return import(

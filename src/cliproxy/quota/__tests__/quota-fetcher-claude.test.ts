@@ -14,7 +14,7 @@ import {
   fetchClaudeQuota,
   fetchAllClaudeQuotas,
 } from '../quota-fetcher-claude';
-import { sanitizeEmail } from '../auth/auth-utils';
+import { sanitizeEmail } from '../../auth/auth-utils';
 
 let tmpDir: string;
 let originalCcsHome: string | undefined;

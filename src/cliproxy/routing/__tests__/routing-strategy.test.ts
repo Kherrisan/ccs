@@ -32,7 +32,7 @@ describe('cliproxy routing strategy service', () => {
     process.env.CCS_DIR = scopedConfigDir;
     process.env.CCS_HOME = tempHome;
 
-    ({ runWithScopedConfigDir } = await import('../../../src/utils/config-manager'));
+    ({ runWithScopedConfigDir } = await import('../../../utils/config-manager'));
   });
 
   afterEach(() => {
@@ -91,7 +91,7 @@ describe('cliproxy routing strategy service', () => {
 
   it('falls back to the saved local default when live CLIProxy is unavailable', async () => {
     await withScopedConfig(async () => {
-      const { mutateUnifiedConfig } = await import('../../../src/config/unified-config-loader');
+      const { mutateUnifiedConfig } = await import('../../../config/unified-config-loader');
       mutateUnifiedConfig((config) => {
         if (config.cliproxy) {
           config.cliproxy.routing = { strategy: 'fill-first' };
@@ -116,7 +116,7 @@ describe('cliproxy routing strategy service', () => {
       expect(result.applied).toBe('config-only');
       expect(result.strategy).toBe('fill-first');
 
-      const { loadUnifiedConfig } = await import('../../../src/config/unified-config-loader');
+      const { loadUnifiedConfig } = await import('../../../config/unified-config-loader');
       const persisted = loadUnifiedConfig();
       expect(persisted?.cliproxy?.routing?.strategy).toBe('fill-first');
     });
@@ -171,7 +171,7 @@ describe('cliproxy routing strategy service', () => {
 
   it('reads saved local session-affinity settings when live CLIProxy is unavailable', async () => {
     await withScopedConfig(async () => {
-      const { mutateUnifiedConfig } = await import('../../../src/config/unified-config-loader');
+      const { mutateUnifiedConfig } = await import('../../../config/unified-config-loader');
       mutateUnifiedConfig((config) => {
         if (config.cliproxy) {
           config.cliproxy.routing = {
@@ -206,7 +206,7 @@ describe('cliproxy routing strategy service', () => {
       expect(result.enabled).toBe(true);
       expect(result.ttl).toBe('2h');
 
-      const { loadUnifiedConfig } = await import('../../../src/config/unified-config-loader');
+      const { loadUnifiedConfig } = await import('../../../config/unified-config-loader');
       const persisted = loadUnifiedConfig();
       expect(persisted?.cliproxy?.routing?.session_affinity).toBe(true);
       expect(persisted?.cliproxy?.routing?.session_affinity_ttl).toBe('2h');

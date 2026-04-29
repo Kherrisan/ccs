@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { shouldStartHttpsTunnel } from '../executor/https-tunnel-policy';
+import { shouldStartHttpsTunnel } from '../../executor/https-tunnel-policy';
 
 describe('HTTPS tunnel startup policy', () => {
   it('skips the tunnel for single-provider Codex remote HTTPS launches', () => {
