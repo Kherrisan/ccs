@@ -189,27 +189,45 @@ describe('ProxyRequestTransformer regressions', () => {
     ).toThrow('must start with tool_result blocks for pending tool_use ids');
   });
 
-  it('rejects tool_result content that cannot be represented as OpenAI tool text', () => {
-    expect(() =>
-      new ProxyRequestTransformer().transform({
-        messages: [
-          {
-            role: 'assistant',
-            content: [{ type: 'tool_use', id: 'toolu_1', name: 'vision', input: { detail: 'high' } }],
-          },
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'tool_result',
-                tool_use_id: 'toolu_1',
-                content: [{ type: 'image', source: { type: 'url', url: 'https://example.com/error.png' } }],
-              },
-            ],
-          },
-        ],
-      })
-    ).toThrow('type "image" is not supported in tool_result content');
+  it('converts tool_result image blocks to text placeholders for OpenAI-compatible tool messages', () => {
+    const result = new ProxyRequestTransformer().transform({
+      messages: [
+        {
+          role: 'assistant',
+          content: [{ type: 'tool_use', id: 'toolu_1', name: 'vision', input: { detail: 'high' } }],
+        },
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'tool_result',
+              tool_use_id: 'toolu_1',
+              content: [
+                { type: 'text', text: 'screenshot captured' },
+                {
+                  type: 'image',
+                  source: { type: 'url', url: 'https://storage.example.com/error.png?X-Amz-Signature=secret' },
+                },
+                {
+                  type: 'image',
+                  source: { type: 'base64', media_type: 'image/png', data: 'ZmFrZQ==' },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(result.messages[1]).toEqual({
+      role: 'tool',
+      tool_call_id: 'toolu_1',
+      content:
+        'screenshot captured\n[tool_result image omitted: url image payload]\n[tool_result image omitted: image/png base64 payload]',
+    });
+    expect(result.messages[1]?.content).not.toContain('https://storage.example.com');
+    expect(result.messages[1]?.content).not.toContain('X-Amz-Signature');
+    expect(result.messages[1]?.content).not.toContain('secret');
   });
 
   it('rejects unsupported assistant blocks instead of silently dropping them', () => {
