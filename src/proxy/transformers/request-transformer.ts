@@ -219,7 +219,18 @@ function convertToolResultContent(content: unknown, isError: boolean, label: str
     }
 
     if (parsed.type === 'image') {
-      throw new Error(`${label}[${index}].type "image" is not supported in tool_result content`);
+      const source =
+        typeof parsed.source === 'object' && parsed.source !== null
+          ? (parsed.source as Record<string, unknown>)
+          : undefined;
+      const description =
+        source?.type === 'url' && typeof source.url === 'string'
+          ? source.url
+          : source?.type === 'base64' && typeof source.media_type === 'string'
+            ? `${source.media_type} base64 payload`
+            : 'unsupported image payload';
+      parts.push(`[tool_result image omitted: ${description}]`);
+      continue;
     }
 
     if (typeof parsed.text === 'string') {
