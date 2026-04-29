@@ -2,9 +2,13 @@ import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:te
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import SharedManager, {
+import {
   normalizePluginMetadataContent,
   normalizePluginMetadataPathString,
+} from '../../src/management/plugin-path-normalizer';
+import SharedManager, {
+  normalizePluginMetadataContent as normalizeSharedManagerPluginMetadataContent,
+  normalizePluginMetadataPathString as normalizeSharedManagerPluginMetadataPathString,
 } from '../../src/management/shared-manager';
 
 describe('SharedManager', () => {
@@ -144,12 +148,39 @@ describe('SharedManager', () => {
       expect(normalizePluginMetadataPathString(input, targetConfigDir)).toBe(input);
     });
 
+    it('preserves original JSON content when no plugin path changes are needed', () => {
+      const original = JSON.stringify({ plugins: { 'plugin-a': { enabled: true } } }, null, 4);
+
+      expect(normalizePluginMetadataContent(original, instanceDir('work'))).toBe(original);
+    });
+
     it('handles Windows path separators', () => {
       const targetConfigDir = 'C:\\Users\\user\\.claude';
       const input = 'C:\\Users\\user\\.ccs\\instances\\work\\plugins\\marketplaces\\official';
 
       expect(normalizePluginMetadataPathString(input, targetConfigDir)).toBe(
         'C:\\Users\\user\\.claude\\plugins\\marketplaces\\official'
+      );
+    });
+
+    it('uses the current home directory when target config dir is omitted', () => {
+      const input = path.join(tempRoot, '.ccs', 'shared', 'plugins', 'cache', 'plugin-a');
+
+      expect(normalizePluginMetadataPathString(input)).toBe(
+        path.join(tempRoot, '.claude', 'plugins', 'cache', 'plugin-a')
+      );
+    });
+
+    it('keeps the legacy shared-manager helper export compatible', () => {
+      const targetConfigDir = instanceDir('work');
+      const input = path.join(tempRoot, '.ccs', 'shared', 'plugins', 'cache', 'plugin-a');
+      const content = JSON.stringify({ installPath: input }, null, 2);
+
+      expect(normalizeSharedManagerPluginMetadataPathString(input, targetConfigDir)).toBe(
+        normalizePluginMetadataPathString(input, targetConfigDir)
+      );
+      expect(normalizeSharedManagerPluginMetadataContent(content, targetConfigDir)).toBe(
+        normalizePluginMetadataContent(content, targetConfigDir)
       );
     });
   });
