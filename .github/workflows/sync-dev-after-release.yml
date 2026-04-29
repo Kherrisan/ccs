@@ -7,7 +7,7 @@ on:
 jobs:
   sync-dev:
     if: ${{ !github.event.release.prerelease && github.event.release.target_commitish == 'main' && startsWith(github.event.release.tag_name, 'v') && !contains(github.event.release.tag_name, '-') }}
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
 
     permissions:
       contents: write
@@ -17,8 +17,9 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          # Always use built-in workflow token so PAT rotation never breaks sync jobs.
-          token: ${{ github.token }}
+          # PAT_TOKEN is required because this pushes to protected dev and must
+          # trigger follow-up Push CI / Dev Release workflows.
+          token: ${{ secrets.PAT_TOKEN }}
 
       - name: Configure Git
         run: |
@@ -31,7 +32,7 @@ jobs:
           git checkout dev
 
           # Attempt merge, handle version conflicts by taking main's versions
-          if ! git merge origin/main --no-edit -m "chore(sync): merge main into dev after release [skip ci]"; then
+          if ! git merge origin/main --no-edit -m "chore(sync): merge main into dev after release"; then
             echo "Merge conflicts detected, resolving version files..."
 
             # For version files, take main's version (new stable base)
