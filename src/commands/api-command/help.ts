@@ -56,6 +56,9 @@ export async function showApiCommandHelp(writeLine: HelpWriter = console.log): P
   writeLine(`  ${color('--api-key <key>', 'command')}      API key (create)`);
   writeLine(`  ${color('--model <model>', 'command')}      Default model (create)`);
   writeLine(
+    `  ${color('--extra-models <list>', 'command')} Comma-separated extra models to expose alongside --model`
+  );
+  writeLine(
     `  ${color('--1m / --no-1m', 'command')}         Write or clear [1m] on compatible Claude mappings`
   );
   writeLine(
@@ -95,6 +98,11 @@ export async function showApiCommandHelp(writeLine: HelpWriter = console.log): P
     `  ${color('ccs api create hf-router --preset hf', 'command')} ${dim('# defaults to droid for generic chat completions')}`
   );
   writeLine(`  ${color('ccs api create --preset glm', 'command')}`);
+  writeLine('');
+  writeLine(`  ${dim('# Expose multiple models from one provider endpoint')}`);
+  writeLine(
+    `  ${color('ccs api create dashscope --base-url https://... --api-key sk-xxx --model qwen3-coder-plus --extra-models glm-4.6,kimi-k2', 'command')}`
+  );
   writeLine('');
   writeLine(subheader('Claude Long Context'));
   writeLine(`  ${dim('Plain Claude model IDs stay on standard context by default.')}`);

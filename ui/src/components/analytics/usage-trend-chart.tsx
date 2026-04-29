@@ -146,7 +146,6 @@ export function UsageTrendChart({
             content={({ active, payload, label }) => {
               if (!active || !payload || !payload.length) return null;
 
-              const tooltipData = payload[0].payload;
               return (
                 <div className="rounded-lg border bg-background p-3 shadow-lg">
                   <p className="font-medium mb-2">{label}</p>
@@ -162,16 +161,6 @@ export function UsageTrendChart({
                         : `$${entry.value}`}
                     </p>
                   ))}
-                  {'requests' in tooltipData && (
-                    <p
-                      className={cn(
-                        'text-sm text-muted-foreground mt-1',
-                        privacyMode && PRIVACY_BLUR_CLASS
-                      )}
-                    >
-                      Requests: {tooltipData.requests}
-                    </p>
-                  )}
                 </div>
               );
             }}

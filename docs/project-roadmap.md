@@ -1,6 +1,6 @@
 # CCS Project Roadmap
 
-Last Updated: 2026-04-21
+Last Updated: 2026-04-28
 
 Forward-looking roadmap documenting current priorities, GitHub issues, and future feature plans.
 
@@ -41,6 +41,8 @@ All major modularization work is complete. The codebase evolved from monolithic 
 
 ### Recent Fixes
 
+- **2026-04-28**: **#1123** CLIProxy quota failover now uses the dashboard/manual pause mechanism for all quota-visible OAuth providers with CCS quota fetchers: Antigravity, Claude, Codex, Gemini CLI, and GitHub Copilot. When a healthy fallback exists, CCS moves the exhausted account token out of the live `auth/` folder into `auth-paused/`, marks the account paused for dashboard visibility, persists the cooldown for auto-resume, and still avoids self-pausing the last usable account.
+- **2026-04-28**: **#1115** CCS now exposes upstream CLIProxy session affinity as a first-class local managed setting. Users can inspect and toggle local `session-affinity` plus TTL from `ccs cliproxy routing affinity`, from the `/cliproxy` dashboard routing card, and through the local dashboard API. The generated local CLIProxy config now persists `routing.session-affinity` and `routing.session-affinity-ttl`, help/copy explains that CLIProxy prefers explicit session or thread identifiers before falling back to prompt-history hashing, and remote session-affinity management stays explicitly unsupported until upstream management APIs expose more than `routing.strategy`.
 - **2026-04-24**: **#1065** Local CLIProxy Plus is available again as an explicit opt-in backend through the community-maintained `kaitranntt/CLIProxyAPIPlus` fork. CCS keeps `original` as the default backend, no longer downgrades saved `backend: plus` configs to `original`, updates Plus release lookups to the maintained fork, and documents Plus as a targeted path for plus-only providers.
 - **2026-04-21**: CLIProxy quota failover now quarantines exhausted Claude and Antigravity accounts out of live rotation when a healthy fallback exists. CCS persists those quota-triggered pauses across launches, automatically resumes them after the configured cooldown window, and deliberately avoids auto-pausing the last available account so single-account setups still degrade gracefully instead of hard-locking themselves.
 - **2026-04-20**: **#1051** Browser automation now defaults safe-off for new installs and upgrades that do not already carry explicit browser settings. CCS changes both Claude Browser Attach and Codex Browser Tools to start with `enabled: false` and `policy: manual`, normalizes missing browser policies on upgrade back to `manual`, preserves explicit existing enablement, and updates status/help/docs so browser tooling is never implied to auto-expose unless users opt in.
@@ -80,6 +82,7 @@ All major modularization work is complete. The codebase evolved from monolithic 
 - **#724**: Codex startup is now free-plan safe. CCS defaults new Codex sessions to a cross-plan model and uses runtime fallback handling for unsupported paid-only models without rewriting the saved dashboard settings.
 - **#737**: Dashboard model pickers in Cursor, Copilot, and CLIProxy now use a searchable combobox with autofocus and explicit no-results states for large model catalogs.
 - **#736**: `ccs config` now supports explicit dashboard bind hosts via `--host`, and surfaces remote-access warnings plus reachable URLs when the effective bind is non-loopback.
+- **#1121**: Usage analytics pricing now refreshes cached models.dev metadata before cost derivation, keeps CCS static pricing as the offline fallback, and carries provider identity through CLIProxy/native runtime breakdowns so subscription-backed providers do not inherit paid API pricing.
 
 ### Maintainability Hardening Kickoff
 

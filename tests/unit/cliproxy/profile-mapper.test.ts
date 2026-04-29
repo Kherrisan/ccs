@@ -74,6 +74,48 @@ describe('Profile Mapper', () => {
       assert.ok(result);
       assert.strictEqual(result['base-url'], undefined);
     });
+
+    it('appends ANTHROPIC_EXTRA_MODELS as additional models, deduped against primary and each other', () => {
+      const profile = {
+        name: 'dashscope',
+        settingsPath: '/path',
+        isConfigured: true,
+        env: {
+          ANTHROPIC_AUTH_TOKEN: 'sk-test',
+          ANTHROPIC_BASE_URL: 'https://api.example.com',
+          ANTHROPIC_MODEL: 'qwen3-coder-plus',
+          // Includes whitespace, empty entries, a duplicate of the primary
+          // model, and a repeated extra entry — all should be cleaned up.
+          ANTHROPIC_EXTRA_MODELS: ' glm-4.6 , kimi-k2 , ,qwen3-coder-plus, kimi-k2 ',
+        },
+      };
+      const result = profileMapper.mapProfileToClaudeKey(profile);
+
+      assert.ok(result, 'Should return ClaudeKey');
+      assert.deepStrictEqual(result.models, [
+        { name: 'qwen3-coder-plus', alias: '' },
+        { name: 'glm-4.6', alias: '' },
+        { name: 'kimi-k2', alias: '' },
+      ]);
+    });
+
+    it('ignores empty ANTHROPIC_EXTRA_MODELS', () => {
+      const profile = {
+        name: 'test',
+        settingsPath: '/path',
+        isConfigured: true,
+        env: {
+          ANTHROPIC_AUTH_TOKEN: 'sk-test',
+          ANTHROPIC_MODEL: 'gpt-4',
+          ANTHROPIC_EXTRA_MODELS: '   ',
+        },
+      };
+      const result = profileMapper.mapProfileToClaudeKey(profile);
+
+      assert.ok(result);
+      assert.strictEqual(result.models.length, 1);
+      assert.strictEqual(result.models[0].name, 'gpt-4');
+    });
   });
 
   describe('loadSyncableProfiles', () => {

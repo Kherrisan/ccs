@@ -18,6 +18,7 @@ const KNOWN_CODEX_MODELS = new Set(
 );
 
 const FREE_PLAN_FALLBACKS = new Map<string, string>([
+  ['gpt-5.5', FREE_SAFE_DEFAULT_MODEL],
   ['gpt-5.3-codex', FREE_SAFE_DEFAULT_MODEL],
   ['gpt-5.3-codex-spark', FREE_SAFE_FAST_MODEL],
 ]);

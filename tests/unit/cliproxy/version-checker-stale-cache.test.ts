@@ -91,33 +91,27 @@ describe('version-checker stale cache fallback', () => {
 
   it('skips update lookups when runtime startup prefers the installed binary', async () => {
     const { getExecutableName } = await import('../../../src/cliproxy/platform-detector');
+    const { ensureBinary } = await import('../../../src/cliproxy/binary/lifecycle');
+
     const plusBinDir = path.join(tempHome, '.ccs', 'cliproxy', 'bin', 'plus');
     fs.mkdirSync(plusBinDir, { recursive: true });
     fs.writeFileSync(path.join(plusBinDir, getExecutableName('plus')), 'binary');
 
+    // Verify the contract via dependency injection rather than mock.module().
+    // bun's mock.module() is process-wide and is NOT undone by mock.restore(),
+    // which previously leaked a stubbed version-checker into unrelated test
+    // files (cliproxy-stats-routes-*) that transitively import it.
     let checkForUpdatesCalls = 0;
-
-    mock.module('../../../src/cliproxy/binary/version-checker', () => ({
-      checkForUpdates: async () => {
-        checkForUpdatesCalls += 1;
-        return {
-          hasUpdate: false,
-          currentVersion: '6.8.2-0',
-          latestVersion: '6.8.2-0',
-          fromCache: false,
-          checkedAt: Date.now(),
-        };
-      },
-      fetchLatestVersion: async () => {
-        throw new Error('fetchLatestVersion should not run when skipAutoUpdate is enabled');
-      },
-      isNewerVersion: () => false,
-      isVersionFaulty: () => false,
-    }));
-
-    const { ensureBinary } = await import(
-      `../../../src/cliproxy/binary/lifecycle?skip-auto-update=${Date.now()}`
-    );
+    const checkForUpdatesSpy = async () => {
+      checkForUpdatesCalls += 1;
+      return {
+        hasUpdate: false,
+        currentVersion: '6.8.2-0',
+        latestVersion: '6.8.2-0',
+        fromCache: false,
+        checkedAt: Date.now(),
+      };
+    };
 
     const binaryPath = await ensureBinary({
       version: '6.8.2-0',
@@ -129,6 +123,7 @@ describe('version-checker stale cache fallback', () => {
       skipAutoUpdate: true,
       allowInstall: true,
       backend: 'plus',
+      checkForUpdatesFn: checkForUpdatesSpy,
     });
 
     expect(binaryPath).toBe(path.join(plusBinDir, getExecutableName('plus')));

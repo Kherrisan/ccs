@@ -268,6 +268,7 @@ type MockPageState = {
   id: string;
   title: string;
   currentUrl: string;
+  targetType?: string;
   fileInputs?: Record<string, MockFileInputPlan>;
   browser?: MockBrowserState;
   frameTree?: MockFrameTree;
@@ -288,6 +289,10 @@ type MockPageState = {
   recording?: MockRecordingPlan;
   events?: MockPageEventPlan;
   intercept?: MockInterceptState;
+  viewport?: {
+    width: number;
+    height: number;
+  };
   screenshot?: {
     expectedClip?: {
       x: number;
@@ -342,6 +347,7 @@ type RunMcpRequestsOptions = {
   serverPath?: string;
   childEnv?: NodeJS.ProcessEnv;
   responseTimeoutMs?: number;
+  requirePutForNewPage?: boolean;
 };
 
 function encodeMessage(message: unknown): string {
@@ -688,7 +694,7 @@ function createMockBrowser(pagesInput: MockPageState[]) {
             JSON.stringify([
               ...pageEntries.map(([wsPath, page]) => ({
                 id: page.id,
-                type: 'page',
+                type: page.targetType || 'page',
                 title: page.title,
                 url: page.currentUrl,
                 webSocketDebuggerUrl: `ws://127.0.0.1:${serverPort}${wsPath}`,
@@ -706,6 +712,12 @@ function createMockBrowser(pagesInput: MockPageState[]) {
         }
 
         if (req.url?.startsWith('/json/new')) {
+          if (options.requirePutForNewPage && req.method !== 'PUT') {
+            res.writeHead(405, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'method not allowed' }));
+            return;
+          }
+
           const parsed = new URL(req.url, `http://127.0.0.1:${serverPort}`);
           const requestedUrl = parsed.searchParams.get('url') || 'about:blank';
           const wsPath = `/devtools/page/${nextPageCounter}`;
@@ -764,7 +776,8 @@ function createMockBrowser(pagesInput: MockPageState[]) {
     wsServer = new WebSocketServer({ server: httpServer as http.Server });
     wsServer.on('connection', (socket, request) => {
       if ((request.url || '') === browserSocketPath) {
-        const browserState = pagesInput[0]?.browser || (pagesInput[0] ? (pagesInput[0].browser = {}) : {});
+        const browserState =
+          pagesInput[0]?.browser || (pagesInput[0] ? (pagesInput[0].browser = {}) : {});
 
         socket.on('message', (raw) => {
           const message = JSON.parse(raw.toString()) as {
@@ -782,9 +795,13 @@ function createMockBrowser(pagesInput: MockPageState[]) {
             browserState.setDownloadBehaviorCalls.push({
               behavior: typeof message.params?.behavior === 'string' ? message.params.behavior : '',
               downloadPath:
-                typeof message.params?.downloadPath === 'string' ? message.params.downloadPath : undefined,
+                typeof message.params?.downloadPath === 'string'
+                  ? message.params.downloadPath
+                  : undefined,
               eventsEnabled:
-                typeof message.params?.eventsEnabled === 'boolean' ? message.params.eventsEnabled : undefined,
+                typeof message.params?.eventsEnabled === 'boolean'
+                  ? message.params.eventsEnabled
+                  : undefined,
             });
             reply({});
             return;
@@ -801,35 +818,41 @@ function createMockBrowser(pagesInput: MockPageState[]) {
         for (const page of pagesInput) {
           for (const [index, download] of (page.events?.downloads || []).entries()) {
             const guid = download.guid || `${page.id}-download-${index + 1}`;
-            setTimeout(() => {
-              socket.send(
-                JSON.stringify({
-                  method: 'Browser.downloadWillBegin',
-                  params: {
-                    frameId: download.frameId || `frame-${page.id}`,
-                    guid,
-                    url: download.url,
-                    suggestedFilename: download.suggestedFilename,
-                  },
-                })
-              );
-            }, 10 + index * 40);
-
-            for (const [progressIndex, progress] of (download.progress || []).entries()) {
-              setTimeout(() => {
+            setTimeout(
+              () => {
                 socket.send(
                   JSON.stringify({
-                    method: 'Browser.downloadProgress',
+                    method: 'Browser.downloadWillBegin',
                     params: {
+                      frameId: download.frameId || `frame-${page.id}`,
                       guid,
-                      totalBytes: progress.totalBytes,
-                      receivedBytes: progress.receivedBytes,
-                      state: progress.state,
-                      filePath: progress.filePath,
+                      url: download.url,
+                      suggestedFilename: download.suggestedFilename,
                     },
                   })
                 );
-              }, 20 + index * 40 + progressIndex * 20);
+              },
+              10 + index * 40
+            );
+
+            for (const [progressIndex, progress] of (download.progress || []).entries()) {
+              setTimeout(
+                () => {
+                  socket.send(
+                    JSON.stringify({
+                      method: 'Browser.downloadProgress',
+                      params: {
+                        guid,
+                        totalBytes: progress.totalBytes,
+                        receivedBytes: progress.receivedBytes,
+                        state: progress.state,
+                        filePath: progress.filePath,
+                      },
+                    })
+                  );
+                },
+                20 + index * 40 + progressIndex * 20
+              );
             }
           }
         }
@@ -881,7 +904,31 @@ function createMockBrowser(pagesInput: MockPageState[]) {
 
         if (message.method === 'Page.getFrameTree') {
           const nextFrameTree = page.frameTreeSequence?.shift();
-          reply({ frameTree: nextFrameTree || page.frameTree || { frame: { id: `frame-${page.id}` } } });
+          reply({
+            frameTree: nextFrameTree || page.frameTree || { frame: { id: `frame-${page.id}` } },
+          });
+          return;
+        }
+
+        if (message.method === 'Page.getLayoutMetrics') {
+          const width = page.viewport?.width ?? 1280;
+          const height = page.viewport?.height ?? 720;
+          reply({
+            visualViewport: {
+              pageX: 0,
+              pageY: 0,
+              clientWidth: width,
+              clientHeight: height,
+              scale: 1,
+            },
+            cssVisualViewport: {
+              pageX: 0,
+              pageY: 0,
+              clientWidth: width,
+              clientHeight: height,
+              scale: 1,
+            },
+          });
           return;
         }
 
@@ -916,7 +963,8 @@ function createMockBrowser(pagesInput: MockPageState[]) {
           const type = typeof message.params?.type === 'string' ? message.params.type : '';
           const x = Number(message.params?.x);
           const y = Number(message.params?.y);
-          const button = typeof message.params?.button === 'string' ? message.params.button : undefined;
+          const button =
+            typeof message.params?.button === 'string' ? message.params.button : undefined;
           for (const hoverPlan of Object.values(page.hover || {})) {
             if (type === 'mouseMoved') {
               hoverPlan.lastMouseMove = { x, y };
@@ -1017,28 +1065,33 @@ function createMockBrowser(pagesInput: MockPageState[]) {
             ? (message.params?.patterns as unknown[])
             : [];
           if (page.intercept.enableError) {
-            socket.send(JSON.stringify({ id: message.id, error: { message: page.intercept.enableError } }));
+            socket.send(
+              JSON.stringify({ id: message.id, error: { message: page.intercept.enableError } })
+            );
             return;
           }
           reply({});
           const pauseDispatchDelayMs = page.intercept.pauseDispatchDelayMs ?? 10;
           for (const [index, paused] of (page.intercept.pausedRequests || []).entries()) {
-            setTimeout(() => {
-              socket.send(
-                JSON.stringify({
-                  method: 'Fetch.requestPaused',
-                  params: {
-                    requestId: paused.requestId || `fetch-${index + 1}`,
-                    resourceType: paused.resourceType || 'XHR',
-                    request: {
-                      url: paused.url,
-                      method: paused.method,
-                      headers: paused.requestHeaders || {},
+            setTimeout(
+              () => {
+                socket.send(
+                  JSON.stringify({
+                    method: 'Fetch.requestPaused',
+                    params: {
+                      requestId: paused.requestId || `fetch-${index + 1}`,
+                      resourceType: paused.resourceType || 'XHR',
+                      request: {
+                        url: paused.url,
+                        method: paused.method,
+                        headers: paused.requestHeaders || {},
+                      },
                     },
-                  },
-                })
-              );
-            }, pauseDispatchDelayMs + index * 10);
+                  })
+                );
+              },
+              pauseDispatchDelayMs + index * 10
+            );
           }
           return;
         }
@@ -1056,7 +1109,8 @@ function createMockBrowser(pagesInput: MockPageState[]) {
           page.intercept.failedRequests = page.intercept.failedRequests || [];
           page.intercept.failedRequests.push({
             requestId: String(message.params?.requestId || ''),
-            errorReason: typeof message.params?.errorReason === 'string' ? message.params.errorReason : '',
+            errorReason:
+              typeof message.params?.errorReason === 'string' ? message.params.errorReason : '',
           });
           reply({});
           return;
@@ -1068,7 +1122,9 @@ function createMockBrowser(pagesInput: MockPageState[]) {
           page.intercept.fulfilledRequests.push({
             requestId: String(message.params?.requestId || ''),
             responseCode:
-              typeof message.params?.responseCode === 'number' ? message.params.responseCode : undefined,
+              typeof message.params?.responseCode === 'number'
+                ? message.params.responseCode
+                : undefined,
             responseHeaders: Array.isArray(message.params?.responseHeaders)
               ? (message.params.responseHeaders as Array<{ name: string; value: string }>)
               : [],
@@ -1079,10 +1135,13 @@ function createMockBrowser(pagesInput: MockPageState[]) {
         }
 
         if (message.method === 'DOM.setFileInputFiles') {
-          const objectId = typeof message.params?.objectId === 'string' ? message.params.objectId : '';
+          const objectId =
+            typeof message.params?.objectId === 'string' ? message.params.objectId : '';
           const target = remoteObjects.get(objectId);
           if (!target) {
-            socket.send(JSON.stringify({ id: message.id, error: { message: 'file input handle not found' } }));
+            socket.send(
+              JSON.stringify({ id: message.id, error: { message: 'file input handle not found' } })
+            );
             return;
           }
           target.assignedFiles = Array.isArray(message.params?.files)
@@ -1115,7 +1174,10 @@ function createMockBrowser(pagesInput: MockPageState[]) {
             return;
           }
 
-          if (recordingPayload && (recordingPayload.events?.length || recordingPayload.warnings?.length)) {
+          if (
+            recordingPayload &&
+            (recordingPayload.events?.length || recordingPayload.warnings?.length)
+          ) {
             plan.events = recordingPayload.events || [];
             plan.warnings = recordingPayload.warnings || [];
           }
@@ -1124,7 +1186,11 @@ function createMockBrowser(pagesInput: MockPageState[]) {
           return;
         }
 
-        if (expression.includes('globalThis.__CCS_BROWSER_RECORDING_RECORDER__ || { events: [], warnings: [] }')) {
+        if (
+          expression.includes(
+            'globalThis.__CCS_BROWSER_RECORDING_RECORDER__ || { events: [], warnings: [] }'
+          )
+        ) {
           const plan = getMockRecordingPlan(page);
           if (plan.finalizeError) {
             socket.send(
@@ -1405,7 +1471,8 @@ function createMockBrowser(pagesInput: MockPageState[]) {
           }
           if (
             resolvedClickPlan.expectedOffset &&
-            (offsetX !== resolvedClickPlan.expectedOffset.x || offsetY !== resolvedClickPlan.expectedOffset.y)
+            (offsetX !== resolvedClickPlan.expectedOffset.x ||
+              offsetY !== resolvedClickPlan.expectedOffset.y)
           ) {
             replyError(`unexpected click offset for selector: ${selector}`);
             return;
@@ -1721,11 +1788,18 @@ function createMockBrowser(pagesInput: MockPageState[]) {
           return;
         }
 
-        if (expression.includes('window.scrollBy(deltaX, deltaY)') || expression.includes('element.scrollBy(deltaX, deltaY)')) {
+        if (
+          expression.includes('window.scrollBy(deltaX, deltaY)') ||
+          expression.includes('element.scrollBy(deltaX, deltaY)')
+        ) {
           const selector = parseJsonArgument(expression, 'selector');
           const behavior = parseJsonArgument(expression, 'behavior') || '';
-          const deltaX = Number(expression.match(/const deltaX = (-?[0-9]+(?:\.[0-9]+)?);/)?.[1] || 0);
-          const deltaY = Number(expression.match(/const deltaY = (-?[0-9]+(?:\.[0-9]+)?);/)?.[1] || 0);
+          const deltaX = Number(
+            expression.match(/const deltaX = (-?[0-9]+(?:\.[0-9]+)?);/)?.[1] || 0
+          );
+          const deltaY = Number(
+            expression.match(/const deltaY = (-?[0-9]+(?:\.[0-9]+)?);/)?.[1] || 0
+          );
           const scrollPlan = selector ? page.scroll?.[selector] : undefined;
           if (selector && !scrollPlan) {
             replyError(`element not found for selector: ${selector}`);
@@ -1837,7 +1911,6 @@ async function runMcpRequests(
     await browser.stop();
   }
 }
-
 
 export {
   bundledServerPath,

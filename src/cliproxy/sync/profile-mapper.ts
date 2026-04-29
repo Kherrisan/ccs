@@ -149,6 +149,28 @@ export function mapProfileToClaudeKey(profile: SyncableProfile): ClaudeKey | nul
         alias: '',
       },
     ];
+
+    // Append extra models from ANTHROPIC_EXTRA_MODELS env var (comma-separated).
+    // Skip duplicates of the primary model and any repeated entries to keep
+    // the synced CLIProxy `models` array clean.
+    const extraModelsRaw = env.ANTHROPIC_EXTRA_MODELS;
+    if (extraModelsRaw && extraModelsRaw.trim()) {
+      const seen = new Set<string>([modelName]);
+      const extraModels = extraModelsRaw
+        .split(',')
+        .map((m) => m.trim())
+        .filter((m) => m.length > 0);
+      for (const extra of extraModels) {
+        if (seen.has(extra)) {
+          continue;
+        }
+        seen.add(extra);
+        claudeKey.models.push({
+          name: extra,
+          alias: '',
+        });
+      }
+    }
   }
 
   return claudeKey;

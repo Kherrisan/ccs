@@ -28,7 +28,7 @@ describe('ProxyRequestTransformer', () => {
 
     expect(result.stream).toBe(true);
     expect(result.reasoning_effort).toBe('high');
-    expect(result.reasoning).toEqual({ enabled: true, effort: 'high' });
+    expect(result.reasoning).toBeUndefined();
     expect(result.max_tokens).toBe(1024);
     expect(result.temperature).toBe(0.2);
     expect(result.top_p).toBe(0.9);

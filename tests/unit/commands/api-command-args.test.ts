@@ -163,6 +163,24 @@ describe('api-command arg parser', () => {
     expect(parsed.extendedContext).toBeUndefined();
     expect(parsed.errors).toEqual(['Cannot combine --1m and --no-1m']);
   });
+
+  test('parses --extra-models as comma-separated list with whitespace and empty entries trimmed', () => {
+    const parsed = parseApiCommandArgs([
+      'my-api',
+      '--extra-models',
+      ' glm-4.6 , kimi-k2 , ,MiniMax-M2 ',
+    ]);
+
+    expect(parsed.extraModels).toEqual(['glm-4.6', 'kimi-k2', 'MiniMax-M2']);
+    expect(parsed.errors).toEqual([]);
+  });
+
+  test('records missing-value error for --extra-models with no value', () => {
+    const parsed = parseApiCommandArgs(['my-api', '--extra-models']);
+
+    expect(parsed.extraModels).toBeUndefined();
+    expect(parsed.errors).toEqual(['Missing value for --extra-models']);
+  });
 });
 
 describe('collectUnexpectedApiArgs', () => {

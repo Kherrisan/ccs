@@ -48,29 +48,41 @@ interface TokenData {
 }
 
 function normalizeSnapshot(raw?: RawGhcpQuotaSnapshot): GhcpQuotaSnapshot {
+  const unlimited = Boolean(raw?.unlimited);
+  const hasPercentSignal =
+    typeof raw?.percent_remaining === 'number' && Number.isFinite(raw.percent_remaining);
+  const rawRemaining = typeof raw?.remaining === 'number' ? raw.remaining : raw?.quota_remaining;
+  const hasEntitlementRemainingSignal =
+    typeof raw?.entitlement === 'number' &&
+    Number.isFinite(raw.entitlement) &&
+    raw.entitlement > 0 &&
+    typeof rawRemaining === 'number' &&
+    Number.isFinite(rawRemaining);
+  const reported =
+    raw !== undefined && (unlimited || hasPercentSignal || hasEntitlementRemainingSignal);
   const entitlement = Number(raw?.entitlement ?? 0);
-  const remainingRaw = raw?.remaining ?? raw?.quota_remaining ?? 0;
+  const remainingRaw = rawRemaining ?? 0;
   const remaining = Number(remainingRaw);
   const safeEntitlement = Number.isFinite(entitlement) ? Math.max(0, entitlement) : 0;
   const safeRemaining = Number.isFinite(remaining) ? Math.max(0, remaining) : 0;
   const used = Math.max(0, safeEntitlement - safeRemaining);
 
-  const percentRemainingRaw =
-    typeof raw?.percent_remaining === 'number' ? raw.percent_remaining : null;
-  const percentRemaining =
-    percentRemainingRaw !== null
-      ? clampPercent(percentRemainingRaw)
-      : safeEntitlement > 0
+  const percentRemaining = unlimited
+    ? 100
+    : hasPercentSignal
+      ? clampPercent(raw.percent_remaining as number)
+      : reported && safeEntitlement > 0
         ? clampPercent((safeRemaining / safeEntitlement) * 100)
         : 0;
 
   return {
+    reported,
     entitlement: safeEntitlement,
     remaining: safeRemaining,
     used,
     percentRemaining,
     percentUsed: clampPercent(100 - percentRemaining),
-    unlimited: Boolean(raw?.unlimited),
+    unlimited,
     overageCount:
       typeof raw?.overage_count === 'number' && Number.isFinite(raw.overage_count)
         ? Math.max(0, raw.overage_count)

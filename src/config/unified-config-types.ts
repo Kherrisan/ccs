@@ -205,6 +205,10 @@ export interface TokenRefreshSettings {
 export interface CLIProxyRoutingConfig {
   /** Credential selection strategy when multiple accounts match */
   strategy?: CliproxyRoutingStrategy;
+  /** Keep one conversation pinned to the same account when possible */
+  session_affinity?: boolean;
+  /** Go-style duration for session-affinity binding retention */
+  session_affinity_ttl?: string;
 }
 
 /**
@@ -1034,6 +1038,8 @@ export function createEmptyUnifiedConfig(): UnifiedConfig {
       auto_sync: true,
       routing: {
         strategy: 'round-robin',
+        session_affinity: false,
+        session_affinity_ttl: '1h',
       },
     },
     proxy: {

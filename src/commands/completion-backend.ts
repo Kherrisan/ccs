@@ -168,10 +168,27 @@ function getSuggestionsForCommand(tokensBeforeCurrent: string[]): CompletionSugg
           '-h',
         ]);
       if (subcommand === 'routing') {
+        const routingSubcommand = tokensBeforeCurrent[2];
+        const routingAffinityMode = tokensBeforeCurrent[3];
         if (lastToken === 'set') {
           return completeSubcommands(['round-robin', 'fill-first']);
         }
-        return completeSubcommands(['set', 'explain']);
+        if (routingSubcommand === 'affinity') {
+          if (!routingAffinityMode || lastToken === 'affinity') {
+            return completeSubcommands(['on', 'off']);
+          }
+          if (
+            (routingAffinityMode === 'on' || routingAffinityMode === 'off') &&
+            !tokensBeforeCurrent.includes('--ttl')
+          ) {
+            return completeSubcommands([], ['--ttl']);
+          }
+          if (lastToken === '--ttl') {
+            return [];
+          }
+          return completeSubcommands([]);
+        }
+        return completeSubcommands(['set', 'explain', 'affinity']);
       }
       if (['remove', 'edit'].includes(subcommand)) {
         return completeSubcommands(getProfileNames('cliproxyVariants'), ['--yes', '-y']);

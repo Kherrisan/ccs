@@ -59,8 +59,10 @@ export async function showHelp(): Promise<void> {
         ['quota', 'Show quota status for all providers (Codex/Claude include 5h + weekly reset)'],
         ['quota --provider <name>', `Filter by provider (${QUOTA_PROVIDER_HELP_TEXT})`],
         ['routing', 'Show current routing strategy and manual guidance'],
-        ['routing explain', 'Explain round-robin vs fill-first'],
+        ['routing explain', 'Explain strategy vs session-affinity and how sessions are recognized'],
         ['routing set <mode>', 'Explicitly set round-robin or fill-first'],
+        ['routing affinity', 'Show local session-affinity status and TTL'],
+        ['routing affinity <on|off> [--ttl <duration>]', 'Toggle local session-affinity settings'],
       ],
     ],
     [

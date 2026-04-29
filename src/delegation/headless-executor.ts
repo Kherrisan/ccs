@@ -23,6 +23,7 @@ import {
   stripAnthropicRoutingEnv,
   stripClaudeCodeEnv,
 } from '../utils/shell-executor';
+import { createOpenAICompatLaunchSettings } from '../utils/openai-compat-launch-settings';
 import { resolveProfileContinuityInheritance } from '../auth/profile-continuity-inheritance';
 import {
   appendThirdPartyImageAnalysisToolArgs,
@@ -255,8 +256,12 @@ export class HeadlessExecutor {
     // Smart slash command detection and preservation
     const processedPrompt = this._processSlashCommand(enhancedPrompt);
 
+    const launchSettings = openAICompatProfile
+      ? createOpenAICompatLaunchSettings(settingsPath, settings)
+      : { settingsPath, cleanup: () => {} };
+
     // Prepare arguments
-    const args: string[] = ['-p', processedPrompt, '--settings', settingsPath];
+    const args: string[] = ['-p', processedPrompt, '--settings', launchSettings.settingsPath];
 
     // Always use stream-json for real-time progress visibility
     args.push('--output-format', 'stream-json', '--verbose');
@@ -368,6 +373,7 @@ export class HeadlessExecutor {
       imageAnalysisEnv,
       runtimeEnvVars,
       traceEnv,
+      launchCleanup: launchSettings.cleanup,
     });
   }
 
@@ -388,6 +394,7 @@ export class HeadlessExecutor {
       imageAnalysisEnv?: Record<string, string>;
       runtimeEnvVars?: NodeJS.ProcessEnv;
       traceEnv?: Record<string, string>;
+      launchCleanup?: () => void;
     }
   ): Promise<ExecutionResult> {
     const {
@@ -401,6 +408,7 @@ export class HeadlessExecutor {
       imageAnalysisEnv = {},
       runtimeEnvVars = {},
       traceEnv = {},
+      launchCleanup = () => {},
     } = ctx;
 
     return new Promise((resolve, reject) => {
@@ -438,6 +446,14 @@ export class HeadlessExecutor {
       let progressInterval: NodeJS.Timeout | undefined;
       const messages: StreamMessage[] = [];
       let timedOut = false;
+      let cleanedUp = false;
+      const cleanupLaunchArtifacts = () => {
+        if (cleanedUp) {
+          return;
+        }
+        cleanedUp = true;
+        launchCleanup();
+      };
 
       // Setup signal handlers for cleanup
       const cleanupHandler = () => {
@@ -496,6 +512,7 @@ export class HeadlessExecutor {
 
       // Handle completion
       proc.on('close', (exitCode: number | null) => {
+        cleanupLaunchArtifacts();
         const duration = Date.now() - startTime;
 
         if (progressInterval) {
@@ -588,6 +605,7 @@ export class HeadlessExecutor {
 
       // Handle errors
       proc.on('error', (error: Error) => {
+        cleanupLaunchArtifacts();
         if (progressInterval) clearInterval(progressInterval);
         reject(new Error(`Failed to execute Claude CLI: ${error.message}`));
       });

@@ -98,6 +98,11 @@ describe('resolveTargetType', () => {
     expect(resolveTargetType([])).toBe('codex');
   });
 
+  it('should detect built-in ccsxp argv[0] alias', () => {
+    process.argv = ['node', 'ccsxp'];
+    expect(resolveTargetType([])).toBe('codex');
+  });
+
   it('should detect custom target aliases from CCS_TARGET_ALIASES', () => {
     process.env.CCS_TARGET_ALIASES = 'droid=droidx,my-droid';
     process.argv = ['node', 'my-droid'];
@@ -271,6 +276,9 @@ describe('resolveTargetType', () => {
     expect(resolveTargetType([])).toBe('codex');
 
     process.argv = ['node', 'ccsx'];
+    expect(resolveTargetType([])).toBe('codex');
+
+    process.argv = ['node', 'ccsxp'];
     expect(resolveTargetType([])).toBe('codex');
 
     process.argv = ['node', 'mydroid'];

@@ -362,7 +362,7 @@ function transformToolChoice(
 function mapThinkingToReasoning(
   thinking: AnthropicThinking | undefined,
   outputConfig: AnthropicOutputConfig | undefined
-): Pick<ProxyOpenAIRequest, 'reasoning' | 'reasoning_effort'> {
+): Pick<ProxyOpenAIRequest, 'reasoning_effort'> {
   if (!thinking || thinking.type === 'disabled') {
     return {};
   }
@@ -371,10 +371,6 @@ function mapThinkingToReasoning(
     const effort = toOpenAIEffort(resolveOutputConfigEffort(outputConfig) ?? 'high');
     return {
       reasoning_effort: effort,
-      reasoning: {
-        enabled: true,
-        effort,
-      },
     };
   }
 
@@ -389,10 +385,6 @@ function mapThinkingToReasoning(
 
   return {
     reasoning_effort: effort,
-    reasoning: {
-      enabled: true,
-      effort,
-    },
   };
 }
 

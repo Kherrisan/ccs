@@ -1,7 +1,10 @@
 /**
  * Unit tests for model-pricing.ts
  */
-import { describe, it, expect } from 'bun:test';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import { afterEach, beforeEach, describe, it, expect } from 'bun:test';
 import {
   getModelPricing,
   calculateCost,
@@ -9,6 +12,10 @@ import {
   hasCustomPricing,
   type TokenUsage,
 } from '../../src/web-server/model-pricing';
+import {
+  clearModelsDevRegistryCache,
+  setCachedModelsDevRegistry,
+} from '../../src/web-server/models-dev/registry-cache';
 
 describe('model-pricing', () => {
   describe('getModelPricing', () => {
@@ -160,6 +167,13 @@ describe('model-pricing', () => {
       expect(opus47dated.inputPerMillion).toBe(5.0);
       expect(opus47dated.outputPerMillion).toBe(25.0);
     });
+
+    it('should not map unknown future model families onto known family pricing', () => {
+      const fallback = getModelPricing('unknown-model-xyz');
+
+      expect(getModelPricing('claude-opus-5-20270101')).toEqual(fallback);
+      expect(getModelPricing('gemini-3.2-pro')).toEqual(fallback);
+    });
   });
 
   describe('calculateCost', () => {
@@ -288,6 +302,150 @@ describe('model-pricing', () => {
 
     it('should return false for unknown models', () => {
       expect(hasCustomPricing('unknown-model-xyz')).toBe(false);
+    });
+  });
+
+  describe('models.dev cache integration', () => {
+    let tempRoot = '';
+    let originalCcsHome: string | undefined;
+    let originalCcsDir: string | undefined;
+
+    beforeEach(() => {
+      tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ccs-models-dev-pricing-'));
+      originalCcsHome = process.env.CCS_HOME;
+      originalCcsDir = process.env.CCS_DIR;
+      process.env.CCS_HOME = tempRoot;
+      delete process.env.CCS_DIR;
+      clearModelsDevRegistryCache();
+      setCachedModelsDevRegistry({
+        openai: {
+          id: 'openai',
+          name: 'OpenAI',
+          models: {
+            'gpt-5.5': {
+              id: 'gpt-5.5',
+              name: 'GPT-5.5',
+              cost: { input: 5, output: 30, cache_read: 0.5 },
+            },
+            'gpt-4o': {
+              id: 'gpt-4o',
+              name: 'GPT-4o',
+              cost: { input: 2.5, output: 10, cache_read: 1.25 },
+            },
+            'openai-exclusive-model': {
+              id: 'openai-exclusive-model',
+              name: 'OpenAI Exclusive Model',
+              cost: { input: 9, output: 18 },
+            },
+          },
+        },
+        'github-copilot': {
+          id: 'github-copilot',
+          name: 'GitHub Copilot',
+          models: {
+            'gpt-5.5': {
+              id: 'gpt-5.5',
+              name: 'GPT-5.5',
+              cost: { input: 0, output: 0 },
+            },
+            'gpt-4o': {
+              id: 'gpt-4o',
+              name: 'GPT-4o',
+              cost: { input: 0, output: 0 },
+            },
+          },
+        },
+        google: {
+          id: 'google',
+          name: 'Google',
+          models: {
+            'gemini-3-flash-preview': {
+              id: 'gemini-3-flash-preview',
+              name: 'Gemini 3 Flash Preview',
+              cost: { input: 99, output: 99 },
+            },
+          },
+        },
+      });
+    });
+
+    afterEach(() => {
+      clearModelsDevRegistryCache();
+      if (originalCcsHome !== undefined) process.env.CCS_HOME = originalCcsHome;
+      else delete process.env.CCS_HOME;
+      if (originalCcsDir !== undefined) process.env.CCS_DIR = originalCcsDir;
+      else delete process.env.CCS_DIR;
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+    });
+
+    it('resolves provider-prefixed paid API pricing from models.dev', () => {
+      const pricing = getModelPricing('openai/gpt-5.5');
+      expect(pricing.inputPerMillion).toBe(5);
+      expect(pricing.outputPerMillion).toBe(30);
+      expect(pricing.cacheReadPerMillion).toBe(0.5);
+      expect(pricing.cacheCreationPerMillion).toBe(0);
+    });
+
+    it('keeps subscription-backed provider pricing distinct from paid API pricing', () => {
+      const pricing = getModelPricing('gpt-5.5', { provider: 'github-copilot' });
+      expect(pricing.inputPerMillion).toBe(0);
+      expect(pricing.outputPerMillion).toBe(0);
+    });
+
+    it('prefers provider-aware models.dev pricing over exact static table matches', () => {
+      const pricing = getModelPricing('gpt-4o', { provider: 'github-copilot' });
+      expect(pricing.inputPerMillion).toBe(0);
+      expect(pricing.outputPerMillion).toBe(0);
+      expect(getModelPricing('gpt-4o').inputPerMillion).toBe(2.5);
+    });
+
+    it('keeps CCS compatibility aliases ahead of provider-aware models.dev matches', () => {
+      const pricing = getModelPricing('gemini-3-flash-preview', { provider: 'google' });
+      const canonical = getModelPricing('gemini-2.5-flash');
+
+      expect(pricing).toEqual(canonical);
+      expect(pricing.inputPerMillion).not.toBe(99);
+    });
+
+    it('falls back to CCS static pricing when provider-aware models.dev lookup misses a known model', () => {
+      const staticPricing = getModelPricing('claude-sonnet-4-5');
+
+      expect(getModelPricing('anthropic/claude-sonnet-4-5')).toEqual(staticPricing);
+      expect(getModelPricing('claude-sonnet-4-5', { provider: 'anthropic' })).toEqual(
+        staticPricing
+      );
+      expect(hasCustomPricing('anthropic/claude-sonnet-4-5')).toBe(true);
+    });
+
+    it('does not use ambiguous model-only models.dev matches', () => {
+      const pricing = getModelPricing('gpt-5.5');
+      expect(pricing).toEqual(getModelPricing('unknown-model-xyz'));
+      expect(hasCustomPricing('gpt-5.5')).toBe(false);
+      expect(hasCustomPricing('gpt-5.5', { provider: 'openai' })).toBe(true);
+    });
+
+    it('does not use another provider pricing when explicit provider lookup misses', () => {
+      const fallback = getModelPricing('unknown-model-xyz');
+
+      expect(getModelPricing('openai-exclusive-model', { provider: 'github-copilot' })).toEqual(
+        fallback
+      );
+      expect(getModelPricing('github-copilot/openai-exclusive-model')).toEqual(fallback);
+      expect(hasCustomPricing('openai-exclusive-model', { provider: 'github-copilot' })).toBe(
+        false
+      );
+    });
+
+    it('calculates cost with provider-aware models.dev pricing', () => {
+      const usage: TokenUsage = {
+        inputTokens: 1_000_000,
+        outputTokens: 1_000_000,
+        cacheCreationTokens: 1_000_000,
+        cacheReadTokens: 1_000_000,
+      };
+
+      expect(calculateCost(usage, 'gpt-5.5', { provider: 'openai' })).toBe(35.5);
+      expect(calculateCost(usage, 'gpt-5.5', { provider: 'ghcp' })).toBe(0);
     });
   });
 });

@@ -101,7 +101,7 @@ ccs-droid  → Target: droid (explicit alias)
 ccsd       → Target: droid (legacy shortcut)
 ccs-codex  → Target: codex (explicit alias)
 ccsx       → Target: codex (short alias)
-ccsxp      → Target: codex (provider shortcut; rewrites argv to `ccs codex --target codex`)
+ccsxp      → Target: codex (native cliproxy shortcut; prepends `--config model_provider="cliproxy"`)
 ```
 
 For details on the adapter architecture, see [Target Adapters](./target-adapters.md).

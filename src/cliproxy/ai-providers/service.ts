@@ -36,11 +36,20 @@ function toHeaderPairs(
   return Object.entries(headers || {}).map(([key, value]) => ({ key, value }));
 }
 
-function normalizeModelAliases(models: AiProviderModelAlias[] | undefined): AiProviderModelAlias[] {
-  return (models || [])
+function readModelRulePart(model: unknown, key: keyof AiProviderModelAlias) {
+  if (!model || typeof model !== 'object') {
+    return '';
+  }
+
+  const value = (model as Partial<Record<keyof AiProviderModelAlias, unknown>>)[key];
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function normalizeModelAliases(models: unknown): AiProviderModelAlias[] {
+  return (Array.isArray(models) ? models : [])
     .map((model) => ({
-      name: model.name.trim(),
-      alias: model.alias.trim(),
+      name: readModelRulePart(model, 'name'),
+      alias: readModelRulePart(model, 'alias'),
     }))
     .filter((model) => model.name.length > 0 || model.alias.length > 0);
 }

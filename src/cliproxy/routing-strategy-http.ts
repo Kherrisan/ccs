@@ -7,13 +7,18 @@ import {
 } from './proxy-target-resolver';
 
 const ROUTING_TIMEOUT_MS = 5000;
+const CLIPROXY_ROUTING_MANAGEMENT_PATH = '/v0/management/routing/strategy';
+
+export function getCliproxyRoutingManagementUrl(target: ProxyTarget): string {
+  return buildProxyUrl(target, CLIPROXY_ROUTING_MANAGEMENT_PATH);
+}
 
 export async function fetchCliproxyRoutingResponse(
   target: ProxyTarget,
   method: 'GET' | 'PUT',
   body?: Record<string, string>
 ): Promise<Response> {
-  const url = buildProxyUrl(target, '/routing/strategy');
+  const url = getCliproxyRoutingManagementUrl(target);
   const headers = buildManagementHeaders(
     target,
     body ? { 'Content-Type': 'application/json' } : {}

@@ -144,4 +144,24 @@ describe('ai-provider service stable ids', () => {
       'sk-openrouter'
     );
   });
+
+  it('normalizes plain openai-compatible model rules without aliases', async () => {
+    const { listAiProviders } = await loadAiProviderService();
+
+    writeCliproxyConfig(tempHome, {
+      'openai-compatibility': [
+        {
+          name: 'openrouter',
+          'base-url': 'https://openrouter.ai/api/v1',
+          'api-key-entries': [{ 'api-key': 'sk-openrouter' }],
+          models: [{ name: 'gpt-4o-mini' }, null, { name: 42 }],
+        },
+      ],
+    });
+
+    const listed = await listAiProviders();
+    const family = listed.families.find((entry) => entry.id === 'openai-compatibility');
+
+    expect(family?.entries[0]?.models).toEqual([{ name: 'gpt-4o-mini', alias: '' }]);
+  });
 });

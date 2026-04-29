@@ -151,4 +151,138 @@ describe('cliproxy routing strategy service', () => {
       expect(methodCount).toBe(2);
     });
   });
+
+  it('normalizes session-affinity booleans and TTL values', async () => {
+    await withScopedConfig(async () => {
+      const mod = await loadRoutingModule();
+
+      expect(mod.normalizeCliproxySessionAffinityEnabled(true)).toBe(true);
+      expect(mod.normalizeCliproxySessionAffinityEnabled('on')).toBe(true);
+      expect(mod.normalizeCliproxySessionAffinityEnabled('false')).toBe(false);
+      expect(mod.normalizeCliproxySessionAffinityEnabled('maybe')).toBeNull();
+
+      expect(mod.normalizeCliproxySessionAffinityTtl('1h')).toBe('1h');
+      expect(mod.normalizeCliproxySessionAffinityTtl('2h30m')).toBe('2h30m');
+      expect(mod.normalizeCliproxySessionAffinityTtl('  15m  ')).toBe('15m');
+      expect(mod.normalizeCliproxySessionAffinityTtl('0s')).toBeNull();
+      expect(mod.normalizeCliproxySessionAffinityTtl('tomorrow')).toBeNull();
+    });
+  });
+
+  it('reads saved local session-affinity settings when live CLIProxy is unavailable', async () => {
+    await withScopedConfig(async () => {
+      const { mutateUnifiedConfig } = await import('../../../src/config/unified-config-loader');
+      mutateUnifiedConfig((config) => {
+        if (config.cliproxy) {
+          config.cliproxy.routing = {
+            strategy: 'round-robin',
+            session_affinity: true,
+            session_affinity_ttl: '2h30m',
+          };
+        }
+      });
+
+      const mod = await loadRoutingModule();
+      const state = await mod.readCliproxySessionAffinityState();
+
+      expect(state.enabled).toBe(true);
+      expect(state.ttl).toBe('2h30m');
+      expect(state.source).toBe('config');
+      expect(state.target).toBe('local');
+      expect(state.manageable).toBe(true);
+      expect(state.reachable).toBe(false);
+    });
+  });
+
+  it('persists local session-affinity settings even when live CLIProxy is unavailable', async () => {
+    await withScopedConfig(async () => {
+      const mod = await loadRoutingModule();
+      const result = await mod.applyCliproxySessionAffinitySettings({
+        enabled: true,
+        ttl: '2h',
+      });
+
+      expect(result.applied).toBe('config-only');
+      expect(result.enabled).toBe(true);
+      expect(result.ttl).toBe('2h');
+
+      const { loadUnifiedConfig } = await import('../../../src/config/unified-config-loader');
+      const persisted = loadUnifiedConfig();
+      expect(persisted?.cliproxy?.routing?.session_affinity).toBe(true);
+      expect(persisted?.cliproxy?.routing?.session_affinity_ttl).toBe('2h');
+    });
+  });
+
+  it('does not claim live session-affinity application just because local CLIProxy is reachable', async () => {
+    await withScopedConfig(async () => {
+      responseFactory = async () =>
+        new Response(JSON.stringify({ strategy: 'round-robin' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+
+      const mod = await loadRoutingModule();
+      const result = await mod.applyCliproxySessionAffinitySettings({
+        enabled: true,
+        ttl: '30m',
+      });
+
+      expect(result.reachable).toBe(true);
+      expect(result.applied).toBe('config-only');
+      expect(result.message).toContain('does not verify live selector state yet');
+    });
+  });
+
+  it('reports remote session-affinity management as unsupported', async () => {
+    await withScopedConfig(async () => {
+      routingTarget = {
+        host: 'remote.example.com',
+        port: 8080,
+        protocol: 'http',
+        isRemote: true,
+      };
+
+      responseFactory = async () =>
+        new Response(JSON.stringify({ strategy: 'round-robin' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+
+      const mod = await loadRoutingModule();
+      const state = await mod.readCliproxySessionAffinityState();
+
+      expect(state.source).toBe('unsupported');
+      expect(state.target).toBe('remote');
+      expect(state.manageable).toBe(false);
+      expect(state.reachable).toBe(true);
+      expect(state.enabled).toBeUndefined();
+
+      const result = await mod.applyCliproxySessionAffinitySettings({
+        enabled: true,
+        ttl: '1h',
+      });
+
+      expect(result.applied).toBe('unsupported');
+      expect(result.manageable).toBe(false);
+    });
+  });
+
+  it('reports unsupported remote session-affinity as unreachable when remote routing probe fails', async () => {
+    await withScopedConfig(async () => {
+      routingTarget = {
+        host: 'remote.example.com',
+        port: 8080,
+        protocol: 'http',
+        isRemote: true,
+      };
+      responseFactory = null;
+
+      const mod = await loadRoutingModule();
+      const state = await mod.readCliproxySessionAffinityState();
+
+      expect(state.source).toBe('unsupported');
+      expect(state.reachable).toBe(false);
+      expect(state.message).toContain('not reachable');
+    });
+  });
 });

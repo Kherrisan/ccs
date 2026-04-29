@@ -139,6 +139,18 @@ export interface ServiceStartResult {
 }
 
 /**
+ * Test-only seams for ensureCliproxyService. Production callers omit this and
+ * get the real implementations. Tests inject stubs to avoid bun's
+ * `mock.module()`, which is process-wide and leaks across test files.
+ */
+export interface EnsureCliproxyServiceDeps {
+  ensureBinaryFn?: typeof ensureCLIProxyBinary;
+  detectRunningProxyFn?: typeof detectRunningProxy;
+  configNeedsRegenerationFn?: typeof configNeedsRegeneration;
+  withStartupLockFn?: typeof withStartupLock;
+}
+
+/**
  * Ensure CLIProxy service is running
  *
  * If proxy is already running, returns immediately.
@@ -146,12 +158,18 @@ export interface ServiceStartResult {
  *
  * @param port CLIProxy port (default: 8317)
  * @param verbose Show debug output
+ * @param deps Test-only dependency overrides (see EnsureCliproxyServiceDeps)
  * @returns Result indicating success and whether it was already running
  */
 export async function ensureCliproxyService(
   port: number = CLIPROXY_DEFAULT_PORT,
-  verbose: boolean = false
+  verbose: boolean = false,
+  deps: EnsureCliproxyServiceDeps = {}
 ): Promise<ServiceStartResult> {
+  const ensureBinaryFn = deps.ensureBinaryFn ?? ensureCLIProxyBinary;
+  const detectRunningProxyFn = deps.detectRunningProxyFn ?? detectRunningProxy;
+  const configNeedsRegenerationFn = deps.configNeedsRegenerationFn ?? configNeedsRegeneration;
+  const withStartupLockFn = deps.withStartupLockFn ?? withStartupLock;
   const log = (msg: string) => {
     if (verbose) {
       console.error(`[cliproxy-service] ${msg}`);
@@ -160,17 +178,17 @@ export async function ensureCliproxyService(
 
   // Check if config needs update (even if running)
   let configRegenerated = false;
-  if (configNeedsRegeneration()) {
+  if (configNeedsRegenerationFn()) {
     log('Config outdated, regenerating...');
     regenerateConfig(port);
     configRegenerated = true;
   }
 
   // Use startup lock to coordinate with other CCS processes (ccs agy, ccs config, etc.)
-  return await withStartupLock(async () => {
+  return await withStartupLockFn(async () => {
     // Use unified detection (HTTP check + session-lock + port-process)
     log(`Checking if CLIProxy is running on port ${port}...`);
-    const proxyStatus = await detectRunningProxy(port);
+    const proxyStatus = await detectRunningProxyFn(port);
     log(`Proxy detection: ${JSON.stringify(proxyStatus)}`);
 
     if (proxyStatus.running && proxyStatus.verified) {
@@ -216,7 +234,7 @@ export async function ensureCliproxyService(
     // 1. Ensure binary exists
     let binaryPath: string;
     try {
-      binaryPath = await ensureCLIProxyBinary(verbose, {
+      binaryPath = await ensureBinaryFn(verbose, {
         allowInstall: false,
         skipAutoUpdate: true,
       });

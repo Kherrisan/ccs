@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'bun:test';
-import { bundledServerPath, runMcpRequests, getResponseText, getMockDropzoneState, mkdtempSync, readFileSync, writeFileSync, tmpdir, join } from './browser-mcp-test-harness';
+import {
+  bundledServerPath,
+  runMcpRequests,
+  getResponseText,
+  getMockDropzoneState,
+  mkdtempSync,
+  readFileSync,
+  writeFileSync,
+  tmpdir,
+  join,
+} from './browser-mcp-test-harness';
 import type { MockPageState } from './browser-mcp-test-harness';
 
 describe('ccs-browser MCP server - advanced interactions', () => {
@@ -88,7 +98,9 @@ describe('ccs-browser MCP server - advanced interactions', () => {
       },
     ]);
 
-    expect(getResponseText(responses.find((message) => message.id === 901))).toContain('status: files-dropped');
+    expect(getResponseText(responses.find((message) => message.id === 901))).toContain(
+      'status: files-dropped'
+    );
     expect(getMockDropzoneState(pages[0]!, '#dropzone')?.receivedEventTypes).toEqual([
       'dragenter',
       'dragover',
@@ -99,7 +111,8 @@ describe('ccs-browser MCP server - advanced interactions', () => {
       { name: 'receipt.png', size: 7, type: 'image/png' },
     ]);
     expect(
-      getMockDropzoneState(pages[0]!, '#frame-dropzone', { frameSelector: '#upload-frame' })?.receivedFiles
+      getMockDropzoneState(pages[0]!, '#frame-dropzone', { frameSelector: '#upload-frame' })
+        ?.receivedFiles
     ).toEqual([{ name: 'invoice.pdf', size: 7, type: 'application/pdf' }]);
     expect(
       getMockDropzoneState(pages[0]!, '#shadow-dropzone', { pierceShadow: true })?.receivedFiles
@@ -145,7 +158,12 @@ describe('ccs-browser MCP server - advanced interactions', () => {
           method: 'tools/call',
           params: {
             name: 'browser_drag_files',
-            arguments: { pageIndex: 0, pageId: 'page-1', selector: '#reject-dropzone', files: [okPath] },
+            arguments: {
+              pageIndex: 0,
+              pageId: 'page-1',
+              selector: '#reject-dropzone',
+              files: [okPath],
+            },
           },
         },
         {
@@ -169,7 +187,9 @@ describe('ccs-browser MCP server - advanced interactions', () => {
       ]
     );
 
-    expect(getResponseText(responses.find((message) => message.id === 904))).toContain('file does not exist');
+    expect(getResponseText(responses.find((message) => message.id === 904))).toContain(
+      'file does not exist'
+    );
     expect(getResponseText(responses.find((message) => message.id === 905))).toContain(
       'pageIndex and pageId cannot be used together'
     );
@@ -297,13 +317,27 @@ describe('ccs-browser MCP server - advanced interactions', () => {
       },
     ]);
 
-    expect(getResponseText(responses.find((message) => message.id === 908))).toContain('status: dragged');
-    expect(getResponseText(responses.find((message) => message.id === 908))).toContain('targetSelector: #lane-b');
-    expect(getResponseText(responses.find((message) => message.id === 909))).toContain('status: dragged');
-    expect(getResponseText(responses.find((message) => message.id === 909))).toContain('targetX: 420');
-    expect(getResponseText(responses.find((message) => message.id === 909))).toContain('targetY: 180');
-    expect(getResponseText(responses.find((message) => message.id === 916))).toContain('pageIndex: 1');
-    expect(getResponseText(responses.find((message) => message.id === 916))).toContain('targetSelector: #lane-b');
+    expect(getResponseText(responses.find((message) => message.id === 908))).toContain(
+      'status: dragged'
+    );
+    expect(getResponseText(responses.find((message) => message.id === 908))).toContain(
+      'targetSelector: #lane-b'
+    );
+    expect(getResponseText(responses.find((message) => message.id === 909))).toContain(
+      'status: dragged'
+    );
+    expect(getResponseText(responses.find((message) => message.id === 909))).toContain(
+      'targetX: 420'
+    );
+    expect(getResponseText(responses.find((message) => message.id === 909))).toContain(
+      'targetY: 180'
+    );
+    expect(getResponseText(responses.find((message) => message.id === 916))).toContain(
+      'pageIndex: 1'
+    );
+    expect(getResponseText(responses.find((message) => message.id === 916))).toContain(
+      'targetSelector: #lane-b'
+    );
     expect(pages[0]!.drag?.recordedActions).toEqual([
       { type: 'mouseMoved', x: 70, y: 70, button: 'none' },
       { type: 'mousePressed', x: 70, y: 70, button: 'left' },
@@ -360,7 +394,12 @@ describe('ccs-browser MCP server - advanced interactions', () => {
           method: 'tools/call',
           params: {
             name: 'browser_drag_element',
-            arguments: { selector: '#card-a', targetSelector: '#lane-b', targetX: 400, targetY: 200 },
+            arguments: {
+              selector: '#card-a',
+              targetSelector: '#lane-b',
+              targetX: 400,
+              targetY: 200,
+            },
           },
         },
         {
@@ -387,7 +426,13 @@ describe('ccs-browser MCP server - advanced interactions', () => {
           method: 'tools/call',
           params: {
             name: 'browser_drag_element',
-            arguments: { pageIndex: 0, pageId: 'page-1', selector: '#card-a', targetX: 400, targetY: 200 },
+            arguments: {
+              pageIndex: 0,
+              pageId: 'page-1',
+              selector: '#card-a',
+              targetX: 400,
+              targetY: 200,
+            },
           },
         },
       ]
@@ -485,19 +530,21 @@ describe('ccs-browser MCP server - advanced interactions', () => {
           name: 'browser_pointer_action',
           arguments: {
             pageId: 'page-2',
-            actions: [
-              { type: 'move', selector: '#handle' },
-              { type: 'down' },
-              { type: 'up' },
-            ],
+            actions: [{ type: 'move', selector: '#handle' }, { type: 'down' }, { type: 'up' }],
           },
         },
       },
     ]);
 
-    expect(getResponseText(responses.find((message) => message.id === 913))).toContain('status: pointer-actions-completed');
-    expect(getResponseText(responses.find((message) => message.id === 918))).toContain('pageIndex: 1');
-    expect(getResponseText(responses.find((message) => message.id === 918))).toContain('status: pointer-actions-completed');
+    expect(getResponseText(responses.find((message) => message.id === 913))).toContain(
+      'status: pointer-actions-completed'
+    );
+    expect(getResponseText(responses.find((message) => message.id === 918))).toContain(
+      'pageIndex: 1'
+    );
+    expect(getResponseText(responses.find((message) => message.id === 918))).toContain(
+      'status: pointer-actions-completed'
+    );
     expect(pages[0]!.drag?.recordedActions).toEqual([
       { type: 'mouseMoved', x: 50, y: 60, button: 'none' },
       { type: 'mousePressed', x: 50, y: 60, button: 'left' },
@@ -592,8 +639,12 @@ describe('ccs-browser MCP server - advanced interactions', () => {
       },
     ]);
 
-    expect(getResponseText(responses.find((message) => message.id === 914))).toContain('pointer state error');
-    expect(getResponseText(responses.find((message) => message.id === 915))).toContain('drag coordinates unavailable');
+    expect(getResponseText(responses.find((message) => message.id === 914))).toContain(
+      'pointer state error'
+    );
+    expect(getResponseText(responses.find((message) => message.id === 915))).toContain(
+      'drag coordinates unavailable'
+    );
     expect(getResponseText(responses.find((message) => message.id === 919))).toContain(
       'pageIndex and pageId cannot be used together'
     );
@@ -1174,6 +1225,37 @@ describe('ccs-browser MCP server - advanced interactions', () => {
     expect((errorResponse?.result as { isError?: boolean }).isError).toBe(true);
     expect(getResponseText(errorResponse)).toContain(
       'Browser MCP failed: screenshot capture failed'
+    );
+  });
+
+  it('reports a clear error before screenshot capture when the selected page has a zero viewport', async () => {
+    const responses = await runMcpRequests(
+      [
+        {
+          id: 'page-1',
+          title: 'Popup Target',
+          currentUrl: 'https://example.com/',
+          viewport: { width: 0, height: 0 },
+          screenshot: { data: 'c2NyZWVuc2hvdA==' },
+        },
+      ],
+      [
+        {
+          jsonrpc: '2.0',
+          id: 3,
+          method: 'tools/call',
+          params: {
+            name: 'browser_take_screenshot',
+            arguments: {},
+          },
+        },
+      ]
+    );
+
+    const response = responses.find((message) => message.id === 3);
+    expect((response?.result as { isError?: boolean }).isError).toBe(true);
+    expect(getResponseText(response)).toContain(
+      'Browser MCP failed: page has no drawable viewport for screenshot'
     );
   });
 

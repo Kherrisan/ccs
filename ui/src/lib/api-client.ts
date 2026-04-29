@@ -336,6 +336,7 @@ export interface CreateProfile {
   baseUrl: string;
   apiKey: string;
   model?: string;
+  extraModels?: string;
   opusModel?: string;
   sonnetModel?: string;
   haikuModel?: string;
@@ -346,6 +347,7 @@ export interface UpdateProfile {
   baseUrl?: string;
   apiKey?: string;
   model?: string;
+  extraModels?: string;
   opusModel?: string;
   sonnetModel?: string;
   haikuModel?: string;
@@ -519,6 +521,20 @@ export interface CliproxyRoutingApplyResult extends CliproxyRoutingState {
   applied: 'live' | 'live-and-config' | 'config-only';
 }
 
+export interface CliproxySessionAffinityState {
+  enabled?: boolean;
+  ttl?: string;
+  source: 'config' | 'unsupported';
+  target: 'local' | 'remote';
+  reachable: boolean;
+  manageable: boolean;
+  message?: string;
+}
+
+export interface CliproxySessionAffinityApplyResult extends CliproxySessionAffinityState {
+  applied: 'config-and-live' | 'config-only' | 'unsupported';
+}
+
 /** Auth file info for Config tab */
 export interface AuthFile {
   name: string;
@@ -643,7 +659,11 @@ export interface QuotaResult {
 
 /** Codex rate limit window */
 export interface CodexQuotaWindow {
-  /** Window label: "Primary", "Secondary", "Code Review (Primary)", "Code Review (Secondary)" */
+  /**
+   * Window label, e.g.: "Primary", "Secondary",
+   * "Code Review (Primary)", "Code Review (Secondary)",
+   * or "GPT-5.3-Codex-Spark (Primary)" for additional rate limits.
+   */
   label: string;
   /** Percentage used (0-100) */
   usedPercent: number;
@@ -653,6 +673,18 @@ export interface CodexQuotaWindow {
   resetAfterSeconds: number | null;
   /** ISO timestamp when quota resets, null if unknown */
   resetAt: string | null;
+  /**
+   * Window category indicating the bucket this window belongs to.
+   * Optional for back-compat with cached data emitted before this field existed.
+   * - 'usage'        -> standard rate_limit usage windows
+   * - 'code-review'  -> code_review_rate_limit windows
+   * - 'additional'   -> additional_rate_limits[] windows (e.g. GPT-5.3 Codex Spark)
+   */
+  category?: 'usage' | 'code-review' | 'additional';
+  /** Cadence of the window: '5h' = primary, 'weekly' = secondary. Optional for legacy data. */
+  cadence?: '5h' | 'weekly';
+  /** Raw upstream feature label (e.g. 'GPT-5.3-Codex-Spark', 'Code Review'); absent for plain usage windows. */
+  featureLabel?: string;
 }
 
 /** Core Codex usage window (5h/weekly) extracted from raw windows */
@@ -830,6 +862,8 @@ export interface GeminiCliQuotaResult {
 
 /** GitHub Copilot quota snapshot */
 export interface GhcpQuotaSnapshot {
+  /** False when upstream omitted this quota category */
+  reported?: boolean;
   /** Total quota allocation for this category */
   entitlement: number;
   /** Remaining quota count */
@@ -1250,6 +1284,13 @@ export const api = {
       request<CliproxyRoutingApplyResult>('/cliproxy/routing/strategy', {
         method: 'PUT',
         body: JSON.stringify({ value: strategy }),
+      }),
+    getSessionAffinity: () =>
+      request<CliproxySessionAffinityState>('/cliproxy/routing/session-affinity'),
+    updateSessionAffinity: (data: { enabled: boolean; ttl?: string }) =>
+      request<CliproxySessionAffinityApplyResult>('/cliproxy/routing/session-affinity', {
+        method: 'PUT',
+        body: JSON.stringify(data),
       }),
     aiProviders: {
       list: () => request<ListAiProvidersResult>('/cliproxy/ai-providers'),

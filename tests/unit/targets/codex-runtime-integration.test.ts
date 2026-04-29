@@ -174,6 +174,7 @@ process.exit(0);
       CI: '1',
       NO_COLOR: '1',
       CCS_HOME: tmpHome,
+      CODEX_HOME: undefined,
       CCS_CODEX_PATH: fakeCodexPath,
       CCS_TEST_CODEX_ARGS_OUT: codexArgsLogPath,
       CCS_TEST_CODEX_ENV_OUT: codexEnvLogPath,
@@ -377,10 +378,7 @@ process.exit(0);
       expect(result.status).toBe(0);
       const calls = readLoggedCodexCalls(codexArgsLogPath);
       expect(calls[1]).toEqual(
-        expect.arrayContaining([
-          'mcp_servers.ccs_browser.enabled=true',
-          'fix failing tests',
-        ])
+        expect.arrayContaining(['mcp_servers.ccs_browser.enabled=true', 'fix failing tests'])
       );
     } finally {
       if (originalCcsHome !== undefined) {
@@ -523,28 +521,27 @@ process.exit(0);
     if (process.platform === 'win32') return;
 
     const freshCodexHome = path.join(tmpHome, 'fresh-codex-home');
-    const result = runCcs(['default', '--target', 'codex', '--effort', 'high', 'fix failing tests'], {
-      ...process.env,
-      CI: '1',
-      NO_COLOR: '1',
-      CCS_HOME: tmpHome,
-      CCS_CODEX_PATH: fakeCodexPath,
-      CCS_TEST_CODEX_ARGS_OUT: codexArgsLogPath,
-      CCS_TEST_CODEX_ENV_OUT: codexEnvLogPath,
-      CCS_TEST_CODEX_VERSION: 'codex-cli 9.9.9-test',
-      CODEX_HOME: freshCodexHome,
-    });
+    const result = runCcs(
+      ['default', '--target', 'codex', '--effort', 'high', 'fix failing tests'],
+      {
+        ...process.env,
+        CI: '1',
+        NO_COLOR: '1',
+        CCS_HOME: tmpHome,
+        CCS_CODEX_PATH: fakeCodexPath,
+        CCS_TEST_CODEX_ARGS_OUT: codexArgsLogPath,
+        CCS_TEST_CODEX_ENV_OUT: codexEnvLogPath,
+        CCS_TEST_CODEX_VERSION: 'codex-cli 9.9.9-test',
+        CODEX_HOME: freshCodexHome,
+      }
+    );
 
     expect(result.status).toBe(0);
     expect(fs.existsSync(freshCodexHome)).toBe(true);
     expect(fs.statSync(freshCodexHome).isDirectory()).toBe(true);
     expect(readLoggedCodexCalls(codexArgsLogPath)).toEqual([
       ['-c', 'model="gpt-5"', '--version'],
-      [
-        '-c',
-        'model_reasoning_effort="high"',
-        'fix failing tests',
-      ],
+      ['-c', 'model_reasoning_effort="high"', 'fix failing tests'],
     ]);
     const loggedEnv = readLoggedCodexEnv(codexEnvLogPath);
     expect(loggedEnv).toHaveLength(2);
@@ -570,13 +567,13 @@ process.exit(0);
     const result = runCcs(
       ['default', '--target', 'codex', '--effort', 'high', 'fix failing tests'],
       {
-      ...process.env,
-      CI: '1',
-      NO_COLOR: '1',
-      CCS_HOME: tmpHome,
-      CCS_CODEX_PATH: fakeCodexPath,
-      CCS_TEST_CODEX_ARGS_OUT: codexArgsLogPath,
-      CODEX_HOME: invalidCodexHome,
+        ...process.env,
+        CI: '1',
+        NO_COLOR: '1',
+        CCS_HOME: tmpHome,
+        CCS_CODEX_PATH: fakeCodexPath,
+        CCS_TEST_CODEX_ARGS_OUT: codexArgsLogPath,
+        CODEX_HOME: invalidCodexHome,
       }
     );
 
@@ -658,7 +655,135 @@ process.exit(0);
 
     expect(result.status).toBe(0);
     expect(result.stdout).toContain('codex-cli 9.9.9-test');
-    expect(readLoggedCodexCalls(codexArgsLogPath)).toEqual([['--version']]);
+    expect(readLoggedCodexCalls(codexArgsLogPath)).toEqual([
+      ['--config', 'model_provider="cliproxy"', '--version'],
+    ]);
+  });
+
+  it('pins ccsxp Codex history to native default instead of inherited CODEX_HOME', () => {
+    if (process.platform === 'win32') return;
+
+    const inheritedCodexHome = path.join(tmpHome, 'inherited-codex-home');
+    const result = runCcsxpAlias(['--version'], {
+      ...process.env,
+      CI: '1',
+      NO_COLOR: '1',
+      CCS_HOME: tmpHome,
+      CCS_CODEX_PATH: fakeCodexPath,
+      CCS_TEST_CODEX_ENV_OUT: codexEnvLogPath,
+      CCS_TEST_CODEX_VERSION: 'codex-cli 9.9.9-test',
+      CODEX_HOME: inheritedCodexHome,
+    });
+
+    expect(result.status).toBe(0);
+    expect(readLoggedCodexEnv(codexEnvLogPath)).toEqual([
+      {
+        CODEX_HOME: path.join(os.homedir(), '.codex'),
+        CODEX_CI: undefined,
+        CODEX_MANAGED_BY_BUN: undefined,
+        CODEX_THREAD_ID: undefined,
+        ANTHROPIC_BASE_URL: undefined,
+        CCS_BROWSER_USER_DATA_DIR: undefined,
+        CCS_BROWSER_PROFILE_DIR: undefined,
+        CCS_BROWSER_DEVTOOLS_WS_URL: undefined,
+      },
+    ]);
+  });
+
+  it('routes default ccsxp launches through native Codex with the cliproxy provider override', () => {
+    if (process.platform === 'win32') return;
+
+    const result = runCcsxpAlias(['fix failing tests'], {
+      ...process.env,
+      CI: '1',
+      NO_COLOR: '1',
+      CCS_HOME: tmpHome,
+      CCS_CODEX_PATH: fakeCodexPath,
+      CCS_TEST_CODEX_ARGS_OUT: codexArgsLogPath,
+      CCS_TEST_CODEX_ENV_OUT: codexEnvLogPath,
+    });
+
+    expect(result.status).toBe(0);
+    expect(readLoggedCodexCalls(codexArgsLogPath)).toEqual([
+      ['--config', 'model_provider="cliproxy"', 'fix failing tests'],
+    ]);
+    expect(readLoggedCodexEnv(codexEnvLogPath)).toEqual([
+      {
+        CODEX_HOME: path.join(os.homedir(), '.codex'),
+        CODEX_CI: undefined,
+        CODEX_MANAGED_BY_BUN: undefined,
+        CODEX_THREAD_ID: undefined,
+        ANTHROPIC_BASE_URL: undefined,
+        CCS_BROWSER_USER_DATA_DIR: undefined,
+        CCS_BROWSER_PROFILE_DIR: undefined,
+        CCS_BROWSER_DEVTOOLS_WS_URL: undefined,
+      },
+    ]);
+  });
+
+  it('rejects conflicting native provider config overrides for ccsxp', () => {
+    if (process.platform === 'win32') return;
+
+    const result = runCcsxpAlias(['--config', 'model_provider="openai"', '--version'], {
+      ...process.env,
+      CI: '1',
+      NO_COLOR: '1',
+      CCS_HOME: tmpHome,
+      CCS_CODEX_PATH: fakeCodexPath,
+      CCS_TEST_CODEX_ARGS_OUT: codexArgsLogPath,
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('ccsxp does not allow');
+    expect(readLoggedCodexCalls(codexArgsLogPath)).toEqual([]);
+  });
+
+  it('rejects native profile selection flags for ccsxp', () => {
+    if (process.platform === 'win32') return;
+
+    const result = runCcsxpAlias(['--profile', 'other', '--version'], {
+      ...process.env,
+      CI: '1',
+      NO_COLOR: '1',
+      CCS_HOME: tmpHome,
+      CCS_CODEX_PATH: fakeCodexPath,
+      CCS_TEST_CODEX_ARGS_OUT: codexArgsLogPath,
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('ccsxp does not allow');
+    expect(readLoggedCodexCalls(codexArgsLogPath)).toEqual([]);
+  });
+
+  it('honors CCSXP_CODEX_HOME for intentionally separate ccsxp history', () => {
+    if (process.platform === 'win32') return;
+
+    const explicitCodexHome = path.join(tmpHome, 'explicit-ccsxp-codex-home');
+    const result = runCcsxpAlias(['--version'], {
+      ...process.env,
+      CI: '1',
+      NO_COLOR: '1',
+      CCS_HOME: tmpHome,
+      CCS_CODEX_PATH: fakeCodexPath,
+      CCS_TEST_CODEX_ENV_OUT: codexEnvLogPath,
+      CCS_TEST_CODEX_VERSION: 'codex-cli 9.9.9-test',
+      CODEX_HOME: path.join(tmpHome, 'inherited-codex-home'),
+      CCSXP_CODEX_HOME: explicitCodexHome,
+    });
+
+    expect(result.status).toBe(0);
+    expect(readLoggedCodexEnv(codexEnvLogPath)).toEqual([
+      {
+        CODEX_HOME: explicitCodexHome,
+        CODEX_CI: undefined,
+        CODEX_MANAGED_BY_BUN: undefined,
+        CODEX_THREAD_ID: undefined,
+        ANTHROPIC_BASE_URL: undefined,
+        CCS_BROWSER_USER_DATA_DIR: undefined,
+        CCS_BROWSER_PROFILE_DIR: undefined,
+        CCS_BROWSER_DEVTOOLS_WS_URL: undefined,
+      },
+    ]);
   });
 
   it('fails with a clean CLI error when ccsxp receives a malformed --target flag', () => {
@@ -740,11 +865,7 @@ process.exit(0);
     expect(result.status).toBe(0);
     expect(readLoggedCodexCalls(codexArgsLogPath)).toEqual([
       ['-c', 'model="gpt-5"', '--version'],
-      [
-        '-c',
-        'model_reasoning_effort="high"',
-        'fix failing tests',
-      ],
+      ['-c', 'model_reasoning_effort="high"', 'fix failing tests'],
     ]);
   });
 

@@ -91,7 +91,8 @@ function createSettingsFile(
   baseUrl: string,
   apiKey: string,
   models: ModelMapping,
-  provider?: string
+  provider?: string,
+  extraModels?: string[]
 ): string {
   const ccsDir = getCcsDir();
   const settingsPath = path.join(ccsDir, `${name}.settings.json`);
@@ -117,6 +118,9 @@ function createSettingsFile(
       ANTHROPIC_DEFAULT_OPUS_MODEL: models.opus,
       ANTHROPIC_DEFAULT_SONNET_MODEL: models.sonnet,
       ANTHROPIC_DEFAULT_HAIKU_MODEL: models.haiku,
+      ...(extraModels && extraModels.length > 0
+        ? { ANTHROPIC_EXTRA_MODELS: extraModels.join(',') }
+        : {}),
       CCS_DROID_PROVIDER: droidProvider,
     },
   };
@@ -179,7 +183,8 @@ function createApiProfileUnified(
   apiKey: string,
   models: ModelMapping,
   target: TargetType = 'claude',
-  provider?: string
+  provider?: string,
+  extraModels?: string[]
 ): void {
   const ccsDir = getCcsDir();
   const settingsFile = `${name}.settings.json`;
@@ -204,6 +209,9 @@ function createApiProfileUnified(
       ANTHROPIC_DEFAULT_OPUS_MODEL: models.opus,
       ANTHROPIC_DEFAULT_SONNET_MODEL: models.sonnet,
       ANTHROPIC_DEFAULT_HAIKU_MODEL: models.haiku,
+      ...(extraModels && extraModels.length > 0
+        ? { ANTHROPIC_EXTRA_MODELS: extraModels.join(',') }
+        : {}),
       CCS_DROID_PROVIDER: droidProvider,
     },
   };
@@ -240,7 +248,8 @@ export function createApiProfile(
   apiKey: string,
   models: ModelMapping,
   target: TargetType = 'claude',
-  provider?: string
+  provider?: string,
+  extraModels?: string[]
 ): CreateApiProfileResult {
   try {
     const deniedReason = getDeniedModelReason(baseUrl, models);
@@ -251,9 +260,9 @@ export function createApiProfile(
     const settingsFile = `~/.ccs/${name}.settings.json`;
 
     if (isUnifiedMode()) {
-      createApiProfileUnified(name, baseUrl, apiKey, models, target, provider);
+      createApiProfileUnified(name, baseUrl, apiKey, models, target, provider, extraModels);
     } else {
-      createSettingsFile(name, baseUrl, apiKey, models, provider);
+      createSettingsFile(name, baseUrl, apiKey, models, provider, extraModels);
       updateLegacyConfig(name, target);
     }
 
