@@ -107,9 +107,12 @@ export class ToolNameMapper {
         finalName = disambiguated;
       }
 
-      // Store mapping if name changed or was disambiguated
+      // Always register in mapping so later tools can detect collisions
+      // even when this tool's name was unchanged
+      this.mapping.set(finalName, tool.name);
+
+      // Record change only if name actually changed
       if (finalName !== tool.name) {
-        this.mapping.set(finalName, tool.name);
         this.changes.push({
           original: tool.name,
           sanitized: finalName,

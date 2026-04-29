@@ -203,5 +203,29 @@ describe('Tool Name Sanitizer', () => {
       assert.ok(isValidToolName(result.sanitized), `Expected valid name, got: ${result.sanitized}`);
       assert.ok(result.sanitized.length <= 64);
     });
+
+    it('forces valid prefix for dot-starting name', () => {
+      const result = sanitizeToolName('.tool');
+
+      assert.ok(result.sanitized.startsWith('_'), `Expected _ prefix, got: ${result.sanitized}`);
+      assert.ok(isValidToolName(result.sanitized));
+      assert.strictEqual(result.changed, true);
+    });
+
+    it('forces valid prefix for hyphen-starting name', () => {
+      const result = sanitizeToolName('-tool');
+
+      assert.ok(result.sanitized.startsWith('_'), `Expected _ prefix, got: ${result.sanitized}`);
+      assert.ok(isValidToolName(result.sanitized));
+      assert.strictEqual(result.changed, true);
+    });
+
+    it('forces valid prefix for colon-starting name', () => {
+      const result = sanitizeToolName(':tool');
+
+      assert.ok(result.sanitized.startsWith('_'), `Expected _ prefix, got: ${result.sanitized}`);
+      assert.ok(isValidToolName(result.sanitized));
+      assert.strictEqual(result.changed, true);
+    });
   });
 });

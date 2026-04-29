@@ -103,7 +103,7 @@ export function smartTruncate(name: string, maxLen: number = GEMINI_MAX_TOOL_NAM
 /**
  * Force a string to comply with Gemini tool name character rules.
  * Replaces invalid characters with underscores and ensures the name
- * starts with a letter or underscore.
+ * starts with a letter or underscore (not a digit, dot, colon, etc.).
  */
 function forceValidChars(name: string): string {
   // Replace any character not in [a-zA-Z0-9_.:/-] with underscore
@@ -112,8 +112,8 @@ function forceValidChars(name: string): string {
   // Collapse multiple consecutive underscores from replacement
   fixed = fixed.replace(/_+/g, '_');
 
-  // Ensure starts with letter or underscore
-  if (fixed.length > 0 && /^[0-9]/.test(fixed)) {
+  // Ensure starts with letter or underscore (not digit, dot, colon, hyphen, slash)
+  if (fixed.length > 0 && !/^[a-zA-Z_]/.test(fixed)) {
     fixed = '_' + fixed;
   }
 

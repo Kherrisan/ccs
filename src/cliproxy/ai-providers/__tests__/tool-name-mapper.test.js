@@ -300,5 +300,36 @@ describe('Tool Name Mapper', () => {
       assert.ok(collisions[0].originals.includes('x__y__y'));
       assert.ok(collisions[0].originals.includes('x__y'));
     });
+
+    it('detects collision when unchanged tool appears before sanitized one', () => {
+      const mapper = new ToolNameMapper();
+      const tools = [
+        { name: 'abc__def' }, // unchanged, but registered in mapping
+        { name: 'abc__def__def' }, // sanitizes to 'abc__def', collides
+      ];
+
+      const result = mapper.registerTools(tools);
+
+      assert.strictEqual(result[0].name, 'abc__def');
+      assert.strictEqual(result[1].name, 'abc__def_2');
+      assert.strictEqual(mapper.hasCollisions(), true);
+    });
+
+    it('restores correctly for reverse-order collision', () => {
+      const mapper = new ToolNameMapper();
+      const tools = [{ name: 'abc__def' }, { name: 'abc__def__def' }];
+
+      mapper.registerTools(tools);
+
+      const content = [
+        { type: 'tool_use', id: '1', name: 'abc__def', input: {} },
+        { type: 'tool_use', id: '2', name: 'abc__def_2', input: {} },
+      ];
+
+      const restored = mapper.restoreToolUse(content);
+
+      assert.strictEqual(restored[0].name, 'abc__def');
+      assert.strictEqual(restored[1].name, 'abc__def__def');
+    });
   });
 });
