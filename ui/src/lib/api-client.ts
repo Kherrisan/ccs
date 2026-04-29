@@ -862,6 +862,8 @@ export interface GeminiCliQuotaResult {
 
 /** GitHub Copilot quota snapshot */
 export interface GhcpQuotaSnapshot {
+  /** False when upstream omitted this quota category */
+  reported?: boolean;
   /** Total quota allocation for this category */
   entitlement: number;
   /** Remaining quota count */

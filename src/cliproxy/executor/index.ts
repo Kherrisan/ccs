@@ -106,6 +106,7 @@ import {
   handleTokenExpiration,
   handleQuotaCheck,
 } from './retry-handler';
+import { MANAGED_QUOTA_PROVIDERS, type ManagedQuotaProvider } from '../quota-manager';
 import { checkOrJoinProxy, registerProxySession, setupCleanupHandlers } from './session-bridge';
 import { parseThinkingOverride } from './thinking-arg-parser';
 import {
@@ -127,6 +128,25 @@ import {
   shouldDisableCodexReasoning,
 } from './thinking-override-resolver';
 import { shouldStartHttpsTunnel } from './https-tunnel-policy';
+
+function resolveRuntimeQuotaMonitorProviders(
+  provider: CLIProxyProvider,
+  compositeProviders: CLIProxyProvider[]
+): ManagedQuotaProvider[] {
+  const candidates = compositeProviders.length > 0 ? compositeProviders : [provider];
+  const resolved: ManagedQuotaProvider[] = [];
+
+  for (const candidate of candidates) {
+    if (
+      MANAGED_QUOTA_PROVIDERS.includes(candidate as ManagedQuotaProvider) &&
+      !resolved.includes(candidate as ManagedQuotaProvider)
+    ) {
+      resolved.push(candidate as ManagedQuotaProvider);
+    }
+  }
+
+  return resolved;
+}
 
 /** Default executor configuration */
 const DEFAULT_CONFIG: ExecutorConfig = {
@@ -888,8 +908,7 @@ export async function execClaudeWithCLIProxy(
   if (!skipLocalAuth) {
     // Multi-tier quota check for composite variants (check if any tier uses a managed provider)
     if (compositeProviders.length > 0) {
-      const managedQuotaProviders = ['agy', 'claude'] as const;
-      for (const managedProvider of managedQuotaProviders) {
+      for (const managedProvider of MANAGED_QUOTA_PROVIDERS) {
         if (compositeProviders.includes(managedProvider)) {
           await handleQuotaCheck(managedProvider);
         }
@@ -1376,9 +1395,14 @@ export async function execClaudeWithCLIProxy(
   // 12b. Start runtime quota monitor (adaptive polling during session)
   if (!skipLocalAuth) {
     const { startQuotaMonitor } = await import('../quota-manager');
-    const monitorAccount = getDefaultAccount(provider);
-    if (monitorAccount) {
-      startQuotaMonitor(provider, monitorAccount.id);
+    for (const monitorProvider of resolveRuntimeQuotaMonitorProviders(
+      provider,
+      compositeProviders
+    )) {
+      const monitorAccount = getDefaultAccount(monitorProvider);
+      if (monitorAccount) {
+        startQuotaMonitor(monitorProvider, monitorAccount.id);
+      }
     }
   }
 
@@ -1396,5 +1420,9 @@ export async function execClaudeWithCLIProxy(
 
 // Re-export utility functions for backwards compatibility
 export { isPortAvailable, findAvailablePort } from './lifecycle-manager';
+
+export const __testExports = {
+  resolveRuntimeQuotaMonitorProviders,
+};
 
 export default execClaudeWithCLIProxy;

@@ -15,7 +15,15 @@
 import { CLIProxyProvider } from './types';
 import { QuotaResult, fetchAccountQuota } from './quota-fetcher';
 import { fetchClaudeQuota } from './quota-fetcher-claude';
-import type { ClaudeQuotaResult } from './quota-types';
+import { fetchCodexQuota } from './quota-fetcher-codex';
+import { fetchGeminiCliQuota } from './quota-fetcher-gemini-cli';
+import { fetchGhcpQuota } from './quota-fetcher-ghcp';
+import type {
+  ClaudeQuotaResult,
+  CodexQuotaResult,
+  GeminiCliQuotaResult,
+  GhcpQuotaResult,
+} from './quota-types';
 import {
   getDefaultAccount,
   getProviderAccounts,
@@ -27,12 +35,25 @@ import {
 import { loadOrCreateUnifiedConfig } from '../config/unified-config-loader';
 import type { RuntimeMonitorConfig } from '../config/unified-config-types';
 
-type ManagedQuotaProvider = 'agy' | 'claude';
-type ManagedQuotaResult = QuotaResult | ClaudeQuotaResult;
+export type ManagedQuotaProvider = 'agy' | 'claude' | 'codex' | 'gemini' | 'ghcp';
+type ManagedQuotaResult =
+  | QuotaResult
+  | ClaudeQuotaResult
+  | CodexQuotaResult
+  | GeminiCliQuotaResult
+  | GhcpQuotaResult;
 
-const MANAGED_QUOTA_PROVIDERS: readonly ManagedQuotaProvider[] = ['agy', 'claude'];
+export const MANAGED_QUOTA_PROVIDERS: readonly ManagedQuotaProvider[] = [
+  'agy',
+  'claude',
+  'codex',
+  'gemini',
+  'ghcp',
+];
 
-function isManagedQuotaProvider(provider: CLIProxyProvider): provider is ManagedQuotaProvider {
+export function isManagedQuotaProvider(
+  provider: CLIProxyProvider
+): provider is ManagedQuotaProvider {
   return MANAGED_QUOTA_PROVIDERS.includes(provider as ManagedQuotaProvider);
 }
 
@@ -117,19 +138,7 @@ async function fetchQuotaWithDedup(
       setCachedQuota(provider, accountId, result);
       return result;
     })
-    .catch((): ManagedQuotaResult => {
-      if (provider === 'claude') {
-        return {
-          success: false,
-          windows: [],
-          coreUsage: { fiveHour: null, weekly: null },
-          lastUpdated: Date.now(),
-          error: 'Failed to fetch Claude quota',
-          accountId,
-        };
-      }
-      return { success: false, models: [], lastUpdated: Date.now() };
-    })
+    .catch((): ManagedQuotaResult => buildFailedQuotaResult(provider, accountId))
     .finally(() => {
       pendingFetches.delete(key);
     });
@@ -143,10 +152,85 @@ async function fetchManagedQuota(
   accountId: string,
   verbose: boolean
 ): Promise<ManagedQuotaResult> {
-  if (provider === 'claude') {
-    return fetchClaudeQuota(accountId, verbose);
+  switch (provider) {
+    case 'agy':
+      return fetchAccountQuota(provider, accountId, verbose);
+    case 'claude':
+      return fetchClaudeQuota(accountId, verbose);
+    case 'codex':
+      return fetchCodexQuota(accountId, verbose);
+    case 'gemini':
+      return fetchGeminiCliQuota(accountId, verbose);
+    case 'ghcp':
+      return fetchGhcpQuota(accountId, verbose);
   }
-  return fetchAccountQuota(provider, accountId, verbose);
+}
+
+function buildFailedGhcpSnapshot(): GhcpQuotaResult['snapshots']['chat'] {
+  return {
+    reported: false,
+    entitlement: 0,
+    remaining: 0,
+    used: 0,
+    percentRemaining: 0,
+    percentUsed: 0,
+    unlimited: false,
+    overageCount: 0,
+    overagePermitted: false,
+    quotaId: null,
+  };
+}
+
+function buildFailedQuotaResult(
+  provider: ManagedQuotaProvider,
+  accountId: string
+): ManagedQuotaResult {
+  switch (provider) {
+    case 'agy':
+      return { success: false, models: [], lastUpdated: Date.now(), accountId };
+    case 'claude':
+      return {
+        success: false,
+        windows: [],
+        coreUsage: { fiveHour: null, weekly: null },
+        lastUpdated: Date.now(),
+        error: 'Failed to fetch Claude quota',
+        accountId,
+      };
+    case 'codex':
+      return {
+        success: false,
+        windows: [],
+        coreUsage: { fiveHour: null, weekly: null },
+        planType: null,
+        lastUpdated: Date.now(),
+        error: 'Failed to fetch Codex quota',
+        accountId,
+      };
+    case 'gemini':
+      return {
+        success: false,
+        buckets: [],
+        projectId: null,
+        lastUpdated: Date.now(),
+        error: 'Failed to fetch Gemini quota',
+        accountId,
+      };
+    case 'ghcp':
+      return {
+        success: false,
+        planType: null,
+        quotaResetDate: null,
+        snapshots: {
+          premiumInteractions: buildFailedGhcpSnapshot(),
+          chat: buildFailedGhcpSnapshot(),
+          completions: buildFailedGhcpSnapshot(),
+        },
+        lastUpdated: Date.now(),
+        error: 'Failed to fetch GitHub Copilot quota',
+        accountId,
+      };
+  }
 }
 
 // ============================================================================
@@ -264,14 +348,62 @@ function calculateClaudeQuotaPercent(quota: ClaudeQuotaResult): number | null {
   return null;
 }
 
+function calculateCodexQuotaPercent(quota: CodexQuotaResult): number | null {
+  if (!quota.success) return null;
+
+  const coreWindows = [quota.coreUsage?.fiveHour, quota.coreUsage?.weekly].filter(
+    (window): window is NonNullable<typeof window> => !!window
+  );
+  if (coreWindows.length > 0) {
+    return Math.min(...coreWindows.map((window) => window.remainingPercent));
+  }
+
+  const usageWindows = quota.windows.filter((window) => window.category !== 'code-review');
+  if (usageWindows.length > 0) {
+    return Math.min(...usageWindows.map((window) => window.remainingPercent));
+  }
+
+  return null;
+}
+
+function calculateGeminiQuotaPercent(quota: GeminiCliQuotaResult): number | null {
+  if (!quota.success || quota.buckets.length === 0) return null;
+  return Math.min(...quota.buckets.map((bucket) => bucket.remainingPercent));
+}
+
+function calculateGhcpQuotaPercent(quota: GhcpQuotaResult): number | null {
+  if (!quota.success) return null;
+  const percentages = [
+    quota.snapshots.premiumInteractions,
+    quota.snapshots.chat,
+    quota.snapshots.completions,
+  ]
+    .filter((snapshot) => snapshot.reported !== false)
+    .map((snapshot) => (snapshot.unlimited ? 100 : snapshot.percentRemaining))
+    .filter((percentage) => Number.isFinite(percentage));
+
+  return percentages.length > 0 ? Math.min(...percentages) : null;
+}
+
 /**
  * Calculate normalized quota percentage for managed providers.
  */
-function calculateQuotaPercent(quota: ManagedQuotaResult): number | null {
-  if ('models' in quota) {
-    return calculateAgyQuotaPercent(quota);
+function calculateQuotaPercent(
+  provider: ManagedQuotaProvider,
+  quota: ManagedQuotaResult
+): number | null {
+  switch (provider) {
+    case 'agy':
+      return calculateAgyQuotaPercent(quota as QuotaResult);
+    case 'claude':
+      return calculateClaudeQuotaPercent(quota as ClaudeQuotaResult);
+    case 'codex':
+      return calculateCodexQuotaPercent(quota as CodexQuotaResult);
+    case 'gemini':
+      return calculateGeminiQuotaPercent(quota as GeminiCliQuotaResult);
+    case 'ghcp':
+      return calculateGhcpQuotaPercent(quota as GhcpQuotaResult);
   }
-  return calculateClaudeQuotaPercent(quota);
 }
 
 /**
@@ -312,7 +444,7 @@ export async function findHealthyAccount(
         quota = await fetchQuotaWithDedup(provider, account.id);
       }
 
-      const avgQuota = calculateQuotaPercent(quota);
+      const avgQuota = calculateQuotaPercent(provider, quota);
 
       return {
         id: account.id,
@@ -437,7 +569,7 @@ export async function preflightCheck(provider: CLIProxyProvider): Promise<Prefli
 
   // Calculate normalized quota percentage.
   // Null means quota data is unavailable (e.g. provider does not expose limits for this account).
-  const quotaPercent = calculateQuotaPercent(quota);
+  const quotaPercent = calculateQuotaPercent(provider, quota);
   if (quotaPercent === null) {
     return {
       proceed: true,
@@ -462,11 +594,13 @@ export async function preflightCheck(provider: CLIProxyProvider): Promise<Prefli
       };
     }
 
-    pauseAccountForQuotaCooldown(
-      provider,
-      defaultAccount.id,
-      quotaConfig.auto?.cooldown_minutes ?? 5
-    );
+    if (alternative.lastQuota !== null && alternative.lastQuota >= threshold) {
+      pauseAccountForQuotaCooldown(
+        provider,
+        defaultAccount.id,
+        quotaConfig.auto?.cooldown_minutes ?? 5
+      );
+    }
     setDefaultAccount(provider, alternative.id);
     touchAccount(provider, alternative.id);
     return {
@@ -506,12 +640,14 @@ export async function getQuotaStatus(provider: CLIProxyProvider): Promise<{
 
   const results = await Promise.all(
     accounts.map(async (account) => {
+      const managedProvider = isManagedQuotaProvider(provider) ? provider : null;
       let quota = getCachedQuota(provider, account.id);
-      if (!quota && isManagedQuotaProvider(provider)) {
-        quota = await fetchQuotaWithDedup(provider, account.id);
+      if (!quota && managedProvider) {
+        quota = await fetchQuotaWithDedup(managedProvider, account.id);
       }
 
-      const avgQuota = quota ? calculateQuotaPercent(quota) : null;
+      const avgQuota =
+        quota && managedProvider ? calculateQuotaPercent(managedProvider, quota) : null;
 
       return {
         account,
@@ -530,14 +666,14 @@ export async function getQuotaStatus(provider: CLIProxyProvider): Promise<{
 // RUNTIME QUOTA MONITOR (adaptive polling during active sessions)
 // ============================================================================
 
-/** Active monitor timer (null = not running) */
-let monitorTimer: ReturnType<typeof setTimeout> | null = null;
+interface RuntimeMonitorState {
+  timer: ReturnType<typeof setTimeout> | null;
+  hasWarnedThisSession: boolean;
+  stopped: boolean;
+}
 
-/** Tracks if warning was shown this session (avoid spam) */
-let hasWarnedThisSession = false;
-
-/** Guards against in-flight poll callbacks running after stop */
-let monitorStopped = false;
+/** Active monitor timers keyed by provider/account. */
+const activeRuntimeMonitors = new Map<string, RuntimeMonitorState>();
 
 /**
  * Schedule next quota poll with adaptive interval.
@@ -547,16 +683,18 @@ function scheduleNextPoll(
   provider: ManagedQuotaProvider,
   accountId: string,
   monitorConfig: RuntimeMonitorConfig,
-  intervalMs: number
+  intervalMs: number,
+  state: RuntimeMonitorState
 ): void {
-  monitorTimer = setTimeout(async () => {
+  const monitorKey = getCacheKey(provider, accountId);
+  state.timer = setTimeout(async () => {
     // Guard: skip if monitor was stopped while this callback was queued
-    if (monitorStopped) return;
+    if (state.stopped || activeRuntimeMonitors.get(monitorKey) !== state) return;
 
     try {
       const quota = await fetchQuotaWithDedup(provider, accountId);
-      if (monitorStopped) return; // Re-check after async fetch
-      const avgQuota = calculateQuotaPercent(quota);
+      if (state.stopped || activeRuntimeMonitors.get(monitorKey) !== state) return;
+      const avgQuota = calculateQuotaPercent(provider, quota);
 
       if (avgQuota === null) {
         // Quota data unavailable: keep polling, but do not treat unknown as healthy/exhausted.
@@ -564,7 +702,8 @@ function scheduleNextPoll(
           provider,
           accountId,
           monitorConfig,
-          monitorConfig.normal_interval_seconds * 1000
+          monitorConfig.normal_interval_seconds * 1000,
+          state
         );
         return;
       }
@@ -576,22 +715,25 @@ function scheduleNextPoll(
         // default only takes effect on next session start via preflightCheck().
         const { handleQuotaExhaustion } = await import('./account-safety');
         await handleQuotaExhaustion(provider, accountId, monitorConfig.cooldown_minutes);
-        monitorTimer = null;
+        state.stopped = true;
+        state.timer = null;
+        activeRuntimeMonitors.delete(monitorKey);
         return; // Stop polling
       }
 
       if (avgQuota <= monitorConfig.warn_threshold) {
         // WARNING: switch to critical interval, warn once
-        if (!hasWarnedThisSession) {
+        if (!state.hasWarnedThisSession) {
           const { writeQuotaWarning } = await import('./account-safety');
           writeQuotaWarning(accountId, avgQuota);
-          hasWarnedThisSession = true;
+          state.hasWarnedThisSession = true;
         }
         scheduleNextPoll(
           provider,
           accountId,
           monitorConfig,
-          monitorConfig.critical_interval_seconds * 1000
+          monitorConfig.critical_interval_seconds * 1000,
+          state
         );
         return;
       }
@@ -601,17 +743,20 @@ function scheduleNextPoll(
         provider,
         accountId,
         monitorConfig,
-        monitorConfig.normal_interval_seconds * 1000
+        monitorConfig.normal_interval_seconds * 1000,
+        state
       );
     } catch {
       // API failure: silently reschedule at same interval
-      scheduleNextPoll(provider, accountId, monitorConfig, intervalMs);
+      if (!state.stopped && activeRuntimeMonitors.get(monitorKey) === state) {
+        scheduleNextPoll(provider, accountId, monitorConfig, intervalMs, state);
+      }
     }
   }, intervalMs);
 
   // Prevent monitor from keeping Node.js process alive
-  if (monitorTimer && typeof monitorTimer === 'object' && 'unref' in monitorTimer) {
-    monitorTimer.unref();
+  if (state.timer && typeof state.timer === 'object' && 'unref' in state.timer) {
+    state.timer.unref();
   }
 }
 
@@ -627,9 +772,6 @@ function scheduleNextPoll(
 export function startQuotaMonitor(provider: CLIProxyProvider, accountId: string): void {
   // Only managed providers support runtime quota monitoring.
   if (!isManagedQuotaProvider(provider)) return;
-
-  // Prevent duplicate monitors
-  if (monitorTimer) return;
 
   const config = loadOrCreateUnifiedConfig();
   const quotaConfig = config.quota_management;
@@ -647,15 +789,23 @@ export function startQuotaMonitor(provider: CLIProxyProvider, accountId: string)
     return; // Invalid config — skip monitoring silently (logged at config level)
   }
 
-  hasWarnedThisSession = false;
-  monitorStopped = false;
+  const monitorKey = getCacheKey(provider, accountId);
+  if (activeRuntimeMonitors.has(monitorKey)) return;
+
+  const state: RuntimeMonitorState = {
+    timer: null,
+    hasWarnedThisSession: false,
+    stopped: false,
+  };
+  activeRuntimeMonitors.set(monitorKey, state);
 
   // Start first poll at normal interval
   scheduleNextPoll(
     provider,
     accountId,
     quotaConfig.runtime_monitor,
-    quotaConfig.runtime_monitor.normal_interval_seconds * 1000
+    quotaConfig.runtime_monitor.normal_interval_seconds * 1000,
+    state
   );
 }
 
@@ -663,10 +813,12 @@ export function startQuotaMonitor(provider: CLIProxyProvider, accountId: string)
  * Stop the runtime quota monitor. Safe to call multiple times.
  */
 export function stopQuotaMonitor(): void {
-  monitorStopped = true;
-  if (monitorTimer) {
-    clearTimeout(monitorTimer);
-    monitorTimer = null;
+  for (const state of activeRuntimeMonitors.values()) {
+    state.stopped = true;
+    if (state.timer) {
+      clearTimeout(state.timer);
+      state.timer = null;
+    }
   }
-  hasWarnedThisSession = false;
+  activeRuntimeMonitors.clear();
 }

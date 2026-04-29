@@ -465,7 +465,7 @@ export function QuotaTooltipContent({ quota, resetTime }: QuotaTooltipContentPro
       },
       { label: t('quotaTooltip.chat'), snapshot: quota.snapshots.chat },
       { label: t('quotaTooltip.completions'), snapshot: quota.snapshots.completions },
-    ];
+    ].filter(({ snapshot }) => snapshot.reported !== false);
     const effectiveResetTime = quota.quotaResetDate ?? resetTime;
     const planLabel = formatPlanLabel(quota.planType);
 
