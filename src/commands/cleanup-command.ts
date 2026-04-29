@@ -8,7 +8,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { getCliproxyDir } from '../cliproxy/config-generator';
+import { getCliproxyDir } from '../cliproxy/config/config-generator';
 import { getLogArchiveDir, getNativeLogsDir } from '../services/logging';
 import { info, ok, warn } from '../utils/ui';
 

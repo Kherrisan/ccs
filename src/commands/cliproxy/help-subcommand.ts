@@ -10,7 +10,7 @@ import {
   DEFAULT_BACKEND,
   getFallbackVersion,
   BACKEND_CONFIG,
-} from '../../cliproxy/platform-detector';
+} from '../../cliproxy/binary/platform-detector';
 import { QUOTA_PROVIDER_HELP_TEXT } from '../../cliproxy/provider-capabilities';
 
 export async function showHelp(): Promise<void> {

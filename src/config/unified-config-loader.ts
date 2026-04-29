@@ -44,7 +44,7 @@ import type {
   CursorConfig,
   ContinuityConfig,
 } from './unified-config-types';
-import { validateCompositeTiers } from '../cliproxy/composite-validator';
+import { validateCompositeTiers } from '../cliproxy/config/composite-validator';
 import { isUnifiedConfigEnabled } from './feature-flags';
 import {
   isOfficialChannelId,

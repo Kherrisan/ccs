@@ -9,9 +9,9 @@
 
 import { Router, Request, Response } from 'express';
 import { loadOrCreateUnifiedConfig, mutateUnifiedConfig } from '../../config/unified-config-loader';
-import { testConnection } from '../../cliproxy/remote-proxy-client';
+import { testConnection } from '../../cliproxy/services/remote-proxy-client';
 import { isProxyRunning } from '../../cliproxy/services/proxy-lifecycle-service';
-import { DEFAULT_BACKEND } from '../../cliproxy/platform-detector';
+import { DEFAULT_BACKEND } from '../../cliproxy/binary/platform-detector';
 import {
   DEFAULT_CLIPROXY_SERVER_CONFIG,
   CliproxyServerConfig,

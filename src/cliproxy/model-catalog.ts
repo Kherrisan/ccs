@@ -10,7 +10,7 @@ import {
   isAntigravityProvider,
   migrateDeniedAntigravityModelAliases,
   normalizeModelIdForProvider,
-} from './model-id-normalizer';
+} from './ai-providers/model-id-normalizer';
 import {
   AGY_GEMINI_PRO_COMPATIBILITY_IDS,
   AGY_GEMINI_PRO_HIGH_ID,

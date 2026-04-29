@@ -18,9 +18,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
 import * as lockfile from 'proper-lockfile';
-import { getCliproxyDir } from './config-generator';
+import { getCliproxyDir } from './config/config-generator';
 import { getPortProcess, isCLIProxyProcess } from '../utils/port-utils';
-import { CLIPROXY_DEFAULT_PORT } from './config-generator';
+import { CLIPROXY_DEFAULT_PORT } from './config/config-generator';
 
 /** Session lock file structure */
 interface SessionLock {

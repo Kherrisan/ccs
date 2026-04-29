@@ -10,7 +10,7 @@ import {
   getProxyStatus as getProxyStatusSession,
 } from '../session-tracker';
 import { ensureCliproxyService } from '../service-manager';
-import { CLIPROXY_DEFAULT_PORT } from '../config-generator';
+import { CLIPROXY_DEFAULT_PORT } from '../config/config-generator';
 
 /** Proxy status result */
 export interface ProxyStatusResult {

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import { readFileSync } from 'fs';
 import { dirname } from 'path';
 import type { ImageAnalysisStatus } from '../../../../src/utils/hooks/image-analysis-backend-resolver';
-import type { AuthStatus } from '../../../../src/cliproxy/auth-handler';
+import type { AuthStatus } from '../../../../src/cliproxy/auth/auth-handler';
 import {
   ModuleKind,
   ScriptTarget,
@@ -67,14 +67,14 @@ describe('image-analysis-runtime-status circular dependency regression', () => {
 
     const module = { exports: {} as Record<string, unknown> };
     const requireMap: Record<string, unknown> = {
-      '../../cliproxy/auth-handler': authHandlerModule,
-      '../../cliproxy/remote-proxy-client': {
+      '../../cliproxy/auth/auth-handler': authHandlerModule,
+      '../../cliproxy/services/remote-proxy-client': {
         checkRemoteProxy: async () => ({ reachable: false, error: 'not-used' }),
       },
-      '../../cliproxy/remote-auth-fetcher': {
+      '../../cliproxy/services/remote-auth-fetcher': {
         fetchRemoteAuthStatus: async () => [],
       },
-      '../../cliproxy/proxy-target-resolver': {
+      '../../cliproxy/proxy/proxy-target-resolver': {
         getProxyTarget: () => ({
           host: '127.0.0.1',
           port: 8317,
@@ -86,7 +86,7 @@ describe('image-analysis-runtime-status circular dependency regression', () => {
         getProviderDisplayName: () => 'GitHub Copilot (OAuth)',
         isCLIProxyProvider: () => true,
       },
-      '../../cliproxy/stats-fetcher': {
+      '../../cliproxy/services/stats-fetcher': {
         isCliproxyRunning: async () => true,
       },
       '../../config/unified-config-types': {

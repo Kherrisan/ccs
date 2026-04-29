@@ -14,7 +14,7 @@ import {
   canonicalizeModelIdForProvider,
   extractProviderFromPathname,
   getDeniedModelIdReasonForProvider,
-} from '../../cliproxy/model-id-normalizer';
+} from '../../cliproxy/ai-providers/model-id-normalizer';
 import type { CLIProxyProvider } from '../../cliproxy/types';
 import type { Config, Settings } from '../../types/config';
 import type { TargetType } from '../../targets/target-adapter';

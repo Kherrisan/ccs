@@ -9,7 +9,7 @@ import {
   getCompositeEnvVars,
 } from '../cliproxy/config/env-builder';
 import { CLIPROXY_DEFAULT_PORT } from '../cliproxy/config/port-manager';
-import { getProxyTarget } from '../cliproxy/proxy-target-resolver';
+import { getProxyTarget } from '../cliproxy/proxy/proxy-target-resolver';
 import { generateCopilotEnv } from '../copilot/copilot-executor';
 import { generateCursorEnv } from '../cursor';
 import InstanceManager from '../management/instance-manager';

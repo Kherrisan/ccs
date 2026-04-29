@@ -10,7 +10,7 @@
  */
 
 import { CLIProxyProvider } from '../../types';
-import { getProviderAccounts } from '../../account-manager';
+import { getProviderAccounts } from '../../accounts/account-manager';
 import {
   getTokenRefreshOwnership,
   isRefreshDelegatedToCLIProxy,

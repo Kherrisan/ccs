@@ -20,7 +20,7 @@ import {
   isVersionPinned,
   resolveLocalBackend,
 } from '../binary-manager';
-import { BACKEND_CONFIG, DEFAULT_BACKEND } from '../platform-detector';
+import { BACKEND_CONFIG, DEFAULT_BACKEND } from '../binary/platform-detector';
 import { CLIProxyBackend } from '../types';
 import { loadOrCreateUnifiedConfig } from '../../config/unified-config-loader';
 

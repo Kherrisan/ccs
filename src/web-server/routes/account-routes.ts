@@ -17,7 +17,7 @@ import {
   bulkPauseAccounts,
   bulkResumeAccounts,
   soloAccount,
-} from '../../cliproxy/account-manager';
+} from '../../cliproxy/accounts/account-manager';
 import { formatAccountDisplayName } from '../../cliproxy/accounts/email-account-identity';
 import { isCLIProxyProvider } from '../../cliproxy/provider-capabilities';
 import {

@@ -18,7 +18,7 @@ import {
   CLIPROXY_MAX_STABLE_VERSION,
   CLIPROXY_FAULTY_RANGE,
   DEFAULT_BACKEND,
-} from '../platform-detector';
+} from '../binary/platform-detector';
 import type { CLIProxyBackend } from '../types';
 
 interface FetchLatestVersionDeps {

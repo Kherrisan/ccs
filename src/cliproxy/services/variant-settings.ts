@@ -11,7 +11,7 @@ import * as os from 'os';
 import { CLIProxyProfileName } from '../../auth/profile-detector';
 import { getCcsDir } from '../../utils/config-manager';
 import { expandPath } from '../../utils/helpers';
-import { getClaudeEnvVars, CLIPROXY_DEFAULT_PORT } from '../config-generator';
+import { getClaudeEnvVars, CLIPROXY_DEFAULT_PORT } from '../config/config-generator';
 import { CLIProxyProvider } from '../types';
 import { CompositeTierConfig } from '../../config/unified-config-types';
 import { ensureWebSearchMcpOrThrow } from '../../utils/websearch-manager';
@@ -21,9 +21,9 @@ import {
   removeImageAnalysisProfileHook,
 } from '../../utils/hooks/image-analyzer-profile-hook-injector';
 import { prepareImageAnalysisFallbackHook } from '../../utils/hooks';
-import { getEffectiveApiKey } from '../auth-token-manager';
+import { getEffectiveApiKey } from '../auth/auth-token-manager';
 import { warn } from '../../utils/ui';
-import { normalizeModelIdForProvider } from '../model-id-normalizer';
+import { normalizeModelIdForProvider } from '../ai-providers/model-id-normalizer';
 
 /** Environment settings structure */
 interface SettingsEnv {

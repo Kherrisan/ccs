@@ -15,7 +15,7 @@ import {
   installVersion,
   installLatest,
 } from '../../cliproxy/services';
-import { DEFAULT_BACKEND, BACKEND_CONFIG } from '../../cliproxy/platform-detector';
+import { DEFAULT_BACKEND, BACKEND_CONFIG } from '../../cliproxy/binary/platform-detector';
 import { CLIProxyBackend } from '../../cliproxy/types';
 
 function getBackendLabel(backend: CLIProxyBackend): string {

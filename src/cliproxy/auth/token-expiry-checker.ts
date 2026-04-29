@@ -9,7 +9,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { CLIProxyProvider } from '../types';
 import { CLIPROXY_PROFILES } from '../../auth/profile-detector';
-import { getProviderAccounts, getAccountTokenPath } from '../account-manager';
+import { getProviderAccounts, getAccountTokenPath } from '../accounts/account-manager';
 import { isRefreshDelegated } from './provider-refreshers';
 
 /** Preemptive refresh time: refresh tokens 45 minutes before expiry */

@@ -17,7 +17,7 @@ import { mapExternalProviderName } from '../../cliproxy/provider-capabilities';
 import {
   extractProviderFromPathname,
   getDeniedModelIdReasonForProvider,
-} from '../../cliproxy/model-id-normalizer';
+} from '../../cliproxy/ai-providers/model-id-normalizer';
 import type { CLIProxyProvider } from '../../cliproxy/types';
 import type {
   ModelMapping,

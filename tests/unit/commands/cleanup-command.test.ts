@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { handleCleanupCommand } from '../../../src/commands/cleanup-command';
-import { getCliproxyDir } from '../../../src/cliproxy/config-generator';
+import { getCliproxyDir } from '../../../src/cliproxy/config/config-generator';
 import { getLogArchiveDir, getNativeLogsDir } from '../../../src/services/logging';
 
 describe('cleanup command', () => {
