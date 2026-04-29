@@ -752,13 +752,17 @@ function displayGhcpQuotaSection(results: { account: string; quota: GhcpQuotaRes
       continue;
     }
 
-    const rows = [
-      quota.snapshots.premiumInteractions.percentRemaining,
-      quota.snapshots.chat.percentRemaining,
-      quota.snapshots.completions.percentRemaining,
-    ];
-    const minQuota = rows.length > 0 ? Math.min(...rows) : 0;
-    const statusIcon = minQuota > 50 ? ok('') : minQuota > 10 ? warn('') : fail('');
+    const reportedSnapshots = [
+      quota.snapshots.premiumInteractions,
+      quota.snapshots.chat,
+      quota.snapshots.completions,
+    ].filter((snapshot) => snapshot.reported !== false);
+    const rows = reportedSnapshots.map((snapshot) =>
+      snapshot.unlimited ? 100 : snapshot.percentRemaining
+    );
+    const minQuota = rows.length > 0 ? Math.min(...rows) : null;
+    const statusIcon =
+      minQuota === null ? info('') : minQuota > 50 ? ok('') : minQuota > 10 ? warn('') : fail('');
     const planBadge = quota.planType ? color(` [${quota.planType}]`, 'info') : '';
 
     console.log(`  ${statusIcon}${accountLabel}${defaultMark}${planBadge}`);
@@ -766,12 +770,14 @@ function displayGhcpQuotaSection(results: { account: string; quota: GhcpQuotaRes
       console.log(`    ${dim(`Resets ${formatResetTimeISO(quota.quotaResetDate)}`)}`);
     }
 
-    const items: Array<[string, GhcpQuotaResult['snapshots'][keyof GhcpQuotaResult['snapshots']]]> =
-      [
-        ['Premium interactions', quota.snapshots.premiumInteractions],
-        ['Chat', quota.snapshots.chat],
-        ['Completions', quota.snapshots.completions],
-      ];
+    const allItems: Array<
+      [string, GhcpQuotaResult['snapshots'][keyof GhcpQuotaResult['snapshots']]]
+    > = [
+      ['Premium interactions', quota.snapshots.premiumInteractions],
+      ['Chat', quota.snapshots.chat],
+      ['Completions', quota.snapshots.completions],
+    ];
+    const items = allItems.filter(([, snapshot]) => snapshot.reported !== false);
 
     for (const [label, snapshot] of items) {
       const bar = formatQuotaBar(snapshot.percentRemaining);

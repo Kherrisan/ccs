@@ -3,7 +3,7 @@
  *
  * Tests the quota monitor lifecycle:
  * - startQuotaMonitor / stopQuotaMonitor behavior
- * - No-op conditions for non-agy, manual mode, disabled config
+ * - No-op conditions for unsupported providers, manual mode, disabled config
  * - Idempotent stopQuotaMonitor
  */
 
@@ -16,6 +16,7 @@ import {
   stopQuotaMonitor,
   clearQuotaCache,
 } from '../../../src/cliproxy/quota-manager';
+import { __testExports as executorTestExports } from '../../../src/cliproxy/executor';
 
 // Setup test isolation
 let tmpDir: string;
@@ -40,11 +41,43 @@ afterEach(() => {
 });
 
 describe('Runtime Quota Monitor', () => {
+  describe('resolveRuntimeQuotaMonitorProviders', () => {
+    it('should monitor the default provider for non-composite sessions', () => {
+      expect(executorTestExports.resolveRuntimeQuotaMonitorProviders('codex', [])).toEqual([
+        'codex',
+      ]);
+    });
+
+    it('should monitor every unique managed provider in composite sessions', () => {
+      expect(
+        executorTestExports.resolveRuntimeQuotaMonitorProviders('claude', [
+          'codex',
+          'qwen',
+          'gemini',
+          'codex',
+        ])
+      ).toEqual(['codex', 'gemini']);
+    });
+
+    it('should skip unsupported non-composite providers', () => {
+      expect(executorTestExports.resolveRuntimeQuotaMonitorProviders('qwen', [])).toEqual([]);
+    });
+  });
+
   describe('startQuotaMonitor', () => {
-    it('should accept non-agy provider without throwing', () => {
-      // Non-agy providers should be silently ignored
+    it('should accept all quota-supported providers without throwing', () => {
+      for (const provider of ['agy', 'claude', 'codex', 'gemini', 'ghcp'] as const) {
+        expect(() => {
+          startQuotaMonitor(provider, 'test@gmail.com');
+          stopQuotaMonitor();
+        }).not.toThrow();
+      }
+    });
+
+    it('should ignore unsupported providers without throwing', () => {
       expect(() => {
-        startQuotaMonitor('gemini', 'test@gmail.com');
+        startQuotaMonitor('qwen', 'test@gmail.com');
+        stopQuotaMonitor();
       }).not.toThrow();
     });
 
@@ -73,6 +106,54 @@ describe('Runtime Quota Monitor', () => {
       expect(() => {
         startQuotaMonitor('agy', 'test@gmail.com');
       }).not.toThrow();
+    });
+
+    it('should start independent monitors for distinct managed provider accounts', () => {
+      const configDir = path.join(tmpDir, '.ccs', 'config');
+      fs.mkdirSync(configDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(configDir, 'unified-config.json'),
+        JSON.stringify({
+          version: 2,
+          quota_management: {
+            mode: 'auto',
+            runtime_monitor: {
+              enabled: true,
+              normal_interval_seconds: 300,
+              critical_interval_seconds: 60,
+              warn_threshold: 20,
+              exhaustion_threshold: 5,
+              cooldown_minutes: 5,
+            },
+          },
+        })
+      );
+
+      const originalSetTimeout = globalThis.setTimeout;
+      const fakeTimer = {
+        unref: () => fakeTimer,
+        ref: () => fakeTimer,
+        hasRef: () => false,
+        refresh: () => fakeTimer,
+      } as unknown as ReturnType<typeof setTimeout>;
+      const observedDelays: Array<number | undefined> = [];
+
+      globalThis.setTimeout = ((handler: TimerHandler, timeout?: number) => {
+        observedDelays.push(timeout);
+        void handler;
+        return fakeTimer;
+      }) as typeof globalThis.setTimeout;
+
+      try {
+        startQuotaMonitor('codex', 'codex@example.com');
+        startQuotaMonitor('gemini', 'gemini@example.com');
+        startQuotaMonitor('codex', 'codex@example.com');
+      } finally {
+        stopQuotaMonitor();
+        globalThis.setTimeout = originalSetTimeout;
+      }
+
+      expect(observedDelays).toEqual([300_000, 300_000]);
     });
 
     it('should be no-op when config missing or no quota_management', () => {

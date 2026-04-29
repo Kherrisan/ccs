@@ -76,6 +76,7 @@ describe('GHCP Quota Fetcher', () => {
       const snapshot = normalizeGhcpSnapshot();
 
       expect(snapshot).toEqual({
+        reported: false,
         entitlement: 0,
         remaining: 0,
         used: 0,
@@ -86,6 +87,50 @@ describe('GHCP Quota Fetcher', () => {
         overagePermitted: false,
         quotaId: null,
       });
+    });
+
+    it('marks upstream-provided snapshots as reported', () => {
+      const snapshot = normalizeGhcpSnapshot({
+        entitlement: 100,
+        remaining: 80,
+      });
+
+      expect(snapshot.reported).toBe(true);
+    });
+
+    it('treats unknown upstream snapshot objects as unreported', () => {
+      const empty = normalizeGhcpSnapshot({});
+      const quotaIdOnly = normalizeGhcpSnapshot({ quota_id: 'chat' });
+      const remainingOnly = normalizeGhcpSnapshot({ remaining: 80 });
+
+      for (const snapshot of [empty, quotaIdOnly, remainingOnly]) {
+        expect(snapshot.reported).toBe(false);
+        expect(snapshot.percentRemaining).toBe(0);
+        expect(snapshot.percentUsed).toBe(100);
+      }
+    });
+
+    it('marks percent-only snapshots as reported', () => {
+      const snapshot = normalizeGhcpSnapshot({
+        percent_remaining: 70,
+      });
+
+      expect(snapshot.reported).toBe(true);
+      expect(snapshot.percentRemaining).toBe(70);
+      expect(snapshot.percentUsed).toBe(30);
+    });
+
+    it('treats unlimited snapshots as 100% remaining', () => {
+      const snapshot = normalizeGhcpSnapshot({
+        unlimited: true,
+        entitlement: 0,
+        remaining: 0,
+      });
+
+      expect(snapshot.reported).toBe(true);
+      expect(snapshot.percentRemaining).toBe(100);
+      expect(snapshot.percentUsed).toBe(0);
+      expect(snapshot.unlimited).toBe(true);
     });
 
     it('clamps percent_remaining to 0-100 range', () => {

@@ -86,6 +86,36 @@ function writeClaudeAuth(accountId: string, accessToken: string): void {
   );
 }
 
+function writeCodexAuth(tokenFile: string, accountId: string, accessToken: string): void {
+  writeAuthToken(tokenFile, {
+    access_token: accessToken,
+    account_id: `chatgpt-${accountId}`,
+    expired: '2099-01-01T00:00:00.000Z',
+    type: 'codex',
+    email: accountId,
+  });
+}
+
+function writeGhcpAuth(tokenFile: string, accessToken: string): void {
+  writeAuthToken(tokenFile, {
+    access_token: accessToken,
+    type: 'ghcp',
+  });
+}
+
+function writeGeminiAuth(tokenFile: string, accountId: string, accessToken: string): void {
+  writeAuthToken(tokenFile, {
+    type: 'gemini',
+    email: accountId,
+    project_id: 'cloudaicompanion-test-123',
+    token: {
+      access_token: accessToken,
+      refresh_token: `${accessToken}-refresh`,
+      expiry: Date.now() + 60 * 60 * 1000,
+    },
+  });
+}
+
 function writeAuthToken(tokenFile: string, payload: Record<string, unknown>): void {
   const authDir = path.join(tmpDir, '.ccs', 'cliproxy', 'auth');
   fs.mkdirSync(authDir, { recursive: true });
@@ -264,7 +294,7 @@ describe('Quota Exhaustion Handlers', () => {
       expect(fs.existsSync(path.join(tmpDir, '.ccs', 'cliproxy', 'quota-paused.json'))).toBe(false);
     });
 
-    it('should switch Claude accounts when fallback quota endpoint returns 404', async () => {
+    it('should switch Claude accounts without durable pause when fallback quota is unknown', async () => {
       writeRegistry({
         claude: {
           default: 'exhausted@example.com',
@@ -312,11 +342,27 @@ describe('Quota Exhaustion Handlers', () => {
       }) as typeof fetch;
 
       const result = await handleQuotaExhaustion('claude', 'exhausted@example.com', 10);
-      const { getDefaultAccount } = await import('../../../src/cliproxy/account-manager');
+      const { getAccount, getDefaultAccount } = await import(
+        '../../../src/cliproxy/account-manager'
+      );
 
       expect(result.switchedTo).toBe('fallback@example.com');
       expect(getDefaultAccount('claude')?.id).toBe('fallback@example.com');
-      expect(fs.existsSync(path.join(tmpDir, '.ccs', 'cliproxy', 'quota-paused.json'))).toBe(true);
+      expect(getAccount('claude', 'exhausted@example.com')?.paused).not.toBe(true);
+      expect(fs.existsSync(path.join(tmpDir, '.ccs', 'cliproxy', 'quota-paused.json'))).toBe(
+        false
+      );
+      expect(
+        fs.existsSync(
+          path.join(
+            tmpDir,
+            '.ccs',
+            'cliproxy',
+            'auth',
+            `claude-${sanitizeEmail('exhausted@example.com')}.json`
+          )
+        )
+      ).toBe(true);
       expect(
         fs.existsSync(
           path.join(
@@ -326,6 +372,512 @@ describe('Quota Exhaustion Handlers', () => {
             'auth-paused',
             `claude-${sanitizeEmail('exhausted@example.com')}.json`
           )
+        )
+      ).toBe(false);
+    });
+
+    it('should self-pause exhausted Codex accounts when a healthy fallback exists', async () => {
+      writeRegistry({
+        codex: {
+          default: 'exhausted@example.com',
+          accounts: {
+            'exhausted@example.com': {
+              email: 'exhausted@example.com',
+              tokenFile: 'codex-exhausted.json',
+            },
+            'fallback@example.com': {
+              email: 'fallback@example.com',
+              tokenFile: 'codex-fallback.json',
+            },
+          },
+        },
+      });
+
+      writeConfig({
+        mode: 'auto',
+        auto: {
+          tier_priority: ['ultra', 'pro', 'free'],
+          exhaustion_threshold: 5,
+          cooldown_minutes: 10,
+          preflight_check: true,
+        },
+        runtime_monitor: {
+          enabled: true,
+          normal_interval_seconds: 300,
+          critical_interval_seconds: 60,
+          warn_threshold: 20,
+          exhaustion_threshold: 5,
+          cooldown_minutes: 10,
+        },
+      });
+
+      writeCodexAuth('codex-exhausted.json', 'exhausted@example.com', 'exhausted-token');
+      writeCodexAuth('codex-fallback.json', 'fallback@example.com', 'fallback-token');
+
+      global.fetch = mock((_url: string, options?: RequestInit) => {
+        const accountHeader = new Headers(options?.headers).get('ChatGPT-Account-Id') ?? '';
+        const usedPercent = accountHeader === 'chatgpt-fallback@example.com' ? 10 : 100;
+        return Promise.resolve(
+          Response.json({
+            plan_type: 'pro',
+            rate_limit: {
+              primary_window: { used_percent: usedPercent, reset_after_seconds: 3600 },
+              secondary_window: { used_percent: usedPercent, reset_after_seconds: 604800 },
+            },
+          })
+        );
+      }) as typeof fetch;
+
+      const result = await handleQuotaExhaustion('codex', 'exhausted@example.com', 10);
+      const { getAccount, getDefaultAccount } = await import(
+        '../../../src/cliproxy/account-manager'
+      );
+
+      expect(result.switchedTo).toBe('fallback@example.com');
+      expect(getDefaultAccount('codex')?.id).toBe('fallback@example.com');
+      expect(getAccount('codex', 'exhausted@example.com')?.paused).toBe(true);
+      expect(fs.existsSync(path.join(tmpDir, '.ccs', 'cliproxy', 'quota-paused.json'))).toBe(true);
+      expect(
+        fs.existsSync(path.join(tmpDir, '.ccs', 'cliproxy', 'auth-paused', 'codex-exhausted.json'))
+      ).toBe(true);
+      expect(
+        fs.existsSync(path.join(tmpDir, '.ccs', 'cliproxy', 'auth', 'codex-exhausted.json'))
+      ).toBe(false);
+    });
+
+    it('should not durably self-pause the only exhausted Codex account during preflight', async () => {
+      writeRegistry({
+        codex: {
+          default: 'only-codex@example.com',
+          accounts: {
+            'only-codex@example.com': {
+              email: 'only-codex@example.com',
+              tokenFile: 'codex-only.json',
+            },
+          },
+        },
+      });
+
+      writeConfig({
+        mode: 'auto',
+        auto: {
+          tier_priority: ['ultra', 'pro', 'free'],
+          exhaustion_threshold: 5,
+          cooldown_minutes: 10,
+          preflight_check: true,
+        },
+        runtime_monitor: {
+          enabled: true,
+          normal_interval_seconds: 300,
+          critical_interval_seconds: 60,
+          warn_threshold: 20,
+          exhaustion_threshold: 5,
+          cooldown_minutes: 10,
+        },
+      });
+
+      writeCodexAuth('codex-only.json', 'only-codex@example.com', 'only-token');
+
+      global.fetch = mock(() =>
+        Promise.resolve(
+          Response.json({
+            plan_type: 'pro',
+            rate_limit: {
+              primary_window: { used_percent: 100, reset_after_seconds: 3600 },
+              secondary_window: { used_percent: 100, reset_after_seconds: 604800 },
+            },
+          })
+        )
+      ) as typeof fetch;
+
+      const { preflightCheck } = await import('../../../src/cliproxy/quota-manager');
+      const result = await preflightCheck('codex');
+      const { getAccount } = await import('../../../src/cliproxy/account-manager');
+
+      expect(result.accountId).toBe('only-codex@example.com');
+      expect(result.switchedFrom).toBeUndefined();
+      expect(result.reason).toContain('no alternatives available');
+      expect(getAccount('codex', 'only-codex@example.com')?.paused).not.toBe(true);
+      expect(fs.existsSync(path.join(tmpDir, '.ccs', 'cliproxy', 'auth', 'codex-only.json'))).toBe(
+        true
+      );
+      expect(
+        fs.existsSync(path.join(tmpDir, '.ccs', 'cliproxy', 'auth-paused', 'codex-only.json'))
+      ).toBe(false);
+      expect(fs.existsSync(path.join(tmpDir, '.ccs', 'cliproxy', 'quota-paused.json'))).toBe(false);
+    });
+
+    it('should self-pause an exhausted Codex default during preflight when fallback exists', async () => {
+      writeRegistry({
+        codex: {
+          default: 'preflight-exhausted@example.com',
+          accounts: {
+            'preflight-exhausted@example.com': {
+              email: 'preflight-exhausted@example.com',
+              tokenFile: 'codex-preflight-exhausted.json',
+            },
+            'preflight-fallback@example.com': {
+              email: 'preflight-fallback@example.com',
+              tokenFile: 'codex-preflight-fallback.json',
+            },
+          },
+        },
+      });
+
+      writeConfig({
+        mode: 'auto',
+        auto: {
+          tier_priority: ['ultra', 'pro', 'free'],
+          exhaustion_threshold: 5,
+          cooldown_minutes: 10,
+          preflight_check: true,
+        },
+        runtime_monitor: {
+          enabled: true,
+          normal_interval_seconds: 300,
+          critical_interval_seconds: 60,
+          warn_threshold: 20,
+          exhaustion_threshold: 5,
+          cooldown_minutes: 10,
+        },
+      });
+
+      writeCodexAuth(
+        'codex-preflight-exhausted.json',
+        'preflight-exhausted@example.com',
+        'preflight-exhausted-token'
+      );
+      writeCodexAuth(
+        'codex-preflight-fallback.json',
+        'preflight-fallback@example.com',
+        'preflight-fallback-token'
+      );
+
+      global.fetch = mock((_url: string, options?: RequestInit) => {
+        const accountHeader = new Headers(options?.headers).get('ChatGPT-Account-Id') ?? '';
+        const usedPercent = accountHeader === 'chatgpt-preflight-fallback@example.com' ? 10 : 100;
+        return Promise.resolve(
+          Response.json({
+            plan_type: 'pro',
+            rate_limit: {
+              primary_window: { used_percent: usedPercent, reset_after_seconds: 3600 },
+              secondary_window: { used_percent: usedPercent, reset_after_seconds: 604800 },
+            },
+          })
+        );
+      }) as typeof fetch;
+
+      const { preflightCheck } = await import('../../../src/cliproxy/quota-manager');
+      const result = await preflightCheck('codex');
+      const { getAccount, getDefaultAccount } = await import(
+        '../../../src/cliproxy/account-manager'
+      );
+
+      expect(result.switchedFrom).toBe('preflight-exhausted@example.com');
+      expect(result.accountId).toBe('preflight-fallback@example.com');
+      expect(getDefaultAccount('codex')?.id).toBe('preflight-fallback@example.com');
+      expect(getAccount('codex', 'preflight-exhausted@example.com')?.paused).toBe(true);
+      expect(
+        fs.existsSync(
+          path.join(tmpDir, '.ccs', 'cliproxy', 'auth-paused', 'codex-preflight-exhausted.json')
+        )
+      ).toBe(true);
+    });
+
+    it('should not durably self-pause during preflight when fallback quota is unknown', async () => {
+      writeRegistry({
+        codex: {
+          default: 'preflight-unknown-exhausted@example.com',
+          accounts: {
+            'preflight-unknown-exhausted@example.com': {
+              email: 'preflight-unknown-exhausted@example.com',
+              tokenFile: 'codex-preflight-unknown-exhausted.json',
+            },
+            'preflight-unknown-fallback@example.com': {
+              email: 'preflight-unknown-fallback@example.com',
+              tokenFile: 'codex-preflight-unknown-fallback.json',
+            },
+          },
+        },
+      });
+
+      writeConfig({
+        mode: 'auto',
+        auto: {
+          tier_priority: ['ultra', 'pro', 'free'],
+          exhaustion_threshold: 5,
+          cooldown_minutes: 10,
+          preflight_check: true,
+        },
+        runtime_monitor: {
+          enabled: true,
+          normal_interval_seconds: 300,
+          critical_interval_seconds: 60,
+          warn_threshold: 20,
+          exhaustion_threshold: 5,
+          cooldown_minutes: 10,
+        },
+      });
+
+      writeCodexAuth(
+        'codex-preflight-unknown-exhausted.json',
+        'preflight-unknown-exhausted@example.com',
+        'preflight-unknown-exhausted-token'
+      );
+      writeCodexAuth(
+        'codex-preflight-unknown-fallback.json',
+        'preflight-unknown-fallback@example.com',
+        'preflight-unknown-fallback-token'
+      );
+
+      global.fetch = mock((_url: string, options?: RequestInit) => {
+        const accountHeader = new Headers(options?.headers).get('ChatGPT-Account-Id') ?? '';
+        if (accountHeader === 'chatgpt-preflight-unknown-fallback@example.com') {
+          return Promise.resolve(new Response('', { status: 500 }));
+        }
+
+        return Promise.resolve(
+          Response.json({
+            plan_type: 'pro',
+            rate_limit: {
+              primary_window: { used_percent: 100, reset_after_seconds: 3600 },
+              secondary_window: { used_percent: 100, reset_after_seconds: 604800 },
+            },
+          })
+        );
+      }) as typeof fetch;
+
+      const { preflightCheck } = await import('../../../src/cliproxy/quota-manager');
+      const result = await preflightCheck('codex');
+      const { getAccount, getDefaultAccount } = await import(
+        '../../../src/cliproxy/account-manager'
+      );
+
+      expect(result.switchedFrom).toBe('preflight-unknown-exhausted@example.com');
+      expect(result.accountId).toBe('preflight-unknown-fallback@example.com');
+      expect(getDefaultAccount('codex')?.id).toBe('preflight-unknown-fallback@example.com');
+      expect(getAccount('codex', 'preflight-unknown-exhausted@example.com')?.paused).not.toBe(
+        true
+      );
+      expect(
+        fs.existsSync(
+          path.join(tmpDir, '.ccs', 'cliproxy', 'auth', 'codex-preflight-unknown-exhausted.json')
+        )
+      ).toBe(true);
+      expect(
+        fs.existsSync(
+          path.join(
+            tmpDir,
+            '.ccs',
+            'cliproxy',
+            'auth-paused',
+            'codex-preflight-unknown-exhausted.json'
+          )
+        )
+      ).toBe(false);
+      expect(fs.existsSync(path.join(tmpDir, '.ccs', 'cliproxy', 'quota-paused.json'))).toBe(
+        false
+      );
+    });
+
+    it('should self-pause exhausted Gemini accounts when a healthy fallback exists', async () => {
+      writeRegistry({
+        gemini: {
+          default: 'gemini-exhausted@example.com',
+          accounts: {
+            'gemini-exhausted@example.com': {
+              email: 'gemini-exhausted@example.com',
+              tokenFile: 'gemini-exhausted.json',
+            },
+            'gemini-fallback@example.com': {
+              email: 'gemini-fallback@example.com',
+              tokenFile: 'gemini-fallback.json',
+            },
+          },
+        },
+      });
+
+      writeConfig({
+        mode: 'auto',
+        auto: {
+          tier_priority: ['ultra', 'pro', 'free'],
+          exhaustion_threshold: 5,
+          cooldown_minutes: 10,
+          preflight_check: true,
+        },
+        runtime_monitor: {
+          enabled: true,
+          normal_interval_seconds: 300,
+          critical_interval_seconds: 60,
+          warn_threshold: 20,
+          exhaustion_threshold: 5,
+          cooldown_minutes: 10,
+        },
+      });
+
+      writeGeminiAuth('gemini-exhausted.json', 'gemini-exhausted@example.com', 'exhausted-token');
+      writeGeminiAuth('gemini-fallback.json', 'gemini-fallback@example.com', 'fallback-token');
+
+      global.fetch = mock((_url: string, options?: RequestInit) => {
+        const authHeader = new Headers(options?.headers).get('Authorization') ?? '';
+        const remainingFraction = authHeader === 'Bearer fallback-token' ? 0.9 : 0;
+        return Promise.resolve(
+          Response.json({
+            buckets: [
+              {
+                model_id: 'gemini-3-flash-preview',
+                remaining_fraction: remainingFraction,
+                remaining_amount: Math.round(remainingFraction * 100),
+                reset_time: '2026-05-01T00:00:00Z',
+              },
+            ],
+          })
+        );
+      }) as typeof fetch;
+
+      const result = await handleQuotaExhaustion('gemini', 'gemini-exhausted@example.com', 10);
+      const { getAccount, getDefaultAccount } = await import(
+        '../../../src/cliproxy/account-manager'
+      );
+
+      expect(result.switchedTo).toBe('gemini-fallback@example.com');
+      expect(getDefaultAccount('gemini')?.id).toBe('gemini-fallback@example.com');
+      expect(getAccount('gemini', 'gemini-exhausted@example.com')?.paused).toBe(true);
+      expect(
+        fs.existsSync(path.join(tmpDir, '.ccs', 'cliproxy', 'auth-paused', 'gemini-exhausted.json'))
+      ).toBe(true);
+      expect(
+        fs.existsSync(path.join(tmpDir, '.ccs', 'cliproxy', 'auth', 'gemini-exhausted.json'))
+      ).toBe(false);
+    });
+
+    it('should self-pause exhausted GitHub Copilot accounts when a healthy fallback exists', async () => {
+      writeRegistry({
+        ghcp: {
+          default: 'ghcp-exhausted',
+          accounts: {
+            'ghcp-exhausted': {
+              tokenFile: 'ghcp-exhausted.json',
+            },
+            'ghcp-fallback': {
+              tokenFile: 'ghcp-fallback.json',
+            },
+          },
+        },
+      });
+
+      writeConfig({
+        mode: 'auto',
+        auto: {
+          tier_priority: ['ultra', 'pro', 'free'],
+          exhaustion_threshold: 5,
+          cooldown_minutes: 10,
+          preflight_check: true,
+        },
+        runtime_monitor: {
+          enabled: true,
+          normal_interval_seconds: 300,
+          critical_interval_seconds: 60,
+          warn_threshold: 20,
+          exhaustion_threshold: 5,
+          cooldown_minutes: 10,
+        },
+      });
+
+      writeGhcpAuth('ghcp-exhausted.json', 'exhausted-token');
+      writeGhcpAuth('ghcp-fallback.json', 'fallback-token');
+
+      global.fetch = mock((_url: string, options?: RequestInit) => {
+        const authHeader = new Headers(options?.headers).get('Authorization') ?? '';
+        const remaining = authHeader === 'token fallback-token' ? 90 : 0;
+        return Promise.resolve(
+          Response.json({
+            copilot_plan: 'individual',
+            quota_reset_date: '2026-05-01T00:00:00Z',
+            quota_snapshots: {
+              premium_interactions: { entitlement: 100, remaining },
+              chat: { entitlement: 100, remaining },
+              completions: { entitlement: 100, remaining },
+            },
+          })
+        );
+      }) as typeof fetch;
+
+      const result = await handleQuotaExhaustion('ghcp', 'ghcp-exhausted', 10);
+      const { getAccount, getDefaultAccount } = await import(
+        '../../../src/cliproxy/account-manager'
+      );
+
+      expect(result.switchedTo).toBe('ghcp-fallback');
+      expect(getDefaultAccount('ghcp')?.id).toBe('ghcp-fallback');
+      expect(getAccount('ghcp', 'ghcp-exhausted')?.paused).toBe(true);
+      expect(
+        fs.existsSync(path.join(tmpDir, '.ccs', 'cliproxy', 'auth-paused', 'ghcp-exhausted.json'))
+      ).toBe(true);
+    });
+
+    it('should ignore omitted GitHub Copilot snapshots when selecting a fallback', async () => {
+      writeRegistry({
+        ghcp: {
+          default: 'ghcp-partial-exhausted',
+          accounts: {
+            'ghcp-partial-exhausted': {
+              tokenFile: 'ghcp-partial-exhausted.json',
+            },
+            'ghcp-partial-fallback': {
+              tokenFile: 'ghcp-partial-fallback.json',
+            },
+          },
+        },
+      });
+
+      writeConfig({
+        mode: 'auto',
+        auto: {
+          tier_priority: ['ultra', 'pro', 'free'],
+          exhaustion_threshold: 5,
+          cooldown_minutes: 10,
+          preflight_check: true,
+        },
+        runtime_monitor: {
+          enabled: true,
+          normal_interval_seconds: 300,
+          critical_interval_seconds: 60,
+          warn_threshold: 20,
+          exhaustion_threshold: 5,
+          cooldown_minutes: 10,
+        },
+      });
+
+      writeGhcpAuth('ghcp-partial-exhausted.json', 'partial-exhausted-token');
+      writeGhcpAuth('ghcp-partial-fallback.json', 'partial-fallback-token');
+
+      global.fetch = mock((_url: string, options?: RequestInit) => {
+        const authHeader = new Headers(options?.headers).get('Authorization') ?? '';
+        const remaining = authHeader === 'token partial-fallback-token' ? 90 : 0;
+        return Promise.resolve(
+          Response.json({
+            copilot_plan: 'individual',
+            quota_reset_date: '2026-05-01T00:00:00Z',
+            quota_snapshots: {
+              premium_interactions: { entitlement: 100, remaining },
+              chat: { entitlement: 100, remaining },
+            },
+          })
+        );
+      }) as typeof fetch;
+
+      const result = await handleQuotaExhaustion('ghcp', 'ghcp-partial-exhausted', 10);
+      const { getAccount, getDefaultAccount } = await import(
+        '../../../src/cliproxy/account-manager'
+      );
+
+      expect(result.switchedTo).toBe('ghcp-partial-fallback');
+      expect(getDefaultAccount('ghcp')?.id).toBe('ghcp-partial-fallback');
+      expect(getAccount('ghcp', 'ghcp-partial-exhausted')?.paused).toBe(true);
+      expect(
+        fs.existsSync(
+          path.join(tmpDir, '.ccs', 'cliproxy', 'auth-paused', 'ghcp-partial-exhausted.json')
         )
       ).toBe(true);
     });

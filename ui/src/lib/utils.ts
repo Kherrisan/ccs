@@ -694,11 +694,10 @@ export function getGeminiResetTime(buckets: GeminiCliBucket[]): string | null {
 export function getMinGhcpQuota(snapshots: GhcpQuotaResult['snapshots']): number | null {
   if (!snapshots) return null;
 
-  const percentages = [
-    snapshots.premiumInteractions.percentRemaining,
-    snapshots.chat.percentRemaining,
-    snapshots.completions.percentRemaining,
-  ].filter((p) => typeof p === 'number' && isFinite(p));
+  const percentages = [snapshots.premiumInteractions, snapshots.chat, snapshots.completions]
+    .filter((snapshot) => snapshot.reported !== false)
+    .map((snapshot) => (snapshot.unlimited ? 100 : snapshot.percentRemaining))
+    .filter((p) => typeof p === 'number' && isFinite(p));
 
   if (percentages.length === 0) return null;
   return Math.min(...percentages);

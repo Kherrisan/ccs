@@ -690,6 +690,9 @@ export async function handleQuotaExhaustion(
   // Dynamic imports to avoid circular dependencies
   const { applyCooldown, findHealthyAccount } = await import('./quota-manager');
   const { setDefaultAccount, touchAccount } = await import('./account-manager');
+  const { loadOrCreateUnifiedConfig } = await import('../config/unified-config-loader');
+  const config = loadOrCreateUnifiedConfig();
+  const threshold = config.quota_management?.auto?.exhaustion_threshold ?? 5;
 
   // Apply cooldown to exhausted account
   applyCooldown(provider, accountId, cooldownMinutes);
@@ -698,7 +701,9 @@ export async function handleQuotaExhaustion(
   const alternative = await findHealthyAccount(provider, [accountId]);
 
   if (alternative) {
-    pauseAccountForQuotaCooldown(provider, accountId, cooldownMinutes);
+    if (alternative.lastQuota !== null && alternative.lastQuota >= threshold) {
+      pauseAccountForQuotaCooldown(provider, accountId, cooldownMinutes);
+    }
     setDefaultAccount(provider, alternative.id);
     touchAccount(provider, alternative.id);
     writeQuotaExhausted(accountId, alternative.id, cooldownMinutes);

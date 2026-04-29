@@ -230,6 +230,8 @@ export interface GeminiCliQuotaResult extends QuotaErrorMetadata {
  * GitHub Copilot quota snapshot.
  */
 export interface GhcpQuotaSnapshot {
+  /** False when upstream omitted this quota category; callers should exclude it from health math */
+  reported?: boolean;
   /** Total quota allocation for this category */
   entitlement: number;
   /** Remaining quota count */
