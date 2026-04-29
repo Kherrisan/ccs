@@ -204,7 +204,10 @@ describe('ProxyRequestTransformer regressions', () => {
               tool_use_id: 'toolu_1',
               content: [
                 { type: 'text', text: 'screenshot captured' },
-                { type: 'image', source: { type: 'url', url: 'https://example.com/error.png' } },
+                {
+                  type: 'image',
+                  source: { type: 'url', url: 'https://storage.example.com/error.png?X-Amz-Signature=secret' },
+                },
                 {
                   type: 'image',
                   source: { type: 'base64', media_type: 'image/png', data: 'ZmFrZQ==' },
@@ -222,6 +225,9 @@ describe('ProxyRequestTransformer regressions', () => {
       content:
         'screenshot captured\n[tool_result image omitted: url image payload]\n[tool_result image omitted: image/png base64 payload]',
     });
+    expect(result.messages[1]?.content).not.toContain('https://storage.example.com');
+    expect(result.messages[1]?.content).not.toContain('X-Amz-Signature');
+    expect(result.messages[1]?.content).not.toContain('secret');
   });
 
   it('rejects unsupported assistant blocks instead of silently dropping them', () => {
