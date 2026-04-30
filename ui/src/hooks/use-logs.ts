@@ -116,6 +116,10 @@ export function useLogsWorkspace() {
   const [limit, setLimit] = useState(DEFAULT_LIMIT);
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
   const [isPaused, setIsPaused] = useState(false);
+  // Default ON: dashboard self-polling generates 100s of identical entries
+  // per refresh which drown out real provider activity. Users can opt in to
+  // see internals via the advanced filter toggle.
+  const [hideDashboardInternals, setHideDashboardInternals] = useState(true);
   const frozenIdsRef = useRef<Set<string>>(new Set());
 
   const deferredSearch = useDeferredValue(search.trim());
@@ -151,6 +155,7 @@ export function useLogsWorkspace() {
       debouncedRequestId,
       timeWindow,
       limit,
+      hideDashboardInternals ? 'hide-internals' : 'show-internals',
       mockEnabled ? 'mock' : 'live',
     ],
     queryFn: async () => {
@@ -191,6 +196,9 @@ export function useLogsWorkspace() {
           const ts = Date.parse(entry.timestamp);
           if (Number.isFinite(ts) && now - ts > cutoffMs) return false;
         }
+        // Hide dashboard self-polling unless user opted in. Preserves the
+        // signal-to-noise ratio for fresh-load investigations.
+        if (hideDashboardInternals && /^web-server:/i.test(entry.source)) return false;
         return true;
       });
       const head = filtered[0];
@@ -265,6 +273,7 @@ export function useLogsWorkspace() {
     setStageFilter('');
     setRequestIdFilter('');
     setTimeWindow('all');
+    setHideDashboardInternals(true);
   }, []);
 
   return {
@@ -285,6 +294,8 @@ export function useLogsWorkspace() {
     setRequestIdFilter,
     timeWindow,
     setTimeWindow,
+    hideDashboardInternals,
+    setHideDashboardInternals,
     limit,
     setLimit,
     selectedEntryId: activeSelectedEntryId,

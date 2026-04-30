@@ -24,8 +24,13 @@ export interface LogsEntryListProps {
   density?: RowDensity;
 }
 
+// Column layout shared by the header and every row variant:
+//   chevron(16) · time(88) · level(64) · stage(72) · module(140) · message(flex) · latency(72) · request(112)
+// The dedicated `stage` column is rendered as an empty span on rows that
+// have no stage hint so column edges align across leaf, trace head, and
+// trace child rows alike.
 const COLS_TEMPLATE =
-  'grid grid-cols-[88px_64px_140px_minmax(0,1fr)_72px_88px] items-center gap-3 px-3';
+  'grid grid-cols-[16px_88px_64px_72px_140px_minmax(0,1fr)_72px_112px] items-center gap-3 px-3';
 
 export function LogsEntryList({
   entries,
@@ -38,30 +43,72 @@ export function LogsEntryList({
   density = 'cozy',
 }: LogsEntryListProps) {
   const items = useMemo(() => deriveTraceGroups(entries), [entries]);
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  // Two-set tristate: `userExpanded` = explicitly opened, `userCollapsed`
+  // = explicitly closed. Auto-expand (when selection lives inside a trace)
+  // only fires when the id is in neither set, so a user click on an
+  // auto-expanded chevron actually collapses — previously it added to
+  // `expanded` while auto-expand kept showing it, so no visible change.
+  const [userExpanded, setUserExpanded] = useState<Set<string>>(new Set());
+  const [userCollapsed, setUserCollapsed] = useState<Set<string>>(new Set());
 
-  const toggle = useCallback((requestId: string) => {
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(requestId)) next.delete(requestId);
-      else next.add(requestId);
-      return next;
-    });
-  }, []);
-
-  // Auto-expand the trace whose child is currently selected.
-  const effectiveExpanded = useMemo(() => {
-    if (!selectedEntryId) return expanded;
+  // Compute the auto-expand id (if any) — derived inside toggle and the
+  // effective set so a single source of truth drives both render and
+  // click logic.
+  const autoExpandedId = useMemo(() => {
+    if (!selectedEntryId) return null;
     const owning = items.find(
       (it) => it.kind === 'trace' && it.children.some((c) => c.id === selectedEntryId)
     );
-    if (owning && owning.kind === 'trace' && !expanded.has(owning.requestId)) {
-      const next = new Set(expanded);
-      next.add(owning.requestId);
-      return next;
+    return owning && owning.kind === 'trace' ? owning.requestId : null;
+  }, [items, selectedEntryId]);
+
+  const toggle = useCallback(
+    (requestId: string) => {
+      const isAutoExpanded = autoExpandedId === requestId;
+      const isExplicitlyOpen = userExpanded.has(requestId);
+      const isExplicitlyClosed = userCollapsed.has(requestId);
+      const isCurrentlyOpen = isExplicitlyOpen || (isAutoExpanded && !isExplicitlyClosed);
+
+      if (isCurrentlyOpen) {
+        // Close: clear user-open, mark user-closed (beats auto-expand).
+        setUserExpanded((prev) => {
+          if (!prev.has(requestId)) return prev;
+          const next = new Set(prev);
+          next.delete(requestId);
+          return next;
+        });
+        setUserCollapsed((prev) => {
+          if (prev.has(requestId)) return prev;
+          const next = new Set(prev);
+          next.add(requestId);
+          return next;
+        });
+      } else {
+        // Open: clear user-closed, mark user-open.
+        setUserExpanded((prev) => {
+          if (prev.has(requestId)) return prev;
+          const next = new Set(prev);
+          next.add(requestId);
+          return next;
+        });
+        setUserCollapsed((prev) => {
+          if (!prev.has(requestId)) return prev;
+          const next = new Set(prev);
+          next.delete(requestId);
+          return next;
+        });
+      }
+    },
+    [autoExpandedId, userExpanded, userCollapsed]
+  );
+
+  const effectiveExpanded = useMemo(() => {
+    const result = new Set(userExpanded);
+    if (autoExpandedId && !userCollapsed.has(autoExpandedId)) {
+      result.add(autoExpandedId);
     }
-    return expanded;
-  }, [expanded, items, selectedEntryId]);
+    return result;
+  }, [userExpanded, userCollapsed, autoExpandedId]);
 
   const renderItem = useCallback(
     (_index: number, item: DerivedItem) => {
@@ -85,6 +132,7 @@ export function LogsEntryList({
           density={density}
           sourceLabel={sourceLabels[item.entry.source] ?? item.entry.source}
           onSelect={onSelect}
+          repeatCount={item.repeatCount}
         />
       );
     },
@@ -98,11 +146,13 @@ export function LogsEntryList({
         role="row"
         className={cn(
           COLS_TEMPLATE,
-          'h-8 shrink-0 border-b border-border bg-muted/30 text-[10px] font-medium uppercase tracking-wide text-muted-foreground'
+          'h-9 shrink-0 border-b border-border bg-muted/30 text-[12px] font-medium uppercase tracking-wide text-muted-foreground'
         )}
       >
+        <span role="columnheader" aria-hidden="true" />
         <span role="columnheader">Time</span>
         <span role="columnheader">Level</span>
+        <span role="columnheader">Stage</span>
         <span role="columnheader">Module</span>
         <span role="columnheader">Message</span>
         <span role="columnheader" className="text-right">

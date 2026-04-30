@@ -7,7 +7,13 @@ import type { LogsEntry } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
 import { LogLevelBadge } from './log-level-badge';
 import { LogsEmpty } from './logs-empty';
-import { formatJson } from './utils';
+import {
+  formatJson,
+  getDisplayLatency,
+  getDisplayModule,
+  getDisplayRequestId,
+  getDisplayStage,
+} from './utils';
 import { FOCUS_RING, MONO_NUMERIC } from './tokens';
 
 export interface LogsDetailPanelProps {
@@ -26,19 +32,15 @@ interface OverviewRow {
 }
 
 function buildOverviewRows(entry: LogsEntry, sourceLabel?: string): OverviewRow[] {
+  // Use shared accessors so this panel and the list row never diverge.
   return [
     { label: 'Time', value: new Date(entry.timestamp).toISOString(), mono: true },
     { label: 'Level', value: entry.level },
-    { label: 'Module', value: entry.module ?? '—' },
-    { label: 'Stage', value: entry.stage ?? '—' },
-    { label: 'Request ID', value: entry.requestId ?? '—', mono: true },
-    {
-      label: 'Latency',
-      value:
-        entry.latencyMs !== undefined && entry.latencyMs !== null ? `${entry.latencyMs}ms` : '—',
-      mono: true,
-    },
-    { label: 'Source', value: sourceLabel ?? entry.source },
+    { label: 'Module', value: getDisplayModule(entry, sourceLabel) },
+    { label: 'Stage', value: getDisplayStage(entry) },
+    { label: 'Request ID', value: getDisplayRequestId(entry), mono: true },
+    { label: 'Latency', value: getDisplayLatency(entry), mono: true },
+    { label: 'Source', value: sourceLabel ?? entry.source ?? '—' },
     { label: 'Run ID', value: entry.runId ?? '—', mono: true },
     { label: 'Process ID', value: entry.processId ?? '—', mono: true },
   ];

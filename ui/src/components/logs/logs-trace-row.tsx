@@ -2,6 +2,7 @@ import { memo } from 'react';
 import { ChevronDown, ChevronRight, GitBranch } from 'lucide-react';
 import type { LogsEntry, LogsLevel } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
+import { deriveStageHint } from './derive-trace-groups';
 import { LogLevelBadge } from './log-level-badge';
 import { LogsRow } from './logs-row';
 import { FOCUS_RING, MONO_NUMERIC, ROW_DENSITY, ROW_INTERACTIVE, type RowDensity } from './tokens';
@@ -62,11 +63,14 @@ function LogsTraceRowImpl({
           FOCUS_RING
         )}
       >
-        <Chevron className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+        {/* Reserve the same 16px slot as leaf rows so all columns align. */}
+        <span className="flex w-4 shrink-0 items-center justify-center" aria-hidden="true">
+          <Chevron className="h-3.5 w-3.5 text-muted-foreground" />
+        </span>
         <span
           role="cell"
           className={cn(
-            'w-[88px] shrink-0 truncate text-[11px] text-muted-foreground',
+            'w-[88px] shrink-0 truncate text-[12px] text-muted-foreground',
             MONO_NUMERIC
           )}
         >
@@ -75,20 +79,22 @@ function LogsTraceRowImpl({
         <span role="cell" className="flex w-[64px] shrink-0 items-center">
           <LogLevelBadge level={group.maxLevel} />
         </span>
+        {/* Empty stage column for grid alignment with header + leaf rows. */}
+        <span role="cell" className="w-[72px] shrink-0" aria-hidden="true" />
         <span
           role="cell"
-          className="flex w-[140px] shrink-0 items-center gap-1.5 truncate text-[11px] font-medium text-foreground/80"
+          className="flex w-[140px] shrink-0 items-center gap-1.5 truncate text-[12px] font-medium text-foreground/80"
         >
           <GitBranch className="h-3 w-3 text-muted-foreground" aria-hidden="true" />
           {group.module}
         </span>
-        <span role="cell" className="min-w-0 flex-1 truncate text-foreground/90">
+        <span role="cell" className="min-w-0 flex-1 truncate text-[13px] text-foreground/90">
           <span className="text-muted-foreground">trace · {group.children.length} stages</span>
         </span>
         <span
           role="cell"
           className={cn(
-            'hidden w-[72px] shrink-0 truncate text-right text-[11px] text-muted-foreground sm:inline-block',
+            'hidden w-[72px] shrink-0 truncate text-right text-[12px] text-muted-foreground sm:inline-block',
             MONO_NUMERIC
           )}
         >
@@ -97,13 +103,20 @@ function LogsTraceRowImpl({
         <span
           role="cell"
           className={cn(
-            'hidden w-[88px] shrink-0 truncate text-right text-[11px] text-muted-foreground lg:inline-block',
+            'hidden w-[112px] shrink-0 truncate text-right text-[12px] text-muted-foreground lg:inline-block',
             MONO_NUMERIC
           )}
         >
           {group.requestId.slice(-8)}
         </span>
       </button>
+      {/* Children render unconditionally — every stage is preserved so
+          retries, duplicated stage logs, and multi-attempt traces stay
+          individually inspectable. The user-facing noise problem this
+          PR addresses lives at the standalone-leaf level (dashboard
+          self-polling spam) where leaf-coalesce in deriveTraceGroups
+          handles it; opting in to see internals is a deliberate debug
+          choice, so collapsing trace stages there would hide intent. */}
       {isExpanded
         ? group.children.map((child) => (
             <LogsRow
@@ -114,7 +127,7 @@ function LogsTraceRowImpl({
               sourceLabel={sourceLabel}
               onSelect={onSelect}
               indent={20}
-              stageHint={child.stage}
+              stageHint={deriveStageHint(child)}
             />
           ))
         : null}

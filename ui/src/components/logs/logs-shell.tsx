@@ -137,6 +137,18 @@ export function LogsShell({ workspace, updateConfig }: LogsShellProps) {
     [workspace.entriesQuery.data]
   );
 
+  // Derive header stat strip values once per data refetch.
+  const headerStats = useMemo(() => {
+    const data = workspace.entriesQuery.data ?? [];
+    const requestIds = new Set<string>();
+    let errors = 0;
+    for (const entry of data) {
+      if (entry.requestId) requestIds.add(entry.requestId);
+      if (entry.level === 'error') errors += 1;
+    }
+    return { entries: data.length, traces: requestIds.size, errors };
+  }, [workspace.entriesQuery.data]);
+
   const focusSearch = useCallback(() => {
     const input = document.getElementById('logs-search') as HTMLInputElement | null;
     if (input) {
@@ -180,6 +192,8 @@ export function LogsShell({ workspace, updateConfig }: LogsShellProps) {
       onRequestIdChange={workspace.setRequestIdFilter}
       timeWindow={workspace.timeWindow}
       onTimeWindowChange={workspace.setTimeWindow}
+      hideDashboardInternals={workspace.hideDashboardInternals}
+      onHideDashboardInternalsChange={workspace.setHideDashboardInternals}
       onClearAll={workspace.clearAdvancedFilters}
     />
   );
@@ -228,6 +242,7 @@ export function LogsShell({ workspace, updateConfig }: LogsShellProps) {
         isFetching={workspace.entriesQuery.isFetching || workspace.sourcesQuery.isFetching}
         hasError={Boolean(workspace.entriesQuery.error)}
         capturedCount={workspace.entriesQuery.data?.length ?? 0}
+        stats={headerStats}
         onRefresh={handleRefresh}
         onOpenSettings={openSettings}
         onOpenShortcuts={() => setShortcutsOpen(true)}
