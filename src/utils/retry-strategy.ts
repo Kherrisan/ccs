@@ -46,16 +46,22 @@ function defaultRetryableCheck(error: unknown): boolean {
 
 /**
  * Compute backoff delay: base * multiplier^attempt + jitter, capped at maxDelay.
+ * Jitter is applied before the final cap to ensure the result never exceeds maxDelayMs.
  */
 function computeDelay(
   attempt: number,
   baseDelayMs: number,
   maxDelayMs: number,
-  multiplier: number
+  multiplier: number,
+  retryAfter?: number
 ): number {
   const exponentialDelay = Math.min(baseDelayMs * Math.pow(multiplier, attempt), maxDelayMs);
   const jitter = exponentialDelay * JITTER_RATIO * Math.random();
-  return exponentialDelay + jitter;
+  const delay = Math.min(exponentialDelay + jitter, maxDelayMs);
+  if (retryAfter !== undefined && retryAfter > 0) {
+    return Math.max(delay, retryAfter);
+  }
+  return delay;
 }
 
 /**
@@ -86,6 +92,10 @@ export async function withRetry<T>(fn: () => Promise<T>, options: RetryOptions):
     onRetry,
   } = options;
 
+  if (maxRetries < 0) {
+    throw new Error('withRetry: maxRetries must be >= 0');
+  }
+
   const isRetryable = retryableCheck ?? defaultRetryableCheck;
   let lastError: unknown;
 
@@ -108,7 +118,8 @@ export async function withRetry<T>(fn: () => Promise<T>, options: RetryOptions):
       const err = error instanceof Error ? error : new Error(String(error));
       onRetry?.(err, attempt + 1);
 
-      const delay = computeDelay(attempt, baseDelayMs, maxDelayMs, backoffMultiplier);
+      const retryAfter = error instanceof RetryableError ? error.retryAfter : undefined;
+      const delay = computeDelay(attempt, baseDelayMs, maxDelayMs, backoffMultiplier, retryAfter);
       await sleep(delay);
     }
   }

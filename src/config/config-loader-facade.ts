@@ -62,7 +62,11 @@ let _configCache: UnifiedConfig | null = null;
 
 /**
  * Get the unified config with in-memory caching.
- * First call reads from disk; subsequent calls return the cached object.
+ * First call reads from disk; subsequent calls return a deep copy.
+ * Returns a copy to prevent callers from silently mutating the cache.
+ *
+ * NOTE: `loadOrCreateUnifiedConfig` (re-exported above) is NOT cached.
+ * Use `getCachedConfig()` for cached reads, or the direct import for uncached.
  *
  * Call invalidateConfigCache() or use mutateConfig()/updateConfig()
  * to force a re-read from disk.
@@ -71,7 +75,7 @@ export function getCachedConfig(): UnifiedConfig {
   if (!_configCache) {
     _configCache = _loadOrCreateUnifiedConfig();
   }
-  return _configCache;
+  return structuredClone(_configCache);
 }
 
 /**
@@ -83,17 +87,17 @@ export function invalidateConfigCache(): void {
 }
 
 /**
- * Save config to disk and update the cache to the given object.
- * Does NOT invalidate — the provided config IS the new cache value.
+ * Save config to disk and update the cache.
+ * Stores a deep copy to break the reference alias.
  */
 export function saveConfig(config: UnifiedConfig): void {
   _saveUnifiedConfig(config);
-  _configCache = config;
+  _configCache = structuredClone(config);
 }
 
 /**
  * Atomically mutate config (read-modify-write with lock) and invalidate cache.
- * After mutation, the next getCachedConfig() call will re-read from disk.
+ * Invalidated AFTER _mutateUnifiedConfig returns — if that throws, cache stays valid.
  */
 export function mutateConfig(mutator: (config: UnifiedConfig) => void): UnifiedConfig {
   const result = _mutateUnifiedConfig(mutator);

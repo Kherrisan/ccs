@@ -116,14 +116,15 @@ describe('config-loader-facade', () => {
   });
 
   describe('memoization', () => {
-    it('getCachedConfig returns same object on repeated calls', async () => {
+    it('getCachedConfig returns equivalent config on repeated calls', async () => {
       const facade = await importFacade();
 
       const first = facade.getCachedConfig();
       const second = facade.getCachedConfig();
 
-      // Same reference (cached, not re-read)
-      expect(first).toBe(second);
+      // Deep copies — different references but same content (no re-read from disk)
+      expect(first).not.toBe(second);
+      expect(first.version).toBe(second.version);
     });
 
     it('invalidateConfigCache forces re-read on next getCachedConfig', async () => {
@@ -139,16 +140,21 @@ describe('config-loader-facade', () => {
       expect(first.version).toBe(second.version);
     });
 
-    it('saveConfig updates cache and does not invalidate', async () => {
+    it('saveConfig persists to disk and updates cache', async () => {
       const facade = await importFacade();
 
       const config = facade.getCachedConfig();
       config.default = 'test-profile';
       facade.saveConfig(config);
 
+      // Verify disk content reflects the save
+      const configPath = path.join(tempHome, '.ccs', 'config.yaml');
+      const diskContent = fs.readFileSync(configPath, 'utf8');
+      const diskConfig = yaml.load(diskContent) as Record<string, unknown>;
+      expect(diskConfig.default).toBe('test-profile');
+
       const cached = facade.getCachedConfig();
-      // Cache should hold the just-saved config (no re-read)
-      expect(cached).toBe(config);
+      // Cache holds a copy of the saved config
       expect(cached.default).toBe('test-profile');
     });
 

@@ -176,7 +176,7 @@ export class ValidationError extends CCSError {
 export class RetryableError extends CCSError {
   constructor(
     message: string,
-    public readonly cause?: Error,
+    public readonly originalError?: Error,
     public readonly retryAfter?: number // ms until next attempt
   ) {
     super(message, ExitCode.GENERAL_ERROR, true);

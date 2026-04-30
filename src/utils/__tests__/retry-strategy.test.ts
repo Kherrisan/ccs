@@ -95,11 +95,11 @@ describe('withRetry', () => {
       maxDelayMs: 200,
     });
 
-    // Verify setTimeout was called with delay <= maxDelayMs (200ms) + jitter buffer
-    // Jitter adds 0-20% of delay, so max possible is 240ms
+    // Verify setTimeout was called with delay <= maxDelayMs (200ms)
+    // Jitter is capped, so delay must never exceed 200ms
     for (const call of sleepSpy.mock.calls) {
       const delay = call[1] as number;
-      expect(delay).toBeLessThanOrEqual(250); // allow small jitter overhead
+      expect(delay).toBeLessThanOrEqual(200);
     }
     sleepSpy.mockRestore();
   });
@@ -157,5 +157,31 @@ describe('withRetry', () => {
     const fn = mock(() => Promise.reject(new RetryableError('fail')));
     await expect(withRetry(fn, { maxRetries: 0, baseDelayMs: 1 })).rejects.toThrow('fail');
     expect(fn).toHaveBeenCalledTimes(1);
+  });
+
+  it('throws on negative maxRetries', async () => {
+    const fn = mock(() => Promise.resolve('ok'));
+    await expect(withRetry(fn, { maxRetries: -1, baseDelayMs: 1 })).rejects.toThrow(
+      'maxRetries must be >= 0'
+    );
+    expect(fn).not.toHaveBeenCalled();
+  });
+
+  it('respects retryAfter from RetryableError', async () => {
+    const sleepSpy = spyOn(globalThis, 'setTimeout');
+    let attempt = 0;
+    const fn = mock(() => {
+      attempt++;
+      if (attempt < 2) {
+        return Promise.reject(new RetryableError('rate limited', undefined, 500));
+      }
+      return Promise.resolve('ok');
+    });
+
+    await withRetry(fn, { maxRetries: 3, baseDelayMs: 10, maxDelayMs: 1000 });
+    // retryAfter=500 should override the computed backoff (~10ms) since 500 > 10
+    const delay = sleepSpy.mock.calls[0][1] as number;
+    expect(delay).toBeGreaterThanOrEqual(500);
+    sleepSpy.mockRestore();
   });
 });

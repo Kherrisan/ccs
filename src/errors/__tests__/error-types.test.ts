@@ -29,10 +29,10 @@ describe('RetryableError', () => {
     expect(err.message).toBe('something went wrong');
   });
 
-  it('accepts an optional cause', () => {
-    const cause = new Error('original');
-    const err = new RetryableError('wrapped', cause);
-    expect(err.cause).toBe(cause);
+  it('accepts an optional originalError', () => {
+    const original = new Error('original');
+    const err = new RetryableError('wrapped', original);
+    expect(err.originalError).toBe(original);
   });
 
   it('accepts an optional retryAfter (ms)', () => {
