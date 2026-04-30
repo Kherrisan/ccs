@@ -1,4 +1,4 @@
-import { memo, useState, type KeyboardEvent } from 'react';
+import { memo, useState, type KeyboardEvent, type MouseEvent } from 'react';
 import { Copy } from 'lucide-react';
 import type { LogsEntry } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
@@ -65,7 +65,7 @@ function LogsRowImpl({
     }
   };
 
-  const handleCopyRequestId = async (e: React.MouseEvent) => {
+  const handleCopyRequestId = async (e: MouseEvent) => {
     e.stopPropagation();
     if (!entry.requestId) return;
     const ok = await copyText(entry.requestId);
