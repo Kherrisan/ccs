@@ -36,6 +36,52 @@ function coalesceKey(entry: LogsEntry): string {
 }
 
 /**
+ * Coalesce identical consecutive children inside a single trace.
+ *
+ * Key tuple includes `message` so two children that share
+ * event/stage/level/module but report different content stay visible as
+ * separate rows. Includes `source` so adjacent rows from different
+ * services with otherwise-identical fields stay distinct (a request can
+ * fan out across multiple sources participating in the same trace).
+ * Excludes `latencyMs` — it drifts per request and would defeat the
+ * dedup on truly redundant polls.
+ *
+ * Exported so it can be unit-tested independently from the React row.
+ */
+export function coalesceChildren(children: LogsEntry[]): Array<{ head: LogsEntry; count: number }> {
+  if (children.length === 0) return [];
+  const out: Array<{ head: LogsEntry; count: number }> = [];
+  let head: LogsEntry | null = null;
+  let count = 0;
+  let key = '';
+  const flush = () => {
+    if (head) out.push({ head, count });
+    head = null;
+    count = 0;
+  };
+  for (const child of children) {
+    const k = [
+      child.event ?? '',
+      child.message ?? '',
+      child.stage ?? '',
+      child.level,
+      child.module ?? '',
+      child.source ?? '',
+    ].join(' ');
+    if (head && k === key) {
+      count += 1;
+    } else {
+      flush();
+      head = child;
+      count = 1;
+      key = k;
+    }
+  }
+  flush();
+  return out;
+}
+
+/**
  * For an entry without an explicit `stage` field, derive a short chip label
  * from the event name so the trace timeline still renders meaningful badges
  * instead of empty pills. Last `.`-segment, capped at 12 chars.
