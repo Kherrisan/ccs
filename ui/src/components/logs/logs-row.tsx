@@ -59,6 +59,10 @@ function LogsRowImpl({
 
   const handleSelect = () => onSelect(entry.id);
   const handleKey = (e: KeyboardEvent<HTMLDivElement>) => {
+    // Ignore keys that bubbled from a nested interactive element (e.g. the
+    // copy-requestId button). Without this guard, pressing Enter on the
+    // copy button would also select the row and shift the detail panel.
+    if (e.target !== e.currentTarget) return;
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
       handleSelect();
@@ -106,6 +110,10 @@ function LogsRowImpl({
       <span role="cell" className="flex w-[64px] shrink-0 items-center">
         <LogLevelBadge level={entry.level} />
       </span>
+      {/* Always reserve the stage column so leaf, trace head, and trace
+          child rows all align under the same column edges in the header
+          grid template. Children with `stageHint` show a chip; rows
+          without one render an empty span at the same width. */}
       {stageHint ? (
         <span
           role="cell"
@@ -113,7 +121,9 @@ function LogsRowImpl({
         >
           {stageHint}
         </span>
-      ) : null}
+      ) : (
+        <span role="cell" className="w-[72px] shrink-0" aria-hidden="true" />
+      )}
       <span
         role="cell"
         className="w-[140px] shrink-0 truncate text-[12px] font-medium text-foreground/80"
