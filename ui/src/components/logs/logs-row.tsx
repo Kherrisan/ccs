@@ -110,31 +110,29 @@ function LogsRowImpl({
       <span role="cell" className="flex w-[64px] shrink-0 items-center">
         <LogLevelBadge level={entry.level} />
       </span>
-      {/* Always reserve the stage column so leaf, trace head, and trace
-          child rows all align under the same column edges in the header
-          grid template. Children with `stageHint` show a chip; rows
-          without one render an empty span at the same width. */}
-      {stageHint ? (
-        <span
-          role="cell"
-          className="w-[72px] shrink-0 truncate rounded border border-border bg-muted/30 px-1.5 py-0.5 text-[11px] uppercase tracking-wide text-muted-foreground"
-        >
-          {stageHint}
-        </span>
-      ) : (
-        <span role="cell" className="w-[72px] shrink-0" aria-hidden="true" />
-      )}
       <span
         role="cell"
-        className="w-[140px] shrink-0 truncate text-[12px] font-medium text-foreground/80"
+        className="w-[120px] shrink-0 truncate text-[12px] font-medium text-foreground/80"
       >
         {moduleLabel}
       </span>
-      <span role="cell" className="min-w-0 flex-1 truncate text-[13px] text-foreground/90">
-        {entry.message}
+      <span
+        role="cell"
+        className="flex min-w-0 flex-1 items-center gap-2 truncate text-[13px] text-foreground/90"
+      >
+        {/* Stage chip renders inline at the start of the message column
+            when a hint is available. Keeps the 7-column grid intact —
+            adding a dedicated stage column squeezed message to 0px at
+            common list-panel widths. */}
+        {stageHint ? (
+          <span className="inline-flex shrink-0 items-center rounded border border-border bg-muted/30 px-1.5 py-0.5 text-[11px] uppercase tracking-wide text-muted-foreground">
+            {stageHint}
+          </span>
+        ) : null}
+        <span className="min-w-0 truncate">{entry.message}</span>
         {repeatCount && repeatCount > 1 ? (
           <span
-            className="ml-2 inline-flex items-center rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground"
+            className="ml-1 inline-flex shrink-0 items-center rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground"
             title={`${repeatCount} consecutive identical entries`}
           >
             ×{repeatCount}
@@ -144,7 +142,7 @@ function LogsRowImpl({
       <span
         role="cell"
         className={cn(
-          'hidden w-[72px] shrink-0 truncate text-right text-[12px] text-muted-foreground sm:inline-block',
+          'hidden w-[64px] shrink-0 truncate text-right text-[12px] text-muted-foreground sm:inline-block',
           MONO_NUMERIC
         )}
       >
@@ -153,7 +151,7 @@ function LogsRowImpl({
       <span
         role="cell"
         className={cn(
-          'hidden w-[112px] shrink-0 items-center justify-end gap-1 text-right text-[12px] text-muted-foreground/80 lg:inline-flex',
+          'hidden w-[100px] shrink-0 items-center justify-end gap-1 text-right text-[12px] text-muted-foreground/80 lg:inline-flex',
           MONO_NUMERIC
         )}
       >

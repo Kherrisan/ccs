@@ -79,11 +79,9 @@ function LogsTraceRowImpl({
         <span role="cell" className="flex w-[64px] shrink-0 items-center">
           <LogLevelBadge level={group.maxLevel} />
         </span>
-        {/* Empty stage column for grid alignment with header + leaf rows. */}
-        <span role="cell" className="w-[72px] shrink-0" aria-hidden="true" />
         <span
           role="cell"
-          className="flex w-[140px] shrink-0 items-center gap-1.5 truncate text-[12px] font-medium text-foreground/80"
+          className="flex w-[120px] shrink-0 items-center gap-1.5 truncate text-[12px] font-medium text-foreground/80"
         >
           <GitBranch className="h-3 w-3 text-muted-foreground" aria-hidden="true" />
           {group.module}
@@ -94,7 +92,7 @@ function LogsTraceRowImpl({
         <span
           role="cell"
           className={cn(
-            'hidden w-[72px] shrink-0 truncate text-right text-[12px] text-muted-foreground sm:inline-block',
+            'hidden w-[64px] shrink-0 truncate text-right text-[12px] text-muted-foreground sm:inline-block',
             MONO_NUMERIC
           )}
         >
@@ -103,7 +101,7 @@ function LogsTraceRowImpl({
         <span
           role="cell"
           className={cn(
-            'hidden w-[112px] shrink-0 truncate text-right text-[12px] text-muted-foreground lg:inline-block',
+            'hidden w-[100px] shrink-0 truncate text-right text-[12px] text-muted-foreground lg:inline-block',
             MONO_NUMERIC
           )}
         >

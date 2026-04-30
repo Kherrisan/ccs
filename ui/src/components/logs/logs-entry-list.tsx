@@ -25,12 +25,12 @@ export interface LogsEntryListProps {
 }
 
 // Column layout shared by the header and every row variant:
-//   chevron(16) · time(88) · level(64) · stage(72) · module(140) · message(flex) · latency(72) · request(112)
-// The dedicated `stage` column is rendered as an empty span on rows that
-// have no stage hint so column edges align across leaf, trace head, and
-// trace child rows alike.
+//   chevron(16) · time(88) · level(64) · module(120) · message(flex) · latency(64) · request(100)
+// Stage chips render inline at the start of the MESSAGE column rather
+// than as a dedicated column. Fixed columns kept lean so MESSAGE has
+// breathing room at common saved-layout list-panel widths (~600px).
 const COLS_TEMPLATE =
-  'grid grid-cols-[16px_88px_64px_72px_140px_minmax(0,1fr)_72px_112px] items-center gap-3 px-3';
+  'grid grid-cols-[16px_88px_64px_120px_minmax(0,1fr)_64px_100px] items-center gap-3 px-3';
 
 export function LogsEntryList({
   entries,
@@ -152,7 +152,6 @@ export function LogsEntryList({
         <span role="columnheader" aria-hidden="true" />
         <span role="columnheader">Time</span>
         <span role="columnheader">Level</span>
-        <span role="columnheader">Stage</span>
         <span role="columnheader">Module</span>
         <span role="columnheader">Message</span>
         <span role="columnheader" className="text-right">
