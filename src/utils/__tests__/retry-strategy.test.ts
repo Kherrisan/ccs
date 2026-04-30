@@ -1,6 +1,6 @@
 import { describe, it, expect, mock, spyOn } from 'bun:test';
 import { withRetry, type RetryOptions } from '../retry-strategy';
-import { RetryableError } from '../../errors/error-types';
+import { CCSError, RetryableError } from '../../errors/error-types';
 
 describe('withRetry', () => {
   it('returns the result on first success', async () => {
@@ -38,8 +38,8 @@ describe('withRetry', () => {
     expect(fn).toHaveBeenCalledTimes(1);
   });
 
-  it('does not retry errors with recoverable=false', async () => {
-    const fn = mock(() => Promise.reject(new Error('non-retryable')));
+  it('does not retry CCSErrors with recoverable=false', async () => {
+    const fn = mock(() => Promise.reject(new CCSError('non-retryable', 1, false)));
     await expect(withRetry(fn, { maxRetries: 3, baseDelayMs: 1 })).rejects.toThrow('non-retryable');
     expect(fn).toHaveBeenCalledTimes(1);
   });
@@ -210,5 +210,47 @@ describe('withRetry', () => {
       'baseDelayMs must be >= 0'
     );
     expect(fn).not.toHaveBeenCalled();
+  });
+
+  it('retryAfter can exceed maxDelayMs (server directive wins)', async () => {
+    const sleepSpy = spyOn(globalThis, 'setTimeout');
+    let attempt = 0;
+    const fn = mock(() => {
+      attempt++;
+      if (attempt < 2) {
+        return Promise.reject(new RetryableError('rate limited', undefined, 500));
+      }
+      return Promise.resolve('ok');
+    });
+
+    await withRetry(fn, { maxRetries: 3, baseDelayMs: 10, maxDelayMs: 100 });
+    // retryAfter=500 > maxDelayMs=100 — server directive takes precedence
+    const delay = sleepSpy.mock.calls[0][1] as number;
+    expect(delay).toBeGreaterThanOrEqual(500);
+    sleepSpy.mockRestore();
+  });
+
+  it('baseDelayMs=0 produces immediate retries', async () => {
+    let attempt = 0;
+    const fn = mock(() => {
+      attempt++;
+      if (attempt < 3) {
+        return Promise.reject(new RetryableError('fail'));
+      }
+      return Promise.resolve('ok');
+    });
+
+    const result = await withRetry(fn, { maxRetries: 5, baseDelayMs: 0 });
+    expect(result).toBe('ok');
+    expect(fn).toHaveBeenCalledTimes(3);
+  });
+
+  it('does not call onRetry when maxRetries=0', async () => {
+    const onRetry = mock(() => {});
+    const fn = mock(() => Promise.reject(new RetryableError('fail')));
+
+    await expect(withRetry(fn, { maxRetries: 0, baseDelayMs: 1, onRetry })).rejects.toThrow('fail');
+    expect(fn).toHaveBeenCalledTimes(1);
+    expect(onRetry).not.toHaveBeenCalled();
   });
 });
