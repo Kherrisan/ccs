@@ -127,9 +127,13 @@ export class GlmtTransformer {
       return anthropicResponse;
     } catch (error) {
       const err = error as Error;
-      this.logger.error('response.transform_failed', 'GLMT response transformation failed', {
-        message: err.message,
-      });
+      this.logger.stage(
+        'cleanup',
+        'response.transform_failed',
+        'GLMT response transformation failed',
+        undefined,
+        { level: 'error', error: { name: err.name, message: err.message } }
+      );
       console.error('[glmt-transformer] Response transformation error:', err);
       return {
         id: 'msg_error_' + Date.now(),
