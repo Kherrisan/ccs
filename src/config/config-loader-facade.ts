@@ -52,34 +52,42 @@ export type { GeminiWebSearchInfo } from './unified-config-loader';
 export { loadSettings, loadConfigSafe, readConfig, getCcsDir } from '../utils/config-manager';
 
 // Internal imports for memoization wrappers
+import { statSync } from 'fs';
 import type { UnifiedConfig } from './unified-config-types';
 import {
   loadOrCreateUnifiedConfig as _loadOrCreateUnifiedConfig,
   saveUnifiedConfig as _saveUnifiedConfig,
   mutateUnifiedConfig as _mutateUnifiedConfig,
   updateUnifiedConfig as _updateUnifiedConfig,
+  getConfigYamlPath as _getConfigYamlPath,
 } from './unified-config-loader';
 
 // ---------------------------------------------------------------------------
-// Memoization cache
+// Memoization cache with mtime-based staleness detection
 // ---------------------------------------------------------------------------
 
 let _configCache: UnifiedConfig | null = null;
+let _cacheMtimeMs: number = 0;
+
+function getConfigFileMtime(): number {
+  try {
+    return statSync(_getConfigYamlPath()).mtimeMs;
+  } catch {
+    return 0;
+  }
+}
 
 /**
  * Get the unified config with in-memory caching.
- * First call reads from disk; subsequent calls return a deep copy.
- * Returns a copy to prevent callers from silently mutating the cache.
- *
- * NOTE: `loadOrCreateUnifiedConfig` (re-exported above) is NOT cached.
- * Use `getCachedConfig()` for cached reads, or the direct import for uncached.
- *
- * Call invalidateConfigCache() or use mutateConfig()/updateConfig()
- * to force a re-read from disk.
+ * Checks file mtime on each call — if the config file was modified
+ * externally (e.g. by code importing unified-config-loader directly),
+ * the cache is automatically invalidated and re-read from disk.
  */
 export function getCachedConfig(): UnifiedConfig {
-  if (!_configCache) {
+  const currentMtime = getConfigFileMtime();
+  if (!_configCache || currentMtime > _cacheMtimeMs) {
     _configCache = _loadOrCreateUnifiedConfig();
+    _cacheMtimeMs = getConfigFileMtime();
   }
   return structuredClone(_configCache);
 }
@@ -90,6 +98,7 @@ export function getCachedConfig(): UnifiedConfig {
  */
 export function invalidateConfigCache(): void {
   _configCache = null;
+  _cacheMtimeMs = 0;
 }
 
 /**

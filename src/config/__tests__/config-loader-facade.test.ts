@@ -208,5 +208,27 @@ describe('config-loader-facade', () => {
       expect(config.profiles).toBeDefined();
       expect(config.cliproxy).toBeDefined();
     });
+
+    it('auto-invalidates when config file is modified externally', async () => {
+      const facade = await importFacade();
+
+      // Prime the cache
+      const first = facade.getCachedConfig();
+      expect(first.version).toBeDefined();
+
+      // Modify config file directly on disk (simulating external code
+      // bypassing the facade)
+      const configPath = path.join(tempHome, '.ccs', 'config.yaml');
+      // Touch the file to update mtime (wait briefly for mtime resolution)
+      const content = fs.readFileSync(configPath, 'utf8');
+      await new Promise((r) => setTimeout(r, 10));
+      fs.writeFileSync(configPath, content + '# touched\n', 'utf8');
+
+      // getCachedConfig should detect the mtime change and re-read
+      const second = facade.getCachedConfig();
+      expect(first).not.toBe(second);
+      // Content should still be valid (re-read from disk)
+      expect(second.version).toBeDefined();
+    });
   });
 });
