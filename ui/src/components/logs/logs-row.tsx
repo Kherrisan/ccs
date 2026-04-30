@@ -31,11 +31,14 @@ function formatHms(timestamp: string): string {
   });
 }
 
-async function copyText(text: string): Promise<void> {
+async function copyText(text: string): Promise<boolean> {
   try {
     await navigator.clipboard.writeText(text);
+    return true;
   } catch {
-    // best-effort; clipboard may be unavailable in non-secure contexts
+    // Insecure context or clipboard permission denied. Caller should NOT
+    // claim success in the UI when this returns false.
+    return false;
   }
 }
 
@@ -65,7 +68,8 @@ function LogsRowImpl({
   const handleCopyRequestId = async (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!entry.requestId) return;
-    await copyText(entry.requestId);
+    const ok = await copyText(entry.requestId);
+    if (!ok) return;
     setJustCopied(true);
     window.setTimeout(() => setJustCopied(false), 1200);
   };
