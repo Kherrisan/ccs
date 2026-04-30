@@ -9,6 +9,9 @@ import {
 import type { AccountConfig } from '../config/unified-config-types';
 import { getCcsDir } from '../utils/config-manager';
 import { isValidContextGroupName, normalizeContextGroupName } from './account-context';
+import { createLogger } from '../services/logging';
+
+const logger = createLogger('auth:profile-registry');
 
 /**
  * Profile Registry (Simplified)
@@ -182,6 +185,10 @@ export class ProfileRegistry {
     // Default always stays on implicit 'default' profile (uses ~/.claude/)
 
     this._write(data);
+    logger.stage('route', 'auth.profile.created', 'Profile created in registry', {
+      profile: name,
+      profileType: metadata.type || 'account',
+    });
   }
 
   /**
@@ -235,6 +242,9 @@ export class ProfileRegistry {
     }
 
     this._write(data);
+    logger.stage('cleanup', 'auth.profile.deleted', 'Profile deleted from registry', {
+      profile: name,
+    });
   }
 
   /**
