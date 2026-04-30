@@ -2,7 +2,7 @@ import { memo } from 'react';
 import { ChevronDown, ChevronRight, GitBranch } from 'lucide-react';
 import type { LogsEntry, LogsLevel } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
-import { coalesceChildren, deriveStageHint } from './derive-trace-groups';
+import { deriveStageHint } from './derive-trace-groups';
 import { LogLevelBadge } from './log-level-badge';
 import { LogsRow } from './logs-row';
 import { FOCUS_RING, MONO_NUMERIC, ROW_DENSITY, ROW_INTERACTIVE, type RowDensity } from './tokens';
@@ -110,18 +110,24 @@ function LogsTraceRowImpl({
           {group.requestId.slice(-8)}
         </span>
       </button>
+      {/* Children render unconditionally — every stage is preserved so
+          retries, duplicated stage logs, and multi-attempt traces stay
+          individually inspectable. The user-facing noise problem this
+          PR addresses lives at the standalone-leaf level (dashboard
+          self-polling spam) where leaf-coalesce in deriveTraceGroups
+          handles it; opting in to see internals is a deliberate debug
+          choice, so collapsing trace stages there would hide intent. */}
       {isExpanded
-        ? coalesceChildren(group.children).map((run) => (
+        ? group.children.map((child) => (
             <LogsRow
-              key={run.head.id}
-              entry={run.head}
-              isSelected={run.head.id === selectedEntryId}
+              key={child.id}
+              entry={child}
+              isSelected={child.id === selectedEntryId}
               density={density}
               sourceLabel={sourceLabel}
               onSelect={onSelect}
               indent={20}
-              stageHint={deriveStageHint(run.head)}
-              repeatCount={run.count > 1 ? run.count : undefined}
+              stageHint={deriveStageHint(child)}
             />
           ))
         : null}

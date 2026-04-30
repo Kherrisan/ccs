@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { LogsEntry } from '@/lib/api-client';
 import {
-  coalesceChildren,
   deriveStageHint,
   deriveTraceGroups,
   type LeafItem,
@@ -48,53 +47,6 @@ describe('deriveStageHint', () => {
 
   it('treats single-segment event as its own hint', () => {
     expect(deriveStageHint(entry({ id: '1', timestamp: 't', event: 'startup' }))).toBe('startup');
-  });
-});
-
-describe('coalesceChildren', () => {
-  it('returns empty array for empty input', () => {
-    expect(coalesceChildren([])).toEqual([]);
-  });
-
-  it('passes through a single child as count=1', () => {
-    const e = entry({ id: '1', timestamp: 't', event: 'a.b' });
-    expect(coalesceChildren([e])).toEqual([{ head: e, count: 1 }]);
-  });
-
-  it('coalesces two adjacent identical children', () => {
-    const a = entry({ id: '1', timestamp: 't1', event: 'a.b', message: 'm' });
-    const b = entry({ id: '2', timestamp: 't2', event: 'a.b', message: 'm' });
-    const result = coalesceChildren([a, b]);
-    expect(result).toHaveLength(1);
-    expect(result[0]?.count).toBe(2);
-    expect(result[0]?.head).toBe(a);
-  });
-
-  it('keeps children with different messages distinct (round-1 fix)', () => {
-    const a = entry({ id: '1', timestamp: 't1', event: 'auth.ok', message: 'alice' });
-    const b = entry({ id: '2', timestamp: 't2', event: 'auth.ok', message: 'bob' });
-    expect(coalesceChildren([a, b])).toHaveLength(2);
-  });
-
-  it('keeps children with different sources distinct (round-2 fix)', () => {
-    const a = entry({ id: '1', timestamp: 't1', source: 'svc-a', event: 'e' });
-    const b = entry({ id: '2', timestamp: 't2', source: 'svc-b', event: 'e' });
-    expect(coalesceChildren([a, b])).toHaveLength(2);
-  });
-
-  it('keeps children with different stages distinct', () => {
-    const a = entry({ id: '1', timestamp: 't1', stage: 'route', event: 'e' });
-    const b = entry({ id: '2', timestamp: 't2', stage: 'dispatch', event: 'e' });
-    expect(coalesceChildren([a, b])).toHaveLength(2);
-  });
-
-  it('only collapses adjacent duplicates — interleaving breaks the run', () => {
-    const a = entry({ id: '1', timestamp: 't1', event: 'a' });
-    const b = entry({ id: '2', timestamp: 't2', event: 'b' });
-    const c = entry({ id: '3', timestamp: 't3', event: 'a' });
-    const result = coalesceChildren([a, b, c]);
-    // a, b, a — three distinct runs of count 1 each
-    expect(result.map((r) => r.count)).toEqual([1, 1, 1]);
   });
 });
 

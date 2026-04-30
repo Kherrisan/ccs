@@ -18,11 +18,16 @@ export interface LeafItem {
 export type DerivedItem = LeafItem | TraceGroup;
 
 /**
- * Tuple key for coalescing. Includes `message` so two adjacent logs that
- * share event/module/level but report different content stay distinct
+ * Tuple key for coalescing standalone leaves. Includes `message` and
+ * `source` so two adjacent logs that share event/module/level but report
+ * different content (or come from a different service) stay distinct
  * (e.g. `User logged in: alice` and `User logged in: bob`). Excludes
  * `latencyMs` and `metadata` because those drift per request even on
  * truly redundant polls — including them would prevent any coalescing.
+ *
+ * NB: this only applies to *leaves* (entries without `requestId`). Trace
+ * children render uncoalesced so retries and duplicated-stage emissions
+ * stay individually inspectable.
  */
 function coalesceKey(entry: LogsEntry): string {
   return [
@@ -33,52 +38,6 @@ function coalesceKey(entry: LogsEntry): string {
     entry.requestId ?? '',
     entry.source ?? '',
   ].join(' ');
-}
-
-/**
- * Coalesce identical consecutive children inside a single trace.
- *
- * Key tuple includes `message` so two children that share
- * event/stage/level/module but report different content stay visible as
- * separate rows. Includes `source` so adjacent rows from different
- * services with otherwise-identical fields stay distinct (a request can
- * fan out across multiple sources participating in the same trace).
- * Excludes `latencyMs` — it drifts per request and would defeat the
- * dedup on truly redundant polls.
- *
- * Exported so it can be unit-tested independently from the React row.
- */
-export function coalesceChildren(children: LogsEntry[]): Array<{ head: LogsEntry; count: number }> {
-  if (children.length === 0) return [];
-  const out: Array<{ head: LogsEntry; count: number }> = [];
-  let head: LogsEntry | null = null;
-  let count = 0;
-  let key = '';
-  const flush = () => {
-    if (head) out.push({ head, count });
-    head = null;
-    count = 0;
-  };
-  for (const child of children) {
-    const k = [
-      child.event ?? '',
-      child.message ?? '',
-      child.stage ?? '',
-      child.level,
-      child.module ?? '',
-      child.source ?? '',
-    ].join(' ');
-    if (head && k === key) {
-      count += 1;
-    } else {
-      flush();
-      head = child;
-      count = 1;
-      key = k;
-    }
-  }
-  flush();
-  return out;
 }
 
 /**
@@ -108,7 +67,8 @@ export function deriveStageHint(entry: LogsEntry): string | undefined {
  * Trace groups gather all children sharing a requestId regardless of
  * interleaving; they're sorted by `ts asc` before display, with the
  * group's positional `ts` set to the oldest child so it slots correctly
- * in the reverse-chronological display sort below.
+ * in the reverse-chronological display sort below. Children are NOT
+ * coalesced — every stage is preserved for individual inspection.
  */
 export function deriveTraceGroups(entries: LogsEntry[]): DerivedItem[] {
   const items: DerivedItem[] = [];
