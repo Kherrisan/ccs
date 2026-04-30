@@ -417,7 +417,7 @@ Windows fallback: Copies if symlinks unavailable
 - Native JSON only, no external dependencies
 
 ### TypeScript (src/*.ts)
-- Node.js 14+, Bun 1.0+, TypeScript 5.3, strict mode
+- Node.js 18+, Bun 1.0+, TypeScript 5.3, strict mode
 - `child_process.spawn`, handle SIGINT/SIGTERM
 
 ### Terminal Output
