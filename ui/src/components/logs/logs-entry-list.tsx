@@ -24,8 +24,10 @@ export interface LogsEntryListProps {
   density?: RowDensity;
 }
 
+// Leading 16px slot reserves space for the trace-expand chevron so that
+// trace rows and standalone leaf rows align under the same column edges.
 const COLS_TEMPLATE =
-  'grid grid-cols-[88px_64px_140px_minmax(0,1fr)_72px_112px] items-center gap-3 px-3';
+  'grid grid-cols-[16px_88px_64px_140px_minmax(0,1fr)_72px_112px] items-center gap-3 px-3';
 
 export function LogsEntryList({
   entries,
@@ -102,6 +104,7 @@ export function LogsEntryList({
           'h-9 shrink-0 border-b border-border bg-muted/30 text-[12px] font-medium uppercase tracking-wide text-muted-foreground'
         )}
       >
+        <span role="columnheader" aria-hidden="true" />
         <span role="columnheader">Time</span>
         <span role="columnheader">Level</span>
         <span role="columnheader">Module</span>

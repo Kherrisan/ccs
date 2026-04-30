@@ -94,7 +94,10 @@ function LogsTraceRowImpl({
           FOCUS_RING
         )}
       >
-        <Chevron className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+        {/* Reserve the same 16px slot as leaf rows so all columns align. */}
+        <span className="flex w-4 shrink-0 items-center justify-center" aria-hidden="true">
+          <Chevron className="h-3.5 w-3.5 text-muted-foreground" />
+        </span>
         <span
           role="cell"
           className={cn(

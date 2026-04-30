@@ -78,6 +78,9 @@ function LogsRowImpl({
         isSelected && 'bg-muted/60 shadow-[inset_2px_0_0_var(--ring)]'
       )}
     >
+      {/* Leading 16px slot mirrors the trace-row chevron column so leaf
+          rows align under the same column edges as trace rows. */}
+      <span className="w-4 shrink-0" aria-hidden="true" />
       <span
         role="cell"
         className={cn('w-[88px] shrink-0 truncate text-[12px] text-muted-foreground', MONO_NUMERIC)}
