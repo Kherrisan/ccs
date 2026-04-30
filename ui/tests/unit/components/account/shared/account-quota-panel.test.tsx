@@ -3,6 +3,9 @@ import { describe, expect, it } from 'vitest';
 import { AccountQuotaPanel } from '@/components/account/shared/account-quota-panel';
 import type { ClaudeQuotaResult, CodexQuotaResult, GeminiCliQuotaResult } from '@/lib/api-client';
 
+const NOISY_WEEKLY_REMAINING_PERCENT = 45 - 1e-14;
+const NOISY_WEEKLY_USED_PERCENT = 100 - NOISY_WEEKLY_REMAINING_PERCENT;
+
 function createGeminiFailureQuota(): GeminiCliQuotaResult {
   return {
     success: false,
@@ -37,9 +40,9 @@ function createClaudeQuota(): ClaudeQuotaResult {
         rateLimitType: 'seven_day_sonnet',
         label: 'Weekly usage',
         status: 'allowed',
-        utilization: 0.6,
-        usedPercent: 60,
-        remainingPercent: 40,
+        utilization: NOISY_WEEKLY_USED_PERCENT / 100,
+        usedPercent: NOISY_WEEKLY_USED_PERCENT,
+        remainingPercent: NOISY_WEEKLY_REMAINING_PERCENT,
         resetAt: '2026-05-07T01:00:00.000Z',
       },
     ],
@@ -54,7 +57,7 @@ function createClaudeQuota(): ClaudeQuotaResult {
       weekly: {
         rateLimitType: 'seven_day_sonnet',
         label: 'Weekly usage',
-        remainingPercent: 40,
+        remainingPercent: NOISY_WEEKLY_REMAINING_PERCENT,
         resetAt: '2026-05-07T01:00:00.000Z',
         status: 'allowed',
       },
@@ -137,14 +140,14 @@ describe('AccountQuotaPanel quota bars', () => {
     expect(screen.getByText('5h')).toBeInTheDocument();
     expect(screen.getByText('Week')).toBeInTheDocument();
     expect(screen.getByText('43%')).toBeInTheDocument();
-    expect(screen.getAllByText('40%').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('45%').length).toBeGreaterThan(0);
     expect(screen.getByRole('progressbar', { name: '5h quota' })).toHaveAttribute(
       'aria-valuenow',
       '43'
     );
     expect(screen.getByRole('progressbar', { name: 'Week quota' })).toHaveAttribute(
       'aria-valuenow',
-      '40'
+      '45'
     );
   });
 

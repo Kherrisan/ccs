@@ -49,6 +49,17 @@ function getQuotaColor(percentage: number): string {
   return 'bg-green-500';
 }
 
+function getQuotaTextColor(percentage: number): string {
+  const clamped = Math.max(0, Math.min(100, percentage));
+  if (clamped <= 20) return 'text-red-600 dark:text-red-400';
+  if (clamped <= 50) return 'text-amber-600 dark:text-amber-400';
+  return 'text-emerald-600 dark:text-emerald-400';
+}
+
+function getDisplayQuotaValue(value: number): number {
+  return Number(formatQuotaPercent(value));
+}
+
 function formatRelativeTime(dateStr: string | undefined): string {
   if (!dateStr) return '';
 
@@ -174,59 +185,66 @@ export function AccountQuotaPanel({
           <Tooltip>
             <TooltipTrigger asChild>
               {mode === 'compact' ? (
-                <div className="space-y-0.5 cursor-help">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[8px] text-muted-foreground/70 uppercase font-bold tracking-tight">
-                      {t('accountCard.quota')}
-                    </span>
-                    <span
-                      className={cn(
-                        'text-[10px] font-mono font-bold',
-                        minQuotaValue > 50
-                          ? 'text-emerald-600 dark:text-emerald-400'
-                          : minQuotaValue > 20
-                            ? 'text-amber-500'
-                            : 'text-red-500'
-                      )}
-                    >
-                      {minQuotaLabel}%
-                    </span>
-                  </div>
+                <div className="cursor-help">
                   {quotaRows.length > 0 ? (
-                    <div className="space-y-0.5">
+                    <div className="space-y-1">
                       {quotaRows.map((row) => (
                         <div
                           key={row.id}
-                          className="grid grid-cols-[2rem_minmax(0,1fr)_2.25rem] items-center gap-1 text-[7px]"
+                          className="grid grid-cols-[2rem_minmax(0,1fr)_2rem] items-center gap-x-1 text-[7px]"
                         >
-                          <span className="font-semibold uppercase text-muted-foreground/75">
+                          <span className="font-semibold uppercase leading-none text-muted-foreground/75">
                             {row.compactLabel}
                           </span>
                           <Progress
-                            value={Math.max(0, Math.min(100, row.value))}
+                            value={getDisplayQuotaValue(row.value)}
                             aria-label={`${row.compactLabel} quota`}
-                            className="h-1"
+                            className="h-1.5"
                             indicatorClassName={getQuotaColor(row.value)}
                           />
-                          <span className="text-right font-mono font-semibold text-foreground/80">
+                          <span
+                            className={cn(
+                              'text-right font-mono text-[10px] font-bold leading-none',
+                              getQuotaTextColor(row.value)
+                            )}
+                          >
                             {formatQuotaPercent(row.value)}%
                           </span>
                         </div>
                       ))}
                     </div>
                   ) : (
-                    <Progress
-                      value={minQuotaValue}
-                      aria-label="Quota"
-                      className="h-1"
-                      indicatorClassName={
-                        minQuotaValue > 50
-                          ? 'bg-emerald-500'
-                          : minQuotaValue > 20
-                            ? 'bg-amber-500'
-                            : 'bg-red-500'
-                      }
-                    />
+                    <div className="space-y-0.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[8px] text-muted-foreground/70 uppercase font-bold tracking-tight">
+                          {t('accountCard.quota')}
+                        </span>
+                        <span
+                          className={cn(
+                            'text-[10px] font-mono font-bold',
+                            minQuotaValue > 50
+                              ? 'text-emerald-600 dark:text-emerald-400'
+                              : minQuotaValue > 20
+                                ? 'text-amber-500'
+                                : 'text-red-500'
+                          )}
+                        >
+                          {minQuotaLabel}%
+                        </span>
+                      </div>
+                      <Progress
+                        value={minQuotaValue}
+                        aria-label="Quota"
+                        className="h-1"
+                        indicatorClassName={
+                          minQuotaValue > 50
+                            ? 'bg-emerald-500'
+                            : minQuotaValue > 20
+                              ? 'bg-amber-500'
+                              : 'bg-red-500'
+                        }
+                      />
+                    </div>
                   )}
                 </div>
               ) : (
@@ -265,12 +283,17 @@ export function AccountQuotaPanel({
                             <span className="min-w-0 truncate text-muted-foreground">
                               {row.label}
                             </span>
-                            <span className="shrink-0 font-mono font-semibold text-foreground/80">
+                            <span
+                              className={cn(
+                                'shrink-0 font-mono font-semibold',
+                                getQuotaTextColor(row.value)
+                              )}
+                            >
                               {formatQuotaPercent(row.value)}%
                             </span>
                           </div>
                           <Progress
-                            value={Math.max(0, Math.min(100, row.value))}
+                            value={getDisplayQuotaValue(row.value)}
                             aria-label={`${row.label} quota`}
                             className="h-2"
                             indicatorClassName={getQuotaColor(row.value)}
