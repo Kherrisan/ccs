@@ -353,4 +353,70 @@ describe('openai proxy request routing', () => {
     });
     expect((bodies[0]?.body as { reasoning?: unknown } | undefined)?.reasoning).toBeUndefined();
   });
+
+  it('shapes direct OpenAI reasoning-model chat payloads after route resolution', async () => {
+    const hits: string[] = [];
+    const bodies: Array<{ label: string; body: unknown }> = [];
+    const upstreamPort = await startMockUpstream('openai', hits, bodies);
+
+    const settingsPath = writeSettings('openai', {
+      ANTHROPIC_BASE_URL: 'https://api.openai.com/v1',
+      ANTHROPIC_AUTH_TOKEN: 'openai_token',
+      ANTHROPIC_MODEL: 'gpt-5.4',
+    });
+
+    fs.writeFileSync(
+      path.join(tempDir, '.ccs', 'config.json'),
+      JSON.stringify({ profiles: { openai: settingsPath } }, null, 2),
+      'utf8'
+    );
+
+    const profile: OpenAICompatProfileConfig = {
+      profileName: 'openai',
+      settingsPath,
+      baseUrl: `http://127.0.0.1:${upstreamPort}`,
+      apiKey: 'openai_token',
+      provider: 'openai',
+      model: 'gpt-5.4',
+    };
+    proxyServer = startOpenAICompatProxyServer({
+      profile,
+      port: 0,
+      authToken: 'test-proxy-token',
+    });
+    proxyPort = await waitForServerListening(proxyServer);
+
+    const response = await requestProxy({
+      model: 'gpt-5.4',
+      thinking: { type: 'adaptive' },
+      output_config: { effort: 'max' },
+      max_tokens: 1024,
+      metadata: { trace: 'abc' },
+      tools: [{ name: 'search', description: 'Search docs', input_schema: { type: 'object' } }],
+      messages: [{ role: 'user', content: 'think with tools' }],
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      content: [{ type: 'text', text: 'Reply from openai' }],
+    });
+    expect(hits).toEqual(['openai']);
+
+    const body = bodies[0]?.body as {
+      max_tokens?: number;
+      max_completion_tokens?: number;
+      metadata?: unknown;
+      reasoning_effort?: string;
+      tools?: unknown[];
+    };
+    expect(body).toMatchObject({
+      model: 'gpt-5.4',
+      max_completion_tokens: 1024,
+      tool_choice: 'auto',
+    });
+    expect(body.max_tokens).toBeUndefined();
+    expect(body.metadata).toBeUndefined();
+    expect(body.reasoning_effort).toBeUndefined();
+    expect(body.tools?.length).toBe(1);
+  });
 });

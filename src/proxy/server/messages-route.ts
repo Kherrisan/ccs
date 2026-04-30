@@ -2,13 +2,17 @@ import * as http from 'http';
 import type { Dispatcher } from 'undici';
 import type { OpenAICompatProfileConfig } from '../profile-router';
 import { resolveProxyRequestRoute } from '../request-router';
-import { ProxyRequestTransformer } from '../transformers/request-transformer';
+import {
+  ProxyRequestTransformer,
+  type ProxyOpenAIRequest,
+} from '../transformers/request-transformer';
 import { ProxySseStreamTransformer } from '../transformers/sse-stream-transformer';
 import { resolveOpenAIChatCompletionsUrl } from '../upstream-url';
 import { createLogger } from '../../services/logging';
 import { pipeWebResponseToNode, readJsonBody, writeJson } from './http-helpers';
 
 const REQUEST_TIMEOUT_MS = 600_000;
+const DIRECT_OPENAI_REASONING_CHAT_MODEL = /^(?:gpt-5|o[134])(?:[-.]|$)/;
 const logger = createLogger('proxy:openai-compat:messages');
 
 class ProxyInputError extends Error {
@@ -26,11 +30,46 @@ function buildUpstreamHeaders(profile: OpenAICompatProfileConfig): Record<string
   };
 }
 
+function isDirectOpenAIReasoningChatModel(
+  profile: OpenAICompatProfileConfig,
+  model: string | undefined
+): boolean {
+  return (
+    profile.provider === 'openai' &&
+    typeof model === 'string' &&
+    DIRECT_OPENAI_REASONING_CHAT_MODEL.test(model.trim().toLowerCase())
+  );
+}
+
+function shapeUpstreamChatPayload(
+  payload: ProxyOpenAIRequest,
+  profile: OpenAICompatProfileConfig
+): ProxyOpenAIRequest {
+  if (!isDirectOpenAIReasoningChatModel(profile, payload.model)) {
+    return payload;
+  }
+
+  const shaped = { ...payload };
+
+  if (shaped.max_tokens !== undefined) {
+    shaped.max_completion_tokens = shaped.max_tokens;
+    delete shaped.max_tokens;
+  }
+
+  delete shaped.metadata;
+
+  if ((shaped.tools?.length ?? 0) > 0) {
+    delete shaped.reasoning_effort;
+  }
+
+  return shaped;
+}
+
 function buildUpstreamRequest(
   profile: OpenAICompatProfileConfig,
   rawBody: unknown
 ): { body: string; route: ReturnType<typeof resolveProxyRequestRoute> } {
-  let transformed;
+  let transformed: ProxyOpenAIRequest;
   try {
     const transformer = new ProxyRequestTransformer();
     transformed = transformer.transform(rawBody);
@@ -39,11 +78,14 @@ function buildUpstreamRequest(
     throw new ProxyInputError(message);
   }
   const route = resolveProxyRequestRoute(profile, transformed);
-  const body = {
-    ...transformed,
-    model: route.model || route.profile.model,
-    stream: transformed.stream === true,
-  };
+  const body = shapeUpstreamChatPayload(
+    {
+      ...transformed,
+      model: route.model || route.profile.model,
+      stream: transformed.stream === true,
+    },
+    route.profile
+  );
   return { body: JSON.stringify(body), route };
 }
 
