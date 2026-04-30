@@ -5,10 +5,14 @@
  * Re-exports read-only functions from unified-config-loader and config-manager,
  * and provides cache-coherent write wrappers that keep the memoization cache in sync.
  *
- * IMPORTANT: Raw write functions (saveUnifiedConfig, mutateUnifiedConfig,
- * updateUnifiedConfig) are NOT re-exported here. Use the cache-coherent
- * wrappers (saveConfig, mutateConfig, updateConfig) instead. If you need
- * the raw functions, import directly from './unified-config-loader'.
+ * IMPORTANT:
+ * - Raw write functions (saveUnifiedConfig, mutateUnifiedConfig,
+ *   updateUnifiedConfig) are NOT re-exported here. Use the cache-coherent
+ *   wrappers (saveConfig, mutateConfig, updateConfig) instead.
+ * - `loadOrCreateUnifiedConfig` and `loadUnifiedConfig` are re-exported as
+ *   uncached reads. If you need cached reads, use `getCachedConfig()`.
+ *   If you use an uncached read followed by a write outside this facade,
+ *   call `invalidateConfigCache()` to keep the cache coherent.
  *
  * Usage:
  *   import { getCachedConfig, saveConfig, mutateConfig } from '../config/config-loader-facade';
