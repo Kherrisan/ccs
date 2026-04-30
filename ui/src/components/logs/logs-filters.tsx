@@ -44,6 +44,9 @@ export interface LogsFiltersProps {
   onRequestIdChange?: (v: string) => void;
   timeWindow?: LogsTimeWindow;
   onTimeWindowChange?: (v: LogsTimeWindow) => void;
+  /** When true, hides entries from `web-server:*` sources. Default ON. */
+  hideDashboardInternals?: boolean;
+  onHideDashboardInternalsChange?: (next: boolean) => void;
   onClearAll?: () => void;
 }
 
@@ -88,6 +91,8 @@ export function LogsFilters({
   onRequestIdChange,
   timeWindow = 'all',
   onTimeWindowChange,
+  hideDashboardInternals = true,
+  onHideDashboardInternalsChange,
   onClearAll,
 }: LogsFiltersProps) {
   const [advancedOpen, setAdvancedOpen] = useState(false);
@@ -310,6 +315,31 @@ export function LogsFilters({
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+          ) : null}
+          {onHideDashboardInternalsChange ? (
+            <div className="flex items-start justify-between gap-3 rounded border border-border/60 bg-muted/20 p-2">
+              <div className="space-y-0.5">
+                <Label
+                  htmlFor="logs-hide-internals"
+                  className="block text-[12px] font-medium text-foreground"
+                >
+                  Hide dashboard internals
+                </Label>
+                <p className="text-[11px] text-muted-foreground">
+                  Suppress <code className="rounded bg-background px-1">web-server:*</code>{' '}
+                  self-polling.
+                </p>
+              </div>
+              <input
+                id="logs-hide-internals"
+                type="checkbox"
+                role="switch"
+                checked={hideDashboardInternals}
+                onChange={(e) => onHideDashboardInternalsChange(e.target.checked)}
+                className={cn('mt-0.5 h-4 w-4 cursor-pointer accent-foreground', FOCUS_RING)}
+                aria-label="Hide dashboard internals"
+              />
             </div>
           ) : null}
         </CollapsibleContent>
