@@ -1,4 +1,4 @@
-import { memo, useState } from 'react';
+import { memo, useState, type KeyboardEvent } from 'react';
 import { Copy } from 'lucide-react';
 import type { LogsEntry } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
@@ -54,6 +54,14 @@ function LogsRowImpl({
   const latencyLabel = getDisplayLatency(entry);
   const shortRequestId = getDisplayRequestId(entry, { short: true });
 
+  const handleSelect = () => onSelect(entry.id);
+  const handleKey = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      handleSelect();
+    }
+  };
+
   const handleCopyRequestId = async (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!entry.requestId) return;
@@ -62,16 +70,20 @@ function LogsRowImpl({
     window.setTimeout(() => setJustCopied(false), 1200);
   };
 
+  // Row is a focusable div (not a button) so it can host a real <button>
+  // for the copy-requestId affordance — nesting interactive elements
+  // inside a <button> is invalid HTML and breaks keyboard focus order.
   return (
-    <button
-      type="button"
+    <div
       role="row"
+      tabIndex={0}
       aria-selected={isSelected}
       data-selected={isSelected}
-      onClick={() => onSelect(entry.id)}
+      onClick={handleSelect}
+      onKeyDown={handleKey}
       style={{ paddingLeft: 12 + indent }}
       className={cn(
-        'group flex w-full items-center gap-3 border-b border-border/50 pr-3 text-left',
+        'group flex w-full cursor-pointer items-center gap-3 border-b border-border/50 pr-3 text-left',
         ROW_DENSITY[density],
         ROW_INTERACTIVE,
         FOCUS_RING,
@@ -134,23 +146,23 @@ function LogsRowImpl({
         {entry.requestId ? (
           <>
             <span className="truncate">{shortRequestId}</span>
-            <span
-              role="button"
-              tabIndex={-1}
+            <button
+              type="button"
               aria-label={justCopied ? 'Copied requestId' : 'Copy requestId'}
               title={justCopied ? 'Copied' : 'Copy requestId'}
               onClick={handleCopyRequestId}
               className={cn(
-                'inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted-foreground/50 opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover:opacity-100',
+                'inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted-foreground/50 opacity-0 transition-opacity hover:bg-muted hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100',
+                FOCUS_RING,
                 justCopied && 'text-emerald-600 opacity-100'
               )}
             >
               <Copy className="h-3 w-3" aria-hidden="true" />
-            </span>
+            </button>
           </>
         ) : null}
       </span>
-    </button>
+    </div>
   );
 }
 
