@@ -119,6 +119,17 @@ describe('deriveTraceGroups', () => {
     expect(leaves.every((l) => l.repeatCount === undefined)).toBe(true);
   });
 
+  it('keeps adjacent leaves with different stages as separate rows (round-6 fix)', () => {
+    const result = deriveTraceGroups(
+      leafEntries(
+        { id: '1', timestamp: 't1', event: 'e', message: 'm', stage: 'route' },
+        { id: '2', timestamp: 't2', event: 'e', message: 'm', stage: 'dispatch' }
+      )
+    );
+    expect(result).toHaveLength(2);
+    expect(result.every((r) => r.kind === 'leaf' && r.repeatCount === undefined)).toBe(true);
+  });
+
   it('keeps adjacent leaves with different messages as separate rows', () => {
     const result = deriveTraceGroups(
       leafEntries(

@@ -33,6 +33,7 @@ function coalesceKey(entry: LogsEntry): string {
   return [
     entry.event ?? '',
     entry.message ?? '',
+    entry.stage ?? '',
     entry.module ?? entry.source ?? '',
     entry.level,
     entry.requestId ?? '',
