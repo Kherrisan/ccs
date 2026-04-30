@@ -1,58 +1,45 @@
-import { Card, CardContent, CardHeader } from '@/components/ui/card';
-import { Skeleton } from '@/components/ui/skeleton';
 import { useTranslation } from 'react-i18next';
+import { Skeleton } from '@/components/ui/skeleton';
 
+/**
+ * Logs surface initial-load skeleton.
+ * Shape mirrors the new shell: 48px header, 40px tab bar, 3-pane body.
+ * `aria-busy` lives here; phase-06 layers full a11y polish.
+ */
 export function LogsPageSkeleton() {
   const { t } = useTranslation();
-
   return (
-    <div className="space-y-6" aria-label={t('logsPageSkeleton.loadingLogs')}>
-      <Card className="gap-4">
-        <CardHeader className="space-y-3">
-          <Skeleton className="h-4 w-28" />
-          <Skeleton className="h-8 w-72" />
-          <Skeleton className="h-4 w-[30rem]" />
-        </CardHeader>
-      </Card>
-
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {[1, 2, 3, 4].map((item) => (
-          <Card key={item} className="gap-3">
-            <CardHeader className="space-y-2">
-              <Skeleton className="h-4 w-20" />
-              <Skeleton className="h-7 w-24" />
-            </CardHeader>
-          </Card>
-        ))}
+    <div
+      className="flex h-full min-h-0 flex-col bg-background"
+      aria-busy="true"
+      aria-live="polite"
+      aria-label={t('logsPageSkeleton.loadingLogs')}
+    >
+      <div className="flex h-12 items-center justify-between border-b border-border px-4">
+        <Skeleton className="h-4 w-24" />
+        <Skeleton className="h-6 w-28" />
       </div>
-
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.45fr)_22rem]">
-        <Card className="gap-4">
-          <CardHeader className="space-y-3">
-            <Skeleton className="h-4 w-52" />
-            <div className="grid gap-3 md:grid-cols-4">
-              {[1, 2, 3, 4].map((item) => (
-                <Skeleton key={item} className="h-10 w-full" />
-              ))}
-            </div>
-          </CardHeader>
-          <CardContent className="grid gap-4 xl:grid-cols-[22rem_minmax(0,1fr)]">
-            <Skeleton className="h-[26rem] w-full" />
-            <Skeleton className="h-[26rem] w-full" />
-          </CardContent>
-        </Card>
-
-        <Card className="gap-4">
-          <CardHeader className="space-y-3">
-            <Skeleton className="h-5 w-44" />
-            <Skeleton className="h-4 w-full" />
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {[1, 2, 3, 4].map((item) => (
-              <Skeleton key={item} className="h-10 w-full" />
-            ))}
-          </CardContent>
-        </Card>
+      <div className="flex h-10 items-center border-b border-border px-4">
+        <Skeleton className="h-6 w-40" />
+      </div>
+      <div className="grid min-h-0 flex-1 grid-cols-[22%_52%_26%] gap-px bg-border">
+        <div className="space-y-3 bg-background p-4">
+          <Skeleton className="h-8 w-full" />
+          <Skeleton className="h-8 w-full" />
+          <Skeleton className="h-8 w-full" />
+          <Skeleton className="h-32 w-full" />
+        </div>
+        <div className="space-y-2 bg-background p-3">
+          {Array.from({ length: 12 }).map((_, idx) => (
+            <Skeleton key={idx} className="h-8 w-full" />
+          ))}
+        </div>
+        <div className="space-y-3 bg-background p-4">
+          <Skeleton className="h-6 w-32" />
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-3/4" />
+          <Skeleton className="h-40 w-full" />
+        </div>
       </div>
     </div>
   );

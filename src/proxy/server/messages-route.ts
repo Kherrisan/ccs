@@ -207,11 +207,23 @@ export async function handleProxyMessagesRequest(
   insecureDispatcher?: Dispatcher
 ): Promise<void> {
   const transformer = new ProxySseStreamTransformer();
+  const startedAt = Date.now();
+
+  logger.stage('intake', 'request.received', 'Proxy /v1/messages request received', {
+    method: req.method || 'POST',
+    remoteAddress: req.socket.remoteAddress || null,
+  });
 
   if (!validateIncomingProxyAuth(req.headers, expectedAuthToken)) {
-    logger.warn('auth.invalid', 'Rejected proxy message request with invalid auth token', {
-      remoteAddress: req.socket.remoteAddress || null,
-    });
+    logger.stage(
+      'auth',
+      'auth.invalid',
+      'Rejected proxy message request with invalid auth token',
+      {
+        remoteAddress: req.socket.remoteAddress || null,
+      },
+      { level: 'warn' }
+    );
     await pipeWebResponseToNode(
       transformer.error(401, 'authentication_error', 'Missing or invalid local proxy token'),
       res
@@ -219,11 +231,14 @@ export async function handleProxyMessagesRequest(
     return;
   }
 
+  logger.stage('auth', 'auth.ok', 'Proxy auth validated');
+
   let timeoutMs = REQUEST_TIMEOUT_MS;
   try {
     const rawBody = await readJsonBody(req);
+    logger.stage('transform', 'request.transform.start', 'Transforming inbound proxy body');
     const upstream = buildUpstreamRequest(profile, rawBody);
-    logger.info('request.forward', 'Forwarding Anthropic request to OpenAI-compatible upstream', {
+    logger.stage('route', 'request.routed', 'Resolved proxy upstream route', {
       profileName: upstream.route.profile.profileName,
       provider: upstream.route.profile.provider,
       baseUrl: upstream.route.profile.baseUrl,
@@ -240,7 +255,8 @@ export async function handleProxyMessagesRequest(
       res,
       controller,
       (source) => {
-        logger.info(
+        logger.stage(
+          'cleanup',
           'request.disconnect',
           'Aborting upstream request after local client disconnect',
           {
@@ -252,28 +268,47 @@ export async function handleProxyMessagesRequest(
     );
 
     try {
+      logger.stage('dispatch', 'upstream.dispatch', 'Dispatching upstream fetch', {
+        profileName: profile.profileName,
+      });
       const upstreamResponse = await fetch(
         resolveOpenAIChatCompletionsUrl(upstream.route.profile.baseUrl),
         buildFetchInit(upstream.route.profile, upstream.body, controller.signal, insecureDispatcher)
       );
-      logger.info('response.received', 'Received upstream response', {
+      logger.stage('upstream', 'upstream.response', 'Received upstream response', {
         profileName: profile.profileName,
         routedProfileName: upstream.route.profile.profileName,
         status: upstreamResponse.status,
       });
       const response = await transformer.transform(upstreamResponse);
       await pipeWebResponseToNode(response, res);
+      logger.stage('respond', 'request.respond', 'Proxy response written', undefined, {
+        latencyMs: Date.now() - startedAt,
+      });
     } finally {
       clearTimeout(timeout);
       cleanupDisconnectHandlers();
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown proxy error';
-    logger.error('request.failed', 'Proxy message request failed', {
-      profileName: profile.profileName,
-      error: message,
-      abort: error instanceof Error && error.name === 'AbortError',
-    });
+    const errInfo = {
+      name: error instanceof Error ? error.name : 'Error',
+      message,
+    };
+    logger.stage(
+      'cleanup',
+      'request.failed',
+      'Proxy message request failed',
+      {
+        profileName: profile.profileName,
+        abort: error instanceof Error && error.name === 'AbortError',
+      },
+      {
+        level: 'error',
+        latencyMs: Date.now() - startedAt,
+        error: errInfo,
+      }
+    );
     const status =
       error instanceof Error && error.name === 'AbortError'
         ? 502

@@ -12,6 +12,9 @@ import {
   type CursorApiCredentials,
 } from './cursor-protobuf-schema.js';
 import { buildCursorConnectHeaders, generateCursorChecksum } from './cursor-client-policy.js';
+import { createLogger } from '../services/logging';
+
+const logger = createLogger('cursor:executor');
 
 import {
   CursorConnectFrameError,
@@ -272,6 +275,13 @@ export class CursorExecutor {
     const headers = this.buildHeaders(credentials);
     const transformedBody = this.transformRequest(model, body, stream, credentials);
 
+    const startedAt = Date.now();
+    logger.stage('upstream', 'cursor.upstream.request', 'Sending Cursor upstream request', {
+      provider: 'cursor',
+      model,
+      stream,
+    });
+
     try {
       // Streaming requests use incremental HTTP/2 → SSE pipeline
       if (stream) {
@@ -294,6 +304,13 @@ export class CursorExecutor {
 
       if (response.status !== 200) {
         const errorText = response.body?.toString() || 'Unknown error';
+        logger.stage(
+          'cleanup',
+          'cursor.upstream.error',
+          'Cursor upstream returned non-200 status',
+          { provider: 'cursor', model, status: response.status },
+          { level: 'error', latencyMs: Date.now() - startedAt }
+        );
         const errorResponse = new Response(
           JSON.stringify({
             error: {
@@ -311,12 +328,31 @@ export class CursorExecutor {
       }
 
       const transformedResponse = this.transformProtobufToJSON(response.body, model, body);
+      logger.stage(
+        'transform',
+        'cursor.upstream.transformed',
+        'Cursor response transformed',
+        { provider: 'cursor', model },
+        { latencyMs: Date.now() - startedAt }
+      );
       return { response: transformedResponse, url, headers, transformedBody: body };
     } catch (error) {
+      const err = error as Error;
+      logger.stage(
+        'cleanup',
+        'cursor.upstream.exception',
+        'Cursor upstream request threw',
+        { provider: 'cursor', model },
+        {
+          level: 'error',
+          latencyMs: Date.now() - startedAt,
+          error: { name: err.name, message: err.message },
+        }
+      );
       const errorResponse = new Response(
         JSON.stringify({
           error: {
-            message: (error as Error).message,
+            message: err.message,
             type: 'connection_error',
             code: '',
           },
