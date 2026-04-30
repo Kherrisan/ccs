@@ -14,6 +14,9 @@ import {
   isCopilotApiInstalled as checkInstalled,
   getCopilotApiBinPath,
 } from './copilot-package-manager';
+import { createLogger } from '../services/logging';
+
+const logger = createLogger('copilot:auth');
 
 /**
  * Get the path to copilot-api's GitHub token file.
@@ -108,6 +111,10 @@ export async function getCopilotDebugInfo(): Promise<CopilotDebugInfo | null> {
 export async function checkAuthStatus(): Promise<CopilotAuthStatus> {
   // Fast path: check if token file exists (instant, no subprocess)
   if (hasTokenFile()) {
+    logger.stage('auth', 'copilot.auth.token_present', 'Copilot token file present', {
+      provider: 'copilot',
+      method: 'token_file',
+    });
     return { authenticated: true };
   }
 
@@ -116,9 +123,20 @@ export async function checkAuthStatus(): Promise<CopilotAuthStatus> {
   const debugInfo = await getCopilotDebugInfo();
 
   if (debugInfo?.authenticated) {
+    logger.stage('auth', 'copilot.auth.debug_ok', 'Copilot reports authenticated via debug', {
+      provider: 'copilot',
+      method: 'debug',
+    });
     return { authenticated: true };
   }
 
+  logger.stage(
+    'auth',
+    'copilot.auth.unauthenticated',
+    'Copilot is not authenticated',
+    { provider: 'copilot' },
+    { level: 'warn' }
+  );
   return {
     authenticated: false,
   };
@@ -148,6 +166,11 @@ export function startAuthFlow(): Promise<AuthFlowResult> {
   return new Promise((resolve) => {
     console.log('[i] Starting GitHub authentication for Copilot...');
     console.log('');
+
+    const startedAt = Date.now();
+    logger.stage('auth', 'copilot.auth.start', 'Starting Copilot OAuth device flow', {
+      provider: 'copilot',
+    });
 
     const proc = spawn(binPath, ['auth'], {
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -185,8 +208,22 @@ export function startAuthFlow(): Promise<AuthFlowResult> {
 
     proc.on('close', (code) => {
       if (code === 0) {
+        logger.stage(
+          'auth',
+          'copilot.auth.complete',
+          'Copilot OAuth device flow completed',
+          { provider: 'copilot', exitCode: code },
+          { latencyMs: Date.now() - startedAt }
+        );
         resolve({ success: true, deviceCode, verificationUrl });
       } else {
+        logger.stage(
+          'cleanup',
+          'copilot.auth.failed',
+          'Copilot OAuth device flow failed',
+          { provider: 'copilot', exitCode: code },
+          { level: 'error', latencyMs: Date.now() - startedAt }
+        );
         resolve({
           success: false,
           error: `Authentication failed with exit code ${code}`,
@@ -197,6 +234,17 @@ export function startAuthFlow(): Promise<AuthFlowResult> {
     });
 
     proc.on('error', (err) => {
+      logger.stage(
+        'cleanup',
+        'copilot.auth.error',
+        'Failed to start Copilot OAuth process',
+        { provider: 'copilot' },
+        {
+          level: 'error',
+          latencyMs: Date.now() - startedAt,
+          error: { name: err.name, message: err.message },
+        }
+      );
       resolve({
         success: false,
         error: `Failed to start auth: ${err.message}`,

@@ -19,6 +19,9 @@ import {
 } from '../utils/shell-executor';
 import { wireChildProcessSignals } from '../utils/signal-forwarder';
 import { runCleanup } from '../errors';
+import { createLogger } from '../services/logging';
+
+const adapterLogger = createLogger('targets:droid');
 
 export class DroidAdapter implements TargetAdapter {
   readonly type: TargetType = 'droid';
@@ -122,6 +125,13 @@ export class DroidAdapter implements TargetAdapter {
     const isPowerShellScript = isWindows && /\.ps1$/i.test(droidPath);
     const needsShell = isWindows && /\.(cmd|bat)$/i.test(droidPath);
 
+    const spawnStartedAt = Date.now();
+    adapterLogger.stage('dispatch', 'target.spawn', 'Spawning Droid CLI child process', {
+      target: 'droid',
+      droidPath,
+      argCount: args.length,
+    });
+
     let child: ChildProcess;
     if (isPowerShellScript) {
       child = spawn(
@@ -148,6 +158,16 @@ export class DroidAdapter implements TargetAdapter {
         env,
       });
     }
+
+    child.on('exit', (code, signal) => {
+      adapterLogger.stage(
+        'respond',
+        'target.exit',
+        'Droid CLI child process exited',
+        { target: 'droid', exitCode: code, signal },
+        { latencyMs: Date.now() - spawnStartedAt }
+      );
+    });
 
     wireChildProcessSignals(child, (err: NodeJS.ErrnoException) => {
       if (err.code === 'EACCES') {

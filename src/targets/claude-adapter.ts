@@ -21,6 +21,9 @@ import { getWebSearchHookEnv } from '../utils/websearch-manager';
 import { appendBrowserToolArgs } from '../utils/browser';
 import { wireChildProcessSignals } from '../utils/signal-forwarder';
 import { runCleanup } from '../errors';
+import { createLogger } from '../services/logging';
+
+const adapterLogger = createLogger('targets:claude');
 
 export class ClaudeAdapter implements TargetAdapter {
   readonly type: TargetType = 'claude';
@@ -101,6 +104,13 @@ export class ClaudeAdapter implements TargetAdapter {
     const isPowerShellScript = isWindows && /\.ps1$/i.test(claudeCli);
     const needsShell = isWindows && /\.(cmd|bat)$/i.test(claudeCli);
 
+    const spawnStartedAt = Date.now();
+    adapterLogger.stage('dispatch', 'target.spawn', 'Spawning Claude CLI child process', {
+      target: 'claude',
+      claudeCli,
+      argCount: args.length,
+    });
+
     let child: ChildProcess;
     if (isPowerShellScript) {
       child = spawn(
@@ -127,6 +137,16 @@ export class ClaudeAdapter implements TargetAdapter {
         env,
       });
     }
+
+    child.on('exit', (code, signal) => {
+      adapterLogger.stage(
+        'respond',
+        'target.exit',
+        'Claude CLI child process exited',
+        { target: 'claude', exitCode: code, signal },
+        { latencyMs: Date.now() - spawnStartedAt }
+      );
+    });
 
     wireChildProcessSignals(child, async (err: NodeJS.ErrnoException) => {
       if (err.code === 'EACCES') {

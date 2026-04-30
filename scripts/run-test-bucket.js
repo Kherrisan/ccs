@@ -20,6 +20,7 @@ const candidateRoots = ['tests/unit', 'tests/integration', 'tests/npm'];
 // Automated perf-budget enforcement tracked in issue #1071.
 const slowTests = [
   'tests/integration/cursor-daemon-lifecycle.test.ts',
+  'tests/integration/logging-request-context.test.ts',
   'tests/integration/proxy/daemon-lifecycle.test.ts',
   'tests/unit/commands/persist-command-handler.test.ts',
   'tests/unit/hooks/browser-mcp-advanced-interactions.test.ts',
