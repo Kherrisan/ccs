@@ -1,14 +1,27 @@
 import * as http from 'http';
+import { randomUUID } from 'crypto';
 import { Agent } from 'undici';
 import type { OpenAICompatProfileConfig } from '../profile-router';
 import { OPENAI_COMPAT_PROXY_SERVICE_NAME } from '../proxy-daemon-paths';
-import { createLogger } from '../../services/logging';
+import { createLogger, withRequestContext } from '../../services/logging';
 import {
   handleProxyMessagesRequest,
   handleProxyModelsRequest,
   validateIncomingProxyAuth,
 } from './messages-route';
 import { writeJson } from './http-helpers';
+
+const REQUEST_ID_HEADER = 'x-ccs-request-id';
+// Loose UUID-ish guard: accepts UUIDs and similar opaque ids; rejects empty / control chars.
+const REQUEST_ID_PATTERN = /^[A-Za-z0-9._-]{8,128}$/;
+
+function resolveInboundRequestId(headers: http.IncomingHttpHeaders): string {
+  const raw = headers[REQUEST_ID_HEADER];
+  if (typeof raw === 'string' && REQUEST_ID_PATTERN.test(raw.trim())) {
+    return raw.trim();
+  }
+  return randomUUID();
+}
 
 export interface OpenAICompatProxyServerOptions {
   profile: OpenAICompatProfileConfig;
@@ -28,13 +41,25 @@ export function startOpenAICompatProxyServer(options: OpenAICompatProxyServerOpt
   const insecureDispatcher = options.insecure
     ? new Agent({ connect: { rejectUnauthorized: false } })
     : undefined;
-  const server = http.createServer(async (req, res) => {
-    const method = req.method || 'GET';
-    const requestUrl = req.url || '/';
-    const parsedUrl = new URL(requestUrl, 'http://127.0.0.1');
-    const pathname =
-      parsedUrl.pathname.length > 1 ? parsedUrl.pathname.replace(/\/+$/, '') : parsedUrl.pathname;
+  const server = http.createServer((req, res) => {
+    const requestId = resolveInboundRequestId(req.headers);
+    res.setHeader(REQUEST_ID_HEADER, requestId);
+    void withRequestContext({ requestId }, async () => {
+      const method = req.method || 'GET';
+      const requestUrl = req.url || '/';
+      const parsedUrl = new URL(requestUrl, 'http://127.0.0.1');
+      const pathname =
+        parsedUrl.pathname.length > 1 ? parsedUrl.pathname.replace(/\/+$/, '') : parsedUrl.pathname;
+      await handleProxyRequest(req, res, method, pathname);
+    });
+  });
 
+  async function handleProxyRequest(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    method: string,
+    pathname: string
+  ): Promise<void> {
     if ((method === 'GET' || method === 'HEAD') && pathname === '/health') {
       if (method === 'HEAD') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -105,7 +130,7 @@ export function startOpenAICompatProxyServer(options: OpenAICompatProxyServerOpt
       pathname,
     });
     writeJson(res, 404, { error: 'Not found' });
-  });
+  }
 
   logger.info('server.start', 'OpenAI-compatible proxy server listening', {
     baseUrl: `http://${host}:${options.port}`,

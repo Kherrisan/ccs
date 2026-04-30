@@ -84,7 +84,7 @@ import { execClaude, stripAnthropicRoutingEnv, stripBrowserEnv } from './utils/s
 import { isDeprecatedGlmtProfileName, normalizeDeprecatedGlmtEnv } from './utils/glmt-deprecation';
 import { createOpenAICompatLaunchSettings } from './utils/openai-compat-launch-settings';
 import { maybeWarnAboutResumeLaneMismatch } from './auth/resume-lane-warning';
-import { createLogger } from './services/logging';
+import { createLogger, runWithRequestId } from './services/logging';
 import { buildCodexBrowserMcpOverrides } from './utils/browser-codex-overrides';
 import type { ProfileDetectionResult } from './auth/profile-detector';
 import type { BrowserLaunchOverride } from './utils/browser';
@@ -1683,5 +1683,35 @@ process.on('SIGINT', () => {
   }
 });
 
-// Run main
-main().catch(handleError);
+// Run main inside a per-invocation request context so all backend logging
+// emitted during this CLI run shares a single requestId. CLI text output
+// (stdout/stderr) is unaffected — the requestId lives in logs only.
+const cliEntryStartedAt = Date.now();
+const cliEntryLogger = createLogger('cli:entry');
+runWithRequestId(() => {
+  cliEntryLogger.stage('intake', 'cli.command.start', 'CLI invocation started', {
+    argv: process.argv.slice(2),
+  });
+  return main()
+    .then(() => {
+      cliEntryLogger.stage(
+        'respond',
+        'cli.command.complete',
+        'CLI invocation completed',
+        { exitCode: process.exitCode ?? 0 },
+        { latencyMs: Date.now() - cliEntryStartedAt }
+      );
+    })
+    .catch((err) => {
+      const error =
+        err instanceof Error
+          ? { name: err.name, message: err.message, stack: err.stack }
+          : { name: 'Error', message: String(err) };
+      cliEntryLogger.stage('cleanup', 'cli.command.failed', 'CLI invocation failed', undefined, {
+        level: 'error',
+        latencyMs: Date.now() - cliEntryStartedAt,
+        error,
+      });
+      handleError(err);
+    });
+});
