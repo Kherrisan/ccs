@@ -15,7 +15,7 @@ describe('Config Generator', () => {
 
   beforeEach(() => {
     // Clear the require cache to reload module with fresh mocks
-    delete require.cache[require.resolve('../../../../dist/cliproxy/config-generator')];
+    delete require.cache[require.resolve('../../../../dist/cliproxy/config/config-generator')];
 
     // Set up a temporary test directory as CCS_HOME
     mockCcsDir = '/test/home/.ccs';
@@ -174,8 +174,8 @@ describe('Config Generator', () => {
 
     beforeEach(() => {
       // Clear cache and reload module
-      delete require.cache[require.resolve('../../../../dist/cliproxy/config-generator')];
-      const configGenerator = require('../../../../dist/cliproxy/config-generator');
+      delete require.cache[require.resolve('../../../../dist/cliproxy/config/config-generator')];
+      const configGenerator = require('../../../../dist/cliproxy/config/config-generator');
       parseUserApiKeys = configGenerator.parseUserApiKeys;
     });
 
@@ -374,9 +374,9 @@ auth-dir: "/test"
       process.env.CCS_HOME = testDir;
 
       // Clear cache and reload module
-      delete require.cache[require.resolve('../../../../dist/cliproxy/config-generator')];
+      delete require.cache[require.resolve('../../../../dist/cliproxy/config/config-generator')];
       delete require.cache[require.resolve('../../../../dist/utils/config-manager')];
-      const configGenerator = require('../../../../dist/cliproxy/config-generator');
+      const configGenerator = require('../../../../dist/cliproxy/config/config-generator');
       regenerateConfig = configGenerator.regenerateConfig;
       getCliproxyConfigPath = configGenerator.getCliproxyConfigPath;
     });
@@ -599,9 +599,9 @@ auth-dir: "${cliproxyDir.replace(/\\/g, '/')}/auth"
       originalCcsHome = process.env.CCS_HOME;
       process.env.CCS_HOME = testDir;
 
-      delete require.cache[require.resolve('../../../../dist/cliproxy/config-generator')];
+      delete require.cache[require.resolve('../../../../dist/cliproxy/config/config-generator')];
       delete require.cache[require.resolve('../../../../dist/utils/config-manager')];
-      const configGenerator = require('../../../../dist/cliproxy/config-generator');
+      const configGenerator = require('../../../../dist/cliproxy/config/config-generator');
       regenerateConfig = configGenerator.regenerateConfig;
     });
 

@@ -39,7 +39,7 @@ function createCodexSettingsFixture(haikuModel: string = 'gpt-5.4-mini'): {
 }
 
 async function importCompatibilityModule(cacheTag: string) {
-  return import(`../../codex-plan-compatibility?${cacheTag}=${Date.now()}`);
+  return import(`../codex-plan-compatibility?${cacheTag}=${Date.now()}`);
 }
 
 const identity = (message: string) => message;

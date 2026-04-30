@@ -4,7 +4,7 @@ const {
   buildCodexModelEffortMap,
   getEffortForModel,
   injectReasoningEffortIntoBody,
-} = require('../../../../dist/cliproxy/codex-reasoning-proxy');
+} = require('../../../../dist/cliproxy/ai-providers/codex-reasoning-proxy');
 
 describe('Codex Reasoning Proxy', () => {
   describe('buildCodexModelEffortMap', () => {

@@ -36,10 +36,10 @@ describe('Gemini refresh delegation', () => {
 
   it('treats Gemini as runtime-managed even when the local token lacks OAuth client metadata', async () => {
     const { getProviderAuthDir } = await import(
-      `../../../src/cliproxy/config-generator?gemini-delegation-config=${moduleVersion}`
+      `../../config/config-generator?gemini-delegation-config=${moduleVersion}`
     );
     const { ensureTokenValid } = await import(
-      `../../../src/cliproxy/auth/token-manager?gemini-delegation-manager=${moduleVersion}`
+      `../token-manager?gemini-delegation-manager=${moduleVersion}`
     );
 
     const authDir = getProviderAuthDir('gemini');

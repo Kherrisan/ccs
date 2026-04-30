@@ -17,12 +17,14 @@ describe('openai-compat manager', () => {
     process.env.CCS_HOME = testDir;
     process.env.CCS_DIR = path.join(testDir, '.ccs');
 
-    delete require.cache[require.resolve('../../../../dist/cliproxy/config-generator')];
-    delete require.cache[require.resolve('../../../../dist/cliproxy/openai-compat-manager')];
+    delete require.cache[require.resolve('../../../../dist/cliproxy/config/config-generator')];
+    delete require.cache[
+      require.resolve('../../../../dist/cliproxy/ai-providers/openai-compat-manager')
+    ];
     delete require.cache[require.resolve('../../../../dist/utils/config-manager')];
 
-    configGenerator = require('../../../../dist/cliproxy/config-generator');
-    openAICompatManager = require('../../../../dist/cliproxy/openai-compat-manager');
+    configGenerator = require('../../../../dist/cliproxy/config/config-generator');
+    openAICompatManager = require('../../../../dist/cliproxy/ai-providers/openai-compat-manager');
   });
 
   afterEach(() => {

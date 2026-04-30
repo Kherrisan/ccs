@@ -22,7 +22,7 @@ function readCliproxyConfig(homeDir: string): Record<string, any> {
 }
 
 async function loadAiProviderService() {
-  return import(`../../../src/cliproxy/ai-providers/service?stable-id=${Date.now()}`);
+  return import(`../ai-providers/service?stable-id=${Date.now()}`);
 }
 
 describe('ai-provider service stable ids', () => {

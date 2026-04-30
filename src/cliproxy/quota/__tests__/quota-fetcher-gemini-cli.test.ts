@@ -8,7 +8,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
-import { getCapturedFetchRequests, mockFetch, restoreFetch } from '../../../../tests/unit/mocks';
+import { getCapturedFetchRequests, mockFetch, restoreFetch } from '../../../../tests/mocks';
 
 describe('Gemini CLI Quota Fetcher', () => {
   const GEMINI_QUOTA_URL = 'https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota';
