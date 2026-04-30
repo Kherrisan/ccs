@@ -63,9 +63,6 @@ describe('config-loader-facade', () => {
 
       expect(typeof facade.loadUnifiedConfig).toBe('function');
       expect(typeof facade.loadOrCreateUnifiedConfig).toBe('function');
-      expect(typeof facade.saveUnifiedConfig).toBe('function');
-      expect(typeof facade.mutateUnifiedConfig).toBe('function');
-      expect(typeof facade.updateUnifiedConfig).toBe('function');
     });
 
     it('should export all path/format utilities', async () => {
@@ -112,6 +109,24 @@ describe('config-loader-facade', () => {
       expect(typeof facade.loadConfigSafe).toBe('function');
       expect(typeof facade.readConfig).toBe('function');
       expect(typeof facade.getCcsDir).toBe('function');
+    });
+  });
+
+  describe('cache coherence', () => {
+    it('should NOT export raw write functions that bypass cache', async () => {
+      const facade = (await importFacade()) as Record<string, unknown>;
+
+      expect(facade.saveUnifiedConfig).toBeUndefined();
+      expect(facade.mutateUnifiedConfig).toBeUndefined();
+      expect(facade.updateUnifiedConfig).toBeUndefined();
+    });
+
+    it('should export cache-coherent write wrappers instead', async () => {
+      const facade = await importFacade();
+
+      expect(typeof facade.saveConfig).toBe('function');
+      expect(typeof facade.mutateConfig).toBe('function');
+      expect(typeof facade.updateConfig).toBe('function');
     });
   });
 

@@ -2,21 +2,23 @@
  * Config Loader Facade
  *
  * Single import path for all config loading operations.
- * Re-exports everything from unified-config-loader and config-manager,
- * and adds memoization for loadOrCreateUnifiedConfig to reduce file I/O.
+ * Re-exports read-only functions from unified-config-loader and config-manager,
+ * and provides cache-coherent write wrappers that keep the memoization cache in sync.
+ *
+ * IMPORTANT: Raw write functions (saveUnifiedConfig, mutateUnifiedConfig,
+ * updateUnifiedConfig) are NOT re-exported here. Use the cache-coherent
+ * wrappers (saveConfig, mutateConfig, updateConfig) instead. If you need
+ * the raw functions, import directly from './unified-config-loader'.
  *
  * Usage:
  *   import { getCachedConfig, saveConfig, mutateConfig } from '../config/config-loader-facade';
  *   import { getCcsDir, loadSettings } from '../config/config-loader-facade';
  */
 
-// Re-export all functions from unified-config-loader
+// Re-export read-only functions from unified-config-loader
 export {
   loadUnifiedConfig,
   loadOrCreateUnifiedConfig,
-  saveUnifiedConfig,
-  mutateUnifiedConfig,
-  updateUnifiedConfig,
   getConfigYamlPath,
   getConfigJsonPath,
   hasUnifiedConfig,
