@@ -23,6 +23,9 @@ import {
   getCodexBinaryInfo,
   readCodexVersion,
 } from './codex-detector';
+import { createLogger } from '../services/logging';
+
+const adapterLogger = createLogger('targets:codex');
 
 const CODEX_RUNTIME_PROVIDER_ID = 'ccs_runtime';
 const CODEX_RUNTIME_ENV_KEY = 'CCS_CODEX_API_KEY';
@@ -310,6 +313,13 @@ export class CodexAdapter implements TargetAdapter {
     const isPowerShellScript = isWindows && /\.ps1$/i.test(codexPath);
     const needsShell = isWindows && /\.(cmd|bat)$/i.test(codexPath);
 
+    const spawnStartedAt = Date.now();
+    adapterLogger.stage('dispatch', 'target.spawn', 'Spawning Codex CLI child process', {
+      target: 'codex',
+      codexPath,
+      argCount: args.length,
+    });
+
     let child: ChildProcess;
     if (isPowerShellScript) {
       child = spawn(
@@ -328,6 +338,16 @@ export class CodexAdapter implements TargetAdapter {
     } else {
       child = spawn(codexPath, args, { stdio: 'inherit', windowsHide: true, env: launchEnv });
     }
+
+    child.on('exit', (code, signal) => {
+      adapterLogger.stage(
+        'respond',
+        'target.exit',
+        'Codex CLI child process exited',
+        { target: 'codex', exitCode: code, signal },
+        { latencyMs: Date.now() - spawnStartedAt }
+      );
+    });
 
     wireChildProcessSignals(child, (err: NodeJS.ErrnoException) => {
       if (err.code === 'EACCES') {

@@ -13,6 +13,9 @@ import ProfileContextSyncLock from './profile-context-sync-lock';
 import { DEFAULT_ACCOUNT_CONTEXT_MODE } from '../auth/account-context';
 import type { AccountContextPolicy } from '../auth/account-context';
 import { getCcsDir, getCcsHome } from '../utils/config-manager';
+import { createLogger } from '../services/logging';
+
+const logger = createLogger('management:instance-manager');
 
 const MANAGED_MCP_SERVER_NAMES = new Set(['ccs-websearch', 'ccs-image-analysis', 'ccs-browser']);
 
@@ -52,6 +55,10 @@ class InstanceManager {
     await this.contextSyncLock.withLock(profileName, async () => {
       // Lazy initialization
       if (!fs.existsSync(instancePath)) {
+        logger.stage('route', 'instance.init', 'Initializing new profile instance', {
+          profile: profileName,
+          bare: options.bare === true,
+        });
         this.initializeInstance(profileName, instancePath, options);
       }
 
@@ -170,6 +177,9 @@ class InstanceManager {
         }
 
         fs.rmSync(instancePath, { recursive: true, force: true });
+        logger.stage('cleanup', 'instance.deleted', 'Profile instance deleted', {
+          profile: profileName,
+        });
       });
     });
   }
