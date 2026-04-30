@@ -15,7 +15,7 @@ import {
   getRemoteEnvVars,
   getCompositeEnvVars,
   applyThinkingConfig,
-} from '../config-generator';
+} from '../config/config-generator';
 import { applyExtendedContextConfig } from '../config/extended-context-config';
 import { CLIProxyProvider } from '../types';
 import { CompositeTierConfig } from '../../config/unified-config-types';
@@ -29,12 +29,15 @@ import { resolveImageAnalysisRuntimeStatus } from '../../utils/hooks/image-analy
 import { hasImageAnalysisProfileHook } from '../../utils/hooks/image-analyzer-profile-hook-injector';
 import { hasImageAnalyzerHook } from '../../utils/hooks/image-analyzer-hook-installer';
 import { stripBrowserEnv, stripClaudeCodeEnv } from '../../utils/shell-executor';
-import { CodexReasoningProxy } from '../codex-reasoning-proxy';
-import { ToolSanitizationProxy } from '../tool-sanitization-proxy';
-import { HttpsTunnelProxy } from '../https-tunnel-proxy';
-import { MODEL_ENV_VAR_KEYS, normalizeModelIdForProvider } from '../model-id-normalizer';
-import type { ProxyTarget } from '../proxy-target-resolver';
-import { getEffectiveApiKey } from '../auth-token-manager';
+import { CodexReasoningProxy } from '../ai-providers/codex-reasoning-proxy';
+import { ToolSanitizationProxy } from '../proxy/tool-sanitization-proxy';
+import { HttpsTunnelProxy } from '../proxy/https-tunnel-proxy';
+import {
+  MODEL_ENV_VAR_KEYS,
+  normalizeModelIdForProvider,
+} from '../ai-providers/model-id-normalizer';
+import type { ProxyTarget } from '../proxy/proxy-target-resolver';
+import { getEffectiveApiKey } from '../auth/auth-token-manager';
 import { isSettings, type Settings } from '../../types/config';
 
 export interface RemoteProxyConfig {

@@ -6,7 +6,11 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as zlib from 'zlib';
-import { getExecutableName, getArchiveBinaryName, DEFAULT_BACKEND } from '../platform-detector';
+import {
+  getExecutableName,
+  getArchiveBinaryName,
+  DEFAULT_BACKEND,
+} from '../binary/platform-detector';
 import type { CLIProxyBackend } from '../types';
 
 /**

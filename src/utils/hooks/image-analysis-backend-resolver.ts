@@ -8,7 +8,7 @@ import {
   mapExternalProviderName,
 } from '../../cliproxy/provider-capabilities';
 import { getProviderCatalog, supportsNativeImageInput } from '../../cliproxy/model-catalog';
-import { extractProviderFromPathname } from '../../cliproxy/model-id-normalizer';
+import { extractProviderFromPathname } from '../../cliproxy/ai-providers/model-id-normalizer';
 import type { CliproxyBridgeMetadata } from '../../api/services/profile-types';
 import type { Settings } from '../../types/config';
 import type { ProfileType } from '../../types/profile';

@@ -11,7 +11,7 @@ import open from 'open';
 import { startServer } from '../web-server';
 import { setupGracefulShutdown } from '../web-server/shutdown';
 import { ensureCliproxyService } from '../cliproxy/service-manager';
-import { CLIPROXY_DEFAULT_PORT } from '../cliproxy/config-generator';
+import { CLIPROXY_DEFAULT_PORT } from '../cliproxy/config/config-generator';
 import { getDashboardAuthConfig } from '../config/unified-config-loader';
 import { initUI, header, ok, info, warn, fail } from '../utils/ui';
 import { resolveNamedCommand, type NamedCommandRoute } from './named-command-router';

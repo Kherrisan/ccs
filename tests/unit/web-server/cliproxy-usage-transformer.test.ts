@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
-import type { CliproxyUsageApiResponse } from '../../../src/cliproxy/stats-fetcher';
+import type { CliproxyUsageApiResponse } from '../../../src/cliproxy/services/stats-fetcher';
 import {
   clearModelsDevRegistryCache,
   setCachedModelsDevRegistry,

@@ -10,7 +10,7 @@ import {
   clearQuotaCache,
   getCachedQuota,
   setCachedQuota,
-} from '../../../src/cliproxy/quota-response-cache';
+} from '../../../src/cliproxy/quota/quota-response-cache';
 import { restoreFetch, mockFetch } from '../../mocks';
 
 describe('cliproxy-auth-routes manual callback nickname persistence', () => {

@@ -12,7 +12,7 @@ import { requireLocalAccessWhenAuthDisabled } from '../middleware/auth-middlewar
 import { expandPath } from '../../utils/helpers';
 import { loadSettings } from '../../utils/config-manager';
 import type { Settings } from '../../types/config';
-import { extractProviderFromPathname } from '../../cliproxy/model-id-normalizer';
+import { extractProviderFromPathname } from '../../cliproxy/ai-providers/model-id-normalizer';
 import {
   normalizeImageAnalysisBackendId,
   resolveImageAnalysisRuntimeStatus,

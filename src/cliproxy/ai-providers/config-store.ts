@@ -1,9 +1,9 @@
 import { randomUUID } from 'crypto';
 import * as fs from 'fs';
 import * as yaml from 'js-yaml';
-import { configExists, getCliproxyConfigPath, regenerateConfig } from '../config-generator';
-import { getProxyTarget } from '../proxy-target-resolver';
-import { createManagementClient } from '../management-api-client';
+import { configExists, getCliproxyConfigPath, regenerateConfig } from '../config/config-generator';
+import { getProxyTarget } from '../proxy/proxy-target-resolver';
+import { createManagementClient } from '../management/management-api-client';
 import { rewriteTopLevelYamlSection } from './config-yaml-sections';
 import type {
   AiProviderApiKeyEntry,

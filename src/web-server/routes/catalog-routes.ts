@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { getCatalogRoutingSnapshot } from '../../cliproxy/catalog-routing';
+import { getCatalogRoutingSnapshot } from '../../cliproxy/services/catalog-routing';
 
 const router = Router();
 

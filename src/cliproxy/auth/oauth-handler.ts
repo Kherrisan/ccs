@@ -13,7 +13,7 @@
 import * as fs from 'fs';
 import { fail, info, warn, color, ok } from '../../utils/ui';
 import { ensureCLIProxyBinary } from '../binary-manager';
-import { generateConfig } from '../config-generator';
+import { generateConfig } from '../config/config-generator';
 import { CLIProxyProvider } from '../types';
 import {
   AccountInfo,
@@ -24,7 +24,7 @@ import {
   findAccountNameMatch,
   PROVIDERS_WITHOUT_EMAIL,
   validateNickname,
-} from '../account-manager';
+} from '../accounts/account-manager';
 import {
   enhancedPreflightOAuthCheck,
   OAUTH_CALLBACK_PORTS as OAUTH_PORTS,
@@ -62,14 +62,14 @@ import {
   buildProxyUrl,
   buildManagementHeaders,
   type ProxyTarget,
-} from '../proxy-target-resolver';
+} from '../proxy/proxy-target-resolver';
 import {
   checkNewAccountConflict,
   warnNewAccountConflict,
   warnOAuthBanRisk,
   warnPossible403Ban,
-} from '../account-safety';
-import { ensureCliAntigravityResponsibility } from '../antigravity-responsibility';
+} from '../accounts/account-safety';
+import { ensureCliAntigravityResponsibility } from '../auth/antigravity-responsibility';
 import { InteractivePrompt } from '../../utils/prompt';
 
 interface PasteCallbackStartData {

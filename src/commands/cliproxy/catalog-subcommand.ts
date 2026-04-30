@@ -6,13 +6,13 @@ import {
   getResolvedCatalog,
   refreshCatalogFromProxy,
   getAllResolvedCatalogs,
-} from '../../cliproxy/catalog-cache';
-import { getCatalogRoutingSnapshot } from '../../cliproxy/catalog-routing';
-import { ensureManagedModelPrefixes } from '../../cliproxy/managed-model-prefixes';
-import { getProxyTarget } from '../../cliproxy/proxy-target-resolver';
+} from '../../cliproxy/services/catalog-cache';
+import { getCatalogRoutingSnapshot } from '../../cliproxy/services/catalog-routing';
+import { ensureManagedModelPrefixes } from '../../cliproxy/ai-providers/managed-model-prefixes';
+import { getProxyTarget } from '../../cliproxy/proxy/proxy-target-resolver';
 import type { ThinkingSupport } from '../../cliproxy/model-catalog';
 import type { CLIProxyProvider } from '../../cliproxy/types';
-import type { RemoteModelInfo } from '../../cliproxy/management-api-types';
+import type { RemoteModelInfo } from '../../cliproxy/management/management-api-types';
 import type { CliproxyProviderRoutingHints } from '../../shared/cliproxy-model-routing';
 
 /** Fetch model definitions from CLIProxyAPI for all syncable providers */

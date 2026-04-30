@@ -30,13 +30,13 @@ import {
   getProviderSettingsPath,
   CLIPROXY_DEFAULT_PORT,
   validatePort,
-} from '../config-generator';
-import { checkRemoteProxy } from '../remote-proxy-client';
-import { isAuthenticated } from '../auth-handler';
+} from '../config/config-generator';
+import { checkRemoteProxy } from '../services/remote-proxy-client';
+import { isAuthenticated } from '../auth/auth-handler';
 import { CLIProxyProvider, CLIProxyBackend, PLUS_ONLY_PROVIDERS, ExecutorConfig } from '../types';
-import { configureProviderModel, getCurrentModel } from '../model-config';
-import { reconcileCodexModelForActivePlan } from '../codex-plan-compatibility';
-import { resolveProxyConfig, PROXY_CLI_FLAGS } from '../proxy-config-resolver';
+import { configureProviderModel, getCurrentModel } from '../config/model-config';
+import { reconcileCodexModelForActivePlan } from '../ai-providers/codex-plan-compatibility';
+import { resolveProxyConfig, PROXY_CLI_FLAGS } from '../proxy/proxy-config-resolver';
 import {
   supportsModelConfig,
   isModelBroken,
@@ -44,8 +44,8 @@ import {
   findModel,
   getSuggestedReplacementModel,
 } from '../model-catalog';
-import { CodexReasoningProxy } from '../codex-reasoning-proxy';
-import { ToolSanitizationProxy } from '../tool-sanitization-proxy';
+import { CodexReasoningProxy } from '../ai-providers/codex-reasoning-proxy';
+import { ToolSanitizationProxy } from '../proxy/tool-sanitization-proxy';
 import {
   findAccountByQuery,
   getProviderAccounts,
@@ -53,7 +53,7 @@ import {
   touchAccount,
   renameAccount,
   getDefaultAccount,
-} from '../account-manager';
+} from '../accounts/account-manager';
 import { formatAccountDisplayName } from '../accounts/email-account-identity';
 import {
   ensureWebSearchMcpOrThrow,
@@ -82,7 +82,7 @@ import {
   loadOrCreateUnifiedConfig,
   getThinkingConfig,
 } from '../../config/unified-config-loader';
-import { HttpsTunnelProxy } from '../https-tunnel-proxy';
+import { HttpsTunnelProxy } from '../proxy/https-tunnel-proxy';
 import {
   isKiroAuthMethod,
   isKiroIDCFlow,
@@ -106,7 +106,7 @@ import {
   handleTokenExpiration,
   handleQuotaCheck,
 } from './retry-handler';
-import { MANAGED_QUOTA_PROVIDERS, type ManagedQuotaProvider } from '../quota-manager';
+import { MANAGED_QUOTA_PROVIDERS, type ManagedQuotaProvider } from '../quota/quota-manager';
 import { checkOrJoinProxy, registerProxySession, setupCleanupHandlers } from './session-bridge';
 import { parseThinkingOverride } from './thinking-arg-parser';
 import {
@@ -115,12 +115,12 @@ import {
   cleanupStaleAutoPauses,
   enforceProviderIsolation,
   restoreAutoPausedAccounts,
-} from '../account-safety';
+} from '../accounts/account-safety';
 import {
   ensureCliAntigravityResponsibility,
   hasAntigravityRiskAcceptanceFlag,
   ANTIGRAVITY_ACCEPT_RISK_FLAGS,
-} from '../antigravity-responsibility';
+} from '../auth/antigravity-responsibility';
 import { getWebSearchHookEnv } from '../../utils/websearch-manager';
 import {
   buildThinkingStartupStatus,
@@ -722,7 +722,7 @@ export async function execClaudeWithCLIProxy(
 
   // Handle --logout
   if (forceLogout) {
-    const { clearAuth } = await import('../auth-handler');
+    const { clearAuth } = await import('../auth/auth-handler');
     if (clearAuth(provider)) {
       console.log(ok(`Logged out from ${providerConfig.displayName}`));
     } else {
@@ -748,7 +748,7 @@ export async function execClaudeWithCLIProxy(
       console.error(fail('Cannot use --import with --logout'));
       process.exit(1);
     }
-    const { triggerOAuth } = await import('../auth-handler');
+    const { triggerOAuth } = await import('../auth/auth-handler');
     const authSuccess = await triggerOAuth(provider, {
       verbose,
       import: true,
@@ -812,7 +812,7 @@ export async function execClaudeWithCLIProxy(
     if (compositeProviders.length > 0) {
       // Handle forceAuth for composite providers
       if (forceAuth) {
-        const { triggerOAuth } = await import('../auth-handler');
+        const { triggerOAuth } = await import('../auth/auth-handler');
         const failures: string[] = [];
         for (const p of compositeProviders) {
           const authSuccess = await triggerOAuth(p, {
@@ -861,7 +861,7 @@ export async function execClaudeWithCLIProxy(
         process.exit(1);
       }
     } else if (forceAuth || !isAuthenticated(provider)) {
-      const { triggerOAuth } = await import('../auth-handler');
+      const { triggerOAuth } = await import('../auth/auth-handler');
       const authSuccess = await triggerOAuth(provider, {
         verbose,
         add: addAccount,
@@ -1394,7 +1394,7 @@ export async function execClaudeWithCLIProxy(
 
   // 12b. Start runtime quota monitor (adaptive polling during session)
   if (!skipLocalAuth) {
-    const { startQuotaMonitor } = await import('../quota-manager');
+    const { startQuotaMonitor } = await import('../quota/quota-manager');
     for (const monitorProvider of resolveRuntimeQuotaMonitorProviders(
       provider,
       compositeProviders

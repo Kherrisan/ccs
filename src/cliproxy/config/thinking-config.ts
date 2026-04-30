@@ -9,7 +9,7 @@ import type { ThinkingConfig } from '../../config/unified-config-types';
 import { getThinkingConfig } from '../../config/unified-config-loader';
 import { getModelThinkingSupport, supportsThinking } from '../model-catalog';
 import { isThinkingOffValue, validateThinking } from '../thinking-validator';
-import { normalizeModelIdForProvider } from '../model-id-normalizer';
+import { normalizeModelIdForProvider } from '../ai-providers/model-id-normalizer';
 import { warn } from '../../utils/ui';
 
 /** Model tier types for thinking budget defaults */

@@ -7,7 +7,7 @@
 import {
   extractProviderFromPathname,
   getDeniedModelIdReasonForProvider,
-} from '../../cliproxy/model-id-normalizer';
+} from '../../cliproxy/ai-providers/model-id-normalizer';
 import { mapExternalProviderName } from '../../cliproxy/provider-capabilities';
 import type { CLIProxyProvider } from '../../cliproxy/types';
 import type { ProfileValidationIssue, ProfileValidationSummary } from './profile-types';

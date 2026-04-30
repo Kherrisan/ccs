@@ -7,12 +7,12 @@
  */
 
 import * as path from 'path';
-import { getProviderAccounts } from '../../cliproxy/account-manager';
+import { getProviderAccounts } from '../../cliproxy/accounts/account-manager';
 import { triggerOAuth } from '../../cliproxy/auth/oauth-handler';
 import { CLIProxyProfileName, CLIPROXY_PROFILES } from '../../auth/profile-detector';
-import { getCatalogRoutingSnapshot } from '../../cliproxy/catalog-routing';
+import { getCatalogRoutingSnapshot } from '../../cliproxy/services/catalog-routing';
 import { supportsModelConfig, getProviderCatalog, ModelEntry } from '../../cliproxy/model-catalog';
-import { ensureManagedModelPrefixes } from '../../cliproxy/managed-model-prefixes';
+import { ensureManagedModelPrefixes } from '../../cliproxy/ai-providers/managed-model-prefixes';
 import type { CliproxyProviderRoutingHints } from '../../shared/cliproxy-model-routing';
 import { CLIProxyProvider, CLIProxyBackend } from '../../cliproxy/types';
 import type { TargetType } from '../../targets/target-adapter';
@@ -29,7 +29,7 @@ import {
   updateCompositeVariant,
   removeVariant,
 } from '../../cliproxy/services';
-import { DEFAULT_BACKEND } from '../../cliproxy/platform-detector';
+import { DEFAULT_BACKEND } from '../../cliproxy/binary/platform-detector';
 import { CompositeTierConfig } from '../../config/unified-config-types';
 import { formatAccountDisplayName } from '../../cliproxy/accounts/email-account-identity';
 

@@ -10,7 +10,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { fetchCliproxyUsageRaw } from '../../cliproxy/stats-fetcher';
+import { fetchCliproxyUsageRaw } from '../../cliproxy/services/stats-fetcher';
 import {
   buildCliproxyUsageHistoryAggregates,
   extractCliproxyUsageHistoryDetails,

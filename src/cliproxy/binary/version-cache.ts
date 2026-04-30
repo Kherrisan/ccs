@@ -5,14 +5,14 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { getBinDir } from '../config-generator';
+import { getBinDir } from '../config/config-generator';
 import {
   VersionCache,
   VERSION_CACHE_DURATION_MS,
   VERSION_PIN_FILE,
   VersionListCache,
 } from './types';
-import { DEFAULT_BACKEND } from '../platform-detector';
+import { DEFAULT_BACKEND } from '../binary/platform-detector';
 import type { CLIProxyBackend } from '../types';
 
 /**

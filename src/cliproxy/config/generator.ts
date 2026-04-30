@@ -7,11 +7,11 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { CLIProxyProvider, ProviderConfig } from '../types';
 import { getProviderDisplayName } from '../provider-capabilities';
-import { getModelMappingFromConfig } from '../base-config-loader';
+import { getModelMappingFromConfig } from '../config/base-config-loader';
 import { AI_PROVIDER_FAMILY_IDS } from '../ai-providers/types';
 import { loadOrCreateUnifiedConfig } from '../../config/unified-config-loader';
-import { getEffectiveApiKey, getEffectiveManagementSecret } from '../auth-token-manager';
-import { getDeniedModelIdReasonForProvider } from '../model-id-normalizer';
+import { getEffectiveApiKey, getEffectiveManagementSecret } from '../auth/auth-token-manager';
+import { getDeniedModelIdReasonForProvider } from '../ai-providers/model-id-normalizer';
 import { getAuthDir, getProviderAuthDir, getConfigPathForPort } from './path-resolver';
 import { CLIPROXY_DEFAULT_PORT } from './port-manager';
 

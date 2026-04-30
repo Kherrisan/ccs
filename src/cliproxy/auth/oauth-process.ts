@@ -10,7 +10,7 @@ import { ok, fail, info, warn } from '../../utils/ui';
 import { killWithEscalation } from '../../utils/process-utils';
 import { tryKiroImport } from './kiro-import';
 import { CLIProxyProvider } from '../types';
-import { AccountInfo } from '../account-manager';
+import { AccountInfo } from '../accounts/account-manager';
 import {
   parseProjectList,
   parseDefaultProject,
@@ -21,7 +21,7 @@ import {
   cancelProjectSelection,
   type GCloudProject,
   type ProjectSelectionPrompt,
-} from '../project-selection-handler';
+} from '../auth/project-selection-handler';
 import { KiroAuthMethod, ProviderOAuthConfig } from './auth-types';
 import { getTimeoutTroubleshooting, showStep } from './environment-detector';
 import {
@@ -34,14 +34,14 @@ import {
   deviceCodeEvents,
   DEVICE_CODE_TIMEOUT_MS,
   type DeviceCodePrompt,
-} from '../device-code-handler';
+} from '../auth/device-code-handler';
 import { OAUTH_FLOW_TYPES } from '../../management';
 import {
   registerAuthSession,
   attachProcessToSession,
   unregisterAuthSession,
   authSessionEvents,
-} from '../auth-session-manager';
+} from '../auth/auth-session-manager';
 
 /** Options for OAuth process execution */
 export interface OAuthProcessOptions {

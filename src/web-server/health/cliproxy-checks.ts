@@ -13,9 +13,9 @@ import {
   getAllAuthStatus,
   CLIPROXY_DEFAULT_PORT,
 } from '../../cliproxy';
-import { detectRunningProxy } from '../../cliproxy/proxy-detector';
+import { detectRunningProxy } from '../../cliproxy/proxy/proxy-detector';
 import type { HealthCheck } from './types';
-import { CLIPROXY_MAX_STABLE_VERSION } from '../../cliproxy/platform-detector';
+import { CLIPROXY_MAX_STABLE_VERSION } from '../../cliproxy/binary/platform-detector';
 import { isNewerVersion, isVersionFaulty } from '../../cliproxy/binary/version-checker';
 
 /**

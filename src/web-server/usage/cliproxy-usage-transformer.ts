@@ -5,7 +5,10 @@
  * types compatible with the CCS analytics dashboard.
  */
 
-import type { CliproxyUsageApiResponse, CliproxyRequestDetail } from '../../cliproxy/stats-fetcher';
+import type {
+  CliproxyUsageApiResponse,
+  CliproxyRequestDetail,
+} from '../../cliproxy/services/stats-fetcher';
 import { calculateCost } from '../model-pricing';
 import type { ModelBreakdown, DailyUsage, HourlyUsage, MonthlyUsage } from './types';
 import { getModelsUsed, normalizeUsageProvider } from './model-identity';

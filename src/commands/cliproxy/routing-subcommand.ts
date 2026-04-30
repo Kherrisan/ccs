@@ -8,7 +8,7 @@ import {
   normalizeCliproxySessionAffinityTtl,
   readCliproxyRoutingState,
   readCliproxySessionAffinityState,
-} from '../../cliproxy/routing-strategy';
+} from '../../cliproxy/routing/routing-strategy';
 
 function printStrategyGuide(): void {
   console.log(subheader('Routing Modes:'));

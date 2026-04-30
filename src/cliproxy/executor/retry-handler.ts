@@ -10,7 +10,7 @@
 
 import { fail, warn, info } from '../../utils/ui';
 import { CLIProxyProvider } from '../types';
-import { handleBanDetection, warnPossible403Ban } from '../account-safety';
+import { handleBanDetection, warnPossible403Ban } from '../accounts/account-safety';
 import { CompositeTierConfig } from '../../config/unified-config-types';
 
 /**
@@ -54,7 +54,7 @@ export async function handleTokenExpiration(
   if (!tokenResult.valid) {
     // Check if this is an account ban/disable before generic error
     if (tokenResult.error) {
-      const { getDefaultAccount } = await import('../account-manager');
+      const { getDefaultAccount } = await import('../accounts/account-manager');
       const account = getDefaultAccount(provider);
       if (account) {
         handleBanDetection(provider, account.id, tokenResult.error);
@@ -80,7 +80,7 @@ export async function handleTokenExpiration(
  * Handle quota check and auto-switching for providers with quota-based rotation.
  */
 export async function handleQuotaCheck(provider: CLIProxyProvider): Promise<void> {
-  const { isManagedQuotaProvider, preflightCheck } = await import('../quota-manager');
+  const { isManagedQuotaProvider, preflightCheck } = await import('../quota/quota-manager');
   if (!isManagedQuotaProvider(provider)) return;
 
   const preflight = await preflightCheck(provider);

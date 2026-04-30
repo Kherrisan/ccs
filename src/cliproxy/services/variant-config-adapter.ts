@@ -13,7 +13,7 @@ import {
   mutateUnifiedConfig,
   isUnifiedMode,
 } from '../../config/unified-config-loader';
-import { CLIPROXY_DEFAULT_PORT } from '../config-generator';
+import { CLIPROXY_DEFAULT_PORT } from '../config/config-generator';
 
 export const VARIANT_PORT_BASE = CLIPROXY_DEFAULT_PORT + 1;
 export const VARIANT_PORT_MAX_OFFSET = 100;

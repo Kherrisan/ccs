@@ -18,10 +18,14 @@ import {
   unregisterSession,
   stopProxy,
 } from '../session-tracker';
-import { detectRunningProxy, waitForProxyHealthy, reclaimOrphanedProxy } from '../proxy-detector';
-import { withStartupLock } from '../startup-lock';
+import {
+  detectRunningProxy,
+  waitForProxyHealthy,
+  reclaimOrphanedProxy,
+} from '../proxy/proxy-detector';
+import { withStartupLock } from '../services/startup-lock';
 import { killProcessOnPort } from '../../utils/platform-commands';
-import { stopQuotaMonitor } from '../quota-manager';
+import { stopQuotaMonitor } from '../quota/quota-manager';
 
 export interface ProxySessionResult {
   sessionId?: string;

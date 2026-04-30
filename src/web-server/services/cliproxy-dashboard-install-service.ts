@@ -1,7 +1,7 @@
 import { installCliproxyVersion, resolveLocalBackend } from '../../cliproxy/binary-manager';
 import { ensureCliproxyService, type ServiceStartResult } from '../../cliproxy/service-manager';
 import { getProxyStatus as getProxyProcessStatus } from '../../cliproxy/session-tracker';
-import { isCliproxyRunning } from '../../cliproxy/stats-fetcher';
+import { isCliproxyRunning } from '../../cliproxy/services/stats-fetcher';
 import type { CLIProxyBackend } from '../../cliproxy/types';
 import {
   isRunningUnderSupervisord,

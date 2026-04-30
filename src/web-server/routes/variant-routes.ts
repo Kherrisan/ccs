@@ -21,7 +21,7 @@ import {
 import {
   validateCompositeDefaultTier,
   validateCompositeTiers,
-} from '../../cliproxy/composite-validator';
+} from '../../cliproxy/config/composite-validator';
 
 const router = Router();
 

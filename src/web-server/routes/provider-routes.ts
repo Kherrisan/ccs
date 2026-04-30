@@ -11,7 +11,7 @@ import {
   removeOpenAICompatProvider,
   OPENROUTER_TEMPLATE,
   TOGETHER_TEMPLATE,
-} from '../../cliproxy/openai-compat-manager';
+} from '../../cliproxy/ai-providers/openai-compat-manager';
 import { isReservedName, RESERVED_PROFILE_NAMES } from '../../config/reserved-names';
 
 const router = Router();

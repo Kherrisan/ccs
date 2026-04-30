@@ -20,11 +20,11 @@ import {
   configNeedsRegeneration,
   CLIPROXY_DEFAULT_PORT,
   getCliproxyWritablePath,
-} from './config-generator';
+} from './config/config-generator';
 import { registerSession } from './session-tracker';
-import { detectRunningProxy, waitForProxyHealthy } from './proxy-detector';
-import { withStartupLock } from './startup-lock';
-import { isCliproxyRunning } from './stats-fetcher';
+import { detectRunningProxy, waitForProxyHealthy } from './proxy/proxy-detector';
+import { withStartupLock } from './services/startup-lock';
+import { isCliproxyRunning } from './services/stats-fetcher';
 import { TokenRefreshWorker, type RefreshResult } from './auth/token-refresh-worker';
 import { getTokenRefreshConfig } from './auth/token-refresh-config';
 
@@ -301,7 +301,7 @@ export async function ensureCliproxyService(
 
       // Get backend label for error message
       const { loadOrCreateUnifiedConfig } = await import('../config/unified-config-loader');
-      const { DEFAULT_BACKEND } = await import('./platform-detector');
+      const { DEFAULT_BACKEND } = await import('./binary/platform-detector');
       const config = loadOrCreateUnifiedConfig();
       const backendLabel =
         (config.cliproxy?.backend ?? DEFAULT_BACKEND) === 'plus' ? 'CLIProxy Plus' : 'CLIProxy';

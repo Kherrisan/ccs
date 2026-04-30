@@ -12,7 +12,7 @@ import {
   getChecksumsUrl,
   getExecutableName,
   DEFAULT_BACKEND,
-} from '../platform-detector';
+} from '../binary/platform-detector';
 import { downloadWithRetry } from './downloader';
 import { verifyChecksum, computeChecksum } from './verifier';
 import { extractArchive } from './extractor';

@@ -15,21 +15,21 @@ import {
   pauseAccount,
   resumeAccount,
   findAccountByQuery,
-} from '../../cliproxy/account-manager';
-import { fetchAllProviderQuotas } from '../../cliproxy/quota-fetcher';
-import { fetchAllCodexQuotas } from '../../cliproxy/quota-fetcher-codex';
-import { fetchAllClaudeQuotas } from '../../cliproxy/quota-fetcher-claude';
-import { pickMostRestrictiveClaudeWeeklyWindow } from '../../cliproxy/quota-fetcher-claude-normalizer';
-import { fetchAllGeminiCliQuotas } from '../../cliproxy/quota-fetcher-gemini-cli';
-import { fetchAllGhcpQuotas } from '../../cliproxy/quota-fetcher-ghcp';
+} from '../../cliproxy/accounts/account-manager';
+import { fetchAllProviderQuotas } from '../../cliproxy/quota/quota-fetcher';
+import { fetchAllCodexQuotas } from '../../cliproxy/quota/quota-fetcher-codex';
+import { fetchAllClaudeQuotas } from '../../cliproxy/quota/quota-fetcher-claude';
+import { pickMostRestrictiveClaudeWeeklyWindow } from '../../cliproxy/quota/quota-fetcher-claude-normalizer';
+import { fetchAllGeminiCliQuotas } from '../../cliproxy/quota/quota-fetcher-gemini-cli';
+import { fetchAllGhcpQuotas } from '../../cliproxy/quota/quota-fetcher-ghcp';
 import type {
   CodexQuotaResult,
   ClaudeQuotaResult,
   GeminiCliQuotaResult,
   GhcpQuotaResult,
   QuotaErrorMetadata,
-} from '../../cliproxy/quota-types';
-import { isOnCooldown } from '../../cliproxy/quota-manager';
+} from '../../cliproxy/quota/quota-types';
+import { isOnCooldown } from '../../cliproxy/quota/quota-manager';
 import { CLIProxyProvider } from '../../cliproxy/types';
 import {
   QUOTA_SUPPORTED_PROVIDER_IDS,
