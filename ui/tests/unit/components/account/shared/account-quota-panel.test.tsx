@@ -1,7 +1,7 @@
 import { render, screen, userEvent } from '@tests/setup/test-utils';
 import { describe, expect, it } from 'vitest';
 import { AccountQuotaPanel } from '@/components/account/shared/account-quota-panel';
-import type { GeminiCliQuotaResult } from '@/lib/api-client';
+import type { ClaudeQuotaResult, CodexQuotaResult, GeminiCliQuotaResult } from '@/lib/api-client';
 
 function createGeminiFailureQuota(): GeminiCliQuotaResult {
   return {
@@ -18,6 +18,189 @@ function createGeminiFailureQuota(): GeminiCliQuotaResult {
     needsReauth: true,
   };
 }
+
+function createClaudeQuota(): ClaudeQuotaResult {
+  return {
+    success: true,
+    lastUpdated: Date.now(),
+    windows: [
+      {
+        rateLimitType: 'five_hour',
+        label: '5-hour usage',
+        status: 'allowed',
+        utilization: 0.57,
+        usedPercent: 57,
+        remainingPercent: 43,
+        resetAt: '2026-05-01T01:00:00.000Z',
+      },
+      {
+        rateLimitType: 'seven_day_sonnet',
+        label: 'Weekly usage',
+        status: 'allowed',
+        utilization: 0.6,
+        usedPercent: 60,
+        remainingPercent: 40,
+        resetAt: '2026-05-07T01:00:00.000Z',
+      },
+    ],
+    coreUsage: {
+      fiveHour: {
+        rateLimitType: 'five_hour',
+        label: '5-hour usage',
+        remainingPercent: 43,
+        resetAt: '2026-05-01T01:00:00.000Z',
+        status: 'allowed',
+      },
+      weekly: {
+        rateLimitType: 'seven_day_sonnet',
+        label: 'Weekly usage',
+        remainingPercent: 40,
+        resetAt: '2026-05-07T01:00:00.000Z',
+        status: 'allowed',
+      },
+    },
+  };
+}
+
+function createCodexQuota(): CodexQuotaResult {
+  return {
+    success: true,
+    planType: 'pro',
+    lastUpdated: Date.now(),
+    windows: [
+      {
+        label: 'Primary',
+        category: 'usage',
+        cadence: '5h',
+        usedPercent: 38,
+        remainingPercent: 62,
+        resetAfterSeconds: 60 * 60,
+        resetAt: '2026-05-01T01:00:00.000Z',
+      },
+      {
+        label: 'Secondary',
+        category: 'usage',
+        cadence: 'weekly',
+        usedPercent: 61,
+        remainingPercent: 39,
+        resetAfterSeconds: 7 * 24 * 60 * 60,
+        resetAt: '2026-05-07T01:00:00.000Z',
+      },
+    ],
+    coreUsage: {
+      fiveHour: {
+        label: 'Primary',
+        remainingPercent: 62,
+        resetAfterSeconds: 60 * 60,
+        resetAt: '2026-05-01T01:00:00.000Z',
+      },
+      weekly: {
+        label: 'Secondary',
+        remainingPercent: 39,
+        resetAfterSeconds: 7 * 24 * 60 * 60,
+        resetAt: '2026-05-07T01:00:00.000Z',
+      },
+    },
+  };
+}
+
+function createGeminiSuccessQuota(): GeminiCliQuotaResult {
+  return {
+    success: true,
+    buckets: [
+      {
+        id: 'flash::input',
+        label: 'Gemini Flash',
+        tokenType: 'input',
+        remainingFraction: 0.6,
+        remainingPercent: 60,
+        resetTime: '2026-05-01T01:00:00.000Z',
+        modelIds: ['gemini-2.5-flash'],
+      },
+    ],
+    projectId: 'test-project',
+    lastUpdated: Date.now(),
+  };
+}
+
+describe('AccountQuotaPanel quota bars', () => {
+  it('shows separate compact Claude 5h and weekly quota bars', () => {
+    render(
+      <AccountQuotaPanel
+        provider="claude"
+        quota={createClaudeQuota()}
+        quotaLoading={false}
+        mode="compact"
+      />
+    );
+
+    expect(screen.getByText('5h')).toBeInTheDocument();
+    expect(screen.getByText('Week')).toBeInTheDocument();
+    expect(screen.getByText('43%')).toBeInTheDocument();
+    expect(screen.getAllByText('40%').length).toBeGreaterThan(0);
+    expect(screen.getByRole('progressbar', { name: '5h quota' })).toHaveAttribute(
+      'aria-valuenow',
+      '43'
+    );
+    expect(screen.getByRole('progressbar', { name: 'Week quota' })).toHaveAttribute(
+      'aria-valuenow',
+      '40'
+    );
+  });
+
+  it('shows separate compact Codex 5h and weekly quota bars', () => {
+    render(
+      <AccountQuotaPanel
+        provider="codex"
+        quota={createCodexQuota()}
+        quotaLoading={false}
+        mode="compact"
+      />
+    );
+
+    expect(screen.getByRole('progressbar', { name: '5h quota' })).toHaveAttribute(
+      'aria-valuenow',
+      '62'
+    );
+    expect(screen.getByRole('progressbar', { name: 'Week quota' })).toHaveAttribute(
+      'aria-valuenow',
+      '39'
+    );
+  });
+
+  it('keeps the compact single-bar fallback for providers without split quota rows', () => {
+    render(
+      <AccountQuotaPanel
+        provider="gemini"
+        quota={createGeminiSuccessQuota()}
+        quotaLoading={false}
+        mode="compact"
+      />
+    );
+
+    expect(screen.getByRole('progressbar', { name: 'Quota' })).toBeInTheDocument();
+    expect(screen.queryByRole('progressbar', { name: '5h quota' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('progressbar', { name: 'Week quota' })).not.toBeInTheDocument();
+  });
+
+  it('shows explicit detailed Claude quota labels', () => {
+    render(
+      <AccountQuotaPanel
+        provider="claude"
+        quota={createClaudeQuota()}
+        quotaLoading={false}
+        mode="detailed"
+      />
+    );
+
+    expect(screen.getByText('5h usage limit')).toBeInTheDocument();
+    expect(screen.getByText('Weekly usage limit')).toBeInTheDocument();
+    expect(screen.getByRole('progressbar', { name: '5h usage limit quota' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('progressbar', { name: 'Weekly usage limit quota' })
+    ).toBeInTheDocument();
+  });
+});
 
 describe('AccountQuotaPanel failure tooltip', () => {
   it('renders the shared failure tooltip content with viewport-safe shell classes', async () => {
