@@ -2,6 +2,7 @@ import { memo } from 'react';
 import { ChevronDown, ChevronRight, GitBranch } from 'lucide-react';
 import type { LogsEntry, LogsLevel } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
+import { deriveStageHint } from './derive-trace-groups';
 import { LogLevelBadge } from './log-level-badge';
 import { LogsRow } from './logs-row';
 import { FOCUS_RING, MONO_NUMERIC, ROW_DENSITY, ROW_INTERACTIVE, type RowDensity } from './tokens';
@@ -38,6 +39,37 @@ function formatHms(timestamp: string): string {
   });
 }
 
+/**
+ * Coalesce identical consecutive children inside a single trace. Same key
+ * tuple as standalone-leaf coalescing — `(event, stage, level)` since all
+ * children share `requestId` already.
+ */
+function coalesceChildren(children: LogsEntry[]): Array<{ head: LogsEntry; count: number }> {
+  if (children.length === 0) return [];
+  const out: Array<{ head: LogsEntry; count: number }> = [];
+  let head: LogsEntry | null = null;
+  let count = 0;
+  let key = '';
+  const flush = () => {
+    if (head) out.push({ head, count });
+    head = null;
+    count = 0;
+  };
+  for (const child of children) {
+    const k = `${child.event ?? ''}|${child.stage ?? ''}|${child.level}|${child.module ?? ''}`;
+    if (head && k === key) {
+      count += 1;
+    } else {
+      flush();
+      head = child;
+      count = 1;
+      key = k;
+    }
+  }
+  flush();
+  return out;
+}
+
 function LogsTraceRowImpl({
   group,
   isExpanded,
@@ -66,7 +98,7 @@ function LogsTraceRowImpl({
         <span
           role="cell"
           className={cn(
-            'w-[88px] shrink-0 truncate text-[11px] text-muted-foreground',
+            'w-[88px] shrink-0 truncate text-[12px] text-muted-foreground',
             MONO_NUMERIC
           )}
         >
@@ -77,18 +109,18 @@ function LogsTraceRowImpl({
         </span>
         <span
           role="cell"
-          className="flex w-[140px] shrink-0 items-center gap-1.5 truncate text-[11px] font-medium text-foreground/80"
+          className="flex w-[140px] shrink-0 items-center gap-1.5 truncate text-[12px] font-medium text-foreground/80"
         >
           <GitBranch className="h-3 w-3 text-muted-foreground" aria-hidden="true" />
           {group.module}
         </span>
-        <span role="cell" className="min-w-0 flex-1 truncate text-foreground/90">
+        <span role="cell" className="min-w-0 flex-1 truncate text-[13px] text-foreground/90">
           <span className="text-muted-foreground">trace · {group.children.length} stages</span>
         </span>
         <span
           role="cell"
           className={cn(
-            'hidden w-[72px] shrink-0 truncate text-right text-[11px] text-muted-foreground sm:inline-block',
+            'hidden w-[72px] shrink-0 truncate text-right text-[12px] text-muted-foreground sm:inline-block',
             MONO_NUMERIC
           )}
         >
@@ -97,7 +129,7 @@ function LogsTraceRowImpl({
         <span
           role="cell"
           className={cn(
-            'hidden w-[88px] shrink-0 truncate text-right text-[11px] text-muted-foreground lg:inline-block',
+            'hidden w-[112px] shrink-0 truncate text-right text-[12px] text-muted-foreground lg:inline-block',
             MONO_NUMERIC
           )}
         >
@@ -105,16 +137,17 @@ function LogsTraceRowImpl({
         </span>
       </button>
       {isExpanded
-        ? group.children.map((child) => (
+        ? coalesceChildren(group.children).map((run) => (
             <LogsRow
-              key={child.id}
-              entry={child}
-              isSelected={child.id === selectedEntryId}
+              key={run.head.id}
+              entry={run.head}
+              isSelected={run.head.id === selectedEntryId}
               density={density}
               sourceLabel={sourceLabel}
               onSelect={onSelect}
               indent={20}
-              stageHint={child.stage}
+              stageHint={deriveStageHint(run.head)}
+              repeatCount={run.count > 1 ? run.count : undefined}
             />
           ))
         : null}
