@@ -32,6 +32,12 @@ describe('run-test-bucket', () => {
     expect(bucket.shouldForceSlow('tests/npm/cli.test.js')).toBe(true);
   });
 
+  test('discovers colocated backend tests under src', () => {
+    const discovered = bucket.getDiscoveredTests();
+
+    expect(discovered).toContain('src/cliproxy/types/__tests__/types-backward-compat.test.ts');
+  });
+
   test('keeps dist-independent javascript tests in the fast bucket', () => {
     expect(bucket.shouldForceSlow('tests/unit/flag-parsing-simple.test.js')).toBe(false);
   });

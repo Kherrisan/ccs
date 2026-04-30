@@ -6,7 +6,7 @@
 const assert = require('assert');
 
 describe('Backend Selection', () => {
-  const platformDetector = require('../../../../dist/cliproxy/platform-detector');
+  const platformDetector = require('../../../../dist/cliproxy/binary/platform-detector');
   const types = require('../../../../dist/cliproxy/types');
 
   describe('BACKEND_CONFIG', () => {

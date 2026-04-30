@@ -26,7 +26,7 @@ const {
   deleteConfigForPort,
   deleteConfig,
   CLIPROXY_DEFAULT_PORT,
-} = require('../../../../dist/cliproxy/config-generator');
+} = require('../../../../dist/cliproxy/config/config-generator');
 
 describe('Config Generator Port', function () {
   let cliproxyDir;

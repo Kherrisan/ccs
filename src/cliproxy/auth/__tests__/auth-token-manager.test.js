@@ -19,8 +19,8 @@ describe('Auth Token Manager', () => {
 
     beforeEach(() => {
       // Clear cache and reload
-      delete require.cache[require.resolve('../../../../dist/cliproxy/auth-token-manager')];
-      const authTokenManager = require('../../../../dist/cliproxy/auth-token-manager');
+      delete require.cache[require.resolve('../../../../dist/cliproxy/auth/auth-token-manager')];
+      const authTokenManager = require('../../../../dist/cliproxy/auth/auth-token-manager');
       generateSecureToken = authTokenManager.generateSecureToken;
     });
 
@@ -398,8 +398,8 @@ describe('Auth Token Manager', () => {
     let CCS_CONTROL_PANEL_SECRET;
 
     beforeEach(() => {
-      delete require.cache[require.resolve('../../../../dist/cliproxy/config-generator')];
-      const configGenerator = require('../../../../dist/cliproxy/config-generator');
+      delete require.cache[require.resolve('../../../../dist/cliproxy/config/config-generator')];
+      const configGenerator = require('../../../../dist/cliproxy/config/config-generator');
       CCS_INTERNAL_API_KEY = configGenerator.CCS_INTERNAL_API_KEY;
       CCS_CONTROL_PANEL_SECRET = configGenerator.CCS_CONTROL_PANEL_SECRET;
     });
