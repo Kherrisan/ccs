@@ -43,7 +43,7 @@ const {
   deleteConfigForPort,
   getConfigPathForPort,
   CLIPROXY_DEFAULT_PORT,
-} = require('../../../../dist/cliproxy/config-generator');
+} = require('../../../../dist/cliproxy/config/config-generator');
 
 describe('PR #184: Variant Port Isolation Integration', function () {
   let configPath;

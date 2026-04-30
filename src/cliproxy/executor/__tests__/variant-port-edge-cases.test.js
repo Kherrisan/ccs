@@ -38,7 +38,7 @@ const {
   deleteConfigForPort,
   configExists,
   generateConfig,
-} = require('../../../../dist/cliproxy/config-generator');
+} = require('../../../../dist/cliproxy/config/config-generator');
 
 describe('Variant Port Edge Cases', function () {
   let configPath;

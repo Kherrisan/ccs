@@ -11,7 +11,7 @@ const {
   hasProxyFlags,
   PROXY_CLI_FLAGS,
   PROXY_ENV_VARS,
-} = require('../../../../dist/cliproxy/proxy-config-resolver');
+} = require('../../../../dist/cliproxy/proxy/proxy-config-resolver');
 
 describe('proxy-config-resolver', () => {
   describe('PROXY_CLI_FLAGS', () => {

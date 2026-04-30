@@ -25,7 +25,7 @@ const {
   saveVariantLegacy,
   removeVariantFromLegacyConfig,
 } = require('../../../../dist/cliproxy/services/variant-config-adapter');
-const { CLIPROXY_DEFAULT_PORT } = require('../../../../dist/cliproxy/config-generator');
+const { CLIPROXY_DEFAULT_PORT } = require('../../../../dist/cliproxy/config/config-generator');
 
 describe('Variant Port Allocation', function () {
   let configPath;

@@ -29,8 +29,8 @@ describe('Account Manager - discoverExistingAccounts', () => {
     process.env.CCS_HOME = testDir;
 
     // Clear cache and reload - must clear all modular submodules too
-    delete require.cache[require.resolve('../../../../dist/cliproxy/account-manager')];
-    delete require.cache[require.resolve('../../../../dist/cliproxy/config-generator')];
+    delete require.cache[require.resolve('../../../../dist/cliproxy/accounts/account-manager')];
+    delete require.cache[require.resolve('../../../../dist/cliproxy/config/config-generator')];
     delete require.cache[require.resolve('../../../../dist/utils/config-manager')];
     // Clear new modular structure (accounts/ and config/ submodules)
     delete require.cache[require.resolve('../../../../dist/cliproxy/accounts/index')];
@@ -40,7 +40,7 @@ describe('Account Manager - discoverExistingAccounts', () => {
     delete require.cache[require.resolve('../../../../dist/cliproxy/accounts/types')];
     delete require.cache[require.resolve('../../../../dist/cliproxy/config/index')];
     delete require.cache[require.resolve('../../../../dist/cliproxy/config/path-resolver')];
-    accountManager = require('../../../../dist/cliproxy/account-manager');
+    accountManager = require('../../../../dist/cliproxy/accounts/account-manager');
   });
 
   afterEach(() => {
@@ -273,10 +273,10 @@ describe('Account Manager - discoverExistingAccounts', () => {
       });
 
       // Reload module to clear in-memory cache (including all submodules)
-      delete require.cache[require.resolve('../../../../dist/cliproxy/account-manager')];
+      delete require.cache[require.resolve('../../../../dist/cliproxy/accounts/account-manager')];
       delete require.cache[require.resolve('../../../../dist/cliproxy/accounts/index')];
       delete require.cache[require.resolve('../../../../dist/cliproxy/accounts/registry')];
-      accountManager = require('../../../../dist/cliproxy/account-manager');
+      accountManager = require('../../../../dist/cliproxy/accounts/account-manager');
       accountManager.discoverExistingAccounts();
 
       const accounts = getAccountsFile();
@@ -357,10 +357,10 @@ describe('Account Manager - discoverExistingAccounts', () => {
       });
 
       // Reload module to pick up pre-existing accounts.json (including all submodules)
-      delete require.cache[require.resolve('../../../../dist/cliproxy/account-manager')];
+      delete require.cache[require.resolve('../../../../dist/cliproxy/accounts/account-manager')];
       delete require.cache[require.resolve('../../../../dist/cliproxy/accounts/index')];
       delete require.cache[require.resolve('../../../../dist/cliproxy/accounts/registry')];
-      accountManager = require('../../../../dist/cliproxy/account-manager');
+      accountManager = require('../../../../dist/cliproxy/accounts/account-manager');
       accountManager.discoverExistingAccounts();
 
       const accounts = getAccountsFile();

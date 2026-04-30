@@ -30,7 +30,7 @@ const {
   getSessionLockPath,
   deleteSessionLockForPort,
 } = require('../../../dist/cliproxy/session-tracker');
-const { CLIPROXY_DEFAULT_PORT } = require('../../../dist/cliproxy/config-generator');
+const { CLIPROXY_DEFAULT_PORT } = require('../../../dist/cliproxy/config/config-generator');
 const { setGlobalConfigDir } = require('../../../dist/utils/config-manager');
 
 describe('Session Tracker Port-Specific', function () {

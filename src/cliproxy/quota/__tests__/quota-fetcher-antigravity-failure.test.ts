@@ -31,8 +31,10 @@ describe('Antigravity quota failure metadata', () => {
 
   it('preserves entitlement evidence when project lookup fails before quota fetch', async () => {
     const moduleId = Date.now() + Math.random();
-    const { fetchAccountQuota } = await import(`../../quota-fetcher?agy-early=${moduleId}`);
-    const { getProviderAuthDir } = await import(`../../config-generator?agy-config=${moduleId}`);
+    const { fetchAccountQuota } = await import(`../quota-fetcher?agy-early=${moduleId}`);
+    const { getProviderAuthDir } = await import(
+      `../../config/config-generator?agy-config=${moduleId}`
+    );
     const fs = await import('node:fs');
     const os = await import('node:os');
     const path = await import('node:path');
@@ -83,10 +85,10 @@ describe('Antigravity quota failure metadata', () => {
 
   it('attaches entitlement evidence when project lookup returns an invalid 2xx payload', async () => {
     const moduleId = Date.now() + Math.random();
-    const { fetchAccountQuota } = await import(
-      `../../quota-fetcher?agy-invalid-project=${moduleId}`
+    const { fetchAccountQuota } = await import(`../quota-fetcher?agy-invalid-project=${moduleId}`);
+    const { getProviderAuthDir } = await import(
+      `../../config/config-generator?agy-config=${moduleId}`
     );
-    const { getProviderAuthDir } = await import(`../../config-generator?agy-config=${moduleId}`);
     const fs = await import('node:fs');
     const os = await import('node:os');
     const path = await import('node:path');
@@ -137,10 +139,10 @@ describe('Antigravity quota failure metadata', () => {
 
   it('preserves live tier evidence when quota fetch fails after a successful project lookup', async () => {
     const moduleId = Date.now() + Math.random();
-    const { fetchAccountQuota } = await import(
-      `../../quota-fetcher?agy-invalid-models=${moduleId}`
+    const { fetchAccountQuota } = await import(`../quota-fetcher?agy-invalid-models=${moduleId}`);
+    const { getProviderAuthDir } = await import(
+      `../../config/config-generator?agy-config=${moduleId}`
     );
-    const { getProviderAuthDir } = await import(`../../config-generator?agy-config=${moduleId}`);
     const fs = await import('node:fs');
     const os = await import('node:os');
     const path = await import('node:path');

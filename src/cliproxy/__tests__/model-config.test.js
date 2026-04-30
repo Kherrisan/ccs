@@ -9,7 +9,7 @@ const path = require('path');
 const os = require('os');
 
 describe('Model Config', () => {
-  const modelConfig = require('../../../dist/cliproxy/model-config');
+  const modelConfig = require('../../../dist/cliproxy/config/model-config');
   const modelCatalog = require('../../../dist/cliproxy/model-catalog');
 
   describe('hasUserSettings', () => {

@@ -5,7 +5,7 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
 const rootDir = path.resolve(__dirname, '..');
-const candidateRoots = ['tests/unit', 'tests/integration', 'tests/npm'];
+const candidateRoots = ['tests/unit', 'tests/integration', 'tests/npm', 'src'];
 // Add a `.ts` test to `slowTests` when ANY of these apply:
 //   1. It spawns a child process (CLI, bun test, node, gh, etc.).
 //   2. It binds a port, starts a server, or talks to localhost.
