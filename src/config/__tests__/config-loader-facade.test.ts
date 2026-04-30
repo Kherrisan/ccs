@@ -1,0 +1,191 @@
+/**
+ * Config Loader Facade Unit Tests
+ *
+ * Tests memoization cache behavior, cache invalidation on write ops,
+ * and verifies all re-exports are present from underlying modules.
+ */
+
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import * as yaml from 'js-yaml';
+
+/**
+ * Helper: create a temp home dir with a minimal valid config.yaml so
+ * loadOrCreateUnifiedConfig succeeds without touching the real ~/.ccs.
+ */
+function createTestHome(): string {
+  const tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'ccs-facade-test-'));
+  const ccsDir = path.join(tempHome, '.ccs');
+  fs.mkdirSync(ccsDir, { recursive: true });
+  const configPath = path.join(ccsDir, 'config.yaml');
+  fs.writeFileSync(configPath, `version: 1\n`, 'utf8');
+  return tempHome;
+}
+
+/**
+ * Helper: get the facade module, bypassing the import cache each time.
+ * We use dynamic import with a cache-busting query param so beforeEach
+ * re-imports get a fresh module with a clean cache state.
+ */
+async function importFacade(): Promise<typeof import('../config-loader-facade')> {
+  return import(`../config-loader-facade?cachebust=${Date.now()}`);
+}
+
+describe('config-loader-facade', () => {
+  let tempHome: string;
+  let originalCcsHome: string | undefined;
+
+  beforeEach(() => {
+    tempHome = createTestHome();
+    originalCcsHome = process.env.CCS_HOME;
+    process.env.CCS_HOME = tempHome;
+  });
+
+  afterEach(() => {
+    // Restore env
+    if (originalCcsHome !== undefined) {
+      process.env.CCS_HOME = originalCcsHome;
+    } else {
+      delete process.env.CCS_HOME;
+    }
+
+    // Clean up temp dir
+    if (tempHome && fs.existsSync(tempHome)) {
+      fs.rmSync(tempHome, { recursive: true, force: true });
+    }
+  });
+
+  describe('re-exports from unified-config-loader', () => {
+    it('should export all core loader functions', async () => {
+      const facade = await importFacade();
+
+      expect(typeof facade.loadUnifiedConfig).toBe('function');
+      expect(typeof facade.loadOrCreateUnifiedConfig).toBe('function');
+      expect(typeof facade.saveUnifiedConfig).toBe('function');
+      expect(typeof facade.mutateUnifiedConfig).toBe('function');
+      expect(typeof facade.updateUnifiedConfig).toBe('function');
+    });
+
+    it('should export all path/format utilities', async () => {
+      const facade = await importFacade();
+
+      expect(typeof facade.getConfigYamlPath).toBe('function');
+      expect(typeof facade.getConfigJsonPath).toBe('function');
+      expect(typeof facade.hasUnifiedConfig).toBe('function');
+      expect(typeof facade.hasLegacyConfig).toBe('function');
+      expect(typeof facade.getConfigFormat).toBe('function');
+      expect(typeof facade.isUnifiedMode).toBe('function');
+    });
+
+    it('should export all profile getters', async () => {
+      const facade = await importFacade();
+
+      expect(typeof facade.getDefaultProfile).toBe('function');
+      expect(typeof facade.setDefaultProfile).toBe('function');
+    });
+
+    it('should export all section getters', async () => {
+      const facade = await importFacade();
+
+      expect(typeof facade.getWebSearchConfig).toBe('function');
+      expect(typeof facade.getGlobalEnvConfig).toBe('function');
+      expect(typeof facade.getContinuityInheritanceMap).toBe('function');
+      expect(typeof facade.getCliproxySafetyConfig).toBe('function');
+      expect(typeof facade.getThinkingConfig).toBe('function');
+      expect(typeof facade.getOfficialChannelsConfig).toBe('function');
+      expect(typeof facade.isDashboardAuthEnabled).toBe('function');
+      expect(typeof facade.getDashboardAuthConfig).toBe('function');
+      expect(typeof facade.getBrowserConfig).toBe('function');
+      expect(typeof facade.getImageAnalysisConfig).toBe('function');
+      expect(typeof facade.getLoggingConfig).toBe('function');
+      expect(typeof facade.getCursorConfig).toBe('function');
+    });
+  });
+
+  describe('re-exports from config-manager', () => {
+    it('should export loadSettings, loadConfigSafe, readConfig, getCcsDir', async () => {
+      const facade = await importFacade();
+
+      expect(typeof facade.loadSettings).toBe('function');
+      expect(typeof facade.loadConfigSafe).toBe('function');
+      expect(typeof facade.readConfig).toBe('function');
+      expect(typeof facade.getCcsDir).toBe('function');
+    });
+  });
+
+  describe('memoization', () => {
+    it('getCachedConfig returns same object on repeated calls', async () => {
+      const facade = await importFacade();
+
+      const first = facade.getCachedConfig();
+      const second = facade.getCachedConfig();
+
+      // Same reference (cached, not re-read)
+      expect(first).toBe(second);
+    });
+
+    it('invalidateConfigCache forces re-read on next getCachedConfig', async () => {
+      const facade = await importFacade();
+
+      const first = facade.getCachedConfig();
+      facade.invalidateConfigCache();
+      const second = facade.getCachedConfig();
+
+      // Different reference after invalidation
+      expect(first).not.toBe(second);
+      // But same content
+      expect(first.version).toBe(second.version);
+    });
+
+    it('saveConfig updates cache and does not invalidate', async () => {
+      const facade = await importFacade();
+
+      const config = facade.getCachedConfig();
+      config.default = 'test-profile';
+      facade.saveConfig(config);
+
+      const cached = facade.getCachedConfig();
+      // Cache should hold the just-saved config (no re-read)
+      expect(cached).toBe(config);
+      expect(cached.default).toBe('test-profile');
+    });
+
+    it('mutateConfig invalidates the cache', async () => {
+      const facade = await importFacade();
+
+      const before = facade.getCachedConfig();
+      facade.mutateConfig((cfg) => {
+        cfg.default = 'mutated-profile';
+      });
+      const after = facade.getCachedConfig();
+
+      // Different reference (mutator may change it arbitrarily)
+      expect(before).not.toBe(after);
+      expect(after.default).toBe('mutated-profile');
+    });
+
+    it('updateConfig invalidates the cache', async () => {
+      const facade = await importFacade();
+
+      const before = facade.getCachedConfig();
+      facade.updateConfig({ default: 'updated-profile' });
+      const after = facade.getCachedConfig();
+
+      expect(before).not.toBe(after);
+      expect(after.default).toBe('updated-profile');
+    });
+
+    it('getCachedConfig returns valid config with expected fields', async () => {
+      const facade = await importFacade();
+
+      const config = facade.getCachedConfig();
+      expect(config).toBeDefined();
+      expect(typeof config.version).toBe('number');
+      expect(config.accounts).toBeDefined();
+      expect(config.profiles).toBeDefined();
+      expect(config.cliproxy).toBeDefined();
+    });
+  });
+});
