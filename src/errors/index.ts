@@ -37,6 +37,7 @@ export {
   ProxyError,
   MigrationError,
   UserAbortError,
+  RetryableError,
   isCCSError,
   isRecoverableError,
 } from './error-types';

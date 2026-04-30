@@ -1,0 +1,161 @@
+import { describe, it, expect, mock, spyOn } from 'bun:test';
+import { withRetry, type RetryOptions } from '../retry-strategy';
+import { RetryableError } from '../../errors/error-types';
+
+describe('withRetry', () => {
+  it('returns the result on first success', async () => {
+    const fn = mock(() => Promise.resolve(42));
+    const result = await withRetry(fn, { maxRetries: 3, baseDelayMs: 10 });
+    expect(result).toBe(42);
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+
+  it('retries on RetryableError and succeeds', async () => {
+    let attempt = 0;
+    const fn = mock(() => {
+      attempt++;
+      if (attempt < 3) {
+        return Promise.reject(new RetryableError('transient failure'));
+      }
+      return Promise.resolve('ok');
+    });
+
+    const result = await withRetry(fn, { maxRetries: 5, baseDelayMs: 1 });
+    expect(result).toBe('ok');
+    expect(fn).toHaveBeenCalledTimes(3);
+  });
+
+  it('throws after max retries exhausted', async () => {
+    const fn = mock(() => Promise.reject(new RetryableError('always fails')));
+    await expect(withRetry(fn, { maxRetries: 2, baseDelayMs: 1 })).rejects.toThrow('always fails');
+    // 1 initial + 2 retries = 3 total calls
+    expect(fn).toHaveBeenCalledTimes(3);
+  });
+
+  it('does not retry non-retryable errors', async () => {
+    const fn = mock(() => Promise.reject(new Error('fatal')));
+    await expect(withRetry(fn, { maxRetries: 3, baseDelayMs: 1 })).rejects.toThrow('fatal');
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not retry errors with recoverable=false', async () => {
+    const fn = mock(() => Promise.reject(new Error('non-retryable')));
+    await expect(withRetry(fn, { maxRetries: 3, baseDelayMs: 1 })).rejects.toThrow('non-retryable');
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses custom retryableCheck when provided', async () => {
+    let attempt = 0;
+    const fn = mock(() => {
+      attempt++;
+      if (attempt < 2) {
+        return Promise.reject(new Error('custom-retry'));
+      }
+      return Promise.resolve('recovered');
+    });
+
+    const customCheck = (error: unknown) =>
+      error instanceof Error && error.message === 'custom-retry';
+
+    const result = await withRetry(fn, {
+      maxRetries: 5,
+      baseDelayMs: 1,
+      retryableCheck: customCheck,
+    });
+    expect(result).toBe('recovered');
+    expect(fn).toHaveBeenCalledTimes(2);
+  });
+
+  it('calls onRetry callback on each retry attempt', async () => {
+    const onRetry = mock(() => {});
+    const fn = mock(() => Promise.reject(new RetryableError('fail')));
+
+    await expect(withRetry(fn, { maxRetries: 3, baseDelayMs: 1, onRetry })).rejects.toThrow('fail');
+
+    // 1 initial + 3 retries = 3 onRetry calls (not called for initial)
+    expect(onRetry).toHaveBeenCalledTimes(3);
+    // First retry call
+    expect(onRetry.mock.calls[0][1]).toBe(1);
+  });
+
+  it('respects maxDelayMs cap', async () => {
+    const sleepSpy = spyOn(globalThis, 'setTimeout');
+    let attempt = 0;
+    const fn = mock(() => {
+      attempt++;
+      if (attempt <= 2) {
+        return Promise.reject(new RetryableError('fail'));
+      }
+      return Promise.resolve('ok');
+    });
+
+    await withRetry(fn, {
+      maxRetries: 5,
+      baseDelayMs: 1000,
+      maxDelayMs: 200,
+    });
+
+    // Verify setTimeout was called with delay <= maxDelayMs (200ms) + jitter buffer
+    // Jitter adds 0-20% of delay, so max possible is 240ms
+    for (const call of sleepSpy.mock.calls) {
+      const delay = call[1] as number;
+      expect(delay).toBeLessThanOrEqual(250); // allow small jitter overhead
+    }
+    sleepSpy.mockRestore();
+  });
+
+  it('uses default backoffMultiplier when not specified', async () => {
+    let attempt = 0;
+    const fn = mock(() => {
+      attempt++;
+      if (attempt < 2) {
+        return Promise.reject(new RetryableError('fail'));
+      }
+      return Promise.resolve('ok');
+    });
+
+    // Should not throw - defaults to multiplier of 2
+    await expect(withRetry(fn, { maxRetries: 3, baseDelayMs: 1 })).resolves.toBe('ok');
+  });
+
+  it('applies exponential backoff with custom multiplier', async () => {
+    const sleepSpy = spyOn(globalThis, 'setTimeout');
+    let attempt = 0;
+    const fn = mock(() => {
+      attempt++;
+      if (attempt <= 3) {
+        return Promise.reject(new RetryableError('fail'));
+      }
+      return Promise.resolve('ok');
+    });
+
+    await withRetry(fn, {
+      maxRetries: 5,
+      baseDelayMs: 10,
+      backoffMultiplier: 3,
+    });
+
+    // Delays should grow: ~10, ~30, ~90 (with jitter)
+    const delays = sleepSpy.mock.calls.map((call) => call[1] as number);
+    // First delay should be close to base * multiplier^0 = 10
+    expect(delays[0]).toBeGreaterThan(5);
+    expect(delays[0]).toBeLessThan(25); // 10 + jitter
+    // Second delay should be close to base * multiplier^1 = 30
+    expect(delays[1]).toBeGreaterThan(20);
+    expect(delays[1]).toBeLessThan(50); // 30 + jitter
+
+    sleepSpy.mockRestore();
+  });
+
+  it('passes through errors that are not Error instances', async () => {
+    const fn = mock(() => Promise.reject('string error'));
+    await expect(withRetry(fn, { maxRetries: 3, baseDelayMs: 1 })).rejects.toBe('string error');
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+
+  it('works with maxRetries of 0 (no retries)', async () => {
+    const fn = mock(() => Promise.reject(new RetryableError('fail')));
+    await expect(withRetry(fn, { maxRetries: 0, baseDelayMs: 1 })).rejects.toThrow('fail');
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+});

@@ -1,0 +1,117 @@
+/**
+ * Retry Strategy Utility
+ *
+ * Reusable exponential-backoff retry wrapper extracted from
+ * scattered retry logic in glmt-proxy and binary/downloader.
+ *
+ * Usage:
+ *   const data = await withRetry(() => fetch(url), { maxRetries: 3, baseDelayMs: 100 });
+ */
+
+import { RetryableError, isRecoverableError } from '../errors/error-types';
+
+/** Configuration options for retry behavior */
+export interface RetryOptions {
+  /** Maximum number of retry attempts (default: 3) */
+  maxRetries: number;
+  /** Base delay in ms for the first retry (default: 1000) */
+  baseDelayMs: number;
+  /** Upper bound for the computed delay (default: 30000) */
+  maxDelayMs?: number;
+  /** Multiplier applied per attempt (default: 2) */
+  backoffMultiplier?: number;
+  /** Override the default retryability check */
+  retryableCheck?: (error: unknown) => boolean;
+  /** Callback fired before each retry (not fired on initial call) */
+  onRetry?: (error: Error, attempt: number) => void;
+}
+
+const DEFAULT_MAX_DELAY_MS = 30_000;
+const DEFAULT_MULTIPLIER = 2;
+const JITTER_RATIO = 0.2; // 20% of delay as random jitter
+
+/**
+ * Check whether an unknown thrown value is retryable.
+ * Uses CCSError.recoverable flag and RetryableError instance check.
+ */
+function defaultRetryableCheck(error: unknown): boolean {
+  if (error instanceof RetryableError) {
+    return true;
+  }
+  if (isRecoverableError(error)) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Compute backoff delay: base * multiplier^attempt + jitter, capped at maxDelay.
+ */
+function computeDelay(
+  attempt: number,
+  baseDelayMs: number,
+  maxDelayMs: number,
+  multiplier: number
+): number {
+  const exponentialDelay = Math.min(baseDelayMs * Math.pow(multiplier, attempt), maxDelayMs);
+  const jitter = exponentialDelay * JITTER_RATIO * Math.random();
+  return exponentialDelay + jitter;
+}
+
+/**
+ * Sleep for the specified number of milliseconds.
+ */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Execute `fn` with automatic retries on retryable failures.
+ *
+ * Retryability defaults to checking for `RetryableError` instances
+ * and CCSError with `recoverable === true`. Override with `retryableCheck`.
+ *
+ * @param fn - The async function to execute
+ * @param options - Retry configuration
+ * @returns The resolved value from `fn`
+ * @throws The last error encountered after exhausting retries
+ */
+export async function withRetry<T>(fn: () => Promise<T>, options: RetryOptions): Promise<T> {
+  const {
+    maxRetries,
+    baseDelayMs,
+    maxDelayMs = DEFAULT_MAX_DELAY_MS,
+    backoffMultiplier = DEFAULT_MULTIPLIER,
+    retryableCheck = defaultRetryableCheck,
+    onRetry,
+  } = options;
+
+  const isRetryable = retryableCheck ?? defaultRetryableCheck;
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+
+      // No more retries left
+      if (attempt >= maxRetries) {
+        break;
+      }
+
+      // Check retryability
+      if (!isRetryable(error)) {
+        break;
+      }
+
+      const err = error instanceof Error ? error : new Error(String(error));
+      onRetry?.(err, attempt + 1);
+
+      const delay = computeDelay(attempt, baseDelayMs, maxDelayMs, backoffMultiplier);
+      await sleep(delay);
+    }
+  }
+
+  throw lastError;
+}

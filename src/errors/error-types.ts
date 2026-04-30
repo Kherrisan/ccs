@@ -170,6 +170,21 @@ export class ValidationError extends CCSError {
 }
 
 /**
+ * Retryable/transient error
+ * Signals that the operation may succeed on retry (e.g. rate limits, timeouts)
+ */
+export class RetryableError extends CCSError {
+  constructor(
+    message: string,
+    public readonly cause?: Error,
+    public readonly retryAfter?: number // ms until next attempt
+  ) {
+    super(message, ExitCode.GENERAL_ERROR, true);
+    this.name = 'RetryableError';
+  }
+}
+
+/**
  * Type guard to check if an error is a CCSError
  */
 export function isCCSError(error: unknown): error is CCSError {
