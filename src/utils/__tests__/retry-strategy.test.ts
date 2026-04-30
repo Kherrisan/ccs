@@ -184,4 +184,31 @@ describe('withRetry', () => {
     expect(delay).toBeGreaterThanOrEqual(500);
     sleepSpy.mockRestore();
   });
+
+  it('swallows onRetry callback errors and continues retrying', async () => {
+    let attempt = 0;
+    const fn = mock(() => {
+      attempt++;
+      if (attempt < 3) {
+        return Promise.reject(new RetryableError('fail'));
+      }
+      return Promise.resolve('ok');
+    });
+    const onRetry = mock(() => {
+      throw new Error('callback blew up');
+    });
+
+    const result = await withRetry(fn, { maxRetries: 5, baseDelayMs: 1, onRetry });
+    expect(result).toBe('ok');
+    expect(fn).toHaveBeenCalledTimes(3);
+    expect(onRetry).toHaveBeenCalledTimes(2);
+  });
+
+  it('throws on negative baseDelayMs', async () => {
+    const fn = mock(() => Promise.resolve('ok'));
+    await expect(withRetry(fn, { maxRetries: 3, baseDelayMs: -1 })).rejects.toThrow(
+      'baseDelayMs must be >= 0'
+    );
+    expect(fn).not.toHaveBeenCalled();
+  });
 });

@@ -37,6 +37,7 @@ export {
   ProxyError,
   MigrationError,
   UserAbortError,
+  ValidationError,
   RetryableError,
   isCCSError,
   isRecoverableError,

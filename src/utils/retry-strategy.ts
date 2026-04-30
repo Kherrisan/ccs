@@ -16,13 +16,13 @@ export interface RetryOptions {
   maxRetries: number;
   /** Base delay in ms for the first retry (default: 1000) */
   baseDelayMs: number;
-  /** Upper bound for the computed delay (default: 30000) */
+  /** Upper bound for the computed backoff delay. Note: server-provided `retryAfter` (from RetryableError) takes precedence and may exceed this cap. */
   maxDelayMs?: number;
-  /** Multiplier applied per attempt (default: 2) */
+  /** Multiplier applied per attempt (default: 2). Values <1 produce degrowth. */
   backoffMultiplier?: number;
   /** Override the default retryability check */
   retryableCheck?: (error: unknown) => boolean;
-  /** Callback fired before each retry (not fired on initial call) */
+  /** Callback fired before each retry. Errors thrown by this callback are swallowed to prevent aborting the retry loop. */
   onRetry?: (error: Error, attempt: number) => void;
 }
 
@@ -95,6 +95,9 @@ export async function withRetry<T>(fn: () => Promise<T>, options: RetryOptions):
   if (maxRetries < 0) {
     throw new Error('withRetry: maxRetries must be >= 0');
   }
+  if (baseDelayMs < 0) {
+    throw new Error('withRetry: baseDelayMs must be >= 0');
+  }
 
   const isRetryable = retryableCheck ?? defaultRetryableCheck;
   let lastError: unknown;
@@ -116,7 +119,11 @@ export async function withRetry<T>(fn: () => Promise<T>, options: RetryOptions):
       }
 
       const err = error instanceof Error ? error : new Error(String(error));
-      onRetry?.(err, attempt + 1);
+      try {
+        onRetry?.(err, attempt + 1);
+      } catch {
+        // Swallow callback errors — retry decision is already made
+      }
 
       const retryAfter = error instanceof RetryableError ? error.retryAfter : undefined;
       const delay = computeDelay(attempt, baseDelayMs, maxDelayMs, backoffMultiplier, retryAfter);
