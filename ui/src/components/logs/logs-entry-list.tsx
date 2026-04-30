@@ -40,30 +40,72 @@ export function LogsEntryList({
   density = 'cozy',
 }: LogsEntryListProps) {
   const items = useMemo(() => deriveTraceGroups(entries), [entries]);
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  // Two-set tristate: `userExpanded` = explicitly opened, `userCollapsed`
+  // = explicitly closed. Auto-expand (when selection lives inside a trace)
+  // only fires when the id is in neither set, so a user click on an
+  // auto-expanded chevron actually collapses — previously it added to
+  // `expanded` while auto-expand kept showing it, so no visible change.
+  const [userExpanded, setUserExpanded] = useState<Set<string>>(new Set());
+  const [userCollapsed, setUserCollapsed] = useState<Set<string>>(new Set());
 
-  const toggle = useCallback((requestId: string) => {
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(requestId)) next.delete(requestId);
-      else next.add(requestId);
-      return next;
-    });
-  }, []);
-
-  // Auto-expand the trace whose child is currently selected.
-  const effectiveExpanded = useMemo(() => {
-    if (!selectedEntryId) return expanded;
+  // Compute the auto-expand id (if any) — derived inside toggle and the
+  // effective set so a single source of truth drives both render and
+  // click logic.
+  const autoExpandedId = useMemo(() => {
+    if (!selectedEntryId) return null;
     const owning = items.find(
       (it) => it.kind === 'trace' && it.children.some((c) => c.id === selectedEntryId)
     );
-    if (owning && owning.kind === 'trace' && !expanded.has(owning.requestId)) {
-      const next = new Set(expanded);
-      next.add(owning.requestId);
-      return next;
+    return owning && owning.kind === 'trace' ? owning.requestId : null;
+  }, [items, selectedEntryId]);
+
+  const toggle = useCallback(
+    (requestId: string) => {
+      const isAutoExpanded = autoExpandedId === requestId;
+      const isExplicitlyOpen = userExpanded.has(requestId);
+      const isExplicitlyClosed = userCollapsed.has(requestId);
+      const isCurrentlyOpen = isExplicitlyOpen || (isAutoExpanded && !isExplicitlyClosed);
+
+      if (isCurrentlyOpen) {
+        // Close: clear user-open, mark user-closed (beats auto-expand).
+        setUserExpanded((prev) => {
+          if (!prev.has(requestId)) return prev;
+          const next = new Set(prev);
+          next.delete(requestId);
+          return next;
+        });
+        setUserCollapsed((prev) => {
+          if (prev.has(requestId)) return prev;
+          const next = new Set(prev);
+          next.add(requestId);
+          return next;
+        });
+      } else {
+        // Open: clear user-closed, mark user-open.
+        setUserExpanded((prev) => {
+          if (prev.has(requestId)) return prev;
+          const next = new Set(prev);
+          next.add(requestId);
+          return next;
+        });
+        setUserCollapsed((prev) => {
+          if (!prev.has(requestId)) return prev;
+          const next = new Set(prev);
+          next.delete(requestId);
+          return next;
+        });
+      }
+    },
+    [autoExpandedId, userExpanded, userCollapsed]
+  );
+
+  const effectiveExpanded = useMemo(() => {
+    const result = new Set(userExpanded);
+    if (autoExpandedId && !userCollapsed.has(autoExpandedId)) {
+      result.add(autoExpandedId);
     }
-    return expanded;
-  }, [expanded, items, selectedEntryId]);
+    return result;
+  }, [userExpanded, userCollapsed, autoExpandedId]);
 
   const renderItem = useCallback(
     (_index: number, item: DerivedItem) => {
