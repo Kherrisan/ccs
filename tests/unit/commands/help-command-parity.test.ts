@@ -42,6 +42,13 @@ describe('help command parity', () => {
     expect(rendered.includes('ccs glmt')).toBe(false);
   });
 
+  test('root help documents native Claude session effort override', async () => {
+    const rendered = await renderLines((writeLine) => handleHelpCommand(writeLine));
+
+    expect(rendered.includes('ccs --effort high "debug this"')).toBe(true);
+    expect(rendered.includes('Use a native Claude effort override for one session')).toBe(true);
+  });
+
   test('providers topic lists built-in OAuth provider shortcuts', async () => {
     const rendered = await renderLines((writeLine) => handleHelpRoute(['providers'], writeLine));
 

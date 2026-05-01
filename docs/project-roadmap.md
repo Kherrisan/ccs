@@ -1,6 +1,6 @@
 # CCS Project Roadmap
 
-Last Updated: 2026-04-28
+Last Updated: 2026-04-30
 
 Forward-looking roadmap documenting current priorities, GitHub issues, and future feature plans.
 
@@ -41,6 +41,7 @@ All major modularization work is complete. The codebase evolved from monolithic 
 
 ### Recent Fixes
 
+- **2026-04-30**: **#1153** Native Claude launches now accept session-scoped `--effort low|medium|high|xhigh|max` overrides through CCS without mutating global Claude settings. CCS validates invalid or missing effort values before spawning Claude, normalizes accepted values, keeps default headless `-p/--prompt` launches on native Claude instead of delegation parsing, and preserves CLIProxy/Codex/Droid effort aliases.
 - **2026-04-28**: **#1123** CLIProxy quota failover now uses the dashboard/manual pause mechanism for all quota-visible OAuth providers with CCS quota fetchers: Antigravity, Claude, Codex, Gemini CLI, and GitHub Copilot. When a healthy fallback exists, CCS moves the exhausted account token out of the live `auth/` folder into `auth-paused/`, marks the account paused for dashboard visibility, persists the cooldown for auto-resume, and still avoids self-pausing the last usable account.
 - **2026-04-28**: **#1115** CCS now exposes upstream CLIProxy session affinity as a first-class local managed setting. Users can inspect and toggle local `session-affinity` plus TTL from `ccs cliproxy routing affinity`, from the `/cliproxy` dashboard routing card, and through the local dashboard API. The generated local CLIProxy config now persists `routing.session-affinity` and `routing.session-affinity-ttl`, help/copy explains that CLIProxy prefers explicit session or thread identifiers before falling back to prompt-history hashing, and remote session-affinity management stays explicitly unsupported until upstream management APIs expose more than `routing.strategy`.
 - **2026-04-24**: **#1065** Local CLIProxy Plus is available again as an explicit opt-in backend through the community-maintained `kaitranntt/CLIProxyAPIPlus` fork. CCS keeps `original` as the default backend, no longer downgrades saved `backend: plus` configs to `original`, updates Plus release lookups to the maintained fork, and documents Plus as a targeted path for plus-only providers.
