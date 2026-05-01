@@ -140,6 +140,8 @@ interface RuntimeReasoningResolution {
 
 const CODEX_RUNTIME_REASONING_LEVELS = new Set(['minimal', 'low', 'medium', 'high', 'xhigh']);
 const CODEX_NATIVE_PASSTHROUGH_FLAGS = new Set(['--help', '-h', '--version', '-v']);
+const NATIVE_CLAUDE_EFFORT_LEVELS = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
+const NATIVE_CLAUDE_EFFORT_LEVEL_SET = new Set<string>(NATIVE_CLAUDE_EFFORT_LEVELS);
 
 function resolveCodexRuntimeConfigOverrides(
   target: ReturnType<typeof resolveTargetType>,
@@ -239,6 +241,49 @@ function exitWithRuntimeReasoningFlagError(
     console.error('    Droid exec: --reasoning-effort high');
   }
   process.exit(1);
+}
+
+function normalizeNativeClaudeEffortArgs(args: string[]): string[] {
+  const normalizedArgs: string[] = [];
+  const allowedValues = NATIVE_CLAUDE_EFFORT_LEVELS.join(', ');
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === '--effort') {
+      const rawValue = args[i + 1];
+      if (!rawValue || rawValue.startsWith('-') || !rawValue.trim()) {
+        throw new Error(`--effort requires a value: ${allowedValues}`);
+      }
+      const value = rawValue.toLowerCase();
+      if (!NATIVE_CLAUDE_EFFORT_LEVEL_SET.has(value)) {
+        throw new Error(`Invalid --effort value: ${rawValue}. Expected one of: ${allowedValues}.`);
+      }
+      normalizedArgs.push(arg, value);
+      i++;
+      continue;
+    }
+
+    if (arg.startsWith('--effort=')) {
+      const rawValue = arg.slice('--effort='.length);
+      if (!rawValue.trim()) {
+        throw new Error(`--effort requires a value: ${allowedValues}`);
+      }
+      const value = rawValue.toLowerCase();
+      if (!NATIVE_CLAUDE_EFFORT_LEVEL_SET.has(value)) {
+        throw new Error(`Invalid --effort value: ${rawValue}. Expected one of: ${allowedValues}.`);
+      }
+      normalizedArgs.push(`--effort=${value}`);
+      continue;
+    }
+
+    normalizedArgs.push(arg);
+  }
+
+  return normalizedArgs;
+}
+
+function shouldNormalizeNativeClaudeEffort(profileType: ProfileDetectionResult['type']): boolean {
+  return profileType === 'default' || profileType === 'account' || profileType === 'settings';
 }
 
 // ========== Main Execution ==========
@@ -780,6 +825,7 @@ async function main(): Promise<void> {
 
     let targetRemainingArgs = remainingArgs;
     let runtimeReasoningOverride: string | number | undefined;
+    let nativeClaudeRemainingArgs = remainingArgs;
     if (resolvedTarget === 'droid') {
       try {
         const droidRoute = routeDroidCommandArgs(remainingArgs);
@@ -838,17 +884,19 @@ async function main(): Promise<void> {
         }
         throw error;
       }
+    } else if (resolvedTarget === 'claude' && shouldNormalizeNativeClaudeEffort(profileInfo.type)) {
+      nativeClaudeRemainingArgs = normalizeNativeClaudeEffortArgs(remainingArgs);
     }
 
     // Special case: headless delegation (-p/--prompt)
     // Keep existing behavior for Claude targets only; non-claude targets must continue
     // through normal adapter dispatch logic.
     if (args.includes('-p') || args.includes('--prompt')) {
-      const shouldUseDelegation = resolvedTarget === 'claude' && profileInfo.type !== 'cliproxy';
+      const shouldUseDelegation = resolvedTarget === 'claude' && profileInfo.type === 'settings';
       if (shouldUseDelegation) {
         const { DelegationHandler } = await import('./delegation/delegation-handler');
         const handler = new DelegationHandler();
-        await handler.route(cleanArgs);
+        await handler.route([profile, ...nativeClaudeRemainingArgs]);
         return;
       }
     }
@@ -1425,8 +1473,8 @@ async function main(): Promise<void> {
       }
 
       const imageAnalysisArgs = imageAnalysisMcpReady
-        ? appendThirdPartyImageAnalysisToolArgs(remainingArgs)
-        : remainingArgs;
+        ? appendThirdPartyImageAnalysisToolArgs(nativeClaudeRemainingArgs)
+        : nativeClaudeRemainingArgs;
       const browserArgs = browserRuntimeEnv
         ? appendBrowserToolArgs(imageAnalysisArgs)
         : imageAnalysisArgs;
@@ -1527,8 +1575,16 @@ async function main(): Promise<void> {
         CCS_WEBSEARCH_SKIP: '1',
         CCS_IMAGE_ANALYSIS_SKIP: '1',
       };
-      await maybeWarnAboutResumeLaneMismatch(profileInfo.name, instancePath, remainingArgs);
-      const launchArgs = resolveNativeClaudeLaunchArgs(remainingArgs, 'account', instancePath);
+      await maybeWarnAboutResumeLaneMismatch(
+        profileInfo.name,
+        instancePath,
+        nativeClaudeRemainingArgs
+      );
+      const launchArgs = resolveNativeClaudeLaunchArgs(
+        nativeClaudeRemainingArgs,
+        'account',
+        instancePath
+      );
       execClaude(claudeCli, launchArgs, envVars);
     } else {
       // DEFAULT: No profile configured, use Claude's own defaults
@@ -1626,7 +1682,9 @@ async function main(): Promise<void> {
       }
 
       const launchArgs = resolveNativeClaudeLaunchArgs(
-        browserRuntimeEnv ? appendBrowserToolArgs(remainingArgs) : remainingArgs,
+        browserRuntimeEnv
+          ? appendBrowserToolArgs(nativeClaudeRemainingArgs)
+          : nativeClaudeRemainingArgs,
         'default',
         envVars.CLAUDE_CONFIG_DIR
       );
