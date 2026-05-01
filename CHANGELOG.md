@@ -1,3 +1,74 @@
+## [7.76.0](https://github.com/kaitranntt/ccs/compare/v7.75.0...v7.76.0) (2026-05-01)
+
+### Features
+
+* add native Claude effort override ([e5fe86f](https://github.com/kaitranntt/ccs/commit/e5fe86f520f313632a8627ca70f551dd5bcb665b))
+* **auth,commands:** instrument oauth handler, profile registry, and doctor pipeline ([bf87594](https://github.com/kaitranntt/ccs/commit/bf8759460df0828ddec1138866dae3ef86ff2a42)), closes [#1141](https://github.com/kaitranntt/ccs/issues/1141) [#1138](https://github.com/kaitranntt/ccs/issues/1138)
+* **logging:** add structured contract, ALS context, stage helpers, and redaction coverage ([7a22e89](https://github.com/kaitranntt/ccs/commit/7a22e89046ecb4af79291ecd3b4c885275ab5787)), closes [#1141](https://github.com/kaitranntt/ccs/issues/1141) [#1138](https://github.com/kaitranntt/ccs/issues/1138)
+* **providers:** instrument copilot, cursor, and glmt across daemons and executors ([1ff4329](https://github.com/kaitranntt/ccs/commit/1ff4329ee4b58e68648cd1f331f3dd64d4eb10df)), closes [#1141](https://github.com/kaitranntt/ccs/issues/1141) [#1138](https://github.com/kaitranntt/ccs/issues/1138)
+* **proxy,cli:** emit lifecycle stages with x-ccs-request-id propagation ([4700727](https://github.com/kaitranntt/ccs/commit/47007279156545f81c615824065a0094aafa07d0)), closes [#1141](https://github.com/kaitranntt/ccs/issues/1141) [#1138](https://github.com/kaitranntt/ccs/issues/1138)
+* **targets,management:** instrument adapter spawn lifecycle and instance manager ([8afee34](https://github.com/kaitranntt/ccs/commit/8afee344e1b1e8f45d029affc011e229e069b949)), closes [#1141](https://github.com/kaitranntt/ccs/issues/1141) [#1138](https://github.com/kaitranntt/ccs/issues/1138)
+* **ui:** align logs page visual language with dashboard markers ([e04598e](https://github.com/kaitranntt/ccs/commit/e04598eef777746d1898d6ddc22eb527c9badcd3)), closes [#1138](https://github.com/kaitranntt/ccs/issues/1138) [#1141](https://github.com/kaitranntt/ccs/issues/1141) [#1142](https://github.com/kaitranntt/ccs/issues/1142)
+* **ui:** hide dashboard self-polling internals via default filter ([4a77251](https://github.com/kaitranntt/ccs/commit/4a772510215a0e8081853eee6c32d1cb8e47ec9b)), closes [#1138](https://github.com/kaitranntt/ccs/issues/1138) [#1141](https://github.com/kaitranntt/ccs/issues/1141) [#1142](https://github.com/kaitranntt/ccs/issues/1142)
+* **ui:** redesign dashboard logs page with virtualized 3-pane shell ([ae3240d](https://github.com/kaitranntt/ccs/commit/ae3240d4c8ae540cfcd354a662eaf0a7979a1ded)), closes [#1141](https://github.com/kaitranntt/ccs/issues/1141) [#1142](https://github.com/kaitranntt/ccs/issues/1142) [#1138](https://github.com/kaitranntt/ccs/issues/1138) [#1141](https://github.com/kaitranntt/ccs/issues/1141)
+* **ui:** show split Claude quota bars ([a8b686d](https://github.com/kaitranntt/ccs/commit/a8b686d643f38bf11efb83f1753442783ebed2c9))
+
+### Bug Fixes
+
+* address red-team review findings — cache aliasing, jitter cap, cause shadowing ([9bb1bdb](https://github.com/kaitranntt/ccs/commit/9bb1bdbad960140db177e1cec6a30ea56b97263e))
+* **ci:** align release sync with protected dev checks ([0381fa9](https://github.com/kaitranntt/ccs/commit/0381fa9b52cc6ffb49c91b528de0f9ed7c182b9f))
+* **ci:** align stable release runner ([4458774](https://github.com/kaitranntt/ccs/commit/4458774d5c0413b70001402100c366f6fc87ade2))
+* **ci:** invoke semantic-release through bun x ([63a10e0](https://github.com/kaitranntt/ccs/commit/63a10e0e8d7f62e209828e41194ad16cf86fbc5c))
+* **cliproxy:** clear stale cleanup timer and fix session/tunnel edge cases ([20c2005](https://github.com/kaitranntt/ccs/commit/20c2005df965e34f68af36734008ee043857db28))
+* **cliproxy:** correct relative import paths in colocated tests ([273214d](https://github.com/kaitranntt/ccs/commit/273214d1665f367a03490ec600cc52dc70058ca1))
+* **cliproxy:** exclude colocated tests from tsconfig and eslint ([c3c8cb7](https://github.com/kaitranntt/ccs/commit/c3c8cb7a8276a001c7d9603fade5484f94d5fad3))
+* **cliproxy:** fix base-config-loader __dirname path and stale mock.module paths ([31dc186](https://github.com/kaitranntt/ccs/commit/31dc18657ce7140a7ef02c6219e61b859c110039))
+* **cliproxy:** handle all invalid prefixes and reverse-order collisions ([6633bf4](https://github.com/kaitranntt/ccs/commit/6633bf456bcb9095a59e05e08741810af6030f39))
+* **cliproxy:** sanitize invalid tool name chars and disambiguate collisions ([218d0cf](https://github.com/kaitranntt/ccs/commit/218d0cf6c63e2d4a5e0b56a5ae061de4b6e861dc))
+* **cliproxy:** update remaining stale imports in non-colocated tests ([2c817fa](https://github.com/kaitranntt/ccs/commit/2c817fae484b762a62a79737efb4c84a91c87988))
+* **config-facade:** mtime-based staleness detection for cache ([1e5580a](https://github.com/kaitranntt/ccs/commit/1e5580a30ae4c2eef64975b688b13440cb2d3b07))
+* **proxy:** avoid leaking tool_result image URLs ([83c16e2](https://github.com/kaitranntt/ccs/commit/83c16e216a2be549306434a1afa317844337b607))
+* **proxy:** shape direct OpenAI reasoning chat payloads ([d9ace60](https://github.com/kaitranntt/ccs/commit/d9ace607e58caafd71224e02ed9f297b7dcacecb))
+* **proxy:** stringify tool_result images for OpenAI upstreams ([f6bb31c](https://github.com/kaitranntt/ccs/commit/f6bb31c95657d219373ec09009e0f7bed991c439))
+* remove raw write re-exports from facade (cache bypass) ([6d266fc](https://github.com/kaitranntt/ccs/commit/6d266fc7e89d7e7ddee3ec4235152e9a9bcaba0d)), closes [#1150](https://github.com/kaitranntt/ccs/issues/1150)
+* round 2 red-team fixes — onRetry safety, validation, barrel ([18e865e](https://github.com/kaitranntt/ccs/commit/18e865ea364de0f7c811d447bacaf644d98f10d2))
+* round 3 red-team — test false-positive, dead code, ([b8ed36e](https://github.com/kaitranntt/ccs/commit/b8ed36e3705f9e6795a99864610727026be5fc52))
+* **ui:** align logs row and detail panel via shared accessors ([d5b14be](https://github.com/kaitranntt/ccs/commit/d5b14bec1c48b2f97c2fbadcc39124c5c54ddec8)), closes [#1138](https://github.com/kaitranntt/ccs/issues/1138) [#1141](https://github.com/kaitranntt/ccs/issues/1141) [#1142](https://github.com/kaitranntt/ccs/issues/1142)
+* **ui:** coalesce leaves only when truly adjacent in original stream ([871b682](https://github.com/kaitranntt/ccs/commit/871b6826f786b08f89caa86f7aff439594c9fdf7)), closes [#1138](https://github.com/kaitranntt/ccs/issues/1138) [#1151](https://github.com/kaitranntt/ccs/issues/1151)
+* **ui:** drop dedicated stage column; render stage chip inline in message ([7f086c8](https://github.com/kaitranntt/ccs/commit/7f086c8685cf1ec3f4dd44bedc96fbd5c6928164))
+* **ui:** import MouseEvent type explicitly in logs-row ([6f1396c](https://github.com/kaitranntt/ccs/commit/6f1396cf1e99dfac460040b0a6a3f5d7f72bec5d)), closes [#1138](https://github.com/kaitranntt/ccs/issues/1138) [#1151](https://github.com/kaitranntt/ccs/issues/1151)
+* **ui:** improve split quota bar readability ([476c6d8](https://github.com/kaitranntt/ccs/commit/476c6d827fbdbca8d8aa8535c9b6c894bb84dd1c))
+* **ui:** include message in coalesce key so distinct entries stay visible ([a465e3f](https://github.com/kaitranntt/ccs/commit/a465e3fec184464042c8ae8d5e16e9045ef56e52)), closes [#1138](https://github.com/kaitranntt/ccs/issues/1138) [#1151](https://github.com/kaitranntt/ccs/issues/1151)
+* **ui:** include source in trace child coalesce key ([75cdc02](https://github.com/kaitranntt/ccs/commit/75cdc02c1f4a9881b1d64e8d6608da15d74d6378)), closes [#1138](https://github.com/kaitranntt/ccs/issues/1138) [#1151](https://github.com/kaitranntt/ccs/issues/1151)
+* **ui:** include stage in leaf coalesce key ([e7058b6](https://github.com/kaitranntt/ccs/commit/e7058b6b6da82a1bc54fa43f437e53748ba78c20)), closes [#1138](https://github.com/kaitranntt/ccs/issues/1138) [#1151](https://github.com/kaitranntt/ccs/issues/1151)
+* **ui:** make logs row keyboard-accessible without nested interactive markup ([b7cfbd1](https://github.com/kaitranntt/ccs/commit/b7cfbd14e2c7057270f3e8b482c73208fcb1ca47)), closes [#1138](https://github.com/kaitranntt/ccs/issues/1138) [#1151](https://github.com/kaitranntt/ccs/issues/1151)
+* **ui:** make trace chevron actually collapse auto-expanded traces ([04ddc33](https://github.com/kaitranntt/ccs/commit/04ddc33518d43302e650283a3d7be43cf616dd9d)), closes [#1138](https://github.com/kaitranntt/ccs/issues/1138) [#1151](https://github.com/kaitranntt/ccs/issues/1151)
+* **ui:** only show "Copied" feedback when clipboard write succeeds ([39ec84a](https://github.com/kaitranntt/ccs/commit/39ec84a8a9a78489565c27e1e599d8383291400a)), closes [#1138](https://github.com/kaitranntt/ccs/issues/1138) [#1151](https://github.com/kaitranntt/ccs/issues/1151)
+* **ui:** remove intra-trace coalescing — preserve every stage for inspection ([2ddc5d5](https://github.com/kaitranntt/ccs/commit/2ddc5d5afd4cdb2e6a063180f47469a5298460fc)), closes [#1138](https://github.com/kaitranntt/ccs/issues/1138) [#1151](https://github.com/kaitranntt/ccs/issues/1151)
+* **ui:** reserve leading chevron column so trace and leaf rows align ([0dfb7b8](https://github.com/kaitranntt/ccs/commit/0dfb7b85833aec6b26e0ae02452ecc19a9494629)), closes [#1138](https://github.com/kaitranntt/ccs/issues/1138)
+* **ui:** reserve stage column on every row for consistent alignment ([40cc62a](https://github.com/kaitranntt/ccs/commit/40cc62a67f03a86f163d679ae15ef0df78e6e248)), closes [#1138](https://github.com/kaitranntt/ccs/issues/1138) [#1151](https://github.com/kaitranntt/ccs/issues/1151)
+
+### Documentation
+
+* **config-facade:** clarify cache coherence contract ([2290a1d](https://github.com/kaitranntt/ccs/commit/2290a1dc5a575c0875524571c64ee24968851855)), closes [#1150](https://github.com/kaitranntt/ccs/issues/1150)
+* **logging:** add structured contract reference and bump Node engines to 18+ ([c0c856a](https://github.com/kaitranntt/ccs/commit/c0c856af988277d2d79b869e1be98c5261d8c7c0)), closes [#1141](https://github.com/kaitranntt/ccs/issues/1141) [#1138](https://github.com/kaitranntt/ccs/issues/1138)
+
+### Code Refactoring
+
+* **cliproxy:** flatten module structure and colocate tests ([#1135](https://github.com/kaitranntt/ccs/issues/1135)) ([1c72b4b](https://github.com/kaitranntt/ccs/commit/1c72b4b8d5bf783bc3c6306d687065ac8eac9922))
+* **config:** add config-loader-facade with memoization ([1e9a7f3](https://github.com/kaitranntt/ccs/commit/1e9a7f3fa01e40ab569932e66ce37f8653bf8c97))
+* **config:** reorganize unified-config-types into schemas directory ([51df0ee](https://github.com/kaitranntt/ccs/commit/51df0ee55b52ecc858544ec8d8ff7e7932db0f11))
+* **errors:** add RetryableError and retry-strategy utility ([d089ab0](https://github.com/kaitranntt/ccs/commit/d089ab06c2c007e4a46173efcac9ea9ff23f0bb5))
+* extract plugin path normalizer ([3330229](https://github.com/kaitranntt/ccs/commit/333022968689a5584347c1fa66cdf18ee0a3a7b4))
+
+### Tests
+
+* include colocated cliproxy tests in buckets ([33a1553](https://github.com/kaitranntt/ccs/commit/33a1553431afdcca1a5c1fca54aff8da8d8bb05e))
+* **logging:** add cross-stage requestId correlation integration test in slow bucket ([c0a019b](https://github.com/kaitranntt/ccs/commit/c0a019bf7e83287dddfb333633941d3142541778)), closes [#1141](https://github.com/kaitranntt/ccs/issues/1141) [#1138](https://github.com/kaitranntt/ccs/issues/1138)
+* **proxy:** assert tool_result image URLs stay redacted ([2c0f9c4](https://github.com/kaitranntt/ccs/commit/2c0f9c41ff1fff94c35e93535b9a8343ef7ce953))
+* **ui:** cover logs page redesign with virtuoso-mocked render ([a10e570](https://github.com/kaitranntt/ccs/commit/a10e570310c2655553cd62dae1bf6d84478f8090)), closes [#1142](https://github.com/kaitranntt/ccs/issues/1142) [#1138](https://github.com/kaitranntt/ccs/issues/1138)
+* **ui:** cover trace-coalesce, leaf-coalesce, and stage-hint helpers ([6ada2b2](https://github.com/kaitranntt/ccs/commit/6ada2b243e339067071fe1c00d41a57581c3e403)), closes [#1138](https://github.com/kaitranntt/ccs/issues/1138) [#1151](https://github.com/kaitranntt/ccs/issues/1151)
+
 ## [7.75.0](https://github.com/kaitranntt/ccs/compare/v7.74.0...v7.75.0) (2026-04-29)
 
 ### Features
