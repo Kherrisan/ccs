@@ -14,6 +14,9 @@ import { CopilotConfig, DEFAULT_COPILOT_CONFIG } from '../config/unified-config-
 import { loadOrCreateUnifiedConfig } from '../config/unified-config-loader';
 import { getCopilotDir, getCopilotApiBinPath } from './copilot-package-manager';
 import { verifyProcessOwnership } from '../cursor/daemon-process-ownership';
+import { createLogger } from '../services/logging';
+
+const logger = createLogger('copilot:daemon');
 
 const DAEMON_HEALTH_MARKER = 'server running';
 const MIN_PORT = 1;
@@ -166,6 +169,10 @@ export async function startDaemon(
 
   // Check if already running
   if (await isDaemonRunning(config.port)) {
+    logger.stage('dispatch', 'copilot.daemon.already_running', 'Copilot daemon already running', {
+      provider: 'copilot',
+      port: config.port,
+    });
     return { success: true, pid: getPidFromFile() ?? undefined };
   }
 
@@ -185,6 +192,13 @@ export async function startDaemon(
     }
   }
 
+  const startedAt = Date.now();
+  logger.stage('dispatch', 'copilot.daemon.spawn', 'Spawning Copilot daemon', {
+    provider: 'copilot',
+    port: config.port,
+    accountType: config.account_type,
+  });
+
   return new Promise((resolve) => {
     let proc: ChildProcess;
     let resolved = false;
@@ -198,6 +212,27 @@ export async function startDaemon(
       }
       if (!result.success) {
         removePidFile();
+        logger.stage(
+          'cleanup',
+          'copilot.daemon.start_failed',
+          'Copilot daemon failed to start',
+          { provider: 'copilot', port: config.port },
+          {
+            level: 'error',
+            latencyMs: Date.now() - startedAt,
+            error: result.error
+              ? { name: 'CopilotDaemonStartError', message: result.error }
+              : undefined,
+          }
+        );
+      } else {
+        logger.stage(
+          'upstream',
+          'copilot.daemon.ready',
+          'Copilot daemon is ready',
+          { provider: 'copilot', port: config.port, pid: result.pid },
+          { latencyMs: Date.now() - startedAt }
+        );
       }
       resolve(result);
     };
@@ -326,6 +361,10 @@ export async function stopDaemon(): Promise<{ success: boolean; error?: string }
     }
 
     // Send SIGTERM to the process
+    logger.stage('cleanup', 'copilot.daemon.stop', 'Sending SIGTERM to Copilot daemon', {
+      provider: 'copilot',
+      pid,
+    });
     process.kill(pid, 'SIGTERM');
 
     // Wait for process to exit (up to 5 seconds)

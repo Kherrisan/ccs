@@ -9,6 +9,7 @@ import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { Sparkles, Zap } from 'lucide-react';
 import { TabsContent } from '@/components/ui/tabs';
+import { useTranslation } from 'react-i18next';
 import type { CopilotModel } from '@/hooks/use-copilot';
 import { FREE_PRESETS, PAID_PRESETS } from './presets';
 import { FlexibleModelSelector } from './model-selector';
@@ -70,6 +71,7 @@ export function ModelConfigTab({
   onUpdateSonnetModel,
   onUpdateHaikuModel,
 }: ModelConfigTabProps) {
+  const { t } = useTranslation();
   const mappedModelLimits = [
     { label: 'Default', id: currentModel },
     { label: 'Opus', id: opusModel || currentModel },
@@ -94,10 +96,10 @@ export function ModelConfigTab({
           <div>
             <h3 className="text-sm font-medium mb-2 flex items-center gap-2">
               <Sparkles className="w-4 h-4" />
-              Presets
+              {t('providerEditor.presets')}
             </h3>
             <p className="text-xs text-muted-foreground mb-3">
-              Apply pre-configured model mappings
+              {t('copilotConfigForm.modelMapping')}
             </p>
 
             {/* Free Tier Presets */}
@@ -107,9 +109,12 @@ export function ModelConfigTab({
                   variant="outline"
                   className="text-[10px] bg-green-100 text-green-700 border-green-200"
                 >
+                  {/* TODO i18n: missing key for 'Free Tier' */}
                   Free Tier
                 </Badge>
-                <span className="text-[10px] text-muted-foreground">No premium usage count</span>
+                <span className="text-[10px] text-muted-foreground">
+                  {t('copilotConfigForm.noPremiumUsage')}
+                </span>
               </div>
               <div className="flex flex-wrap gap-2">
                 {FREE_PRESETS.map((preset) => (
@@ -135,9 +140,11 @@ export function ModelConfigTab({
                   variant="outline"
                   className="text-[10px] bg-blue-100 text-blue-700 border-blue-200"
                 >
+                  {/* TODO i18n: missing key for 'Pro+ Required' */}
                   Pro+ Required
                 </Badge>
                 <span className="text-[10px] text-muted-foreground">
+                  {/* TODO i18n: missing key for 'Uses premium request quota' */}
                   Uses premium request quota
                 </span>
               </div>
@@ -163,13 +170,15 @@ export function ModelConfigTab({
 
           {/* Model Mapping */}
           <div>
-            <h3 className="text-sm font-medium mb-2">Model Mapping</h3>
+            <h3 className="text-sm font-medium mb-2">{t('copilotConfigForm.modelMapping')}</h3>
             <p className="text-xs text-muted-foreground mb-4">
+              {/* TODO i18n: missing key for model mapping description */}
               Configure which models to use for each tier
             </p>
             <div className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-900 dark:text-amber-200">
-              <p className="font-medium">GitHub Copilot controls prompt/context limits upstream.</p>
+              <p className="font-medium">{t('copilotConfigForm.githubCopilotControls')}</p>
               <p className="mt-1">
+                {/* TODO i18n: missing key for 'CCS can switch Copilot models...' */}
                 CCS can switch Copilot models, but it cannot increase the provider&apos;s max prompt
                 or context window.
               </p>
@@ -183,6 +192,7 @@ export function ModelConfigTab({
                 </div>
               ) : (
                 <p className="mt-2 text-[11px] font-mono">
+                  {/* TODO i18n: missing key for 'Start the daemon to inspect...' */}
                   Start the daemon to inspect live model limits from GitHub Copilot metadata.
                 </p>
               )}

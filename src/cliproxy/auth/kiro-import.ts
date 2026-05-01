@@ -8,7 +8,7 @@
 import { spawn } from 'child_process';
 import { info, ok, fail } from '../../utils/ui';
 import { ensureCLIProxyBinary } from '../binary-manager';
-import { generateConfig } from '../config-generator';
+import { generateConfig } from '../config/config-generator';
 import { getProviderTokenDir } from './token-manager';
 
 export interface KiroImportResult {
@@ -29,7 +29,7 @@ export async function tryKiroImport(tokenDir: string, verbose = false): Promise<
 
   try {
     log('Ensuring CLIProxy binary is available...');
-    const binaryPath = await ensureCLIProxyBinary(verbose);
+    const binaryPath = await ensureCLIProxyBinary(verbose, { skipAutoUpdate: true });
     const configPath = generateConfig('kiro');
 
     log(`Binary: ${binaryPath}`);

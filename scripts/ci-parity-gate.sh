@@ -15,6 +15,17 @@ if [[ ! -f AGENTS.md ]]; then
   exit 1
 fi
 
+TRACKED_PLANS="$(git ls-files -- plans)"
+if [[ -n "$TRACKED_PLANS" ]]; then
+  echo "[X] Tracked files found under plans/."
+  echo "    plans/ is workspace-only and must stay ignored."
+  while IFS= read -r tracked_path; do
+    echo "    $tracked_path"
+  done <<< "$TRACKED_PLANS"
+  echo "    Remove them from the index with: git rm -r --cached plans"
+  exit 1
+fi
+
 CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 if [[ -z "$CURRENT_BRANCH" || "$CURRENT_BRANCH" == "HEAD" ]]; then
   echo "[i] Detached HEAD detected. Skipping pre-push CI parity gate."
@@ -34,7 +45,9 @@ echo "[i] Pre-push CI parity gate"
 echo "    branch: $CURRENT_BRANCH"
 echo "    base:   $BASE_BRANCH"
 
-git fetch origin "$BASE_BRANCH" --quiet || true
+if git ls-remote --exit-code --heads origin "$BASE_BRANCH" >/dev/null 2>&1; then
+  git fetch origin "$BASE_BRANCH" --quiet
+fi
 if git show-ref --verify --quiet "refs/remotes/origin/$BASE_BRANCH"; then
   if ! git merge-base --is-ancestor "origin/$BASE_BRANCH" HEAD; then
     echo "[X] Branch '$CURRENT_BRANCH' is behind origin/$BASE_BRANCH."
@@ -44,8 +57,14 @@ if git show-ref --verify --quiet "refs/remotes/origin/$BASE_BRANCH"; then
   fi
 fi
 
-echo "[i] Running CI-equivalent local checks..."
+echo "[i] Running CI-parity local checks..."
+# `set -euo pipefail` above makes every step fail fast. Keep these commands
+# explicit so parity drift is visible when CI changes.
+bun run typecheck
+bun run lint
+bun run format:check
 bun run build:all
-bun run validate
+bun run test:all
+CCS_E2E_SKIP_BUILD=1 bun run test:e2e
 
 echo "[OK] CI parity gate passed."

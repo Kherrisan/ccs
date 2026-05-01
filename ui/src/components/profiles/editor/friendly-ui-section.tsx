@@ -20,6 +20,7 @@ import { isOpenRouterProfile, extractTierMapping, applyTierMapping } from './uti
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import i18n from '@/lib/i18n';
+import { useTranslation } from 'react-i18next';
 import type { Settings, SettingsResponse } from './types';
 import type { CliTarget } from '@/lib/api-client';
 
@@ -50,6 +51,7 @@ export function FriendlyUISection({
   onAddEnvVar,
   onEnvBulkChange,
 }: FriendlyUISectionProps) {
+  const { t } = useTranslation();
   const isOpenRouter = isOpenRouterProfile(currentSettings);
   const settingsEnv = currentSettings?.env;
 
@@ -124,11 +126,13 @@ export function FriendlyUISection({
       <Tabs defaultValue="env" className="h-full w-full min-w-0 flex flex-col">
         <div className="px-4 pt-4 shrink-0">
           <TabsList className="w-full">
+            {/* TODO i18n: missing key for "Configuration" tab label */}
             <TabsTrigger value="env" className="flex-1">
-              {isOpenRouter ? 'Configuration' : 'Environment Variables'}
+              {isOpenRouter ? 'Configuration' : t('settingsDialog.envTab')}
             </TabsTrigger>
+            {/* TODO i18n: missing key for "Info & Usage" tab label */}
             <TabsTrigger value="info" className="flex-1">
-              Info & Usage
+              Info &amp; Usage
             </TabsTrigger>
           </TabsList>
         </div>
@@ -145,6 +149,7 @@ export function FriendlyUISection({
                   <div className="h-full overflow-y-auto overflow-x-hidden p-4 space-y-6">
                     {/* Model Selection - Primary Focus */}
                     <div className="space-y-3">
+                      {/* TODO i18n: missing key for "Model Selection" label */}
                       <Label className="text-sm font-medium">Model Selection</Label>
                       <OpenRouterModelPicker
                         value={currentEnv.ANTHROPIC_MODEL}
@@ -162,7 +167,7 @@ export function FriendlyUISection({
 
                     {/* API Key */}
                     <div className="space-y-2">
-                      <Label className="text-sm font-medium">API Key</Label>
+                      <Label className="text-sm font-medium">{t('profileDialog.apiKey')}</Label>
                       <MaskedInput
                         value={currentEnv.ANTHROPIC_AUTH_TOKEN || ''}
                         onChange={(e) => onEnvValueChange('ANTHROPIC_AUTH_TOKEN', e.target.value)}
@@ -193,6 +198,7 @@ export function FriendlyUISection({
                             )}
                           />
                           <Settings2 className="h-4 w-4" />
+                          {/* TODO i18n: missing key for "Additional Variables" label */}
                           <span>Additional Variables</span>
                           <span className="text-xs font-normal opacity-70">
                             ({unmanagedEnvVars.length})
@@ -220,18 +226,18 @@ export function FriendlyUISection({
                 {/* Fixed Add Variable Input at Bottom */}
                 <div className="p-4 border-t bg-background shrink-0">
                   <Label className="text-xs font-medium text-muted-foreground">
-                    Add Environment Variable
+                    {t('envEditor.addVariable')}
                   </Label>
                   <div className="flex gap-2 mt-2">
                     <Input
-                      placeholder="VARIABLE_NAME"
+                      placeholder={t('envEditor.keyPlaceholder')}
                       value={newEnvKey}
                       onChange={(e) => onNewEnvKeyChange(e.target.value.toUpperCase())}
                       className="font-mono text-sm h-8 w-2/5"
                       onKeyDown={(e) => e.key === 'Enter' && newEnvKey.trim() && onAddEnvVar()}
                     />
                     <Input
-                      placeholder="value"
+                      placeholder={t('envEditor.valuePlaceholder')}
                       value={newEnvValue}
                       onChange={(e) => onNewEnvValueChange(e.target.value)}
                       className="font-mono text-sm h-8 flex-1"

@@ -184,6 +184,11 @@ describe('DelegationHandler', () => {
       expect(options.extraArgs).not.toContain('10');
       expect(options.extraArgs).toContain('--unknown');
     });
+
+    it('passes Claude effort override through to extraArgs', () => {
+      const options = handler._extractOptions(['glm', '--effort', 'low', '-p', 'test']);
+      expect(options.extraArgs).toEqual(['--effort', 'low']);
+    });
   });
 
   describe('_extractProfile', () => {
@@ -200,6 +205,16 @@ describe('DelegationHandler', () => {
     it('skips flag values correctly', () => {
       const profile = handler._extractProfile(['-p', 'test', 'kimi']);
       expect(profile).toBe('kimi');
+    });
+
+    it('skips effort flag values before profile names', () => {
+      const profile = handler._extractProfile(['--effort', 'low', 'glm', '-p', 'test']);
+      expect(profile).toBe('glm');
+    });
+
+    it('keeps leading profile names before effort flags', () => {
+      const profile = handler._extractProfile(['glm', '--effort', 'low', '-p', 'test']);
+      expect(profile).toBe('glm');
     });
   });
 });

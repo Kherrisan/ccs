@@ -29,6 +29,7 @@ import { Loader2, ExternalLink, User, Download, Copy, Check, ShieldAlert } from 
 import { useKiroImport } from '@/hooks/use-cliproxy';
 import { useCliproxyAuthFlow } from '@/hooks/use-cliproxy-auth-flow';
 import { applyDefaultPreset } from '@/lib/preset-utils';
+import type { CliproxyProviderCatalog } from '@/lib/api-client';
 import { AccountSafetyWarningCard } from '@/components/account/account-safety-warning-card';
 import { AntigravityResponsibilityChecklist } from '@/components/account/antigravity-responsibility-checklist';
 import {
@@ -39,12 +40,15 @@ import {
 } from '@/components/account/antigravity-responsibility-constants';
 import {
   DEFAULT_KIRO_AUTH_METHOD,
+  DEFAULT_KIRO_IDC_FLOW,
+  getKiroEffectiveFlowType,
+  getKiroEffectiveStartEndpoint,
   getKiroAuthMethodOption,
+  isKiroSocialAuthMethod,
   isDeviceCodeProvider,
-  isNicknameRequiredProvider,
   KIRO_AUTH_METHOD_OPTIONS,
 } from '@/lib/provider-config';
-import type { KiroAuthMethod } from '@/lib/provider-config';
+import type { KiroAuthMethod, KiroIDCFlow } from '@/lib/provider-config';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
@@ -53,6 +57,7 @@ interface AddAccountDialogProps {
   onClose: () => void;
   provider: string;
   displayName: string;
+  catalog?: CliproxyProviderCatalog;
   /** Whether this is the first account being added (shows different toast message) */
   isFirstAccount?: boolean;
 }
@@ -61,11 +66,17 @@ function normalizeRiskPhrase(value: string): string {
   return value.trim().replace(/\s+/g, ' ').toUpperCase();
 }
 
+interface PowerUserModeSyncOptions {
+  pendingMessage?: string | null;
+  disabledMessage?: string | null;
+}
+
 export function AddAccountDialog({
   open,
   onClose,
   provider,
   displayName,
+  catalog,
   isFirstAccount = false,
 }: AddAccountDialogProps) {
   const [nickname, setNickname] = useState('');
@@ -74,36 +85,104 @@ export function AddAccountDialog({
   const [localError, setLocalError] = useState<string | null>(null);
   const [riskAcknowledgementText, setRiskAcknowledgementText] = useState('');
   const [agyRiskChecklist, setAgyRiskChecklist] = useState(DEFAULT_ANTIGRAVITY_RISK_CHECKLIST);
-  const [agyAckBypassEnabled, setAgyAckBypassEnabled] = useState(false);
-  const [agyAckBypassLoading, setAgyAckBypassLoading] = useState(false);
+  const [powerUserModeEnabled, setPowerUserModeEnabled] = useState(false);
+  const [powerUserModeLoading, setPowerUserModeLoading] = useState(false);
   const [kiroAuthMethod, setKiroAuthMethod] = useState<KiroAuthMethod>(DEFAULT_KIRO_AUTH_METHOD);
+  const [kiroIDCStartUrl, setKiroIDCStartUrl] = useState('');
+  const [kiroIDCRegion, setKiroIDCRegion] = useState('');
+  const [kiroIDCFlow, setKiroIDCFlow] = useState<KiroIDCFlow>(DEFAULT_KIRO_IDC_FLOW);
+  const [gitlabAuthMode, setGitlabAuthMode] = useState<'oauth' | 'pat'>('oauth');
+  const [gitlabBaseUrl, setGitlabBaseUrl] = useState('');
+  const [gitlabPersonalAccessToken, setGitlabPersonalAccessToken] = useState('');
   const { t } = useTranslation();
   const wasAuthenticatingRef = useRef(false);
+  const powerUserModeRequestIdRef = useRef(0);
+  const powerUserModeLoadErrorShownRef = useRef(false);
   const authFlow = useCliproxyAuthFlow();
   const kiroImportMutation = useKiroImport();
 
   const isKiro = provider === 'kiro';
-  const requiresSafetyAcknowledgement = provider === 'gemini';
-  const requiresAgyResponsibilityFlow = provider === 'agy' && !agyAckBypassEnabled;
-  const isAgyBypassStatePending = provider === 'agy' && agyAckBypassLoading;
+  const isGitLab = provider === 'gitlab';
+  const supportsPowerUserMode = provider === 'agy' || provider === 'gemini';
+  const requiresGeminiSafetyAcknowledgement = provider === 'gemini' && !powerUserModeEnabled;
+  const requiresAgyResponsibilityFlow = provider === 'agy' && !powerUserModeEnabled;
+  const isPowerUserModePending = supportsPowerUserMode && powerUserModeLoading;
   const isAgyRiskChecklistComplete = isAntigravityRiskChecklistComplete(agyRiskChecklist);
   const isGeminiRiskAcknowledged = normalizeRiskPhrase(riskAcknowledgementText) === RISK_ACK_PHRASE;
   const defaultDeviceCode = isDeviceCodeProvider(provider);
-  const requiresNickname = isNicknameRequiredProvider(provider);
   const kiroMethodOption = getKiroAuthMethodOption(kiroAuthMethod);
-  const isDeviceCode = isKiro ? kiroMethodOption.flowType === 'device_code' : defaultDeviceCode;
+  const isKiroIdc = isKiro && kiroAuthMethod === 'idc';
+  const isKiroSocial = isKiro && isKiroSocialAuthMethod(kiroAuthMethod);
+  const selectedKiroFlowType = isKiro
+    ? getKiroEffectiveFlowType(kiroAuthMethod, kiroIDCFlow)
+    : undefined;
+  const selectedKiroStartEndpoint = isKiro
+    ? getKiroEffectiveStartEndpoint(kiroAuthMethod)
+    : undefined;
+  const isDeviceCode = isKiro ? selectedKiroFlowType === 'device_code' : defaultDeviceCode;
   const isPending = authFlow.isAuthenticating || kiroImportMutation.isPending;
   const nicknameTrimmed = nickname.trim();
+  const kiroIDCStartUrlTrimmed = kiroIDCStartUrl.trim();
+  const kiroIDCRegionTrimmed = kiroIDCRegion.trim();
+  const gitlabBaseUrlTrimmed = gitlabBaseUrl.trim();
+  const gitlabPersonalAccessTokenTrimmed = gitlabPersonalAccessToken.trim();
   const errorMessage = localError || authFlow.error;
 
-  const fetchAgyBypassState = useCallback(async (): Promise<boolean> => {
+  const fetchPowerUserModeState = useCallback(async (): Promise<boolean> => {
     const response = await fetch('/api/settings/auth/antigravity-risk');
     if (!response.ok) {
-      throw new Error('Failed to load Antigravity power user setting');
+      throw new Error('Failed to load power user mode setting');
     }
     const data = (await response.json()) as { antigravityAckBypass?: boolean };
     return data.antigravityAckBypass === true;
   }, []);
+
+  const syncPowerUserModeState = useCallback(
+    async ({ pendingMessage = null, disabledMessage = null }: PowerUserModeSyncOptions = {}) => {
+      const requestId = ++powerUserModeRequestIdRef.current;
+      setPowerUserModeLoading(true);
+
+      if (pendingMessage !== null) {
+        setLocalError(pendingMessage);
+      }
+
+      try {
+        const enabled = await fetchPowerUserModeState();
+        if (powerUserModeRequestIdRef.current !== requestId) {
+          return enabled;
+        }
+
+        setPowerUserModeEnabled(enabled);
+
+        if (disabledMessage) {
+          setLocalError(enabled ? null : disabledMessage);
+        } else if (pendingMessage !== null) {
+          setLocalError(null);
+        }
+
+        return enabled;
+      } catch {
+        if (powerUserModeRequestIdRef.current !== requestId) {
+          return false;
+        }
+
+        setPowerUserModeEnabled(false);
+        setLocalError(disabledMessage ?? t('addAccountDialog.powerUserLoadFailed'));
+
+        if (!powerUserModeLoadErrorShownRef.current) {
+          powerUserModeLoadErrorShownRef.current = true;
+          toast.error(t('addAccountDialog.powerUserLoadFailed'));
+        }
+
+        return false;
+      } finally {
+        if (powerUserModeRequestIdRef.current === requestId) {
+          setPowerUserModeLoading(false);
+        }
+      }
+    },
+    [fetchPowerUserModeState, t]
+  );
 
   const resetAndClose = () => {
     setNickname('');
@@ -112,9 +191,17 @@ export function AddAccountDialog({
     setLocalError(null);
     setRiskAcknowledgementText('');
     setAgyRiskChecklist(DEFAULT_ANTIGRAVITY_RISK_CHECKLIST);
-    setAgyAckBypassEnabled(false);
-    setAgyAckBypassLoading(false);
+    setPowerUserModeEnabled(false);
+    setPowerUserModeLoading(false);
     setKiroAuthMethod(DEFAULT_KIRO_AUTH_METHOD);
+    setKiroIDCStartUrl('');
+    setKiroIDCRegion('');
+    setKiroIDCFlow(DEFAULT_KIRO_IDC_FLOW);
+    setGitlabAuthMode('oauth');
+    setGitlabBaseUrl('');
+    setGitlabPersonalAccessToken('');
+    powerUserModeRequestIdRef.current += 1;
+    powerUserModeLoadErrorShownRef.current = false;
     wasAuthenticatingRef.current = false;
     onClose();
   };
@@ -128,41 +215,24 @@ export function AddAccountDialog({
   }, [provider, open]);
 
   useEffect(() => {
-    let cancelled = false;
+    return () => {
+      powerUserModeRequestIdRef.current += 1;
+    };
+  }, []);
 
-    if (!open || provider !== 'agy') {
-      setAgyAckBypassEnabled(false);
-      setAgyAckBypassLoading(false);
+  useEffect(() => {
+    if (!open || !supportsPowerUserMode) {
+      powerUserModeRequestIdRef.current += 1;
+      setPowerUserModeEnabled(false);
+      setPowerUserModeLoading(false);
       return;
     }
 
-    const loadAgyBypassState = async () => {
-      try {
-        setAgyAckBypassLoading(true);
-        const enabled = await fetchAgyBypassState();
-        if (!cancelled) {
-          setAgyAckBypassEnabled(enabled);
-        }
-      } catch {
-        if (!cancelled) {
-          setAgyAckBypassEnabled(false);
-        }
-      } finally {
-        if (!cancelled) {
-          setAgyAckBypassLoading(false);
-        }
-      }
-    };
-
-    loadAgyBypassState();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [fetchAgyBypassState, open, provider]);
+    void syncPowerUserModeState();
+  }, [open, provider, supportsPowerUserMode, syncPowerUserModeState]);
 
   useEffect(() => {
-    if (!open || provider !== 'agy' || !authFlow.error || !agyAckBypassEnabled) {
+    if (!open || provider !== 'agy' || !authFlow.error || !powerUserModeEnabled) {
       return;
     }
 
@@ -173,34 +243,11 @@ export function AddAccountDialog({
       normalizedError.includes('responsibility checklist');
     if (!ackRequired) return;
 
-    let cancelled = false;
-
-    const syncBypassState = async () => {
-      try {
-        setAgyAckBypassLoading(true);
-        const enabled = await fetchAgyBypassState();
-        if (cancelled) return;
-        setAgyAckBypassEnabled(enabled);
-        if (!enabled) {
-          setLocalError('Power user mode is off. Complete the AGY checklist and retry.');
-        }
-      } catch {
-        if (cancelled) return;
-        setAgyAckBypassEnabled(false);
-        setLocalError('Power user mode is off. Complete the AGY checklist and retry.');
-      } finally {
-        if (!cancelled) {
-          setAgyAckBypassLoading(false);
-        }
-      }
-    };
-
-    void syncBypassState();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [agyAckBypassEnabled, authFlow.error, fetchAgyBypassState, open, provider]);
+    void syncPowerUserModeState({
+      pendingMessage: t('addAccountDialog.powerUserLoading'),
+      disabledMessage: t('addAccountDialog.powerUserUnavailableRetry'),
+    });
+  }, [authFlow.error, open, powerUserModeEnabled, provider, syncPowerUserModeState, t]);
 
   // When authFlow completes successfully (polling detected success), apply preset and close
   useEffect(() => {
@@ -209,7 +256,7 @@ export function AddAccountDialog({
         wasAuthenticatingRef.current = false;
         const applyPresetAndClose = async () => {
           try {
-            const result = await applyDefaultPreset(provider);
+            const result = await applyDefaultPreset(provider, undefined, catalog);
             if (result.success && result.presetName && isFirstAccount) {
               toast.success(`Applied "${result.presetName}" preset`);
             }
@@ -250,33 +297,51 @@ export function AddAccountDialog({
    * - Authorization code providers use /start-url and polling.
    */
   const handleAuthenticate = () => {
-    if (isAgyBypassStatePending) {
-      setLocalError('Loading Antigravity safety settings. Please wait a moment and retry.');
+    if (isPowerUserModePending) {
+      setLocalError(t('addAccountDialog.powerUserLoading'));
       return;
     }
     if (requiresAgyResponsibilityFlow && !isAgyRiskChecklistComplete) {
       setLocalError(
+        // TODO i18n: missing key for AGY responsibility error
         'Complete all Antigravity responsibility steps before authenticating this provider.'
       );
       return;
     }
-    if (requiresSafetyAcknowledgement && !isGeminiRiskAcknowledged) {
+    if (requiresGeminiSafetyAcknowledgement && !isGeminiRiskAcknowledged) {
       setLocalError(
         `Type "${RISK_ACK_PHRASE}" to acknowledge the account safety warning before authenticating this provider.`
       );
       return;
     }
-    if (requiresNickname && !nicknameTrimmed) {
-      setLocalError(`Nickname is required for ${displayName} accounts.`);
+    setLocalError(null);
+    if (isKiroIdc && !kiroIDCStartUrlTrimmed) {
+      setLocalError('IDC Start URL is required for Kiro IAM Identity Center login.');
       return;
     }
-    setLocalError(null);
+    if (isGitLab && gitlabAuthMode === 'pat' && !gitlabPersonalAccessTokenTrimmed) {
+      setLocalError(t('addAccountDialog.gitlabPatRequired'));
+      return;
+    }
     wasAuthenticatingRef.current = true;
     authFlow.startAuth(provider, {
       nickname: nicknameTrimmed || undefined,
       kiroMethod: isKiro ? kiroAuthMethod : undefined,
-      flowType: isKiro ? kiroMethodOption.flowType : undefined,
-      startEndpoint: isKiro ? kiroMethodOption.startEndpoint : undefined,
+      kiroIDCStartUrl: isKiroIdc ? kiroIDCStartUrlTrimmed : undefined,
+      kiroIDCRegion: isKiroIdc && kiroIDCRegionTrimmed ? kiroIDCRegionTrimmed : undefined,
+      kiroIDCFlow: isKiroIdc ? kiroIDCFlow : undefined,
+      gitlabAuthMode: isGitLab ? gitlabAuthMode : undefined,
+      gitlabBaseUrl: isGitLab && gitlabBaseUrlTrimmed ? gitlabBaseUrlTrimmed : undefined,
+      gitlabPersonalAccessToken:
+        isGitLab && gitlabAuthMode === 'pat' && gitlabPersonalAccessTokenTrimmed
+          ? gitlabPersonalAccessTokenTrimmed
+          : undefined,
+      flowType: isKiro ? selectedKiroFlowType : undefined,
+      startEndpoint: isKiro
+        ? selectedKiroStartEndpoint
+        : isGitLab && gitlabAuthMode === 'pat'
+          ? 'start'
+          : undefined,
       riskAcknowledgement: requiresAgyResponsibilityFlow
         ? {
             version: ANTIGRAVITY_ACK_VERSION,
@@ -293,7 +358,7 @@ export function AddAccountDialog({
     wasAuthenticatingRef.current = true;
     kiroImportMutation.mutate(undefined, {
       onSuccess: async () => {
-        const result = await applyDefaultPreset('kiro');
+        const result = await applyDefaultPreset('kiro', undefined, catalog);
         if (result.success && result.presetName && isFirstAccount) {
           toast.success(`Applied "${result.presetName}" preset`);
         }
@@ -342,7 +407,7 @@ export function AddAccountDialog({
             />
           )}
 
-          {provider === 'agy' && agyAckBypassEnabled && !showAuthUI && (
+          {supportsPowerUserMode && powerUserModeEnabled && !showAuthUI && (
             <div className="rounded-lg border border-amber-400/35 bg-amber-50/70 p-3 text-xs text-amber-900 dark:border-amber-800/60 dark:bg-amber-950/25 dark:text-amber-100">
               <div className="mb-1.5 flex items-center gap-1.5 font-semibold">
                 <ShieldAlert className="h-3.5 w-3.5" />
@@ -352,7 +417,7 @@ export function AddAccountDialog({
             </div>
           )}
 
-          {requiresSafetyAcknowledgement && !showAuthUI && (
+          {requiresGeminiSafetyAcknowledgement && !showAuthUI && (
             <AccountSafetyWarningCard
               showAcknowledgement
               acknowledgementPhrase={RISK_ACK_PHRASE}
@@ -388,17 +453,156 @@ export function AddAccountDialog({
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">{kiroMethodOption.description}</p>
+              {isKiroSocial && (
+                <p className="text-xs text-muted-foreground">
+                  {/* TODO i18n: missing key for Kiro social browser hint */}
+                  If your browser does not return automatically after login, CCS can accept the
+                  final
+                  <span className="mx-1 rounded bg-muted px-1.5 py-0.5 font-mono text-[11px]">
+                    kiro://...
+                  </span>
+                  callback URL in the next step.
+                </p>
+              )}
+            </div>
+          )}
+
+          {isKiroIdc && !showAuthUI && (
+            <div className="space-y-4 rounded-lg border border-border/60 bg-muted/20 p-4">
+              <div className="space-y-2">
+                <Label htmlFor="kiro-idc-start-url">
+                  {/* TODO i18n: missing key */}IDC Start URL
+                </Label>
+                <Input
+                  id="kiro-idc-start-url"
+                  value={kiroIDCStartUrl}
+                  onChange={(e) => {
+                    setKiroIDCStartUrl(e.target.value);
+                    setLocalError(null);
+                  }}
+                  placeholder="https://d-xxx.awsapps.com/start"
+                  disabled={isPending}
+                />
+                <p className="text-xs text-muted-foreground">
+                  {/* TODO i18n: missing key */}Required for organization IAM Identity Center login.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="kiro-idc-region">{/* TODO i18n: missing key */}IDC Region</Label>
+                <Input
+                  id="kiro-idc-region"
+                  value={kiroIDCRegion}
+                  onChange={(e) => {
+                    setKiroIDCRegion(e.target.value);
+                    setLocalError(null);
+                  }}
+                  placeholder="us-east-1"
+                  disabled={isPending}
+                />
+                <p className="text-xs text-muted-foreground">
+                  {/* TODO i18n: missing key */}Optional. Leave blank to use the upstream default
+                  region.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="kiro-idc-flow">{/* TODO i18n: missing key */}IDC Flow</Label>
+                <Select
+                  value={kiroIDCFlow}
+                  onValueChange={(value) => {
+                    setKiroIDCFlow(value as KiroIDCFlow);
+                    setLocalError(null);
+                  }}
+                >
+                  <SelectTrigger id="kiro-idc-flow">
+                    <SelectValue placeholder="{/* TODO i18n: missing key */}Select IDC flow" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="authcode">
+                      {/* TODO i18n: missing key */}Authorization Code
+                    </SelectItem>
+                    <SelectItem value="device">
+                      {/* TODO i18n: missing key */}Device Code
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  {/* TODO i18n: missing key */}Auth Code opens a browser and may need the final
+                  callback URL pasted back. Device Code shows a verification code instead.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {isGitLab && !showAuthUI && (
+            <div className="space-y-4 rounded-lg border border-border/60 bg-muted/20 p-4">
+              <div className="space-y-2">
+                <Label htmlFor="gitlab-auth-mode">{t('addAccountDialog.gitlabAuthMethod')}</Label>
+                <Select
+                  value={gitlabAuthMode}
+                  onValueChange={(value) => {
+                    setGitlabAuthMode(value as 'oauth' | 'pat');
+                    setLocalError(null);
+                  }}
+                >
+                  <SelectTrigger id="gitlab-auth-mode">
+                    <SelectValue placeholder={t('addAccountDialog.selectGitlabAuthMethod')} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="oauth">{t('addAccountDialog.gitlabAuthOAuth')}</SelectItem>
+                    <SelectItem value="pat">{t('addAccountDialog.gitlabAuthPat')}</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  {t('addAccountDialog.gitlabAuthHint')}
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="gitlab-base-url">{t('addAccountDialog.gitlabUrl')}</Label>
+                <Input
+                  id="gitlab-base-url"
+                  value={gitlabBaseUrl}
+                  onChange={(e) => {
+                    setGitlabBaseUrl(e.target.value);
+                    setLocalError(null);
+                  }}
+                  placeholder={t('addAccountDialog.gitlabUrlPlaceholder')}
+                  disabled={isPending}
+                />
+                <p className="text-xs text-muted-foreground">
+                  {t('addAccountDialog.gitlabUrlHint')}
+                </p>
+              </div>
+
+              {gitlabAuthMode === 'pat' && (
+                <div className="space-y-2">
+                  <Label htmlFor="gitlab-pat">{t('addAccountDialog.gitlabPat')}</Label>
+                  <Input
+                    id="gitlab-pat"
+                    type="password"
+                    value={gitlabPersonalAccessToken}
+                    onChange={(e) => {
+                      setGitlabPersonalAccessToken(e.target.value);
+                      setLocalError(null);
+                    }}
+                    placeholder={t('addAccountDialog.gitlabPatPlaceholder')}
+                    disabled={isPending}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {t('addAccountDialog.gitlabPatHint')} <span className="font-mono">api</span> and{' '}
+                    <span className="font-mono">read_user</span> scopes.
+                  </p>
+                </div>
+              )}
             </div>
           )}
 
           {/* Nickname input - only show before auth starts */}
           {!showAuthUI && (
             <div className="space-y-2">
-              <Label htmlFor="nickname">
-                {requiresNickname
-                  ? t('addAccountDialog.nicknameRequired')
-                  : t('addAccountDialog.nicknameOptional')}
-              </Label>
+              <Label htmlFor="nickname">{t('addAccountDialog.nicknameOptional')}</Label>
               <div className="flex items-center gap-2">
                 <User className="w-4 h-4 text-muted-foreground" />
                 <Input
@@ -414,9 +618,7 @@ export function AddAccountDialog({
                 />
               </div>
               <p className="text-xs text-muted-foreground">
-                {requiresNickname
-                  ? t('addAccountDialog.nicknameRequiredHint')
-                  : t('addAccountDialog.nicknameOptionalHint')}
+                {t('addAccountDialog.nicknameOptionalHint')}
               </p>
             </div>
           )}
@@ -433,7 +635,10 @@ export function AddAccountDialog({
                 <p className="text-xs text-muted-foreground mt-1">
                   {authFlow.isDeviceCodeFlow
                     ? t('addAccountDialog.deviceCodeHint')
-                    : t('addAccountDialog.browserHint')}
+                    : isKiroSocial
+                      ? // TODO i18n: missing key for Kiro social callback hint
+                        'Complete sign-in in your browser. If it does not return automatically, paste the final kiro:// callback URL below.'
+                      : t('addAccountDialog.browserHint')}
                 </p>
               </div>
 
@@ -481,13 +686,20 @@ export function AddAccountDialog({
                   {/* Callback paste field */}
                   <div className="space-y-2">
                     <Label htmlFor="callback-url" className="text-xs">
-                      {t('addAccountDialog.redirectPasteLabel')}
+                      {isKiroSocial
+                        ? // TODO i18n: missing key
+                          'Browser did not return? Paste the final kiro:// callback URL:'
+                        : t('addAccountDialog.redirectPasteLabel')}
                     </Label>
                     <Input
                       id="callback-url"
                       value={callbackUrl}
                       onChange={(e) => setCallbackUrl(e.target.value)}
-                      placeholder={t('addAccountDialog.callbackPlaceholder')}
+                      placeholder={
+                        isKiroSocial
+                          ? 'kiro://kiro.kiroAgent/authenticate-success?code=...&state=...'
+                          : t('addAccountDialog.callbackPlaceholder')
+                      }
                       className="font-mono text-xs"
                     />
                     <Button
@@ -511,7 +723,10 @@ export function AddAccountDialog({
 
               {!authFlow.authUrl && !authFlow.isDeviceCodeFlow && (
                 <p className="text-xs text-center text-muted-foreground">
-                  {t('addAccountDialog.preparingUrl')}
+                  {isKiroSocial
+                    ? // TODO i18n: missing key for Kiro social preparing URL
+                      'Preparing the Kiro sign-in URL. If it does not open automatically, it will appear here shortly.'
+                    : t('addAccountDialog.preparingUrl')}
                 </p>
               )}
             </div>
@@ -553,10 +768,9 @@ export function AddAccountDialog({
                 onClick={handleAuthenticate}
                 disabled={
                   isPending ||
-                  isAgyBypassStatePending ||
-                  (requiresNickname && !nicknameTrimmed) ||
+                  isPowerUserModePending ||
                   (requiresAgyResponsibilityFlow && !isAgyRiskChecklistComplete) ||
-                  (requiresSafetyAcknowledgement && !isGeminiRiskAcknowledged)
+                  (requiresGeminiSafetyAcknowledgement && !isGeminiRiskAcknowledged)
                 }
               >
                 <ExternalLink className="w-4 h-4 mr-2" />

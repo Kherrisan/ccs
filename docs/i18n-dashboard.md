@@ -1,6 +1,6 @@
 # Dashboard i18n Guide
 
-Last Updated: 2026-03-02
+Last Updated: 2026-04-14
 
 This document describes the internationalization (i18n) architecture used by the CCS Dashboard (`ui/`), how locale selection works, and how to add new languages safely.
 
@@ -14,6 +14,7 @@ Dashboard i18n currently covers UI text rendered by React components.
   - `en` (English)
   - `zh-CN` (Simplified Chinese)
   - `vi` (Vietnamese)
+  - `ja` (Japanese)
 - Locale state is persisted in browser localStorage using `ccs-ui-locale`.
 - Fallback language is `en`.
 
@@ -38,6 +39,7 @@ Out of scope:
   - `en.translation`
   - `zh-CN.translation`
   - `vi.translation`
+  - `ja.translation`
 - Uses `initReactI18next` for React integration.
 
 ### Locale utilities
@@ -53,6 +55,12 @@ Out of scope:
 - File: `ui/src/components/layout/language-switcher.tsx`
 - Uses `react-i18next` + shadcn `Select`.
 - Calls `persistLocale` and `i18n.changeLanguage` on selection.
+
+### Test bootstrap
+
+- File: `ui/tests/setup/vitest-setup.ts`
+- Test setup must import `ui/src/lib/i18n.ts` so direct `useTranslation()` consumers resolve the same singleton instance as the app.
+- If a test mocks `useTranslation()`, keep the mocked key surface aligned with the component output or the assertions will drift.
 
 ---
 

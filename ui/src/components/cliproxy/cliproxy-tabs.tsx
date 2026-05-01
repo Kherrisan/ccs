@@ -6,6 +6,7 @@
 import type { ReactNode } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { LayoutDashboard, FileCode, ScrollText } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 export type CliproxyTabValue = 'overview' | 'config' | 'logs';
 
@@ -20,12 +21,13 @@ interface CliproxyTabsProps {
 }
 
 const TAB_CONFIG = [
-  { value: 'overview' as const, label: 'Overview', icon: LayoutDashboard },
-  { value: 'config' as const, label: 'Config', icon: FileCode },
-  { value: 'logs' as const, label: 'Logs', icon: ScrollText },
+  { value: 'overview' as const, labelKey: 'cliproxyTabs.overview', icon: LayoutDashboard },
+  { value: 'config' as const, labelKey: 'Config', icon: FileCode },
+  { value: 'logs' as const, labelKey: 'Logs', icon: ScrollText },
 ];
 
 export function CliproxyTabs({ activeTab, onTabChange, children }: CliproxyTabsProps) {
+  const { t } = useTranslation();
   return (
     <Tabs
       value={activeTab}
@@ -33,10 +35,10 @@ export function CliproxyTabs({ activeTab, onTabChange, children }: CliproxyTabsP
       className="w-full"
     >
       <TabsList className="grid w-full grid-cols-3 max-w-md">
-        {TAB_CONFIG.map(({ value, label, icon: Icon }) => (
+        {TAB_CONFIG.map(({ value, labelKey, icon: Icon }) => (
           <TabsTrigger key={value} value={value} className="gap-2">
             <Icon className="w-4 h-4" />
-            <span className="hidden sm:inline">{label}</span>
+            <span className="hidden sm:inline">{t(labelKey)}</span>
           </TabsTrigger>
         ))}
       </TabsList>

@@ -14,6 +14,7 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { useTranslation } from 'react-i18next';
 
 interface DateRangeFilterProps {
   value?: DateRange;
@@ -54,6 +55,7 @@ export function DateRangeFilter({
   className,
 }: DateRangeFilterProps) {
   const [isOpen, setIsOpen] = React.useState(false);
+  const { t } = useTranslation();
 
   // Helper to check if a preset is currently selected
   const isPresetSelected = (presetRange: DateRange) => {
@@ -101,7 +103,7 @@ export function DateRangeFilter({
                 format(value.from, 'LLL dd, y')
               )
             ) : (
-              <span>Pick a date</span>
+              <span>{t('dateRangeFilter.pickADate')}</span>
             )}
           </Button>
         </PopoverTrigger>

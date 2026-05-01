@@ -1,6 +1,6 @@
 # Session Sharing Technical Analysis
 
-Last Updated: 2026-02-26
+Last Updated: 2026-04-04
 
 ## Summary
 
@@ -69,6 +69,30 @@ Behavior:
 - Reuses `CLAUDE_CONFIG_DIR` from mapped account profile after normal account context policy resolution
 - Invalid/missing mapped accounts are skipped safely
 
+### Resume Lane Note
+
+Resume follows the active `CLAUDE_CONFIG_DIR`, not just the continuity group:
+
+- plain `ccs -r` resumes the lane plain `ccs` is using right now
+- `ccs <account> -r` resumes only that account lane
+- those two commands can point at different continuity inventories
+
+That means `shared + deeper` on an account does **not** automatically make old plain-`ccs` resume history appear inside `ccs <account> -r`.
+
+If you want future plain `ccs` sessions to use an account lane, either:
+
+```bash
+ccs auth default work
+```
+
+or map the default profile explicitly:
+
+```yaml
+continuity:
+  inherit_from_account:
+    default: work
+```
+
 ## User Workflows
 
 ### New account with shared context
@@ -87,6 +111,19 @@ ccs auth create backup2 --context-group sprint-a --deeper-continuity
 - Choose `isolated` or `shared`, set group, and (optionally) choose deeper continuity
 
 No account recreation required for this workflow.
+
+### Backup Before Changing Sync
+
+CCS can back up local continuity artifacts before you change settings:
+
+```bash
+ccs auth backup work
+ccs auth backup default
+```
+
+- `ccs auth backup work` backs up the selected account lane
+- `ccs auth backup default` backs up the lane plain `ccs` would use right now
+- this is a local continuity backup, not a guaranteed export of all upstream Claude-hosted resume state
 
 ## Current Limitations
 

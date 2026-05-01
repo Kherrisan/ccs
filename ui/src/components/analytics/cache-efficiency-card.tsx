@@ -12,6 +12,7 @@ import { Database, TrendingUp, Zap } from 'lucide-react';
 import type { UsageSummary } from '@/hooks/use-usage';
 import { cn } from '@/lib/utils';
 import { usePrivacy, PRIVACY_BLUR_CLASS } from '@/contexts/privacy-context';
+import { useTranslation } from 'react-i18next';
 
 interface CacheEfficiencyCardProps {
   data: UsageSummary | undefined;
@@ -21,6 +22,7 @@ interface CacheEfficiencyCardProps {
 
 export function CacheEfficiencyCard({ data, isLoading, className }: CacheEfficiencyCardProps) {
   const { privacyMode } = usePrivacy();
+  const { t } = useTranslation();
 
   const metrics = useMemo(() => {
     if (!data) return null;
@@ -73,11 +75,14 @@ export function CacheEfficiencyCard({ data, isLoading, className }: CacheEfficie
         <CardHeader className="px-3 py-2">
           <CardTitle className="text-base font-semibold flex items-center gap-2">
             <Database className="w-4 h-4" />
+            {/* TODO i18n: missing key for "Cache Efficiency" */}
             Cache Efficiency
           </CardTitle>
         </CardHeader>
         <CardContent className="px-3 pb-3 pt-0 flex-1 flex items-center justify-center">
-          <p className="text-sm text-muted-foreground text-center">No cache data available</p>
+          <p className="text-sm text-muted-foreground text-center">
+            {t('analyticsCards.noCacheData')}
+          </p>
         </CardContent>
       </Card>
     );
@@ -88,6 +93,7 @@ export function CacheEfficiencyCard({ data, isLoading, className }: CacheEfficie
       <CardHeader className="px-3 py-2">
         <CardTitle className="text-base font-semibold flex items-center gap-2">
           <Database className="w-4 h-4" />
+          {/* TODO i18n: missing key for "Cache Efficiency" */}
           Cache Efficiency
         </CardTitle>
       </CardHeader>
@@ -101,6 +107,7 @@ export function CacheEfficiencyCard({ data, isLoading, className }: CacheEfficie
             </span>
           </div>
           <p className="text-[11px] text-muted-foreground uppercase tracking-wider mt-0.5">
+            {/* TODO i18n: missing key for "Estimated Savings" */}
             Estimated Savings
           </p>
         </div>
@@ -115,7 +122,9 @@ export function CacheEfficiencyCard({ data, isLoading, className }: CacheEfficie
                 {metrics.cacheHitRate.toFixed(0)}%
               </span>
             </div>
-            <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Hit Rate</p>
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wider">
+              {t('analyticsCards.hitRate')}
+            </p>
           </div>
 
           {/* Cache Cost */}
@@ -123,7 +132,9 @@ export function CacheEfficiencyCard({ data, isLoading, className }: CacheEfficie
             <span className={cn('text-lg font-bold', privacyMode && PRIVACY_BLUR_CLASS)}>
               ${metrics.cacheCost.toFixed(2)}
             </span>
-            <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Cache Cost</p>
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wider">
+              {t('analyticsCards.cacheCost')}
+            </p>
           </div>
         </div>
 
@@ -137,6 +148,7 @@ export function CacheEfficiencyCard({ data, isLoading, className }: CacheEfficie
           >
             <span>Reads: {formatCompact(metrics.totalCacheReads)}</span>
             <span>Writes: {formatCompact(metrics.totalCacheWrites)}</span>
+            {/* TODO i18n: missing keys for "Reads:" / "Writes:" */}
           </div>
           <div className="h-2 bg-muted rounded-full overflow-hidden flex">
             <div
@@ -145,7 +157,7 @@ export function CacheEfficiencyCard({ data, isLoading, className }: CacheEfficie
                 backgroundColor: '#9e2a2b',
                 width: `${(metrics.totalCacheReads / metrics.totalCacheTokens) * 100}%`,
               }}
-              title={`Cache Reads: ${metrics.totalCacheReads.toLocaleString()}`}
+              title={`Cache Reads: ${metrics.totalCacheReads.toLocaleString()}`} // TODO i18n: missing key
             />
             <div
               className="h-full"
@@ -153,16 +165,18 @@ export function CacheEfficiencyCard({ data, isLoading, className }: CacheEfficie
                 backgroundColor: '#e09f3e',
                 width: `${(metrics.totalCacheWrites / metrics.totalCacheTokens) * 100}%`,
               }}
-              title={`Cache Writes: ${metrics.totalCacheWrites.toLocaleString()}`}
+              title={`Cache Writes: ${metrics.totalCacheWrites.toLocaleString()}`} // TODO i18n: missing key
             />
           </div>
           <div className="flex items-center justify-center gap-3 text-[10px] text-muted-foreground">
             <span className="flex items-center gap-1">
               <div className="w-2 h-2 rounded-full" style={{ backgroundColor: '#9e2a2b' }} />
+              {/* TODO i18n: missing key for "Read" */}
               Read
             </span>
             <span className="flex items-center gap-1">
               <div className="w-2 h-2 rounded-full" style={{ backgroundColor: '#e09f3e' }} />
+              {/* TODO i18n: missing key for "Write" */}
               Write
             </span>
           </div>

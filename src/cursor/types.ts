@@ -54,6 +54,18 @@ export interface AutoDetectResult {
   accessToken?: string;
   /** Machine ID (if found) */
   machineId?: string;
+  /** SQLite database path used during detection */
+  dbPath?: string;
+  /** Paths checked while looking for Cursor state */
+  checkedPaths?: string[];
+  /** Structured failure reason when detection fails */
+  reason?:
+    | 'db_not_found'
+    | 'sqlite_unavailable'
+    | 'db_query_failed'
+    | 'access_token_not_found'
+    | 'machine_id_not_found'
+    | 'invalid_token_format';
   /** Error message (if detection failed) */
   error?: string;
 }

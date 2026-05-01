@@ -153,7 +153,7 @@ export function buildChatRequest(
 }
 
 /**
- * Generate complete Cursor request body with ConnectRPC framing
+ * Generate the raw top-level protobuf request body expected by Cursor upstream.
  */
 export function generateCursorBody(
   messages: CursorMessage[],
@@ -161,9 +161,7 @@ export function generateCursorBody(
   tools: CursorTool[] = [],
   reasoningEffort: string | null = null
 ): Uint8Array {
-  const protobuf = buildChatRequest(messages, modelName, tools, reasoningEffort);
-  const framed = wrapConnectRPCFrame(protobuf, false); // Cursor doesn't support compressed requests
-  return framed;
+  return buildChatRequest(messages, modelName, tools, reasoningEffort);
 }
 
 // Re-export all functions

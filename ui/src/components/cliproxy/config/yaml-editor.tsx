@@ -9,6 +9,7 @@ import { Highlight, themes } from 'prism-react-renderer';
 import { useTheme } from '@/hooks/use-theme';
 import { cn } from '@/lib/utils';
 import { AlertCircle, CheckCircle2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 interface YamlEditorProps {
   value: string;
@@ -100,6 +101,7 @@ export function EditorStatusBar({
   cursorLine,
   cursorCol,
 }: EditorStatusBarProps) {
+  const { t } = useTranslation();
   return (
     <div className="flex items-center justify-between px-3 py-1.5 border-t bg-muted/30 text-xs">
       <div className="flex items-center gap-4">
@@ -116,7 +118,7 @@ export function EditorStatusBar({
           </span>
         )}
 
-        {isDirty && <span className="text-amber-500">Unsaved changes</span>}
+        {isDirty && <span className="text-amber-500">{t('cliproxyConfig.unsavedChanges')}</span>}
       </div>
 
       {cursorLine && cursorCol && (

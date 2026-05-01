@@ -1,61 +1,45 @@
 import { initUI, header, subheader, color, dim } from '../../utils/ui';
-import { loadOrCreateUnifiedConfig } from '../../config/unified-config-loader';
-import { createManagementClient } from '../../cliproxy/management-api-client';
 import {
   getCacheAge,
-  setCachedCatalog,
   clearCatalogCache,
   SYNCABLE_PROVIDERS,
-  PROVIDER_TO_CHANNEL,
   getResolvedCatalog,
-} from '../../cliproxy/catalog-cache';
+  refreshCatalogFromProxy,
+  getAllResolvedCatalogs,
+} from '../../cliproxy/services/catalog-cache';
+import { getCatalogRoutingSnapshot } from '../../cliproxy/services/catalog-routing';
+import { ensureManagedModelPrefixes } from '../../cliproxy/ai-providers/managed-model-prefixes';
+import { getProxyTarget } from '../../cliproxy/proxy/proxy-target-resolver';
+import type { ThinkingSupport } from '../../cliproxy/model-catalog';
 import type { CLIProxyProvider } from '../../cliproxy/types';
-import type { RemoteModelInfo } from '../../cliproxy/management-api-types';
+import type { RemoteModelInfo } from '../../cliproxy/management/management-api-types';
+import type { CliproxyProviderRoutingHints } from '../../shared/cliproxy-model-routing';
 
 /** Fetch model definitions from CLIProxyAPI for all syncable providers */
 async function fetchRemoteCatalogs(
   verbose: boolean
 ): Promise<Record<string, RemoteModelInfo[]> | null> {
-  const config = loadOrCreateUnifiedConfig();
-  const remote = config.cliproxy_server?.remote;
-
-  if (!remote?.host) {
-    if (verbose) console.log(dim('  No remote CLIProxy configured'));
-    return null;
-  }
-
-  const client = createManagementClient(remote);
-
-  // Check health first
-  const health = await client.health();
-  if (!health.healthy) {
-    console.log(color(`  [!] CLIProxy unreachable: ${health.error || 'unknown error'}`, 'warning'));
-    return null;
-  }
+  const target = getProxyTarget();
 
   if (verbose) {
-    console.log(dim(`  Connected to ${client.getBaseUrl()}`));
-    if (health.version) console.log(dim(`  CLIProxy version: ${health.version}`));
+    console.log(
+      dim(
+        `  Connected to ${target.protocol}://${target.host}:${target.port} (${target.isRemote ? 'remote' : 'local'})`
+      )
+    );
   }
 
-  const result: Record<string, RemoteModelInfo[]> = {};
-
-  for (const provider of SYNCABLE_PROVIDERS) {
-    const channel = PROVIDER_TO_CHANNEL[provider];
-    if (!channel) continue;
-
-    try {
-      const response = await client.getModelDefinitions(channel);
-      if (response && response.length > 0) {
-        result[provider] = response;
-        if (verbose) console.log(dim(`  ${provider}: ${response.length} models`));
+  const result = await refreshCatalogFromProxy();
+  if (verbose && result) {
+    for (const provider of SYNCABLE_PROVIDERS) {
+      const models = result[provider];
+      if (models?.length) {
+        console.log(dim(`  ${provider}: ${models.length} models`));
       }
-    } catch {
-      if (verbose) console.log(dim(`  ${provider}: fetch failed (skipped)`));
     }
   }
 
-  return Object.keys(result).length > 0 ? result : null;
+  return result;
 }
 
 /** Show catalog status */
@@ -65,7 +49,17 @@ export async function handleCatalogStatus(verbose: boolean): Promise<void> {
   console.log(header('Model Catalog'));
   console.log('');
 
-  const cacheAge = getCacheAge();
+  let routingSnapshot: Awaited<ReturnType<typeof getCatalogRoutingSnapshot>> | null = null;
+  if (verbose) {
+    try {
+      await ensureManagedModelPrefixes();
+      routingSnapshot = await getCatalogRoutingSnapshot();
+    } catch {
+      routingSnapshot = null;
+    }
+  }
+
+  const cacheAge = routingSnapshot?.cacheAge ?? getCacheAge();
   if (cacheAge) {
     console.log(`  Cache: ${color('synced', 'success')} (${cacheAge})`);
   } else {
@@ -76,14 +70,14 @@ export async function handleCatalogStatus(verbose: boolean): Promise<void> {
   console.log(subheader('Providers:'));
 
   for (const provider of SYNCABLE_PROVIDERS) {
-    const catalog = getResolvedCatalog(provider);
+    const catalog = routingSnapshot?.catalogs[provider] ?? getResolvedCatalog(provider);
     if (catalog) {
       const count = catalog.models.length;
-      console.log(`  ${color(catalog.displayName.padEnd(20), 'command')} ${count} models`);
+      const routing = routingSnapshot?.routing[provider];
+      const suffix = renderRoutingSummary(routing);
+      console.log(`  ${color(catalog.displayName.padEnd(20), 'command')} ${count} models${suffix}`);
       if (verbose) {
-        for (const model of catalog.models) {
-          console.log(dim(`    - ${model.id} (${model.name})`));
-        }
+        renderVerboseRouting(provider, catalog.models, routing);
       }
     }
   }
@@ -95,6 +89,62 @@ export async function handleCatalogStatus(verbose: boolean): Promise<void> {
   console.log('');
 }
 
+function renderRoutingSummary(routing: CliproxyProviderRoutingHints | undefined): string {
+  if (!routing) {
+    return '';
+  }
+
+  const parts = [`prefix ${routing.prefix}`];
+  if (routing.shadowedCount > 0) {
+    parts.push(`${routing.shadowedCount} shadowed`);
+  }
+  if (routing.prefixOnlyCount > 0) {
+    parts.push(`${routing.prefixOnlyCount} prefix-only`);
+  }
+  return parts.length > 0 ? `  ${dim(`(${parts.join(', ')})`)}` : '';
+}
+
+function renderVerboseRouting(
+  provider: CLIProxyProvider,
+  models: Array<{ id: string; name: string }>,
+  routing: CliproxyProviderRoutingHints | undefined
+): void {
+  if (!routing) {
+    for (const model of models) {
+      console.log(dim(`    - ${model.id} (${model.name})`));
+    }
+    return;
+  }
+
+  const routingMap = new Map(routing.models.map((hint) => [hint.modelId, hint]));
+  for (const model of models) {
+    const hint = routingMap.get(model.id);
+    console.log(dim(`    - ${model.id} (${model.name})`));
+    if (!hint) {
+      continue;
+    }
+
+    console.log(
+      dim(`      ${hint.pinnedAvailable ? 'preferred' : 'suggested'}: ${hint.recommendedModelId}`)
+    );
+    if (hint.unprefixedStatus === 'safe') {
+      console.log(dim(`      unprefixed: resolves to ${routing.displayName}`));
+      continue;
+    }
+
+    if (hint.unprefixedStatus === 'shadowed' && hint.effectiveDisplayName) {
+      console.log(dim(`      unprefixed: currently resolves to ${hint.effectiveDisplayName}`));
+      continue;
+    }
+
+    console.log(dim(`      unprefixed: not advertised, use ${hint.recommendedModelId}`));
+  }
+
+  if (provider === 'gemini' || provider === 'agy') {
+    console.log(dim(`      short prefix stays backend-pinned even when unprefixed names overlap.`));
+  }
+}
+
 /** Refresh catalog from CLIProxyAPI */
 export async function handleCatalogRefresh(verbose: boolean): Promise<void> {
   await initUI();
@@ -104,12 +154,10 @@ export async function handleCatalogRefresh(verbose: boolean): Promise<void> {
 
   const result = await fetchRemoteCatalogs(verbose);
   if (!result) {
-    console.log('  Failed to fetch remote catalogs. Static catalog unchanged.');
+    console.log('  Failed to fetch live catalogs. Static catalog unchanged.');
     console.log('');
     return;
   }
-
-  setCachedCatalog(result);
 
   // Show summary
   let totalModels = 0;
@@ -117,7 +165,7 @@ export async function handleCatalogRefresh(verbose: boolean): Promise<void> {
     const merged = getResolvedCatalog(provider as CLIProxyProvider);
     const mergedCount = merged?.models.length ?? 0;
     console.log(
-      `  ${color(provider.padEnd(12), 'command')} ${models.length} remote -> ${mergedCount} merged`
+      `  ${color(provider.padEnd(12), 'command')} ${models.length} live -> ${mergedCount} merged`
     );
     totalModels += mergedCount;
   }
@@ -125,6 +173,50 @@ export async function handleCatalogRefresh(verbose: boolean): Promise<void> {
   console.log('');
   console.log(`  ${color('[OK]', 'success')} Catalog synced (${totalModels} total models)`);
   console.log('');
+}
+
+/** JSON-serialisable model entry emitted by `catalog --json`. */
+interface CatalogJsonModel {
+  id: string;
+  name: string;
+  tier?: 'free' | 'pro' | 'ultra';
+  description?: string;
+  deprecated?: boolean;
+  deprecationReason?: string;
+  broken?: boolean;
+  issueUrl?: string;
+  thinking?: ThinkingSupport;
+  extendedContext?: boolean;
+  nativeImageInput?: boolean;
+}
+
+/**
+ * Output catalog as JSON for programmatic consumption.
+ * Used by OnSteroids and other tools to get available models per provider.
+ * Format: { [providerName: string]: CatalogJsonModel[] }
+ */
+export function handleCatalogJson(): void {
+  const catalogs = getAllResolvedCatalogs();
+  const result: Record<string, CatalogJsonModel[]> = {};
+  for (const [provider, catalog] of Object.entries(catalogs)) {
+    if (!catalog) {
+      continue;
+    }
+    result[provider] = catalog.models.map((m) => {
+      const entry: CatalogJsonModel = { id: m.id, name: m.name };
+      if (m.tier !== undefined) entry.tier = m.tier;
+      if (m.description !== undefined) entry.description = m.description;
+      if (m.deprecated !== undefined) entry.deprecated = m.deprecated;
+      if (m.deprecationReason !== undefined) entry.deprecationReason = m.deprecationReason;
+      if (m.broken !== undefined) entry.broken = m.broken;
+      if (m.issueUrl !== undefined) entry.issueUrl = m.issueUrl;
+      if (m.thinking !== undefined) entry.thinking = m.thinking;
+      if (m.extendedContext !== undefined) entry.extendedContext = m.extendedContext;
+      if (m.nativeImageInput !== undefined) entry.nativeImageInput = m.nativeImageInput;
+      return entry;
+    });
+  }
+  console.log(JSON.stringify(result));
 }
 
 /** Reset catalog cache */

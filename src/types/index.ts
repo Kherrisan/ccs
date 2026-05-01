@@ -14,6 +14,8 @@ export type {
   ProfilesRegistry,
   CLIProxyVariantConfig,
   CLIProxyVariantsConfig,
+  OpenAICompatProxyConfig,
+  OpenAICompatProxyRoutingConfig,
 } from './config';
 export { isConfig, isSettings } from './config';
 
@@ -32,7 +34,7 @@ export type {
   DelegationEvent,
 } from './delegation';
 
-// GLMT types
+// Legacy GLMT transformer types
 export type {
   AnthropicMessage,
   ContentBlock,

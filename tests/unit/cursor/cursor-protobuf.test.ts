@@ -13,6 +13,7 @@ import {
 import {
   decodeVarint,
   decodeField,
+  decodeMessage,
   parseConnectRPCFrame,
 } from '../../../src/cursor/cursor-protobuf-decoder';
 import { buildCursorRequest } from '../../../src/cursor/cursor-translator';
@@ -20,6 +21,25 @@ import { generateCursorBody } from '../../../src/cursor/cursor-protobuf';
 import { CursorExecutor } from '../../../src/cursor/cursor-executor';
 import { WIRE_TYPE, FIELD } from '../../../src/cursor/cursor-protobuf-schema';
 import { StreamingFrameParser, decompressPayload } from '../../../src/cursor/cursor-stream-parser';
+
+const MAX_TOOL_RESULT_CHARS = 12_000;
+
+function computeExpectedToolResultOmittedChars(textLength: number): number {
+  if (textLength <= MAX_TOOL_RESULT_CHARS) {
+    return 0;
+  }
+
+  let omittedChars = textLength - MAX_TOOL_RESULT_CHARS;
+  while (true) {
+    const suffix = `\n[truncated ${omittedChars} chars]`;
+    const keepLength = Math.max(MAX_TOOL_RESULT_CHARS - suffix.length, 0);
+    const nextOmittedChars = textLength - keepLength;
+    if (nextOmittedChars === omittedChars) {
+      return omittedChars;
+    }
+    omittedChars = nextOmittedChars;
+  }
+}
 
 describe('Protobuf Encoding/Decoding', () => {
   describe('encodeVarint / decodeVarint round-trip', () => {
@@ -222,7 +242,7 @@ describe('Message Translation', () => {
       expect(result.messages[0].tool_calls![0].function.name).toBe('get_weather');
     });
 
-    it('should accumulate tool results', () => {
+    it('should flatten tool results into user tool_result blocks', () => {
       const result = buildCursorRequest(
         'gpt-4',
         {
@@ -251,11 +271,424 @@ describe('Message Translation', () => {
         {}
       );
 
+      expect(result.messages).toHaveLength(3);
+      expect(result.messages[1].role).toBe('user');
+      expect(result.messages[1].content).toContain('<tool_result>');
+      expect(result.messages[1].content).toContain('<tool_name>get_weather</tool_name>');
+      expect(result.messages[1].content).toContain('<tool_call_id>call_123</tool_call_id>');
+      expect(result.messages[2]).toEqual({ role: 'user', content: 'What is the weather?' });
+    });
+
+    it('should preserve consecutive tool messages as separate user turns', () => {
+      const result = buildCursorRequest(
+        'gpt-4',
+        {
+          messages: [
+            {
+              role: 'assistant',
+              content: '',
+              tool_calls: [
+                {
+                  id: 'call_one',
+                  type: 'function',
+                  function: { name: 'search_docs', arguments: '{"q":"cursor"}' },
+                },
+                {
+                  id: 'call_two',
+                  type: 'function',
+                  function: { name: 'read_file', arguments: '{"path":"README.md"}' },
+                },
+              ],
+            },
+            {
+              role: 'tool',
+              content: 'first result',
+              tool_call_id: 'call_one',
+            },
+            {
+              role: 'tool',
+              content: 'second result',
+              tool_call_id: 'call_two',
+            },
+            { role: 'user', content: 'Summarize both results.' },
+          ],
+        },
+        false,
+        {}
+      );
+
+      expect(result.messages).toHaveLength(4);
+      expect(result.messages[1]).toEqual({
+        role: 'user',
+        content: expect.stringContaining('<tool_call_id>call_one</tool_call_id>'),
+      });
+      expect(result.messages[2]).toEqual({
+        role: 'user',
+        content: expect.stringContaining('<tool_call_id>call_two</tool_call_id>'),
+      });
+      expect(result.messages[3]).toEqual({ role: 'user', content: 'Summarize both results.' });
+    });
+
+    it('should recover tool names for tool results without a name field', () => {
+      const result = buildCursorRequest(
+        'gpt-4',
+        {
+          messages: [
+            {
+              role: 'assistant',
+              content: '',
+              tool_calls: [
+                {
+                  id: 'call_456',
+                  type: 'function',
+                  function: { name: 'search_docs', arguments: '{"q":"cursor"}' },
+                },
+              ],
+            },
+            {
+              role: 'tool',
+              content: 'done',
+              tool_call_id: 'call_456',
+            },
+          ],
+        },
+        false,
+        {}
+      );
+
       expect(result.messages).toHaveLength(2);
-      // Tool result should be attached to next message
-      expect(result.messages[1].tool_results).toBeDefined();
-      expect(result.messages[1].tool_results).toHaveLength(1);
-      expect(result.messages[1].tool_results![0].tool_call_id).toBe('call_123');
+      expect(result.messages[1].content).toContain('<tool_name>search_docs</tool_name>');
+      expect(result.messages[1].tool_results).toBeUndefined();
+    });
+
+    it('should flatten user content arrays that include tool_result blocks', () => {
+      const result = buildCursorRequest(
+        'gpt-4',
+        {
+          messages: [
+            {
+              role: 'assistant',
+              content: '',
+              tool_calls: [
+                {
+                  id: 'call_789',
+                  type: 'function',
+                  function: { name: 'search_docs', arguments: '{"q":"cursor"}' },
+                },
+              ],
+            },
+            {
+              role: 'user',
+              content: [
+                { type: 'text', text: 'Tool finished.' },
+                {
+                  type: 'tool_result',
+                  tool_use_id: 'call_789',
+                  content: { answer: 'Cursor integration ready' },
+                },
+              ],
+            },
+          ],
+        },
+        false,
+        {}
+      );
+
+      expect(result.messages).toHaveLength(2);
+      expect(result.messages[1].role).toBe('user');
+      expect(result.messages[1].content).toContain('Tool finished.');
+      expect(result.messages[1].content).toContain('<tool_name>search_docs</tool_name>');
+      expect(result.messages[1].content).toContain('{"answer":"Cursor integration ready"}');
+    });
+
+    it('should preserve line breaks for multipart tool_result text content', () => {
+      const result = buildCursorRequest(
+        'gpt-4',
+        {
+          messages: [
+            {
+              role: 'assistant',
+              content: '',
+              tool_calls: [
+                {
+                  id: 'call_lines',
+                  type: 'function',
+                  function: { name: 'read_file', arguments: '{"path":"notes.txt"}' },
+                },
+              ],
+            },
+            {
+              role: 'user',
+              content: [
+                {
+                  type: 'tool_result',
+                  tool_use_id: 'call_lines',
+                  content: [
+                    { type: 'text', text: 'first line' },
+                    { type: 'text', text: 'second line' },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+        false,
+        {}
+      );
+
+      expect(result.messages).toHaveLength(2);
+      expect(result.messages[1].content).toContain('<result>first line\nsecond line</result>');
+    });
+
+    it('should convert assistant tool_use content blocks into tool_calls', () => {
+      const result = buildCursorRequest(
+        'gpt-4',
+        {
+          messages: [
+            {
+              role: 'assistant',
+              content: [
+                { type: 'text', text: 'Inspecting the workspace.' },
+                {
+                  type: 'tool_use',
+                  id: 'call_999',
+                  name: 'list_files',
+                  input: { path: '/tmp' },
+                },
+              ],
+            },
+          ],
+        },
+        false,
+        {}
+      );
+
+      expect(result.messages).toHaveLength(1);
+      expect(result.messages[0].role).toBe('assistant');
+      expect(result.messages[0].content).toBe('Inspecting the workspace.');
+      expect(result.messages[0].tool_calls).toEqual([
+        {
+          id: 'call_999',
+          type: 'function',
+          function: { name: 'list_files', arguments: '{"path":"/tmp"}' },
+        },
+      ]);
+    });
+
+    it('should synthesize fallback ids for tool_use blocks that omit them', () => {
+      const result = buildCursorRequest(
+        'gpt-4',
+        {
+          messages: [
+            {
+              role: 'assistant',
+              content: [
+                {
+                  type: 'tool_use',
+                  name: 'search_docs',
+                  input: { q: 'cursor' },
+                },
+              ],
+            },
+          ],
+        },
+        false,
+        {}
+      );
+
+      expect(result.messages).toHaveLength(1);
+      expect(result.messages[0].tool_calls).toHaveLength(1);
+      expect(result.messages[0].tool_calls![0].id).toBe('toolu_cursor_fallback_0_0');
+    });
+
+    it('should normalize invalid assistant tool call ids before emitting tool results', () => {
+      const result = buildCursorRequest(
+        'gpt-4',
+        {
+          messages: [
+            {
+              role: 'assistant',
+              content: '',
+              tool_calls: [
+                {
+                  id: 'call_bad\nline two',
+                  type: 'function',
+                  function: { name: 'search_docs', arguments: '{"q":"cursor"}' },
+                },
+              ],
+            },
+            {
+              role: 'tool',
+              content: 'done',
+              tool_call_id: 'call_bad\nline two',
+            },
+          ],
+        },
+        false,
+        {}
+      );
+
+      expect(result.messages).toHaveLength(2);
+      expect(result.messages[0].tool_calls![0].id).toBe('call_bad');
+      expect(result.messages[1].content).toContain('<tool_call_id>call_bad</tool_call_id>');
+    });
+
+    it('should dedupe tool calls when assistant messages contain both tool_calls and tool_use blocks', () => {
+      const result = buildCursorRequest(
+        'gpt-4',
+        {
+          messages: [
+            {
+              role: 'assistant',
+              content: [
+                {
+                  type: 'tool_use',
+                  id: 'call_dupe',
+                  name: 'search_docs',
+                  input: { q: 'cursor' },
+                },
+              ],
+              tool_calls: [
+                {
+                  id: 'call_dupe',
+                  type: 'function',
+                  function: { name: 'search_docs', arguments: '{"q":"cursor"}' },
+                },
+              ],
+            },
+          ],
+        },
+        false,
+        {}
+      );
+
+      expect(result.messages).toHaveLength(1);
+      expect(result.messages[0].tool_calls).toEqual([
+        {
+          id: 'call_dupe',
+          type: 'function',
+          function: { name: 'search_docs', arguments: '{"q":"cursor"}' },
+        },
+      ]);
+    });
+
+    it('should truncate oversized tool result payloads', () => {
+      const oversizedResult = '&'.repeat(12_050);
+      const omittedChars = computeExpectedToolResultOmittedChars(oversizedResult.length);
+      const preservedChars = oversizedResult.length - omittedChars;
+      const result = buildCursorRequest(
+        'gpt-4',
+        {
+          messages: [
+            {
+              role: 'assistant',
+              content: '',
+              tool_calls: [
+                {
+                  id: 'call_big',
+                  type: 'function',
+                  function: { name: 'read_file', arguments: '{"path":"big.txt"}' },
+                },
+              ],
+            },
+            {
+              role: 'tool',
+              content: oversizedResult,
+              tool_call_id: 'call_big',
+            },
+          ],
+        },
+        false,
+        {}
+      );
+
+      expect(result.messages).toHaveLength(2);
+      expect(result.messages[1].content).toContain('[truncated ');
+      expect(result.messages[1].content).toContain(`[truncated ${omittedChars} chars]`);
+
+      const resultMatch = result.messages[1].content.match(/<result>([\s\S]*)<\/result>/);
+      expect(resultMatch).not.toBeNull();
+      expect((resultMatch?.[1].match(/&amp;/g) ?? []).length).toBe(preservedChars);
+    });
+
+    it('should mark unserializable structured tool results explicitly', () => {
+      const circular: Record<string, unknown> = {};
+      circular.self = circular;
+
+      const result = buildCursorRequest(
+        'gpt-4',
+        {
+          messages: [
+            {
+              role: 'assistant',
+              content: '',
+              tool_calls: [
+                {
+                  id: 'call_bad',
+                  type: 'function',
+                  function: { name: 'read_json', arguments: '{"path":"bad.json"}' },
+                },
+              ],
+            },
+            {
+              role: 'user',
+              content: [
+                {
+                  type: 'tool_result',
+                  tool_use_id: 'call_bad',
+                  content: circular,
+                },
+              ],
+            },
+          ],
+        },
+        false,
+        {}
+      );
+
+      expect(result.messages).toHaveLength(2);
+      expect(result.messages[1].content).toContain('[unserializable content]');
+    });
+
+    it('should reject tool_result blocks without a valid tool_use_id', () => {
+      expect(() =>
+        buildCursorRequest(
+          'gpt-4',
+          {
+            messages: [
+              {
+                role: 'user',
+                content: [
+                  {
+                    type: 'tool_result',
+                    content: 'done',
+                  },
+                ],
+              },
+            ],
+          },
+          false,
+          {}
+        )
+      ).toThrow('messages[0].content[0] must include a valid tool result id');
+    });
+
+    it('should reject tool role messages without a valid tool_call_id', () => {
+      expect(() =>
+        buildCursorRequest(
+          'gpt-4',
+          {
+            messages: [
+              {
+                role: 'tool',
+                content: 'done',
+              },
+            ],
+          },
+          false,
+          {}
+        )
+      ).toThrow('messages[0].tool_call_id must include a valid tool result id');
     });
 
     it('should handle array content format', () => {
@@ -309,14 +742,27 @@ describe('Message Translation', () => {
 
 describe('Request Encoding', () => {
   describe('generateCursorBody', () => {
-    it('should encode basic text message', () => {
+    it('should encode a raw top-level request protobuf for basic text messages', () => {
       const result = generateCursorBody([{ role: 'user', content: 'Hello' }], 'gpt-4', [], null);
+      const topLevel = decodeMessage(result);
+      const requestPayload = topLevel.get(FIELD.Request.REQUEST)?.[0]?.value as Uint8Array;
+      const chatRequest = decodeMessage(requestPayload);
+      const encodedMessages = (chatRequest.get(FIELD.Chat.MESSAGES) || []).map((entry) =>
+        decodeMessage(entry.value as Uint8Array)
+      );
+      const decoder = new TextDecoder();
 
       expect(result).toBeInstanceOf(Uint8Array);
       expect(result.length).toBeGreaterThan(0);
+      expect(Array.from(result.slice(0, 5))).not.toEqual([0, 0, 0, 1, 107]);
+      expect(topLevel.has(FIELD.Request.REQUEST)).toBe(true);
+      expect(encodedMessages).toHaveLength(1);
+      expect(decoder.decode(encodedMessages[0].get(FIELD.Message.CONTENT)?.[0]?.value as Uint8Array)).toBe(
+        'Hello'
+      );
     });
 
-    it('should encode message with tools', () => {
+    it('should encode message with tools into the raw request payload', () => {
       const tools = [
         {
           type: 'function' as const,
@@ -340,14 +786,67 @@ describe('Request Encoding', () => {
         tools,
         null
       );
+      const topLevel = decodeMessage(result);
+      const requestPayload = topLevel.get(FIELD.Request.REQUEST)?.[0]?.value as Uint8Array;
+      const chatRequest = decodeMessage(requestPayload);
 
       expect(result).toBeInstanceOf(Uint8Array);
       expect(result.length).toBeGreaterThan(0);
+      expect(topLevel.has(FIELD.Request.REQUEST)).toBe(true);
+      expect((chatRequest.get(FIELD.Chat.MCP_TOOLS) || []).length).toBe(1);
+    });
+
+    it('should preserve flattened tool_result blocks through protobuf encoding', () => {
+      const translated = buildCursorRequest(
+        'gpt-4',
+        {
+          messages: [
+            {
+              role: 'assistant',
+              content: '',
+              tool_calls: [
+                {
+                  id: 'call_wire',
+                  type: 'function',
+                  function: { name: 'read_file', arguments: '{"path":"notes.txt"}' },
+                },
+              ],
+            },
+            {
+              role: 'tool',
+              content: 'workspace snapshot',
+              tool_call_id: 'call_wire',
+            },
+          ],
+        },
+        false,
+        {}
+      );
+
+      const body = generateCursorBody(translated.messages, 'gpt-4', [], null);
+      const topLevel = decodeMessage(body);
+      const requestPayload = topLevel.get(FIELD.Request.REQUEST)?.[0]?.value as Uint8Array;
+      const chatRequest = decodeMessage(requestPayload);
+      const encodedMessages = (chatRequest.get(FIELD.Chat.MESSAGES) || []).map((entry) =>
+        decodeMessage(entry.value as Uint8Array)
+      );
+      const decoder = new TextDecoder();
+      const contents = encodedMessages.map((message) =>
+        decoder.decode(message.get(FIELD.Message.CONTENT)?.[0]?.value as Uint8Array)
+      );
+
+      expect(contents.some((content) => content.includes('<tool_result>'))).toBe(true);
+      expect(contents.some((content) => content.includes('<tool_name>read_file</tool_name>'))).toBe(
+        true
+      );
+      expect(
+        contents.some((content) => content.includes('<tool_call_id>call_wire</tool_call_id>'))
+      ).toBe(true);
     });
   });
 
   describe('Edge cases', () => {
-    it('should handle malformed frame gracefully', () => {
+    it('should reject malformed frame headers', async () => {
       const executor = new CursorExecutor();
 
       // Incomplete frame header (only 3 bytes instead of 5)
@@ -357,11 +856,13 @@ describe('Request Encoding', () => {
         messages: [],
       });
 
-      // Should return valid response even with malformed input
-      expect(result.status).toBe(200);
+      expect(result.status).toBe(502);
+      const body = JSON.parse(await result.text());
+      expect(body.error.type).toBe('server_error');
+      expect(body.error.message).toContain('Truncated Cursor ConnectRPC frame');
     });
 
-    it('should handle truncated payload', () => {
+    it('should reject truncated payloads', async () => {
       const executor = new CursorExecutor();
 
       // Frame header says payload is 100 bytes but only 5 bytes follow
@@ -373,8 +874,10 @@ describe('Request Encoding', () => {
         messages: [],
       });
 
-      // Should handle gracefully
-      expect(result.status).toBe(200);
+      expect(result.status).toBe(502);
+      const body = JSON.parse(await result.text());
+      expect(body.error.type).toBe('server_error');
+      expect(body.error.message).toContain('Truncated Cursor ConnectRPC frame');
     });
 
     it('should handle multi-frame buffer', () => {
@@ -558,6 +1061,29 @@ describe('CursorExecutor', () => {
       expect(body.error.type).toBe('rate_limit_error');
     });
 
+    it('should map unavailable end-stream errors to 503', async () => {
+      const unavailableFrame = buildFrame(
+        new TextEncoder().encode(
+          JSON.stringify({
+            error: {
+              code: 'unavailable',
+              message: 'upstream down',
+            },
+          })
+        ),
+        0x02
+      );
+
+      const result = executor.transformProtobufToJSON(unavailableFrame, 'gpt-4', {
+        messages: [],
+      });
+
+      expect(result.status).toBe(503);
+      const body = JSON.parse(await result.text());
+      expect(body.error.type).toBe('api_error');
+      expect(body.error.message).toContain('upstream down');
+    });
+
     it('should surface reasoning_content when thinking payload is present', async () => {
       const textContent = 'Final answer';
       const thinkingContent = 'Internal reasoning trail';
@@ -693,7 +1219,7 @@ describe('CursorExecutor', () => {
   });
 
   describe('decompressPayload error handling', () => {
-    it('should return empty buffer on decompression failure', () => {
+    it('returns an explicit executor error on decompression failure', async () => {
       // Create invalid gzip data
       const invalidGzip = Buffer.from([0x1f, 0x8b, 0x08, 0x00, 0xff, 0xff]);
       const frame = new Uint8Array(5 + invalidGzip.length);
@@ -708,13 +1234,15 @@ describe('CursorExecutor', () => {
         messages: [],
       });
 
-      // Should handle gracefully and return valid response
-      expect(result.status).toBe(200);
+      expect(result.status).toBe(502);
+      const body = JSON.parse(await result.text());
+      expect(body.error.type).toBe('server_error');
+      expect(body.error.message).toContain('decompress');
     });
   });
 
   describe('error handling', () => {
-    it('should return empty buffer on decompression failure', () => {
+    it('returns an explicit error for invalid compressed payloads', async () => {
       const executor = new CursorExecutor();
 
       // Invalid compressed payload (not actually gzipped)
@@ -733,13 +1261,80 @@ describe('CursorExecutor', () => {
 
       const buffer = Buffer.from(frame);
 
-      // Should not crash - decompression failure returns empty buffer
       const result = executor.transformProtobufToJSON(buffer, 'test-model', {
         messages: [],
         stream: false,
       });
 
+      expect(result.status).toBe(502);
+      const body = JSON.parse(await result.text());
+      expect(body.error.type).toBe('server_error');
+      expect(body.error.message).toContain('decompress');
+    });
+
+    it('surfaces first-frame protocol errors in SSE mode without pretending success', async () => {
+      const executor = new CursorExecutor();
+      const invalidGzipPayload = new Uint8Array([1, 2, 3, 4, 5]);
+      const frame = buildFrame(invalidGzipPayload, 0x01);
+
+      const result = executor.transformProtobufToSSE(frame, 'test-model', {
+        messages: [],
+        stream: true,
+      });
+
+      expect(result.status).toBe(502);
+      const body = JSON.parse(await result.text());
+      expect(body.error.type).toBe('server_error');
+      expect(body.error.message).toContain('decompress');
+    });
+
+    it('emits an SSE error event without [DONE] when a later frame fails', async () => {
+      const executor = new CursorExecutor();
+      const combined = Buffer.concat([
+        buildTextFrame('Before failure'),
+        buildFrame(new Uint8Array([1, 2, 3, 4, 5]), 0x01),
+      ]);
+
+      const result = executor.transformProtobufToSSE(combined, 'test-model', {
+        messages: [],
+        stream: true,
+      });
+
       expect(result.status).toBe(200);
+      const body = await result.text();
+      expect(body).toContain('Before failure');
+      expect(body).toContain('event: error');
+      expect(body).toContain('"type":"server_error"');
+      expect(body).not.toContain('data: [DONE]');
+    });
+
+    it('emits an SSE error event when trailing bytes leave a truncated frame', async () => {
+      const executor = new CursorExecutor();
+      const combined = Buffer.concat([buildTextFrame('Partial success'), Buffer.from([0x00, 0x00, 0x00])]);
+
+      const result = executor.transformProtobufToSSE(combined, 'test-model', {
+        messages: [],
+        stream: true,
+      });
+
+      expect(result.status).toBe(200);
+      const body = await result.text();
+      expect(body).toContain('Partial success');
+      expect(body).toContain('event: error');
+      expect(body).toContain('Truncated Cursor ConnectRPC frame');
+      expect(body).not.toContain('data: [DONE]');
+    });
+
+    it('returns an explicit error for unknown ConnectRPC frame flags', async () => {
+      const executor = new CursorExecutor();
+      const result = executor.transformProtobufToJSON(buildFrame(new Uint8Array([0x01]), 0x04), 'gpt-4', {
+        messages: [],
+      });
+
+      expect(result.status).toBe(502);
+      const body = JSON.parse(await result.text());
+      expect(body.error.type).toBe('server_error');
+      expect(body.error.message).toContain('0x04');
     });
 
     it('should log unknown message roles in debug mode', () => {
@@ -934,6 +1529,55 @@ describe('StreamingFrameParser', () => {
     }
   });
 
+  it('should surface end-stream JSON errors instead of treating them as gzip', () => {
+    const parser = new StreamingFrameParser();
+    const endStreamError = buildFrame(
+      new TextEncoder().encode(
+        JSON.stringify({
+          error: {
+            code: 'invalid_argument',
+            message: 'parse binary: illegal tag: field no 0 wire type 0',
+          },
+        })
+      ),
+      0x02
+    );
+
+    const results = parser.push(endStreamError);
+
+    expect(results.length).toBe(1);
+    expect(results[0].type).toBe('error');
+    if (results[0].type === 'error') {
+      expect(results[0].status).toBe(400);
+      expect(results[0].errorType).toBe('api_error');
+      expect(results[0].message).toContain('illegal tag');
+    }
+  });
+
+  it('should map unavailable end-stream errors to 503 in the parser', () => {
+    const parser = new StreamingFrameParser();
+    const endStreamError = buildFrame(
+      new TextEncoder().encode(
+        JSON.stringify({
+          error: {
+            code: 'unavailable',
+            message: 'upstream down',
+          },
+        })
+      ),
+      0x02
+    );
+
+    const results = parser.push(endStreamError);
+
+    expect(results.length).toBe(1);
+    expect(results[0].type).toBe('error');
+    if (results[0].type === 'error') {
+      expect(results[0].status).toBe(503);
+      expect(results[0].errorType).toBe('api_error');
+    }
+  });
+
   it('should parse thinking frames', () => {
     const parser = new StreamingFrameParser();
     const frame = buildThinkingFrame('Think step by step');
@@ -974,8 +1618,36 @@ describe('StreamingFrameParser', () => {
     expect(results.length).toBe(1);
     expect(results[0].type).toBe('error');
     if (results[0].type === 'error') {
+      expect(results[0].status).toBe(502);
       expect(results[0].errorType).toBe('server_error');
       expect(results[0].message).toContain('Malformed protobuf response');
+    }
+  });
+
+  it('should reject invalid gzip-compressed frames explicitly', () => {
+    const parser = new StreamingFrameParser();
+    const invalidCompressedFrame = buildFrame(new Uint8Array([1, 2, 3, 4, 5]), 0x01);
+    const results = parser.push(invalidCompressedFrame);
+
+    expect(results.length).toBe(1);
+    expect(results[0].type).toBe('error');
+    if (results[0].type === 'error') {
+      expect(results[0].status).toBe(502);
+      expect(results[0].errorType).toBe('server_error');
+      expect(results[0].message).toContain('decompress');
+    }
+  });
+
+  it('should reject unknown ConnectRPC frame flag bits', () => {
+    const parser = new StreamingFrameParser();
+    const results = parser.push(buildFrame(new Uint8Array([0x01]), 0x04));
+
+    expect(results.length).toBe(1);
+    expect(results[0].type).toBe('error');
+    if (results[0].type === 'error') {
+      expect(results[0].status).toBe(502);
+      expect(results[0].errorType).toBe('server_error');
+      expect(results[0].message).toContain('0x04');
     }
   });
 
@@ -997,6 +1669,20 @@ describe('StreamingFrameParser', () => {
     parser2.push(emptyFrame);
     expect(parser2.hasPartial()).toBe(false);
   });
+
+  it('should surface truncated trailing bytes when the stream finishes', () => {
+    const parser = new StreamingFrameParser();
+    parser.push(Buffer.from([0x00, 0x00, 0x00]));
+
+    const results = parser.finish();
+
+    expect(results.length).toBe(1);
+    expect(results[0].type).toBe('error');
+    if (results[0].type === 'error') {
+      expect(results[0].status).toBe(502);
+      expect(results[0].message).toContain('Truncated Cursor ConnectRPC frame');
+    }
+  });
 });
 
 describe('decompressPayload', () => {
@@ -1012,10 +1698,18 @@ describe('decompressPayload', () => {
     expect(result).toEqual(errorPayload);
   });
 
-  it('should return empty buffer on invalid gzip data', () => {
+  it('should throw on invalid gzip data', () => {
     const invalidGzip = Buffer.from([0x01, 0x02, 0x03, 0x04, 0x05]);
-    const result = decompressPayload(invalidGzip, 0x01);
-    expect(result.length).toBe(0);
+    expect(() => decompressPayload(invalidGzip, 0x01)).toThrow(
+      'Failed to decompress Cursor ConnectRPC frame.'
+    );
+  });
+
+  it('should throw on unknown ConnectRPC frame flags', () => {
+    const payload = Buffer.from('payload');
+    expect(() => decompressPayload(payload, 0x04)).toThrow(
+      'Unsupported ConnectRPC frame flags: 0x04'
+    );
   });
 
   it('should decompress valid gzip payload', () => {
@@ -1027,12 +1721,12 @@ describe('decompressPayload', () => {
     expect(result.toString()).toBe('Hello compressed world');
   });
 
-  it('should handle GZIP_ALT and GZIP_BOTH flags', () => {
+  it('should not decompress plain end-stream trailers and should handle compressed end-stream trailers', () => {
     const zlib = require('zlib');
     const original = Buffer.from('test data');
     const compressed = zlib.gzipSync(original);
 
-    expect(decompressPayload(compressed, 0x02).toString()).toBe('test data');
+    expect(decompressPayload(original, 0x02)).toEqual(original);
     expect(decompressPayload(compressed, 0x03).toString()).toBe('test data');
   });
 });

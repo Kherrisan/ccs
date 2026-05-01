@@ -1,5 +1,5 @@
 /**
- * GlmtProxy - Embedded HTTP proxy for GLM thinking support
+ * GlmtProxy - Legacy embedded HTTP proxy retained for compatibility work.
  *
  * Architecture:
  * - Intercepts Claude CLI → Z.AI calls
@@ -7,8 +7,9 @@
  * - Converts reasoning_content → thinking blocks
  * - Supports both streaming and buffered modes
  *
- * Lifecycle:
- * - Spawned by bin/ccs.js when 'glmt' profile detected
+ * Current status:
+ * - No longer started by the normal `ccs glmt` runtime path
+ * - Kept for legacy/internal compatibility and transformer-adjacent tests
  * - Binds to 127.0.0.1:random_port (security + avoid conflicts)
  * - Terminates when parent process exits
  *
@@ -22,6 +23,9 @@ import * as https from 'https';
 import { GlmtTransformer } from './glmt-transformer';
 import { SSEParser } from './sse-parser';
 import { DeltaAccumulator } from './delta-accumulator';
+import { createLogger } from '../services/logging';
+
+const logger = createLogger('glmt:proxy');
 
 interface GlmtProxyConfig {
   verbose?: boolean;
@@ -136,6 +140,10 @@ export class GlmtProxy {
       this.server.listen(0, '127.0.0.1', () => {
         const address = this.server?.address();
         this.port = typeof address === 'object' && address ? address.port : 0;
+        logger.stage('intake', 'glmt.proxy.listening', 'GLMT proxy listening', {
+          provider: 'glmt',
+          port: this.port,
+        });
         // Signal parent process
         console.log(`PROXY_READY:${this.port}`);
 
@@ -446,6 +454,14 @@ export class GlmtProxy {
 
         lastError = err;
         const delay = this.calculateRetryDelay(attempt, retryAfter);
+
+        logger.stage(
+          'upstream',
+          'glmt.upstream.retry',
+          'Retrying GLMT upstream after retryable error',
+          { provider: 'glmt', attempt: attempt + 1, maxRetries: this.retryConfig.maxRetries },
+          { level: 'warn' }
+        );
 
         if (this.verbose) {
           console.error(

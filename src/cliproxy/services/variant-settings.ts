@@ -11,14 +11,19 @@ import * as os from 'os';
 import { CLIProxyProfileName } from '../../auth/profile-detector';
 import { getCcsDir } from '../../utils/config-manager';
 import { expandPath } from '../../utils/helpers';
-import { getClaudeEnvVars, CLIPROXY_DEFAULT_PORT } from '../config-generator';
+import { getClaudeEnvVars, CLIPROXY_DEFAULT_PORT } from '../config/config-generator';
 import { CLIProxyProvider } from '../types';
 import { CompositeTierConfig } from '../../config/unified-config-types';
-import { ensureProfileHooks } from '../../utils/websearch/profile-hook-injector';
-import { ensureProfileHooks as ensureImageAnalyzerHooks } from '../../utils/hooks/image-analyzer-profile-hook-injector';
-import { getEffectiveApiKey } from '../auth-token-manager';
+import { ensureWebSearchMcpOrThrow } from '../../utils/websearch-manager';
+import { ensureImageAnalysisMcpOrThrow } from '../../utils/image-analysis';
+import {
+  ensureProfileHooks as ensureImageAnalyzerHooks,
+  removeImageAnalysisProfileHook,
+} from '../../utils/hooks/image-analyzer-profile-hook-injector';
+import { prepareImageAnalysisFallbackHook } from '../../utils/hooks';
+import { getEffectiveApiKey } from '../auth/auth-token-manager';
 import { warn } from '../../utils/ui';
-import { normalizeModelIdForProvider } from '../model-id-normalizer';
+import { normalizeModelIdForProvider } from '../ai-providers/model-id-normalizer';
 
 /** Environment settings structure */
 interface SettingsEnv {
@@ -36,16 +41,12 @@ interface SettingsFile {
   [key: string]: unknown;
 }
 
-const CODEX_EFFORT_SUFFIX_REGEX = /-(xhigh|high|medium)$/i;
-
 function canonicalizeModelForProvider(
   provider: CLIProxyProfileName | undefined,
   model: string
 ): string {
-  const withoutCodexSuffix =
-    provider === 'codex' ? model.replace(CODEX_EFFORT_SUFFIX_REGEX, '') : model;
-  if (!provider) return withoutCodexSuffix;
-  return normalizeModelIdForProvider(withoutCodexSuffix, provider);
+  if (!provider) return model;
+  return normalizeModelIdForProvider(model, provider);
 }
 
 /**
@@ -95,6 +96,21 @@ function writeSettings(filePath: string, settings: SettingsFile): void {
   fs.renameSync(tempPath, filePath);
 }
 
+function rollbackSettingsFile(
+  filePath: string,
+  previousContent: string | null,
+  existedBefore: boolean
+): void {
+  if (existedBefore && previousContent !== null) {
+    fs.writeFileSync(filePath, previousContent, 'utf8');
+    return;
+  }
+
+  if (fs.existsSync(filePath)) {
+    fs.unlinkSync(filePath);
+  }
+}
+
 /**
  * Get settings file path for a variant
  */
@@ -133,14 +149,30 @@ export function createSettingsFile(
     env: buildSettingsEnv(provider, model, port),
   };
 
+  const settingsExisted = fs.existsSync(settingsPath);
+  const previousSettingsContent = settingsExisted ? fs.readFileSync(settingsPath, 'utf8') : null;
   ensureDir(ccsDir);
   writeSettings(settingsPath, settings);
 
-  // Inject WebSearch hooks into variant settings
-  ensureProfileHooks(`${provider}-${name}`);
-
-  // Inject Image Analyzer hooks into variant settings
-  ensureImageAnalyzerHooks(`${provider}-${name}`);
+  try {
+    ensureWebSearchMcpOrThrow();
+    const imageAnalysisMcpReady = ensureImageAnalysisMcpOrThrow();
+    if (imageAnalysisMcpReady) {
+      removeImageAnalysisProfileHook(`${provider}-${name}`, settingsPath);
+    } else {
+      const imageAnalysisFallbackHookReady = prepareImageAnalysisFallbackHook();
+      ensureImageAnalyzerHooks({
+        profileName: `${provider}-${name}`,
+        profileType: 'cliproxy',
+        cliproxyProvider: provider,
+        settingsPath,
+        sharedHookInstalled: imageAnalysisFallbackHookReady,
+      });
+    }
+  } catch (error) {
+    rollbackSettingsFile(settingsPath, previousSettingsContent, settingsExisted);
+    throw error;
+  }
 
   return settingsPath;
 }
@@ -161,14 +193,30 @@ export function createSettingsFileUnified(
     env: buildSettingsEnv(provider, model, port),
   };
 
+  const settingsExisted = fs.existsSync(settingsPath);
+  const previousSettingsContent = settingsExisted ? fs.readFileSync(settingsPath, 'utf8') : null;
   ensureDir(ccsDir);
   writeSettings(settingsPath, settings);
 
-  // Inject WebSearch hooks into variant settings
-  ensureProfileHooks(`${provider}-${name}`);
-
-  // Inject Image Analyzer hooks into variant settings
-  ensureImageAnalyzerHooks(`${provider}-${name}`);
+  try {
+    ensureWebSearchMcpOrThrow();
+    const imageAnalysisMcpReady = ensureImageAnalysisMcpOrThrow();
+    if (imageAnalysisMcpReady) {
+      removeImageAnalysisProfileHook(`${provider}-${name}`, settingsPath);
+    } else {
+      const imageAnalysisFallbackHookReady = prepareImageAnalysisFallbackHook();
+      ensureImageAnalyzerHooks({
+        profileName: `${provider}-${name}`,
+        profileType: 'cliproxy',
+        cliproxyProvider: provider,
+        settingsPath,
+        sharedHookInstalled: imageAnalysisFallbackHookReady,
+      });
+    }
+  } catch (error) {
+    rollbackSettingsFile(settingsPath, previousSettingsContent, settingsExisted);
+    throw error;
+  }
 
   return settingsPath;
 }
@@ -252,13 +300,32 @@ export function createCompositeSettingsFile(
     }
   }
 
+  const settingsExisted = fs.existsSync(settingsPath);
+  const previousSettingsContent = settingsExisted ? fs.readFileSync(settingsPath, 'utf8') : null;
   ensureDir(settingsDir);
   writeSettings(settingsPath, settings);
 
-  // Hook injectors target ~/.ccs/<profile>.settings.json; only run for default path.
   if (path.resolve(settingsPath) === path.resolve(defaultSettingsPath)) {
-    ensureProfileHooks(`composite-${name}`);
-    ensureImageAnalyzerHooks(`composite-${name}`);
+    try {
+      ensureWebSearchMcpOrThrow();
+      const imageAnalysisMcpReady = ensureImageAnalysisMcpOrThrow();
+      if (imageAnalysisMcpReady) {
+        removeImageAnalysisProfileHook(`composite-${name}`, settingsPath);
+      } else {
+        const imageAnalysisFallbackHookReady = prepareImageAnalysisFallbackHook();
+        ensureImageAnalyzerHooks({
+          profileName: `composite-${name}`,
+          profileType: 'cliproxy',
+          cliproxyProvider: tiers[defaultTier].provider,
+          isComposite: true,
+          settingsPath,
+          sharedHookInstalled: imageAnalysisFallbackHookReady,
+        });
+      }
+    } catch (error) {
+      rollbackSettingsFile(settingsPath, previousSettingsContent, settingsExisted);
+      throw error;
+    }
   }
 
   return settingsPath;
@@ -290,7 +357,10 @@ export function deleteSettingsFile(settingsPath: string): boolean {
 export function updateSettingsModel(
   settingsPath: string,
   model: string,
-  provider?: CLIProxyProfileName
+  provider?: CLIProxyProfileName,
+  options?: {
+    rewriteHaikuModel?: (model: string) => string;
+  }
 ): void {
   const fileName = path.basename(settingsPath);
   if (fileName.startsWith('composite-')) {
@@ -316,10 +386,13 @@ export function updateSettingsModel(
       settings.env.ANTHROPIC_DEFAULT_OPUS_MODEL = normalizedModel;
       settings.env.ANTHROPIC_DEFAULT_SONNET_MODEL = normalizedModel;
       if (provider === 'codex' && settings.env.ANTHROPIC_DEFAULT_HAIKU_MODEL) {
-        settings.env.ANTHROPIC_DEFAULT_HAIKU_MODEL = canonicalizeModelForProvider(
+        const normalizedHaikuModel = canonicalizeModelForProvider(
           provider,
           settings.env.ANTHROPIC_DEFAULT_HAIKU_MODEL
         );
+        settings.env.ANTHROPIC_DEFAULT_HAIKU_MODEL = options?.rewriteHaikuModel
+          ? options.rewriteHaikuModel(normalizedHaikuModel)
+          : normalizedHaikuModel;
       }
     } else {
       // Clear model settings to use defaults

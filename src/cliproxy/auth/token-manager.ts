@@ -7,10 +7,14 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { createHash } from 'crypto';
 import { CLIProxyProvider } from '../types';
 import { CLIPROXY_PROFILES } from '../../auth/profile-detector';
-import { getProviderAuthDir } from '../config-generator';
-import { getProviderAccounts, getDefaultAccount } from '../account-manager';
+import { getProviderAuthDir } from '../config/config-generator';
+import { getProviderAccounts, getDefaultAccount } from '../accounts/account-manager';
+import { deleteTokenFile, extractAccountIdFromTokenFile } from '../accounts/token-file-ops';
+import { buildEmailBackedAccountId } from '../accounts/email-account-identity';
+import { getTokenRefreshOwnership } from '../provider-capabilities';
 import {
   AuthStatus,
   PROVIDER_AUTH_PREFIXES,
@@ -39,6 +43,165 @@ export function isTokenFileForProvider(filePath: string, provider: CLIProxyProvi
   } catch {
     return false;
   }
+}
+
+export type ProviderTokenSnapshot = {
+  file: string;
+  mtimeMs: number;
+  accountId?: string;
+  fingerprint?: string;
+};
+
+type TokenCandidate = {
+  file: string;
+  filePath: string;
+  email?: string;
+  projectId?: string;
+  accountId: string;
+  mtimeMs: number;
+  alreadyRegistered: boolean;
+  fingerprint: string;
+};
+
+type RawTokenCandidate = Omit<TokenCandidate, 'accountId' | 'fingerprint'> & { content: string };
+
+function buildTokenFingerprint(content: string): string {
+  return createHash('sha256').update(content).digest('hex');
+}
+
+function listTokenCandidates(provider: CLIProxyProvider, tokenDir: string): TokenCandidate[] {
+  if (!fs.existsSync(tokenDir)) {
+    return [];
+  }
+
+  const files = fs.readdirSync(tokenDir);
+  const jsonFiles = files.filter((file) => file.endsWith('.json'));
+  const existingAccounts = getProviderAccounts(provider);
+  const rawCandidates: RawTokenCandidate[] = jsonFiles.flatMap((file) => {
+    const filePath = path.join(tokenDir, file);
+    if (!isTokenFileForProvider(filePath, provider)) {
+      return [];
+    }
+
+    const content = fs.readFileSync(filePath, 'utf-8');
+    const data = JSON.parse(content) as { email?: string; project_id?: string };
+    const email = data.email || undefined;
+    const projectId = data.project_id || undefined;
+    const stats = fs.statSync(filePath);
+
+    return [
+      {
+        file,
+        filePath,
+        content,
+        email,
+        projectId,
+        mtimeMs: stats.mtimeMs,
+        alreadyRegistered: existingAccounts.some((account) => account.tokenFile === file),
+      },
+    ];
+  });
+
+  const duplicateEmailCounts = new Map<string, number>();
+  const duplicateEmailTokenSets = new Map<string, Set<string>>();
+  for (const account of existingAccounts) {
+    if (!account.email) continue;
+    const key = account.email.toLowerCase();
+    const tokenSet = duplicateEmailTokenSets.get(key) ?? new Set<string>();
+    tokenSet.add(account.tokenFile);
+    duplicateEmailTokenSets.set(key, tokenSet);
+  }
+  for (const candidate of rawCandidates) {
+    if (!candidate.email) continue;
+    const key = candidate.email.toLowerCase();
+    const tokenSet = duplicateEmailTokenSets.get(key) ?? new Set<string>();
+    tokenSet.add(candidate.file);
+    duplicateEmailTokenSets.set(key, tokenSet);
+  }
+  for (const [key, tokenSet] of duplicateEmailTokenSets) {
+    duplicateEmailCounts.set(key, tokenSet.size);
+  }
+
+  return rawCandidates
+    .map((rawCandidate) => {
+      const duplicateEmailCount = rawCandidate.email
+        ? (duplicateEmailCounts.get(rawCandidate.email.toLowerCase()) ?? 1)
+        : 1;
+      const accountId = rawCandidate.email
+        ? buildEmailBackedAccountId(
+            provider,
+            rawCandidate.file,
+            rawCandidate.email,
+            duplicateEmailCount
+          )
+        : extractAccountIdFromTokenFile(rawCandidate.file, rawCandidate.email);
+
+      return {
+        ...rawCandidate,
+        accountId,
+        fingerprint: buildTokenFingerprint(rawCandidate.content),
+      };
+    })
+    .sort((left, right) => right.mtimeMs - left.mtimeMs);
+}
+
+export function listProviderTokenSnapshots(
+  provider: CLIProxyProvider,
+  tokenDir: string = getProviderTokenDir(provider)
+): ProviderTokenSnapshot[] {
+  return listTokenCandidates(provider, tokenDir).map((candidate) => ({
+    file: candidate.file,
+    mtimeMs: candidate.mtimeMs,
+    accountId: candidate.accountId,
+    fingerprint: candidate.fingerprint,
+  }));
+}
+
+export function findNewTokenSnapshot(
+  currentTokenFiles: ProviderTokenSnapshot[],
+  knownTokenFiles: ProviderTokenSnapshot[],
+  expectedAccountId?: string
+): ProviderTokenSnapshot | null {
+  const knownSnapshotsByFile = new Map(
+    knownTokenFiles.map((snapshot) => [snapshot.file, snapshot])
+  );
+
+  return (
+    currentTokenFiles.find((snapshot) => {
+      const knownSnapshot = knownSnapshotsByFile.get(snapshot.file);
+      if (!expectedAccountId) {
+        return !knownSnapshot;
+      }
+
+      const matchesExpectedAccount =
+        snapshot.file === expectedAccountId || snapshot.accountId === expectedAccountId;
+      if (!matchesExpectedAccount) {
+        return false;
+      }
+
+      if (!knownSnapshot) {
+        return true;
+      }
+
+      return (
+        snapshot.fingerprint !== knownSnapshot.fingerprint ||
+        snapshot.mtimeMs !== knownSnapshot.mtimeMs
+      );
+    }) || null
+  );
+}
+
+export function findNewTokenSnapshotForAuthAttempt(
+  provider: CLIProxyProvider,
+  tokenDir: string,
+  knownTokenFiles: ProviderTokenSnapshot[],
+  expectedAccountId?: string
+): ProviderTokenSnapshot | null {
+  return findNewTokenSnapshot(
+    listProviderTokenSnapshots(provider, tokenDir),
+    knownTokenFiles,
+    expectedAccountId
+  );
 }
 
 /**
@@ -202,50 +365,65 @@ export function registerAccountFromToken(
   provider: CLIProxyProvider,
   tokenDir: string,
   nickname?: string,
-  verbose = false
-): import('../account-manager').AccountInfo | null {
-  const { registerAccount, generateNickname } = require('../account-manager');
+  verbose = false,
+  expectedAccountId?: string
+): import('../accounts/account-manager').AccountInfo | null {
+  const { registerAccount } = require('../accounts/account-manager');
+  let selectedCandidate: Omit<TokenCandidate, 'mtimeMs'> | null = null;
   try {
-    const files = fs.readdirSync(tokenDir);
-    const jsonFiles = files.filter((f: string) => f.endsWith('.json'));
+    const candidates = listTokenCandidates(provider, tokenDir);
+    const existingAccounts = getProviderAccounts(provider);
 
-    let newestFile: string | null = null;
-    let newestMtime = 0;
-
-    for (const file of jsonFiles) {
-      const filePath = path.join(tokenDir, file);
-      if (!isTokenFileForProvider(filePath, provider)) continue;
-
-      const stats = fs.statSync(filePath);
-      if (stats.mtimeMs > newestMtime) {
-        newestMtime = stats.mtimeMs;
-        newestFile = file;
-      }
+    if (expectedAccountId) {
+      selectedCandidate =
+        candidates.find((candidate) => candidate.accountId === expectedAccountId) ||
+        candidates.find((candidate) => candidate.file === expectedAccountId) ||
+        candidates.find((candidate) => {
+          const existingAccount = existingAccounts.find(
+            (account) => account.id === expectedAccountId
+          );
+          return !!existingAccount && existingAccount.tokenFile === candidate.file;
+        }) ||
+        null;
+    } else {
+      selectedCandidate = candidates[0] || null;
     }
 
-    if (!newestFile) {
+    if (!selectedCandidate) {
+      if (verbose && expectedAccountId) {
+        console.error(
+          `[auth] No token matched the expected account ${expectedAccountId}; refusing ambiguous registration`
+        );
+      }
       return null;
     }
 
-    const tokenPath = path.join(tokenDir, newestFile);
-    const content = fs.readFileSync(tokenPath, 'utf-8');
-    const data = JSON.parse(content);
-    const email = data.email || undefined;
-    const projectId = data.project_id || undefined;
-
     const account = registerAccount(
       provider,
-      newestFile,
-      email,
-      nickname || generateNickname(email),
-      projectId
+      selectedCandidate.file,
+      selectedCandidate.email,
+      nickname,
+      selectedCandidate.projectId
     );
 
-    // Upload token to remote server if configured (async, don't block)
-    uploadTokenToRemoteAsync(tokenPath, verbose);
-
+    uploadTokenToRemoteAsync(selectedCandidate.filePath, verbose);
     return account;
-  } catch {
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (verbose) {
+      console.error(`[auth] Failed to register token-backed account: ${message}`);
+    }
+
+    if (selectedCandidate && !selectedCandidate.alreadyRegistered && !expectedAccountId) {
+      deleteTokenFile(selectedCandidate.file);
+    }
+
+    if (expectedAccountId && verbose) {
+      console.error(
+        `[auth] Reauthentication target ${expectedAccountId} did not resolve cleanly from the new token`
+      );
+    }
+
     return null;
   }
 }
@@ -260,7 +438,7 @@ export function registerAccountFromToken(
  */
 function uploadTokenToRemoteAsync(tokenPath: string, verbose: boolean): void {
   // Dynamic import to avoid circular dependencies
-  import('../remote-token-uploader')
+  import('../management/remote-token-uploader')
     .then(({ uploadTokenToRemote, isRemoteUploadEnabled }) => {
       if (isRemoteUploadEnabled()) {
         // uploadTokenToRemote handles its own success/failure logging
@@ -330,14 +508,16 @@ export function displayAuthStatus(): void {
  */
 export async function ensureTokenValid(
   provider: CLIProxyProvider,
-  verbose = false
+  _verbose = false
 ): Promise<{ valid: boolean; refreshed: boolean; error?: string }> {
-  if (provider === 'gemini') {
-    const { ensureGeminiTokenValid } = await import('./gemini-token-refresh');
-    return ensureGeminiTokenValid(verbose);
+  if (getTokenRefreshOwnership(provider) === 'ccs') {
+    return {
+      valid: false,
+      refreshed: false,
+      error: `CCS-managed token validation is not available for ${provider}`,
+    };
   }
 
-  // For CLIProxy-delegated providers, token refresh is handled by CLIProxyAPIPlus.
-  // CCS only verifies the token file exists (authentication state).
+  // Runtime-managed providers refresh upstream. CCS only verifies auth material exists locally.
   return { valid: isAuthenticated(provider), refreshed: false };
 }

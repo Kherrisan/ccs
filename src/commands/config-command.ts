@@ -3,7 +3,7 @@
  *
  * Launches web-based configuration dashboard.
  * Ensures CLIProxy service is running for dashboard features.
- * Usage: ccs config [--port PORT] [--dev]
+ * Usage: ccs config [--port PORT] [--host HOST] [--dev]
  */
 
 import getPort from 'get-port';
@@ -11,183 +11,249 @@ import open from 'open';
 import { startServer } from '../web-server';
 import { setupGracefulShutdown } from '../web-server/shutdown';
 import { ensureCliproxyService } from '../cliproxy/service-manager';
-import { CLIPROXY_DEFAULT_PORT } from '../cliproxy/config-generator';
+import { CLIPROXY_DEFAULT_PORT } from '../cliproxy/config/config-generator';
+import { getDashboardAuthConfig } from '../config/unified-config-loader';
 import { initUI, header, ok, info, warn, fail } from '../utils/ui';
-import { extractOption, hasAnyFlag } from './arg-extractor';
+import { resolveNamedCommand, type NamedCommandRoute } from './named-command-router';
+import {
+  isLoopbackHost,
+  isWildcardHost,
+  normalizeDashboardHost,
+  resolveDashboardUrls,
+} from './config-dashboard-host';
+import { parseConfigCommandArgs, showConfigCommandHelp } from './config-command-options';
+import { createLogger } from '../services/logging';
 
-interface ConfigOptions {
-  port?: number;
-  dev?: boolean;
+const logger = createLogger('command:config');
+
+const CONFIG_SUBCOMMAND_ROUTES: readonly NamedCommandRoute[] = [
+  {
+    name: 'channels',
+    handle: async (args) => {
+      const { handleConfigChannelsCommand } = await import('./config-channels-command');
+      await handleConfigChannelsCommand(args);
+    },
+  },
+  {
+    name: 'auth',
+    handle: async (args) => {
+      const { handleConfigAuthCommand } = await import('./config-auth');
+      await handleConfigAuthCommand(args);
+    },
+  },
+  {
+    name: 'image-analysis',
+    handle: async (args) => {
+      const { handleConfigImageAnalysisCommand } = await import('./config-image-analysis-command');
+      await handleConfigImageAnalysisCommand(args);
+    },
+  },
+  {
+    name: 'thinking',
+    handle: async (args) => {
+      const { handleConfigThinkingCommand } = await import('./config-thinking-command');
+      await handleConfigThinkingCommand(args);
+    },
+  },
+];
+
+interface ConfigCommandDependencies {
+  getPort: typeof getPort;
+  openBrowser: typeof open;
+  startServer: typeof startServer;
+  setupGracefulShutdown: typeof setupGracefulShutdown;
+  ensureCliproxyService: typeof ensureCliproxyService;
+  getDashboardAuthConfig: typeof getDashboardAuthConfig;
+  initUI: typeof initUI;
+  header: typeof header;
+  ok: typeof ok;
+  info: typeof info;
+  warn: typeof warn;
+  fail: typeof fail;
+  resolveNamedCommand: typeof resolveNamedCommand;
+  configSubcommandRoutes: readonly NamedCommandRoute[];
 }
 
-/**
- * Parse command line arguments
- */
-function parseArgs(args: string[]): ConfigOptions {
-  const result: ConfigOptions = {};
-
-  if (hasAnyFlag(args, ['--help', '-h'])) {
-    showHelp();
-    process.exit(0);
-  }
-
-  const portOption = extractOption(args, ['--port', '-p']);
-  if (portOption.found) {
-    if (portOption.missingValue || !portOption.value) {
-      console.error(fail('Invalid port number'));
-      process.exit(1);
-    }
-
-    const port = parseInt(portOption.value, 10);
-    if (!isNaN(port) && port > 0 && port < 65536) {
-      result.port = port;
-    } else {
-      console.error(fail('Invalid port number'));
-      process.exit(1);
-    }
-  }
-
-  result.dev = hasAnyFlag(args, ['--dev']);
-  return result;
-}
-
-/**
- * Show help message
- */
-function showHelp(): void {
-  console.log('');
-  console.log('Usage: ccs config [command] [options]');
-  console.log('');
-  console.log('Open web-based configuration dashboard');
-  console.log('');
-  console.log('Commands:');
-  console.log('  auth               Manage dashboard authentication');
-  console.log('    auth setup       Configure username and password');
-  console.log('    auth show        Display current auth status');
-  console.log('    auth disable     Disable authentication');
-  console.log('');
-  console.log('  image-analysis     Manage image analysis settings');
-  console.log('    --enable         Enable image analysis via CLIProxy');
-  console.log('    --disable        Disable image analysis');
-  console.log('    --timeout <s>    Set analysis timeout (seconds)');
-  console.log('    --set-model <p> <m>  Set model for provider');
-  console.log('');
-  console.log('  thinking           Manage thinking/reasoning settings');
-  console.log('    --mode <mode>    Set mode (auto, off, manual)');
-  console.log('    --override <l>   Set persistent override level');
-  console.log('    --clear-override Remove persistent override');
-  console.log('    --tier <t> <l>   Set tier default level');
-  console.log('    --provider-override <p> <t> <l> Set provider tier override');
-  console.log('    --clear-provider-override <p> [t] Remove provider override');
-  console.log('');
-  console.log('Options:');
-  console.log('  --port, -p PORT    Specify server port (default: auto-detect)');
-  console.log('  --dev              Development mode with Vite HMR');
-  console.log('  --help, -h         Show this help message');
-  console.log('');
-  console.log('Examples:');
-  console.log('  ccs config              Auto-detect available port');
-  console.log('  ccs config --port 3000  Use specific port');
-  console.log('  ccs config --dev        Development mode with hot reload');
-  console.log('  ccs config auth setup   Configure dashboard login');
-  console.log('  ccs config image-analysis          Show image settings');
-  console.log('  ccs config image-analysis --enable Enable feature');
-  console.log('  ccs config thinking                Show thinking settings');
-  console.log('  ccs config thinking --mode auto    Set auto mode');
-  console.log('');
-}
+const defaultConfigCommandDependencies: ConfigCommandDependencies = {
+  getPort,
+  openBrowser: open,
+  startServer,
+  setupGracefulShutdown,
+  ensureCliproxyService,
+  getDashboardAuthConfig,
+  initUI,
+  header,
+  ok,
+  info,
+  warn,
+  fail,
+  resolveNamedCommand,
+  configSubcommandRoutes: CONFIG_SUBCOMMAND_ROUTES,
+};
 
 /**
  * Handle config command
  */
-export async function handleConfigCommand(args: string[]): Promise<void> {
-  // Route subcommands before dashboard launch
-  if (args[0] === 'auth') {
-    const { handleConfigAuthCommand } = await import('./config-auth');
-    await handleConfigAuthCommand(args.slice(1));
+export async function handleConfigCommand(
+  args: string[],
+  deps: ConfigCommandDependencies = defaultConfigCommandDependencies
+): Promise<void> {
+  if (args.length === 1 && args[0] === 'help') {
+    await deps.initUI();
+    showConfigCommandHelp();
+    process.exit(0);
+  }
+
+  const subcommand = args[0]?.startsWith('-')
+    ? undefined
+    : deps.resolveNamedCommand(args[0], deps.configSubcommandRoutes);
+  if (subcommand) {
+    await subcommand.handle(args.slice(1));
     return;
   }
 
-  // Route image-analysis subcommand
-  if (args[0] === 'image-analysis') {
-    const { handleConfigImageAnalysisCommand } = await import('./config-image-analysis-command');
-    await handleConfigImageAnalysisCommand(args.slice(1));
-    return;
+  await deps.initUI();
+
+  const parsed = parseConfigCommandArgs(args);
+  if (parsed.help) {
+    showConfigCommandHelp();
+    process.exit(0);
+  }
+  if (parsed.error) {
+    console.error(deps.fail(parsed.error));
+    process.exit(1);
   }
 
-  // Route thinking subcommand
-  if (args[0] === 'thinking') {
-    const { handleConfigThinkingCommand } = await import('./config-thinking-command');
-    await handleConfigThinkingCommand(args.slice(1));
-    return;
-  }
+  const options = parsed.options;
+  const verbose = options.dev;
+  logger.info('dashboard.launch_requested', 'Config dashboard launch requested', {
+    dev: Boolean(options.dev),
+    host: options.host || null,
+    port: options.port || null,
+  });
 
-  await initUI();
-
-  const options = parseArgs(args);
-  const verbose = options.dev || false;
-
-  console.log(header('CCS Config Dashboard'));
+  console.log(deps.header('CCS Config Dashboard'));
   console.log('');
 
   // Ensure CLIProxy service is running for dashboard features
-  console.log(info('Starting CLIProxy service...'));
-  const cliproxyResult = await ensureCliproxyService(CLIPROXY_DEFAULT_PORT, verbose);
+  console.log(deps.info('Starting CLIProxy service...'));
+  const cliproxyResult = await deps.ensureCliproxyService(CLIPROXY_DEFAULT_PORT, verbose);
+  logger.info('cliproxy.ensure_result', 'Config command checked CLIProxy availability', {
+    started: cliproxyResult.started,
+    alreadyRunning: cliproxyResult.alreadyRunning,
+    configRegenerated: cliproxyResult.configRegenerated,
+    port: cliproxyResult.port || null,
+    error: cliproxyResult.error || null,
+  });
 
   if (cliproxyResult.started) {
     if (cliproxyResult.alreadyRunning) {
-      console.log(ok(`CLIProxy already running on port ${cliproxyResult.port}`));
+      console.log(deps.ok(`CLIProxy already running on port ${cliproxyResult.port}`));
       if (cliproxyResult.configRegenerated) {
-        console.log(warn('Config updated - restart CLIProxy to apply changes'));
+        console.log(deps.warn('Config updated - restart CLIProxy to apply changes'));
       }
     } else {
-      console.log(ok(`CLIProxy started on port ${cliproxyResult.port}`));
+      console.log(deps.ok(`CLIProxy started on port ${cliproxyResult.port}`));
     }
   } else {
-    console.log(warn(`CLIProxy not available: ${cliproxyResult.error}`));
-    console.log(info('Dashboard will work but Control Panel/Stats may be limited'));
+    console.log(deps.warn(`CLIProxy not available: ${cliproxyResult.error}`));
+    console.log(deps.info('Dashboard will work but Control Panel/Stats may be limited'));
   }
   console.log('');
 
-  console.log(info('Starting dashboard server...'));
+  console.log(deps.info('Starting dashboard server...'));
 
   // Find available port
   const port =
     options.port ??
-    (await getPort({
+    (await deps.getPort({
       port: [3000, 3001, 3002, 8000, 8080],
     }));
 
   try {
     // Start server
-    const { server, wss, cleanup } = await startServer({ port, dev: options.dev });
+    const serverOptions: Parameters<typeof startServer>[0] = {
+      port,
+      dev: options.dev,
+    };
+    if (options.hostProvided && options.host) {
+      serverOptions.host = normalizeDashboardHost(options.host);
+    }
+
+    const { server, wss, cleanup } = await deps.startServer(serverOptions);
 
     // Setup graceful shutdown
-    setupGracefulShutdown(server, wss, cleanup);
+    deps.setupGracefulShutdown(server, wss, cleanup);
 
-    const url = `http://localhost:${port}`;
+    const urls = resolveDashboardUrls(resolveServerBindHost(server) ?? options.host, port);
+    const shouldWarnAboutExposure = urls.bindHost ? !isLoopbackHost(urls.bindHost) : false;
 
     if (options.dev) {
-      console.log(ok(`Dev Server: ${url}`));
+      console.log(deps.ok(`Dev Server: ${urls.browserUrl}`));
       console.log('');
-      console.log(info('HMR enabled - UI changes will hot-reload'));
+      console.log(deps.info('HMR enabled - UI changes will hot-reload'));
     } else {
-      console.log(ok(`Dashboard: ${url}`));
+      console.log(deps.ok(`Dashboard: ${urls.browserUrl}`));
+    }
+
+    if (shouldWarnAboutExposure && urls.bindHost) {
+      console.log(deps.info(`Bind host: ${urls.bindHost}`));
+      if (urls.networkUrls?.length === 1) {
+        console.log(deps.info(`Network URL: ${urls.networkUrls[0]}`));
+      } else if (urls.networkUrls && urls.networkUrls.length > 1) {
+        console.log(deps.info('Network URLs:'));
+        for (const networkUrl of urls.networkUrls) {
+          console.log(deps.info(`  ${networkUrl}`));
+        }
+      }
+    }
+
+    if (shouldWarnAboutExposure && urls.bindHost) {
+      const authConfig = deps.getDashboardAuthConfig();
+      console.log(
+        deps.warn('Dashboard may be reachable from other devices that can connect to this machine.')
+      );
+      if (!authConfig.enabled) {
+        console.log(deps.info('Protect it before sharing: ccs config auth setup'));
+      }
+      if (isWildcardHost(urls.bindHost) && !urls.networkUrls?.length) {
+        console.log(deps.info('Use your machine IP or hostname from the other device.'));
+      }
     }
     console.log('');
 
     // Open browser
     try {
-      await open(url, { wait: false });
-      console.log(info('Browser opened automatically'));
+      await deps.openBrowser(urls.browserUrl, { wait: false });
+      logger.info('dashboard.browser_opened', 'Config dashboard browser launch attempted', {
+        browserUrl: urls.browserUrl,
+      });
+      console.log(deps.info('Browser opened automatically'));
     } catch {
-      console.log(info(`Open manually: ${url}`));
+      logger.warn('dashboard.browser_open_failed', 'Automatic browser launch failed', {
+        browserUrl: urls.browserUrl,
+      });
+      console.log(deps.info(`Open manually: ${urls.browserUrl}`));
     }
 
     console.log('');
-    console.log(info('Press Ctrl+C to stop'));
+    console.log(deps.info('Press Ctrl+C to stop'));
   } catch (error) {
-    console.error(fail(`Failed to start server: ${(error as Error).message}`));
+    logger.error('dashboard.launch_failed', 'Config dashboard failed to launch', {
+      message: (error as Error).message,
+    });
+    console.error(deps.fail(`Failed to start server: ${(error as Error).message}`));
     process.exit(1);
   }
+}
+
+function resolveServerBindHost(server: {
+  address(): string | { address: string } | null;
+}): string | undefined {
+  const address = server.address();
+  if (!address || typeof address === 'string') {
+    return undefined;
+  }
+
+  return address.address;
 }

@@ -18,7 +18,14 @@ import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { useCreateVariant, useCliproxyAuth } from '@/hooks/use-cliproxy';
 import { usePrivacy } from '@/contexts/privacy-context';
-import { CLIPROXY_PROVIDERS, getProviderDisplayName } from '@/lib/provider-config';
+import { formatAccountDisplayName } from '@/lib/account-identity';
+import {
+  CLIPROXY_PROVIDERS,
+  CLIPROXY_PROVIDER_SECTIONS,
+  getProviderDisplayName,
+  getProviderSection,
+  isPlusExtraProvider,
+} from '@/lib/provider-config';
 import { isDeniedAgyModelId } from '@/lib/utils';
 
 const singleProviderSchema = z.object({
@@ -29,7 +36,7 @@ const singleProviderSchema = z.object({
   provider: z.enum(CLIPROXY_PROVIDERS, { message: 'Provider is required' }),
   model: z.string().optional(),
   account: z.string().optional(),
-  target: z.enum(['claude', 'droid']),
+  target: z.enum(['claude', 'droid', 'codex']),
 });
 
 const compositeSchema = z.object({
@@ -38,7 +45,7 @@ const compositeSchema = z.object({
     .min(1, 'Name is required')
     .regex(/^[a-zA-Z][a-zA-Z0-9._-]*$/, 'Invalid variant name'),
   default_tier: z.enum(['opus', 'sonnet', 'haiku'], { message: 'Default tier is required' }),
-  target: z.enum(['claude', 'droid']),
+  target: z.enum(['claude', 'droid', 'codex']),
   tiers: z.object({
     opus: z.object({
       provider: z.enum(CLIPROXY_PROVIDERS, { message: 'Provider is required' }),
@@ -71,7 +78,7 @@ const providerOptions = CLIPROXY_PROVIDERS.map((id) => ({
   label: getProviderDisplayName(id),
 }));
 const AGY_DENYLIST_MESSAGE =
-  'Antigravity denylist: Claude Opus 4.5 and Claude Sonnet 4.5 are deprecated.';
+  'Antigravity denylist: Claude Opus 4.5 and Claude Sonnet 4.5 are deprecated.'; // TODO i18n: use t('providerEditor.agyDenylist')
 
 function isDeniedAgyModelForProvider(provider: string, modelId: string | undefined): boolean {
   return provider === 'agy' && typeof modelId === 'string' && isDeniedAgyModelId(modelId);
@@ -103,6 +110,8 @@ export function CliproxyDialog({ open, onClose }: CliproxyDialogProps) {
   });
 
   const selectedProvider = useWatch({ control: singleForm.control, name: 'provider' });
+  const compositeTiers = useWatch({ control: compositeForm.control, name: 'tiers' });
+  const selectedProviderSection = getProviderSection(selectedProvider);
   const providerAuth = authData?.authStatus.find((s) => s.provider === selectedProvider);
   const providerAccounts = providerAuth?.accounts || [];
 
@@ -151,7 +160,7 @@ export function CliproxyDialog({ open, onClose }: CliproxyDialogProps) {
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Create CLIProxy Variant</DialogTitle>
+          <DialogTitle>{t('providerEditor.createVariant')}</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4">
@@ -196,16 +205,30 @@ export function CliproxyDialog({ open, onClose }: CliproxyDialogProps) {
                   className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                 >
                   <option value="">{t('cliproxyDialog.selectProvider')}</option>
-                  {providerOptions.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
+                  {CLIPROXY_PROVIDER_SECTIONS.map((section) => (
+                    <optgroup key={section.id} label={t(section.labelKey)}>
+                      {providerOptions
+                        .filter((opt) => section.providers.includes(opt.value))
+                        .map((opt) => (
+                          <option key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </option>
+                        ))}
+                    </optgroup>
                   ))}
                 </select>
                 {singleForm.formState.errors.provider && (
                   <span className="text-xs text-red-500">
                     {singleForm.formState.errors.provider.message}
                   </span>
+                )}
+                {selectedProviderSection && (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    {t(selectedProviderSection.hintKey)}
+                    {isPlusExtraProvider(selectedProvider)
+                      ? ` ${t('providerConfig.plusTrackNote')}`
+                      : ''}
+                  </p>
                 )}
               </div>
 
@@ -220,7 +243,9 @@ export function CliproxyDialog({ open, onClose }: CliproxyDialogProps) {
                     <option value="">{t('cliproxyDialog.useDefaultAccount')}</option>
                     {providerAccounts.map((acc) => (
                       <option key={acc.id} value={acc.id}>
-                        {privacyMode ? '••••••' : acc.email || acc.id}
+                        {privacyMode
+                          ? '••••••'
+                          : formatAccountDisplayName(acc.id, acc.email, acc.tokenFile)}
                         {acc.isDefault ? ` ${t('cliproxyDialog.defaultSuffix')}` : ''}
                       </option>
                     ))}
@@ -246,6 +271,7 @@ export function CliproxyDialog({ open, onClose }: CliproxyDialogProps) {
                 >
                   <option value="claude">{t('cliproxyDialog.claudeCode')}</option>
                   <option value="droid">{t('cliproxyDialog.factoryDroid')}</option>
+                  <option value="codex">Codex CLI</option>
                 </select>
               </div>
 
@@ -293,12 +319,26 @@ export function CliproxyDialog({ open, onClose }: CliproxyDialogProps) {
                           {...compositeForm.register(`tiers.${tier}.provider`)}
                           className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                         >
-                          {providerOptions.map((opt) => (
-                            <option key={opt.value} value={opt.value}>
-                              {opt.label}
-                            </option>
+                          {CLIPROXY_PROVIDER_SECTIONS.map((section) => (
+                            <optgroup key={section.id} label={t(section.labelKey)}>
+                              {providerOptions
+                                .filter((opt) => section.providers.includes(opt.value))
+                                .map((opt) => (
+                                  <option key={opt.value} value={opt.value}>
+                                    {opt.label}
+                                  </option>
+                                ))}
+                            </optgroup>
                           ))}
                         </select>
+                        {compositeTiers?.[tier]?.provider && (
+                          <p className="mt-2 text-xs text-muted-foreground">
+                            {t(getProviderSection(compositeTiers[tier].provider)?.hintKey || '')}
+                            {isPlusExtraProvider(compositeTiers[tier].provider)
+                              ? ` ${t('providerConfig.plusTrackNote')}`
+                              : ''}
+                          </p>
+                        )}
                       </div>
                       <div>
                         <Label htmlFor={`${tier}-model`}>{t('cliproxyDialog.model')}</Label>
@@ -350,6 +390,7 @@ export function CliproxyDialog({ open, onClose }: CliproxyDialogProps) {
                 >
                   <option value="claude">{t('cliproxyDialog.claudeCode')}</option>
                   <option value="droid">{t('cliproxyDialog.factoryDroid')}</option>
+                  <option value="codex">Codex CLI</option>
                 </select>
               </div>
 

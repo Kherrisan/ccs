@@ -1,6 +1,6 @@
 # CCS System Architecture
 
-Last Updated: 2026-03-02
+Last Updated: 2026-04-14
 
 High-level architecture overview for the CCS (Claude Code Switch) system.
 
@@ -8,7 +8,7 @@ High-level architecture overview for the CCS (Claude Code Switch) system.
 
 ## System Overview
 
-CCS is a CLI wrapper that enables seamless switching between multiple Claude accounts and alternative AI providers (GLM, Gemini, Codex, Kiro, GitHub Copilot, OpenRouter, Qwen, Kimi, DeepSeek). It now supports multiple CLI targets (Claude Code, Factory Droid) for credential delivery.
+CCS is a multi-provider profile and runtime manager that enables seamless switching between multiple Claude accounts, alternative AI providers, and multiple CLI targets (Claude Code, Factory Droid, Codex CLI) for credential delivery.
 
 The system consists of two main components:
 
@@ -18,6 +18,8 @@ The system consists of two main components:
 Dashboard localization (i18n) architecture and contributor workflow are documented in [Dashboard i18n Guide](../i18n-dashboard.md).
 
 CCS v7.34 adds Image Analysis Hook for vision model proxying through CLIProxy with automatic injection for all profile types.
+CCS v7.67 adds a native structured logging lane for CCS-owned runtime events, backed by `src/services/logging/`, bounded JSONL files under `~/.ccs/logs/`, and a dedicated dashboard `/logs` route.
+CCS PR review now uses PR-Agent in GitHub Actions, with reviews running on the self-hosted `cliproxy` runner, existing `AI_REVIEW_*` workflow variables and secrets preserved as the runtime contract, and repo-level guidance stored in `.pr_agent.toml`.
 
 ```
 +===========================================================================+
@@ -25,8 +27,8 @@ CCS v7.34 adds Image Analysis Hook for vision model proxying through CLIProxy wi
 +===========================================================================+
 |                                                                           |
 |   +------------------+      +-----------------+      +----------------+   |
-|   |   User Terminal  | ---> |   CCS CLI       | ---> | Target CLI     |   |
-|   |   (ccs command)  |      |   (src/ccs.ts)  |      | (claude/droid) |   |
+|   |   User Terminal  | ---> |   CCS CLI       | ---> | Target CLI           |   |
+|   |   (ccs command)  |      |   (src/ccs.ts)  |      | (claude/droid/codex) |   |
 |   +------------------+      +-----------------+      +----------------+   |
 |                                    |                        |             |
 |                                    v                        v             |
@@ -55,13 +57,13 @@ CCS v7.45 introduces the Target Adapter pattern, enabling seamless integration w
 **Key architecture:**
 
 ```
-Profile Resolution (CLIProxy, GLMT, Account-based)
+Profile Resolution (CLIProxy, Settings/API, Account-based)
         |
         v
-Target Resolution (--target flag > config > argv[0] > default)
+Target Resolution (--target flag > runtime entrypoint / argv[0] > config > default)
         |
         v
-Get Target Adapter (Claude or Droid)
+Get Target Adapter (Claude, Droid, or Codex)
         |
         +---> detectBinary()     (find CLI on system)
         |
@@ -86,11 +88,20 @@ Spawn Target Process
   - Spawns: `droid -m custom:ccs-<profile> <args>`
   - Model config includes baseUrl, apiKey, provider
 
-**Binary alias pattern (busybox-style):**
+- **Codex Adapter**: Transient runtime overrides plus user-layer dashboard inspection
+  - Uses `codex -c key=value` only for CCS-routed launches
+  - Preserves native `~/.codex/config.toml` ownership
+  - Dashboard page reads/writes only the user config layer with explicit runtime-vs-provider warnings
+
+**Runtime entrypoints (built-in bins) and argv[0]-style aliases:**
 
 ```
-ccs  → Target: claude (default)
-ccsd → Target: droid (auto-selected via argv[0])
+ccs        → Target: claude (default)
+ccs-droid  → Target: droid (explicit alias)
+ccsd       → Target: droid (legacy shortcut)
+ccs-codex  → Target: codex (explicit alias)
+ccsx       → Target: codex (short alias)
+ccsxp      → Target: codex (native cliproxy shortcut; prepends `--config model_provider="cliproxy"`)
 ```
 
 For details on the adapter architecture, see [Target Adapters](./target-adapters.md).
@@ -126,7 +137,7 @@ For details on the adapter architecture, see [Target Adapters](./target-adapters
         |                                       |
         +---> [CLIProxy Provider] ---> execClaudeWithCLIProxy()
         |                                       |
-        +---> [GLMT Profile] ---> execClaudeWithProxy()
+        +---> [Settings/API Profile] ---> normalize legacy glmt if needed
         |
         v
   +------------------+
@@ -185,24 +196,35 @@ For details on the adapter architecture, see [Target Adapters](./target-adapters
         |                              v
         |                        7b. Spawn via Adapter
         |
-        +---> GLMT -----------> 3c. Start Embedded Proxy
+        +---> Settings/API ---> 3c. Load settings env
                                       |
                                       v
-                                4c. Resolve Target Adapter
+                                4c. Normalize legacy glmt if needed
                                       |
                                       v
-                                5c. Spawn via Adapter
+                                5c. Resolve Target Adapter
+                                      |
+                                      v
+                                6c. Spawn via Adapter
 ```
 
 ---
 
 ## Provider Integration Architecture
 
-For detailed provider flows (CLIProxyAPI, GLMT, quota management), see [Provider Flows](./provider-flows.md).
+For detailed provider flows (CLIProxyAPI, legacy GLMT compatibility, quota management), see [Provider Flows](./provider-flows.md).
 
 ---
 
 ## Configuration Architecture
+
+### CCS Logging Architecture
+
+- Shared logging contract lives in `src/services/logging/` and is used for CCS-owned runtime diagnostics, request tracing, and bounded recent-entry reads.
+- Config lives at top-level `logging.*` in `~/.ccs/config.yaml`; `cliproxy.logging.*` still controls upstream CLIProxy runtime files only.
+- CCS-owned runtime logs write to `~/.ccs/logs/current.jsonl` and rotate into `~/.ccs/logs/archive/` based on policy.
+- Dashboard exposure uses native `/api/logs/config`, `/api/logs/sources`, and `/api/logs/entries` endpoints plus the `System -> Logs` React page.
+- Request logging explicitly skips `/api/logs` reads so the log viewer does not recursively log itself.
 
 ### Config File Hierarchy
 
@@ -230,11 +252,26 @@ For detailed provider flows (CLIProxyAPI, GLMT, quota management), see [Provider
             +---> commands/        # Claude Code commands
             +---> skills/          # Custom skills
             +---> agents/          # Agent configurations
+            +---> plugins/
+                    |
+                    +---> cache/               # Shared plugin payload/cache data
+                    +---> marketplaces/        # Shared marketplace payload directories
+                    +---> installed_plugins.json
+
+  ~/.ccs/instances/<profile>/
+    |
+    +---> plugins/
+            |
+            +---> known_marketplaces.json      # Instance-local registry for active CLAUDE_CONFIG_DIR validation
 
   ~/.factory/ (Droid CLI)
     |
     +---> settings.json            # Droid config (custom models)
 ```
+
+Plugin ownership note:
+- `commands/`, `skills/`, `agents/`, and `settings.json` remain shared through the existing symlink/copy flow.
+- Marketplace payload directories stay shared, but `known_marketplaces.json` is reconciled per instance so Claude Code can validate `installLocation` against that instance's `CLAUDE_CONFIG_DIR/plugins/marketplaces`.
 
 ### Config Loading Order
 
@@ -303,7 +340,7 @@ See [Provider Flows](./provider-flows.md) → Authentication Flow section.
         | Localhost only (127.0.0.1)
         v
   +------------------+
-  | CLIProxy/GLMT    |  Binds to localhost only
+  | CLIProxy/Legacy  |  Binds to localhost only
   +------------------+
         |
         | TLS encrypted
@@ -374,10 +411,34 @@ See [Provider Flows](./provider-flows.md) → Authentication Flow section.
         |
         +---> Creates symlink: ccs --> dist/ccs.js
         |
-        +---> Binary alias: ccsd → ccs (auto-selects droid target)
+        +---> Runtime aliases: ccs-droid / ccsd → ccs (auto-select droid target)
         |
         +---> First run creates: ~/.ccs/
 ```
+
+### PR Review Lane
+
+Automated pull request review stays in `.github/workflows/ai-review.yml`, but the workflow now runs PR-Agent instead of the old Claude action. Reviews run on the existing self-hosted `cliproxy` runner, while the workflow preserves the existing `AI_REVIEW_BASE_URL`, `AI_REVIEW_MODEL`, and `AI_REVIEW_API_KEY` contract by mapping those values into PR-Agent env keys such as `OPENAI.*`, `config.*`, and `github_action_config.*`. Repo-specific reviewer guidance lives in `.pr_agent.toml`.
+
+```
+GitHub Actions `ai-review.yml`
+      |
+      v
+Self-hosted `cliproxy` runner
+      |
+      v
+PR-Agent action
+      |
+      v
+CLIProxy
+      |
+      v
+Configured model from `.pr_agent.toml`
+```
+
+- `ai-review.yml` owns automation wiring such as runner selection, PR-Agent action usage, and runtime values mapped from `AI_REVIEW_*` into `OPENAI.*`, `config.*`, and `github_action_config.*`.
+- `.pr_agent.toml` in the repo root owns review instructions for this repository.
+- Contributors should treat PR-Agent comments and trusted `/review` reruns as the primary AI review path for PRs targeting CCS.
 
 ### Runtime Dependencies
 
@@ -400,5 +461,5 @@ See [Provider Flows](./provider-flows.md) → Authentication Flow section.
 - [Codebase Summary](../codebase-summary.md) - Detailed directory structure
 - [Code Standards](../code-standards.md) - Coding conventions & patterns
 - [Target Adapters](./target-adapters.md) - Multi-CLI adapter architecture
-- [Provider Flows](./provider-flows.md) - CLIProxy, GLMT, authentication flows
+- [Provider Flows](./provider-flows.md) - CLIProxy, legacy GLMT compatibility, authentication flows
 - [Project Roadmap](../project-roadmap.md) - Development phases

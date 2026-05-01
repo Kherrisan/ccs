@@ -5,18 +5,16 @@
 
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AlertTriangle, ArrowRight, ChevronDown, Plus, Users, Zap } from 'lucide-react';
+import { AlertTriangle, ArrowRight, Plus, Users, Zap } from 'lucide-react';
 import { AccountsTable } from '@/components/account/accounts-table';
+import { ContinuityOverview } from '@/components/account/continuity-overview';
 import { CreateAuthProfileDialog } from '@/components/account/create-auth-profile-dialog';
-import { HistorySyncLearningMap } from '@/components/account/history-sync-learning-map';
 import { CopyButton } from '@/components/ui/copy-button';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useAccounts, useConfirmLegacyAccountPolicies } from '@/hooks/use-accounts';
-import { cn } from '@/lib/utils';
 import { useTranslation } from 'react-i18next';
 
 export function AccountsPage() {
@@ -25,7 +23,6 @@ export function AccountsPage() {
   const { data, isLoading } = useAccounts();
   const confirmLegacyMutation = useConfirmLegacyAccountPolicies();
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const [guideOpen, setGuideOpen] = useState(false);
 
   const authAccounts = data?.accounts || [];
   const cliproxyCount = data?.cliproxyCount || 0;
@@ -35,13 +32,14 @@ export function AccountsPage() {
   const sharedStandardCount = data?.sharedStandardCount || 0;
   const deeperSharedCount = data?.deeperSharedCount || 0;
   const isolatedCount = data?.isolatedCount || 0;
-  const sharedGroups = Array.from(
-    new Set(
-      authAccounts
-        .filter((account) => account.context_mode === 'shared')
-        .map((account) => account.context_group || 'default')
-    )
-  ).sort((a, b) => a.localeCompare(b));
+  const sharedAloneCount = data?.sharedAloneCount || 0;
+  const sharedPeerAccountCount = data?.sharedPeerAccountCount || 0;
+  const deeperReadyAccountCount = data?.deeperReadyAccountCount || 0;
+  const sharedPeerGroups = data?.sharedPeerGroups || [];
+  const deeperReadyGroups = data?.deeperReadyGroups || [];
+  const sharedGroups = data?.sharedGroups || [];
+  const groupSummaries = data?.groupSummaries || [];
+  const plainCcsLane = data?.plainCcsLane || null;
 
   const legacyTargets = authAccounts.filter(
     (account) => account.context_inferred || account.continuity_inferred
@@ -55,7 +53,7 @@ export function AccountsPage() {
 
   return (
     <>
-      <div className="h-[calc(100vh-100px)] hidden lg:flex">
+      <div className="hidden h-full min-h-0 lg:flex">
         {/* Left action column */}
         <div className="w-80 border-r flex flex-col bg-muted/20 shrink-0">
           <div className="p-4 border-b bg-background space-y-2">
@@ -145,54 +143,6 @@ export function AccountsPage() {
                 </div>
               )}
 
-              <Collapsible open={guideOpen} onOpenChange={setGuideOpen}>
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CollapsibleTrigger asChild>
-                      <Button variant="ghost" className="h-auto w-full justify-between px-0 py-0">
-                        <div className="text-left">
-                          <CardTitle className="text-sm">
-                            {t('accountsPage.continuityGuide')}
-                          </CardTitle>
-                          <CardDescription className="mt-1">
-                            {t('accountsPage.expandWhenNeeded')}
-                          </CardDescription>
-                        </div>
-                        <ChevronDown
-                          className={cn('h-4 w-4 transition-transform', guideOpen && 'rotate-180')}
-                        />
-                      </Button>
-                    </CollapsibleTrigger>
-                  </CardHeader>
-                  <CollapsibleContent>
-                    <CardContent className="space-y-3 text-xs text-muted-foreground">
-                      <div className="rounded-md border p-2.5">
-                        <p className="font-semibold text-foreground">
-                          {t('accountsPage.sharedStandard')}
-                        </p>
-                        <p className="mt-1">{t('accountsPage.sharedStandardDesc')}</p>
-                      </div>
-                      <div className="rounded-md border p-2.5">
-                        <p className="font-semibold text-foreground">
-                          {t('accountsPage.sharedDeeper')}
-                        </p>
-                        <p className="mt-1">
-                          {t('accountsPage.sharedDeeperPrefix')} <code>session-env</code>,{' '}
-                          <code>file-history</code>, <code>shell-snapshots</code>,{' '}
-                          <code>todos</code>.
-                        </p>
-                      </div>
-                      <div className="rounded-md border p-2.5">
-                        <p className="font-semibold text-foreground">
-                          {t('accountsPage.isolated')}
-                        </p>
-                        <p className="mt-1">{t('accountsPage.isolatedDesc')}</p>
-                      </div>
-                    </CardContent>
-                  </CollapsibleContent>
-                </Card>
-              </Collapsible>
-
               <Card>
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm">{t('accountsPage.quickCommands')}</CardTitle>
@@ -232,19 +182,27 @@ export function AccountsPage() {
               {t('accountsPage.tableScopePrefix')}
               <code className="mx-1 rounded bg-muted px-1 py-0.5">ccs auth</code>
               {t('accountsPage.tableScopeMiddle')}
-              <code className="mx-1 rounded bg-muted px-1 py-0.5">Sync</code>
+              <code className="mx-1 rounded bg-muted px-1 py-0.5">{t('accountsTable.sync')}</code>
               {t('accountsPage.tableScopeSuffix')}
             </p>
           </div>
 
           <div className="flex-1 min-h-0 p-5 space-y-4 overflow-y-auto">
-            <HistorySyncLearningMap
+            <ContinuityOverview
+              totalAccounts={authAccounts.length}
+              primaryAccountName={authAccounts.length === 1 ? authAccounts[0]?.name : null}
               isolatedCount={isolatedCount}
               sharedStandardCount={sharedStandardCount}
               deeperSharedCount={deeperSharedCount}
+              sharedAloneCount={sharedAloneCount}
+              sharedPeerAccountCount={sharedPeerAccountCount}
+              deeperReadyAccountCount={deeperReadyAccountCount}
               sharedGroups={sharedGroups}
+              sharedPeerGroups={sharedPeerGroups}
+              deeperReadyGroups={deeperReadyGroups}
               legacyTargetCount={legacyTargetCount}
               cliproxyCount={cliproxyCount}
+              plainCcsLane={plainCcsLane}
             />
 
             <Card className="flex flex-col">
@@ -258,7 +216,12 @@ export function AccountsPage() {
                 {isLoading ? (
                   <div className="text-muted-foreground">{t('accountsPage.loadingAccounts')}</div>
                 ) : (
-                  <AccountsTable data={authAccounts} defaultAccount={data?.default ?? null} />
+                  <AccountsTable
+                    data={authAccounts}
+                    defaultAccount={data?.default ?? null}
+                    groupSummaries={groupSummaries}
+                    plainCcsLane={plainCcsLane}
+                  />
                 )}
               </CardContent>
             </Card>
@@ -303,13 +266,21 @@ export function AccountsPage() {
           </CardContent>
         </Card>
 
-        <HistorySyncLearningMap
+        <ContinuityOverview
+          totalAccounts={authAccounts.length}
+          primaryAccountName={authAccounts.length === 1 ? authAccounts[0]?.name : null}
           isolatedCount={isolatedCount}
           sharedStandardCount={sharedStandardCount}
           deeperSharedCount={deeperSharedCount}
+          sharedAloneCount={sharedAloneCount}
+          sharedPeerAccountCount={sharedPeerAccountCount}
+          deeperReadyAccountCount={deeperReadyAccountCount}
           sharedGroups={sharedGroups}
+          sharedPeerGroups={sharedPeerGroups}
+          deeperReadyGroups={deeperReadyGroups}
           legacyTargetCount={legacyTargetCount}
           cliproxyCount={cliproxyCount}
+          plainCcsLane={plainCcsLane}
         />
 
         <Card>
@@ -320,7 +291,12 @@ export function AccountsPage() {
             {isLoading ? (
               <div className="text-muted-foreground">{t('accountsPage.loadingAccounts')}</div>
             ) : (
-              <AccountsTable data={authAccounts} defaultAccount={data?.default ?? null} />
+              <AccountsTable
+                data={authAccounts}
+                defaultAccount={data?.default ?? null}
+                groupSummaries={groupSummaries}
+                plainCcsLane={plainCcsLane}
+              />
             )}
           </CardContent>
         </Card>

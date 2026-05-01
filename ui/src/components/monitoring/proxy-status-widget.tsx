@@ -60,6 +60,10 @@ import {
   useCliproxyVersions,
   useInstallVersion,
   useRestartProxy,
+  useCliproxyRoutingStrategy,
+  useCliproxySessionAffinity,
+  useUpdateCliproxyRoutingStrategy,
+  useUpdateCliproxySessionAffinity,
 } from '@/hooks/use-cliproxy';
 import { useSyncStatus, useExecuteSync } from '@/hooks/use-cliproxy-sync';
 import { cn } from '@/lib/utils';
@@ -67,6 +71,7 @@ import {
   isCliproxyVersionExperimental,
   isCliproxyVersionInRange,
 } from '@/lib/cliproxy-version-risk';
+import { RoutingGuidanceCard } from '@/components/cliproxy/routing-guidance-card';
 
 type PendingInstallRisk = 'faulty' | 'experimental';
 
@@ -150,6 +155,20 @@ export function ProxyStatusWidget() {
   const { data: status, isLoading } = useProxyStatus();
   const { data: updateCheck } = useCliproxyUpdateCheck();
   const { data: versionsData, isLoading: versionsLoading } = useCliproxyVersions();
+  const {
+    data: routingState,
+    isLoading: routingLoading,
+    error: routingError,
+  } = useCliproxyRoutingStrategy();
+  const updateRouting = useUpdateCliproxyRoutingStrategy();
+  const {
+    data: sessionAffinityState,
+    isLoading: sessionAffinityLoading,
+    error: sessionAffinityError,
+  } = useCliproxySessionAffinity();
+  const updateSessionAffinity = useUpdateCliproxySessionAffinity();
+  const isSavingRoutingConfig = updateRouting.isPending || updateSessionAffinity.isPending;
+  const routingConfigError = routingError instanceof Error ? routingError : null;
   const startProxy = useStartProxy();
   const stopProxy = useStopProxy();
   const restartProxy = useRestartProxy();
@@ -181,6 +200,19 @@ export function ProxyStatusWidget() {
   // Determine if remote mode is enabled
   const remoteConfig = cliproxyConfig?.remote;
   const isRemoteMode = remoteConfig?.enabled && remoteConfig?.host;
+  const effectiveSessionAffinityState =
+    sessionAffinityState ??
+    (sessionAffinityError instanceof Error
+      ? {
+          source: 'unsupported' as const,
+          target: (routingState?.target ?? (isRemoteMode ? 'remote' : 'local')) as
+            | 'local'
+            | 'remote',
+          reachable: false,
+          manageable: false,
+          message: sessionAffinityError.message,
+        }
+      : undefined);
 
   const isRunning = status?.running ?? false;
   const isActioning =
@@ -304,6 +336,19 @@ export function ProxyStatusWidget() {
             {t('proxyStatusWidget.trafficAutoRouted')}
           </p>
         </div>
+
+        <RoutingGuidanceCard
+          key={`remote:${routingState?.strategy ?? 'round-robin'}:${effectiveSessionAffinityState?.enabled ?? 'na'}:${effectiveSessionAffinityState?.ttl ?? 'na'}:${effectiveSessionAffinityState?.manageable ?? 'na'}`}
+          compact
+          className="mt-3"
+          state={routingState}
+          sessionAffinityState={effectiveSessionAffinityState}
+          isLoading={routingLoading || sessionAffinityLoading}
+          isSaving={isSavingRoutingConfig}
+          error={routingConfigError}
+          onApply={(strategy) => updateRouting.mutate(strategy)}
+          onApplyAffinity={(data) => updateSessionAffinity.mutate(data)}
+        />
       </div>
     );
   }
@@ -449,6 +494,19 @@ export function ProxyStatusWidget() {
             {syncStatusText}
           </span>
         </div>
+
+        <RoutingGuidanceCard
+          key={`local:${routingState?.strategy ?? 'round-robin'}:${effectiveSessionAffinityState?.enabled ?? 'na'}:${effectiveSessionAffinityState?.ttl ?? 'na'}:${effectiveSessionAffinityState?.manageable ?? 'na'}`}
+          compact
+          className="mt-3"
+          state={routingState}
+          sessionAffinityState={effectiveSessionAffinityState}
+          isLoading={routingLoading || sessionAffinityLoading}
+          isSaving={isSavingRoutingConfig}
+          error={routingConfigError}
+          onApply={(strategy) => updateRouting.mutate(strategy)}
+          onApplyAffinity={(data) => updateSessionAffinity.mutate(data)}
+        />
 
         {/* Expanded section: Version Management (available even when not running) */}
         <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>

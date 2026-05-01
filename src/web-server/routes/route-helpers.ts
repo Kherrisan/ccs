@@ -14,10 +14,11 @@ import {
   canonicalizeModelIdForProvider,
   extractProviderFromPathname,
   getDeniedModelIdReasonForProvider,
-} from '../../cliproxy/model-id-normalizer';
+} from '../../cliproxy/ai-providers/model-id-normalizer';
 import type { CLIProxyProvider } from '../../cliproxy/types';
 import type { Config, Settings } from '../../types/config';
 import type { TargetType } from '../../targets/target-adapter';
+import { isPersistedTargetType } from '../../targets/target-metadata';
 import { ValidationError } from '../../errors/error-types';
 
 /** Model mapping for API profiles */
@@ -217,6 +218,7 @@ export function updateSettingsFile(
     baseUrl?: string;
     apiKey?: string;
     model?: string;
+    extraModels?: string;
     opusModel?: string;
     sonnetModel?: string;
     haikuModel?: string;
@@ -335,6 +337,17 @@ export function updateSettingsFile(
     }
   }
 
+  // Handle extra models (comma-separated string)
+  if (updates.extraModels !== undefined) {
+    settings.env = settings.env || {};
+    const normalized = typeof updates.extraModels === 'string' ? updates.extraModels.trim() : '';
+    if (normalized.length > 0) {
+      settings.env.ANTHROPIC_EXTRA_MODELS = normalized;
+    } else {
+      delete settings.env.ANTHROPIC_EXTRA_MODELS;
+    }
+  }
+
   if (
     updates.provider !== undefined ||
     updates.baseUrl !== undefined ||
@@ -438,7 +451,7 @@ export function validateFilePath(filePath: string): {
 }
 
 /**
- * Parse and validate a target param (claude/droid). Returns null if invalid/absent.
+ * Parse and validate a persisted target param. Returns null if invalid/absent.
  * Shared by profile-routes and variant-routes.
  */
 export function parseTarget(rawTarget: unknown): TargetType | null {
@@ -451,7 +464,7 @@ export function parseTarget(rawTarget: unknown): TargetType | null {
   }
 
   const normalized = rawTarget.trim().toLowerCase();
-  if (normalized === 'claude' || normalized === 'droid') {
+  if (isPersistedTargetType(normalized)) {
     return normalized;
   }
 

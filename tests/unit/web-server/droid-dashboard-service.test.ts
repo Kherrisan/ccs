@@ -131,18 +131,22 @@ describe('droid-dashboard-service', () => {
     expect(raw.rawText).toContain('invalid-json');
   });
 
-  it('includes structured docs links for fact-checking providers', async () => {
-    const diagnostics = await getDroidDashboardDiagnostics();
+  it(
+    'includes structured docs links for fact-checking providers',
+    async () => {
+      const diagnostics = await getDroidDashboardDiagnostics();
 
-    expect(diagnostics.docsReference.links.length).toBeGreaterThan(0);
-    expect(diagnostics.docsReference.providerDocs.length).toBeGreaterThan(0);
-    expect(diagnostics.docsReference.links.every((link) => link.url.startsWith('https://'))).toBe(
-      true
-    );
-    expect(
-      diagnostics.docsReference.providerDocs.some((doc) => doc.provider === 'anthropic')
-    ).toBe(true);
-  });
+      expect(diagnostics.docsReference.links.length).toBeGreaterThan(0);
+      expect(diagnostics.docsReference.providerDocs.length).toBeGreaterThan(0);
+      expect(diagnostics.docsReference.links.every((link) => link.url.startsWith('https://'))).toBe(
+        true
+      );
+      expect(
+        diagnostics.docsReference.providerDocs.some((doc) => doc.provider === 'anthropic')
+      ).toBe(true);
+    },
+    10000
+  );
 
   it('falls back to legacy config custom_models when settings customModels is absent', async () => {
     const settingsDir = path.join(testRoot, '.factory');

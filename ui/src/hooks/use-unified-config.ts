@@ -6,6 +6,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api-client';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 
 /**
  * Get current config format and migration status
@@ -33,13 +34,14 @@ export function useUnifiedConfig() {
  */
 export function useUpdateConfig() {
   const queryClient = useQueryClient();
+  const { t } = useTranslation();
 
   return useMutation({
     mutationFn: (config: Record<string, unknown>) => api.config.update(config),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['unified-config'] });
       queryClient.invalidateQueries({ queryKey: ['config-format'] });
-      toast.success('Configuration updated successfully');
+      toast.success(t('toasts.unifiedConfigUpdated'));
     },
     onError: (error: Error) => {
       toast.error(error.message);
@@ -52,20 +54,21 @@ export function useUpdateConfig() {
  */
 export function useMigration() {
   const queryClient = useQueryClient();
+  const { t } = useTranslation();
 
   return useMutation({
     mutationFn: (dryRun: boolean) => api.config.migrate(dryRun),
     onSuccess: (result, dryRun) => {
       if (dryRun) {
-        toast.info('Migration preview completed');
+        toast.info(t('toasts.migrationPreviewComplete'));
       } else if (result.success) {
         queryClient.invalidateQueries({ queryKey: ['config-format'] });
         queryClient.invalidateQueries({ queryKey: ['unified-config'] });
         queryClient.invalidateQueries({ queryKey: ['profiles'] });
         queryClient.invalidateQueries({ queryKey: ['accounts'] });
-        toast.success('Migration completed successfully');
+        toast.success(t('toasts.migrationComplete'));
       } else {
-        toast.error(result.error ?? 'Migration failed');
+        toast.error(result.error ?? t('toasts.migrationFailed'));
       }
     },
     onError: (error: Error) => {
@@ -79,6 +82,7 @@ export function useMigration() {
  */
 export function useRollback() {
   const queryClient = useQueryClient();
+  const { t } = useTranslation();
 
   return useMutation({
     mutationFn: (backupPath: string) => api.config.rollback(backupPath),
@@ -88,9 +92,9 @@ export function useRollback() {
         queryClient.invalidateQueries({ queryKey: ['unified-config'] });
         queryClient.invalidateQueries({ queryKey: ['profiles'] });
         queryClient.invalidateQueries({ queryKey: ['accounts'] });
-        toast.success('Rollback completed successfully');
+        toast.success(t('toasts.rollbackComplete'));
       } else {
-        toast.error('Rollback failed');
+        toast.error(t('toasts.rollbackFailed'));
       }
     },
     onError: (error: Error) => {

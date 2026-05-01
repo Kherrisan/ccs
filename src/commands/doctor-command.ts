@@ -5,6 +5,9 @@
  */
 
 import { initUI, header, dim, color, subheader } from '../utils/ui';
+import { createLogger } from '../services/logging';
+
+const logger = createLogger('commands:doctor');
 
 /**
  * Show help for doctor command
@@ -68,15 +71,34 @@ export async function handleDoctorCommand(args: string[]): Promise<void> {
   }
 
   const shouldFix = args.includes('--fix') || args.includes('-f');
+  const startedAt = Date.now();
+  logger.stage('intake', 'doctor.start', 'Doctor health check starting', {
+    fix: shouldFix,
+  });
 
   const DoctorModule = await import('../management/doctor');
   const Doctor = DoctorModule.default;
   const doctor = new Doctor();
 
   await doctor.runAllChecks();
+  logger.stage(
+    'route',
+    'doctor.checks_complete',
+    'Doctor checks complete',
+    { healthy: doctor.isHealthy() },
+    { latencyMs: Date.now() - startedAt }
+  );
 
   if (shouldFix) {
+    logger.stage('dispatch', 'doctor.fix_start', 'Attempting auto-fix', {});
     await doctor.fixIssues();
+    logger.stage(
+      'respond',
+      'doctor.fix_complete',
+      'Doctor auto-fix complete',
+      { healthy: doctor.isHealthy() },
+      { latencyMs: Date.now() - startedAt }
+    );
   }
 
   process.exit(doctor.isHealthy() ? 0 : 1);

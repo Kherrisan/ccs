@@ -44,8 +44,16 @@ export function formatTimelineTime(date: Date): string {
 export function generateConnectionEvents(accounts: AccountData[]): ConnectionEvent[] {
   const events: ConnectionEvent[] = [];
 
+  // Use a shared base time so events from all accounts interleave in the timeline.
+  // Without this, accounts with more recent lastUsedAt dominate the sorted output.
+  const now = Date.now();
+  const sharedBaseTime = accounts.reduce((latest, a) => {
+    const t = a.lastUsedAt ? new Date(a.lastUsedAt).getTime() : now;
+    return Math.max(latest, isNaN(t) ? now : t);
+  }, now);
+
   accounts.forEach((account) => {
-    const lastUsed = account.lastUsedAt ? new Date(account.lastUsedAt) : new Date();
+    const lastUsed = new Date(sharedBaseTime);
 
     // Helper to add events
     const addEvents = (count: number, status: 'success' | 'failed') => {

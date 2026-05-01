@@ -1,25 +1,32 @@
 /**
  * Code Editor Component
- * Lightweight JSON editor with syntax highlighting, line numbers, and validation
+ * Lightweight JSON/TOML editor with syntax highlighting, line numbers, and validation
  * Uses react-simple-code-editor + prism-react-renderer for minimal bundle size (~18KB)
  */
 
 import { useState, useCallback, useMemo } from 'react';
 import Editor from 'react-simple-code-editor';
 import { Highlight, themes } from 'prism-react-renderer';
+import Prism from 'prismjs';
+import 'prismjs/components/prism-json';
+import 'prismjs/components/prism-yaml';
+import 'prismjs/components/prism-toml';
+import { parse as parseToml } from 'smol-toml';
 import { useTheme } from '@/hooks/use-theme';
 import { cn } from '@/lib/utils';
 import { isSensitiveKey } from '@/lib/sensitive-keys';
 import { AlertCircle, CheckCircle2, Eye, EyeOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useTranslation } from 'react-i18next';
 
 interface CodeEditorProps {
   value: string;
   onChange: (value: string) => void;
-  language?: 'json' | 'yaml';
+  language?: 'json' | 'yaml' | 'toml';
   readonly?: boolean;
   className?: string;
   minHeight?: string;
+  heightMode?: 'content' | 'fill-parent';
 }
 
 interface ValidationResult {
@@ -63,6 +70,26 @@ function validateJson(code: string): ValidationResult {
   }
 }
 
+function validateToml(code: string): ValidationResult {
+  if (!code.trim()) {
+    return { valid: true };
+  }
+
+  try {
+    parseToml(code);
+    return { valid: true };
+  } catch (error) {
+    const message = (error as Error).message;
+    const lineMatch = message.match(/line\s+(\d+)/i);
+
+    return {
+      valid: false,
+      error: message,
+      line: lineMatch ? Number.parseInt(lineMatch[1], 10) : undefined,
+    };
+  }
+}
+
 export function CodeEditor({
   value,
   onChange,
@@ -70,15 +97,21 @@ export function CodeEditor({
   readonly = false,
   className,
   minHeight = '300px',
+  heightMode = 'content',
 }: CodeEditorProps) {
   const { isDark } = useTheme();
+  const { t } = useTranslation();
   const [isFocused, setIsFocused] = useState(false);
   const [isMasked, setIsMasked] = useState(true);
+  const isFillParent = heightMode === 'fill-parent';
 
   // Validate on every change for JSON
   const validation = useMemo(() => {
     if (language === 'json') {
       return validateJson(value);
+    }
+    if (language === 'toml') {
+      return validateToml(value);
     }
     return { valid: true };
   }, [value, language]);
@@ -87,7 +120,12 @@ export function CodeEditor({
   // Note: Line numbers removed - they break textarea/pre alignment in react-simple-code-editor
   const highlightCode = useCallback(
     (code: string) => (
-      <Highlight theme={isDark ? themes.nightOwl : themes.github} code={code} language={language}>
+      <Highlight
+        prism={Prism}
+        theme={isDark ? themes.nightOwl : themes.github}
+        code={code}
+        language={language}
+      >
         {({ tokens, getLineProps, getTokenProps }) => {
           let nextValueIsSensitive = false;
 
@@ -153,38 +191,47 @@ export function CodeEditor({
   );
 
   return (
-    <div className={cn('flex flex-col', className)}>
+    <div
+      className={cn('flex min-h-0 flex-col', isFillParent && 'h-full', className)}
+      style={isFillParent ? { height: minHeight === 'auto' ? undefined : minHeight } : undefined}
+    >
       {/* Editor container */}
       <div
         className={cn(
           'relative rounded-md border overflow-hidden',
           'bg-muted/30',
+          isFillParent && 'flex min-h-0 flex-1 flex-col',
           isFocused && 'ring-2 ring-ring ring-offset-2 ring-offset-background',
           readonly && 'opacity-70 cursor-not-allowed',
           !validation.valid && 'border-destructive'
         )}
-        style={{ minHeight }}
+        data-slot="code-editor-surface"
       >
-        <Editor
-          value={value}
-          onValueChange={readonly ? () => {} : onChange}
-          highlight={highlightCode}
-          key={isDark ? 'dark-editor' : 'light-editor'}
-          padding={12}
-          disabled={readonly}
-          onFocus={() => setIsFocused(true)}
-          onBlur={() => setIsFocused(false)}
-          textareaClassName={cn(
-            'focus:outline-none font-mono text-sm',
-            readonly && 'cursor-not-allowed'
-          )}
-          preClassName="font-mono text-sm"
-          style={{
-            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-            fontSize: '0.875rem',
-            minHeight,
-          }}
-        />
+        <div
+          className={cn(isFillParent && 'scrollbar-editor min-h-0 flex-1 overflow-auto')}
+          data-slot={isFillParent ? 'code-editor-viewport' : undefined}
+        >
+          <Editor
+            value={value}
+            onValueChange={readonly ? () => {} : onChange}
+            highlight={highlightCode}
+            key={isDark ? 'dark-editor' : 'light-editor'}
+            padding={12}
+            disabled={readonly}
+            onFocus={() => setIsFocused(true)}
+            onBlur={() => setIsFocused(false)}
+            textareaClassName={cn(
+              'focus:outline-none font-mono text-sm',
+              readonly && 'cursor-not-allowed'
+            )}
+            preClassName="font-mono text-sm"
+            style={{
+              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+              fontSize: '0.875rem',
+              minHeight,
+            }}
+          />
+        </div>
 
         {/* Secrets Toggle Overlay */}
         <div className="absolute top-2 right-2 z-10 opacity-50 hover:opacity-100 transition-opacity">
@@ -193,7 +240,7 @@ export function CodeEditor({
             size="icon"
             className="h-6 w-6 bg-background/50 hover:bg-background border shadow-sm rounded-full"
             onClick={() => setIsMasked(!isMasked)}
-            title={isMasked ? 'Reveal sensitive values' : 'Mask sensitive values'}
+            title={isMasked ? t('codeEditor.revealSensitive') : t('codeEditor.maskSensitive')}
           >
             {isMasked ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
           </Button>
@@ -205,7 +252,7 @@ export function CodeEditor({
         {validation.valid ? (
           <span className="flex items-center gap-1 text-muted-foreground">
             <CheckCircle2 className="w-3 h-3 text-green-500" />
-            Valid {language.toUpperCase()}
+            {t('codeEditor.valid', { language: language.toUpperCase() })}
           </span>
         ) : (
           <span className="flex items-center gap-1 text-destructive">
@@ -214,7 +261,9 @@ export function CodeEditor({
             {validation.line && ` (line ${validation.line})`}
           </span>
         )}
-        {readonly && <span className="ml-auto text-muted-foreground">(Read-only)</span>}
+        {readonly && (
+          <span className="ml-auto text-muted-foreground">{t('codeEditor.readOnly')}</span>
+        )}
       </div>
     </div>
   );

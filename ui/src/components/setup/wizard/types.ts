@@ -2,7 +2,7 @@
  * Types for Quick Setup Wizard
  */
 
-import type { OAuthAccount } from '@/lib/api-client';
+import type { CliproxyProviderCatalog, OAuthAccount } from '@/lib/api-client';
 
 export type WizardStep = 'provider' | 'auth' | 'account' | 'variant' | 'success';
 
@@ -43,6 +43,7 @@ export interface AccountStepProps {
 
 export interface VariantStepProps {
   selectedProvider: string;
+  catalog?: CliproxyProviderCatalog;
   selectedAccount: OAuthAccount | null;
   variantName: string;
   modelName: string;

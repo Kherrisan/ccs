@@ -120,7 +120,7 @@ function SettingsDialogContent({
         try {
           settingsToSave = JSON.parse(rawJsonContent);
         } catch {
-          throw new Error('Invalid JSON');
+          throw new Error(i18n.t('settingsDialog.invalidJson'));
         }
       } else {
         // Use form-based edits
@@ -147,7 +147,7 @@ function SettingsDialogContent({
       }
 
       if (!res.ok) {
-        throw new Error('Failed to save');
+        throw new Error(i18n.t('settingsDialog.failedSave'));
       }
 
       return res.json();
@@ -207,16 +207,16 @@ function SettingsDialogContent({
   return (
     <>
       <DialogHeader>
-        <DialogTitle>Edit Profile: {profileName}</DialogTitle>
-        <DialogDescription>
-          Configure environment variables and settings for this profile.
-        </DialogDescription>
+        <DialogTitle>{i18n.t('settingsDialog.editProfile', { name: profileName })}</DialogTitle>
+        <DialogDescription>{i18n.t('settingsDialog.description')}</DialogDescription>
       </DialogHeader>
 
       {isLoading ? (
         <div className="flex items-center justify-center py-12">
           <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
-          <span className="ml-3 text-muted-foreground">Loading settings...</span>
+          <span className="ml-3 text-muted-foreground">
+            {i18n.t('settingsDialog.loadingSettings')}
+          </span>
         </div>
       ) : (
         <div className="flex flex-col h-[60vh]">
@@ -230,20 +230,20 @@ function SettingsDialogContent({
                 value="env"
                 className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-4 py-2"
               >
-                Environment
+                {i18n.t('settingsDialog.envTab')}
               </TabsTrigger>
               <TabsTrigger
                 value="raw"
                 className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-4 py-2"
               >
                 <Code2 className="w-4 h-4 mr-1" />
-                Raw JSON
+                {i18n.t('settingsDialog.rawJsonTab')}
               </TabsTrigger>
               <TabsTrigger
                 value="general"
                 className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-4 py-2"
               >
-                General
+                {i18n.t('settingsDialog.generalTab')}
               </TabsTrigger>
             </TabsList>
 
@@ -272,19 +272,21 @@ function SettingsDialogContent({
                   </div>
                 ) : (
                   <div className="py-12 text-center text-muted-foreground bg-muted/30 rounded-lg border border-dashed">
-                    <p>No environment variables configured.</p>
-                    <p className="text-xs mt-1">Add variables in your settings.json file.</p>
+                    <p>{i18n.t('settingsDialog.noEnvVars')}</p>
+                    <p className="text-xs mt-1">{i18n.t('settingsDialog.noEnvVarsHint')}</p>
                   </div>
                 )}
               </ScrollArea>
             </TabsContent>
 
-            <TabsContent value="raw" className="flex-1 overflow-hidden p-4 pt-4 m-0">
+            <TabsContent value="raw" className="m-0 min-h-0 flex-1 overflow-hidden p-4 pt-4">
               <Suspense
                 fallback={
                   <div className="flex items-center justify-center h-full">
                     <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-                    <span className="ml-2 text-muted-foreground">Loading editor...</span>
+                    <span className="ml-2 text-muted-foreground">
+                      {i18n.t('settingsDialog.loadingEditor')}
+                    </span>
                   </div>
                 }
               >
@@ -293,6 +295,7 @@ function SettingsDialogContent({
                   onChange={handleRawJsonChange}
                   language="json"
                   minHeight="calc(60vh - 120px)"
+                  heightMode="fill-parent"
                 />
               </Suspense>
             </TabsContent>
@@ -300,20 +303,26 @@ function SettingsDialogContent({
             <TabsContent value="general" className="p-4 m-0">
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-base">Profile Information</CardTitle>
-                  <CardDescription>Details about this configuration file.</CardDescription>
+                  <CardTitle className="text-base">
+                    {i18n.t('settingsDialog.profileInfo')}
+                  </CardTitle>
+                  <CardDescription>{i18n.t('settingsDialog.profileInfoDesc')}</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   {data && (
                     <>
                       <div className="grid grid-cols-3 gap-2 text-sm">
-                        <span className="font-medium text-muted-foreground">Path</span>
+                        <span className="font-medium text-muted-foreground">
+                          {i18n.t('settingsDialog.path')}
+                        </span>
                         <code className="col-span-2 bg-muted p-1 rounded text-xs break-all">
                           {data.path}
                         </code>
                       </div>
                       <div className="grid grid-cols-3 gap-2 text-sm">
-                        <span className="font-medium text-muted-foreground">Last Modified</span>
+                        <span className="font-medium text-muted-foreground">
+                          {i18n.t('settingsDialog.lastModified')}
+                        </span>
                         <span className="col-span-2">{new Date(data.mtime).toLocaleString()}</span>
                       </div>
                     </>
@@ -325,7 +334,7 @@ function SettingsDialogContent({
 
           <div className="pt-4 mt-auto border-t flex justify-end gap-2">
             <Button type="button" variant="outline" onClick={onClose}>
-              <X className="w-4 h-4 mr-2" /> Cancel
+              <X className="w-4 h-4 mr-2" /> {i18n.t('settingsDialog.cancel')}
             </Button>
             <Button
               onClick={handleSave}
@@ -333,11 +342,12 @@ function SettingsDialogContent({
             >
               {saveMutation.isPending ? (
                 <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Saving...
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />{' '}
+                  {i18n.t('settingsDialog.saving')}
                 </>
               ) : (
                 <>
-                  <Save className="w-4 h-4 mr-2" /> Save Changes
+                  <Save className="w-4 h-4 mr-2" /> {i18n.t('settingsDialog.saveChanges')}
                 </>
               )}
             </Button>
@@ -347,9 +357,9 @@ function SettingsDialogContent({
 
       <ConfirmDialog
         open={conflictDialog}
-        title="File Modified Externally"
-        description="This settings file was modified by another process. Overwrite with your changes or discard?"
-        confirmText="Overwrite"
+        title={i18n.t('settingsDialog.conflictTitle')}
+        description={i18n.t('settingsDialog.conflictDesc')}
+        confirmText={i18n.t('settingsDialog.overwrite')}
         variant="destructive"
         onConfirm={() => handleConflictResolve(true)}
         onCancel={() => handleConflictResolve(false)}

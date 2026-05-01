@@ -3,6 +3,7 @@
  */
 
 export {
+  useBrowserConfig,
   useSettingsContext,
   useSettingsActions,
   useSettingsTab,

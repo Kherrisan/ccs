@@ -5,6 +5,8 @@
 
 import { createContext, type Dispatch } from 'react';
 import type {
+  BrowserConfig,
+  BrowserStatus,
   WebSearchConfig,
   GlobalEnvConfig,
   CliproxyServerConfig,
@@ -15,6 +17,14 @@ import type {
 // === State ===
 
 export interface SettingsState {
+  // Browser state
+  browserConfig: BrowserConfig | null;
+  browserStatus: BrowserStatus | null;
+  browserLoading: boolean;
+  browserStatusLoading: boolean;
+  browserSaving: boolean;
+  browserError: string | null;
+  browserSuccess: boolean;
   // WebSearch state
   webSearchConfig: WebSearchConfig | null;
   webSearchStatus: WebSearchStatus | null;
@@ -43,6 +53,13 @@ export interface SettingsState {
 }
 
 export const initialSettingsState: SettingsState = {
+  browserConfig: null,
+  browserStatus: null,
+  browserLoading: true,
+  browserStatusLoading: true,
+  browserSaving: false,
+  browserError: null,
+  browserSuccess: false,
   webSearchConfig: null,
   webSearchStatus: null,
   webSearchLoading: true,
@@ -69,6 +86,13 @@ export const initialSettingsState: SettingsState = {
 // === Actions ===
 
 export type SettingsAction =
+  | { type: 'SET_BROWSER_CONFIG'; payload: BrowserConfig | null }
+  | { type: 'SET_BROWSER_STATUS'; payload: BrowserStatus | null }
+  | { type: 'SET_BROWSER_LOADING'; payload: boolean }
+  | { type: 'SET_BROWSER_STATUS_LOADING'; payload: boolean }
+  | { type: 'SET_BROWSER_SAVING'; payload: boolean }
+  | { type: 'SET_BROWSER_ERROR'; payload: string | null }
+  | { type: 'SET_BROWSER_SUCCESS'; payload: boolean }
   | { type: 'SET_WEBSEARCH_CONFIG'; payload: WebSearchConfig | null }
   | { type: 'SET_WEBSEARCH_STATUS'; payload: WebSearchStatus | null }
   | { type: 'SET_WEBSEARCH_LOADING'; payload: boolean }
@@ -93,6 +117,20 @@ export type SettingsAction =
 
 export function settingsReducer(state: SettingsState, action: SettingsAction): SettingsState {
   switch (action.type) {
+    case 'SET_BROWSER_CONFIG':
+      return { ...state, browserConfig: action.payload };
+    case 'SET_BROWSER_STATUS':
+      return { ...state, browserStatus: action.payload };
+    case 'SET_BROWSER_LOADING':
+      return { ...state, browserLoading: action.payload };
+    case 'SET_BROWSER_STATUS_LOADING':
+      return { ...state, browserStatusLoading: action.payload };
+    case 'SET_BROWSER_SAVING':
+      return { ...state, browserSaving: action.payload };
+    case 'SET_BROWSER_ERROR':
+      return { ...state, browserError: action.payload };
+    case 'SET_BROWSER_SUCCESS':
+      return { ...state, browserSuccess: action.payload };
     case 'SET_WEBSEARCH_CONFIG':
       return { ...state, webSearchConfig: action.payload };
     case 'SET_WEBSEARCH_STATUS':

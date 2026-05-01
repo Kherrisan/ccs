@@ -3,6 +3,10 @@ import * as http from 'http';
 import { DEFAULT_COPILOT_MODELS, fetchModelsFromDaemon } from '../../../src/copilot/copilot-models';
 
 describe('fetchModelsFromDaemon', () => {
+  it('does not advertise deprecated fallback models', () => {
+    expect(DEFAULT_COPILOT_MODELS.some((model) => model.id === 'raptor-mini')).toBe(false);
+  });
+
   it('falls back to defaults when daemon is unreachable', async () => {
     const models = await fetchModelsFromDaemon(9999);
     expect(models).toEqual(DEFAULT_COPILOT_MODELS);

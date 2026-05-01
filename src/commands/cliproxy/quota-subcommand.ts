@@ -15,25 +15,27 @@ import {
   pauseAccount,
   resumeAccount,
   findAccountByQuery,
-} from '../../cliproxy/account-manager';
-import { fetchAllProviderQuotas } from '../../cliproxy/quota-fetcher';
-import { fetchAllCodexQuotas } from '../../cliproxy/quota-fetcher-codex';
-import { fetchAllClaudeQuotas } from '../../cliproxy/quota-fetcher-claude';
-import { pickMostRestrictiveClaudeWeeklyWindow } from '../../cliproxy/quota-fetcher-claude-normalizer';
-import { fetchAllGeminiCliQuotas } from '../../cliproxy/quota-fetcher-gemini-cli';
-import { fetchAllGhcpQuotas } from '../../cliproxy/quota-fetcher-ghcp';
+} from '../../cliproxy/accounts/account-manager';
+import { fetchAllProviderQuotas } from '../../cliproxy/quota/quota-fetcher';
+import { fetchAllCodexQuotas } from '../../cliproxy/quota/quota-fetcher-codex';
+import { fetchAllClaudeQuotas } from '../../cliproxy/quota/quota-fetcher-claude';
+import { pickMostRestrictiveClaudeWeeklyWindow } from '../../cliproxy/quota/quota-fetcher-claude-normalizer';
+import { fetchAllGeminiCliQuotas } from '../../cliproxy/quota/quota-fetcher-gemini-cli';
+import { fetchAllGhcpQuotas } from '../../cliproxy/quota/quota-fetcher-ghcp';
 import type {
   CodexQuotaResult,
   ClaudeQuotaResult,
   GeminiCliQuotaResult,
   GhcpQuotaResult,
-} from '../../cliproxy/quota-types';
-import { isOnCooldown } from '../../cliproxy/quota-manager';
+  QuotaErrorMetadata,
+} from '../../cliproxy/quota/quota-types';
+import { isOnCooldown } from '../../cliproxy/quota/quota-manager';
 import { CLIProxyProvider } from '../../cliproxy/types';
 import {
   QUOTA_SUPPORTED_PROVIDER_IDS,
   type QuotaSupportedProvider,
 } from '../../cliproxy/provider-capabilities';
+import { formatAccountDisplayName } from '../../cliproxy/accounts/email-account-identity';
 import { initUI, header, subheader, color, dim, ok, fail, warn, info, table } from '../../utils/ui';
 
 interface CliproxyProfileArgs {
@@ -96,6 +98,87 @@ function formatResetTimeISO(isoTime: string): string {
   return formatResetTime(seconds);
 }
 
+function formatCliAccountLabel(account: { id: string; email?: string; nickname?: string }): string {
+  const displayName = formatAccountDisplayName(account);
+  return account.nickname ? `${account.nickname} (${displayName})` : displayName;
+}
+
+function resolveDisplayedTier(
+  accountTier: string | undefined,
+  liveTier: string | undefined
+): string {
+  return (liveTier && liveTier !== 'unknown' ? liveTier : accountTier) || 'unknown';
+}
+
+interface QuotaFailureDisplayEntry {
+  tone: 'error' | 'info' | 'dim';
+  text: string;
+}
+
+function getQuotaFailureDisplayEntries(
+  quota: QuotaErrorMetadata & {
+    error?: string;
+  }
+): QuotaFailureDisplayEntry[] {
+  const entries: QuotaFailureDisplayEntry[] = [
+    {
+      tone: 'error',
+      text: quota.error || 'Failed to fetch quota',
+    },
+  ];
+
+  if (quota.actionHint) {
+    entries.push({
+      tone: 'info',
+      text: quota.actionHint,
+    });
+  }
+
+  const diagnostics: string[] = [];
+  if (typeof quota.httpStatus === 'number') {
+    diagnostics.push(`HTTP ${quota.httpStatus}`);
+  }
+  if (quota.errorCode) {
+    diagnostics.push(`Code: ${quota.errorCode}`);
+  }
+  if (quota.retryable) {
+    diagnostics.push('Retryable');
+  }
+  if (diagnostics.length > 0) {
+    entries.push({
+      tone: 'dim',
+      text: diagnostics.join(' | '),
+    });
+  }
+
+  const normalizedError = quota.error?.trim();
+  const normalizedDetail = quota.errorDetail?.trim();
+  if (normalizedDetail && normalizedDetail !== normalizedError) {
+    entries.push({
+      tone: 'dim',
+      text: `Detail: ${normalizedDetail}`,
+    });
+  }
+
+  return entries;
+}
+
+function displayQuotaFailure(
+  quota: QuotaErrorMetadata & {
+    error?: string;
+  }
+): void {
+  for (const entry of getQuotaFailureDisplayEntries(quota)) {
+    const rendered =
+      entry.tone === 'error'
+        ? color(entry.text, 'error')
+        : entry.tone === 'info'
+          ? info(entry.text)
+          : dim(entry.text);
+    console.log(`    ${rendered}`);
+  }
+}
+
 function formatAbsoluteResetTime(isoTime: string): string | null {
   if (!isoTime) return null;
   const resetDate = new Date(isoTime);
@@ -155,7 +238,10 @@ function getCodexWindowKind(label: string): CodexWindowKind {
   return 'unknown';
 }
 
-type CodexWindowSummary = Pick<CodexQuotaResult['windows'][number], 'label' | 'resetAfterSeconds'>;
+type CodexWindowSummary = Pick<
+  CodexQuotaResult['windows'][number],
+  'label' | 'resetAfterSeconds' | 'category' | 'cadence' | 'featureLabel'
+>;
 
 function inferCodeReviewCadence(
   window: CodexWindowSummary,
@@ -189,12 +275,46 @@ function inferCodeReviewCadence(
   return diffToWeekly <= diffTo5h ? 'weekly' : '5h';
 }
 
+/**
+ * Strip a leading "GPT-X.Y-Codex-" prefix from a feature label and turn the
+ * remainder into a Codex-prefixed display name. Other labels pass through unchanged.
+ */
+function prettifyCodexFeatureLabel(featureLabel: string): string {
+  const trimmed = featureLabel.trim();
+  if (!trimmed) return 'Additional';
+  const stripped = trimmed.replace(/^GPT-[\d.]+-Codex-/i, '');
+  if (stripped !== trimmed && stripped.length > 0) {
+    return `Codex ${stripped}`;
+  }
+  return trimmed;
+}
+
 function getCodexWindowDisplayLabel(
   window: CodexWindowSummary,
   allWindows: CodexWindowSummary[] = []
 ): string {
   const context = allWindows.length > 0 ? allWindows : [window];
 
+  // Prefer explicit category metadata when present (post-2026-04 windows).
+  if (window.category === 'usage') {
+    if (window.cadence === '5h') return '5h usage limit';
+    if (window.cadence === 'weekly') return 'Weekly usage limit';
+  }
+
+  if (window.category === 'additional') {
+    const pretty = prettifyCodexFeatureLabel(window.featureLabel || window.label || 'Additional');
+    if (window.cadence === '5h') return `${pretty} (5h)`;
+    if (window.cadence === 'weekly') return `${pretty} (weekly)`;
+    return pretty;
+  }
+
+  if (window.category === 'code-review') {
+    if (window.cadence === '5h') return 'Code review (5h)';
+    if (window.cadence === 'weekly') return 'Code review (weekly)';
+    return 'Code review';
+  }
+
+  // Legacy fallback: classify via label sniffing for cached windows without metadata.
   switch (getCodexWindowKind(window.label)) {
     case 'usage-5h':
       return '5h usage limit';
@@ -221,20 +341,35 @@ function getCodexCoreUsageWindows(windows: CodexQuotaResult['windows']): {
   let weeklyWindow: CodexQuotaResult['windows'][number] | null = null;
   const nonCodeReviewWindows: CodexQuotaResult['windows'] = [];
 
-  for (const window of windows) {
-    const kind = getCodexWindowKind(window.label);
-    if (kind === 'usage-5h') {
-      if (!fiveHourWindow) fiveHourWindow = window;
-      nonCodeReviewWindows.push(window);
-      continue;
+  // Prefer explicit category metadata when present so 'additional' windows
+  // (e.g. GPT-5.3 Codex Spark) do not displace core usage windows in the summary.
+  const hasCategoryMetadata = windows.some((window) => Boolean(window.category));
+
+  if (hasCategoryMetadata) {
+    for (const window of windows) {
+      if (window.category === 'usage') {
+        if (window.cadence === '5h' && !fiveHourWindow) fiveHourWindow = window;
+        else if (window.cadence === 'weekly' && !weeklyWindow) weeklyWindow = window;
+        nonCodeReviewWindows.push(window);
+      }
+      // 'code-review' and 'additional' are excluded from the core usage summary.
     }
-    if (kind === 'usage-weekly') {
-      if (!weeklyWindow) weeklyWindow = window;
-      nonCodeReviewWindows.push(window);
-      continue;
-    }
-    if (kind === 'unknown') {
-      nonCodeReviewWindows.push(window);
+  } else {
+    for (const window of windows) {
+      const kind = getCodexWindowKind(window.label);
+      if (kind === 'usage-5h') {
+        if (!fiveHourWindow) fiveHourWindow = window;
+        nonCodeReviewWindows.push(window);
+        continue;
+      }
+      if (kind === 'usage-weekly') {
+        if (!weeklyWindow) weeklyWindow = window;
+        nonCodeReviewWindows.push(window);
+        continue;
+      }
+      if (kind === 'unknown') {
+        nonCodeReviewWindows.push(window);
+      }
     }
   }
 
@@ -287,16 +422,10 @@ function displayAntigravityQuotaSection(
     if (isOnCooldown(provider, account.id)) statusParts.push(color('COOLDOWN', 'warning'));
 
     const defaultMark = account.isDefault ? color('*', 'success') : ' ';
-    const tier = account.tier || 'unknown';
+    const tier = resolveDisplayedTier(account.tier, quota?.entitlement?.normalizedTier);
     const status = statusParts.join(', ');
 
-    rows.push([
-      defaultMark,
-      account.nickname || account.email || account.id,
-      tier,
-      avgQuota,
-      status,
-    ]);
+    rows.push([defaultMark, formatCliAccountLabel(account), tier, avgQuota, status]);
   }
 
   console.log(
@@ -314,11 +443,12 @@ function displayCodexQuotaSection(results: { account: string; quota: CodexQuotaR
 
   for (const { account, quota } of results) {
     const accountInfo = findAccountByQuery('codex', account);
+    const accountLabel = accountInfo ? formatCliAccountLabel(accountInfo) : account;
     const defaultMark = accountInfo?.isDefault ? color(' (default)', 'info') : '';
 
     if (!quota.success) {
-      console.log(`  ${fail(account)}${defaultMark}`);
-      console.log(`    ${color(quota.error || 'Failed to fetch quota', 'error')}`);
+      console.log(`  ${fail(accountLabel)}${defaultMark}`);
+      displayQuotaFailure(quota);
       console.log('');
       continue;
     }
@@ -336,7 +466,7 @@ function displayCodexQuotaSection(results: { account: string; quota: CodexQuotaR
     const statusIcon = avgQuota > 50 ? ok('') : avgQuota > 10 ? warn('') : fail('');
     const planBadge = quota.planType ? color(` [${quota.planType}]`, 'info') : '';
 
-    console.log(`  ${statusIcon}${account}${defaultMark}${planBadge}`);
+    console.log(`  ${statusIcon}${accountLabel}${defaultMark}${planBadge}`);
 
     const coreUsageSummary = quota.coreUsage ?? {
       fiveHour: fiveHourWindow
@@ -469,11 +599,12 @@ function displayClaudeQuotaSection(results: { account: string; quota: ClaudeQuot
 
   for (const { account, quota } of results) {
     const accountInfo = findAccountByQuery('claude', account);
+    const accountLabel = accountInfo ? formatCliAccountLabel(accountInfo) : account;
     const defaultMark = accountInfo?.isDefault ? color(' (default)', 'info') : '';
 
     if (!quota.success) {
-      console.log(`  ${fail(account)}${defaultMark}`);
-      console.log(`    ${color(quota.error || 'Failed to fetch quota', 'error')}`);
+      console.log(`  ${fail(accountLabel)}${defaultMark}`);
+      displayQuotaFailure(quota);
       console.log('');
       continue;
     }
@@ -492,7 +623,7 @@ function displayClaudeQuotaSection(results: { account: string; quota: ClaudeQuot
     const statusIcon =
       minQuota === null ? info('') : minQuota > 50 ? ok('') : minQuota > 10 ? warn('') : fail('');
 
-    console.log(`  ${statusIcon}${account}${defaultMark}`);
+    console.log(`  ${statusIcon}${accountLabel}${defaultMark}`);
 
     const resetParts: string[] = [];
     if (fiveHourWindow?.resetAt)
@@ -546,11 +677,12 @@ function displayGeminiCliQuotaSection(
 
   for (const { account, quota } of results) {
     const accountInfo = findAccountByQuery('gemini', account);
+    const accountLabel = accountInfo ? formatCliAccountLabel(accountInfo) : account;
     const defaultMark = accountInfo?.isDefault ? color(' (default)', 'info') : '';
 
     if (!quota.success) {
-      console.log(`  ${fail(account)}${defaultMark}`);
-      console.log(`    ${color(quota.error || 'Failed to fetch quota', 'error')}`);
+      console.log(`  ${fail(accountLabel)}${defaultMark}`);
+      displayQuotaFailure(quota);
       console.log('');
       continue;
     }
@@ -561,19 +693,32 @@ function displayGeminiCliQuotaSection(
         : 0;
     const statusIcon = avgQuota > 50 ? ok('') : avgQuota > 10 ? warn('') : fail('');
 
-    console.log(`  ${statusIcon}${account}${defaultMark}`);
+    console.log(`  ${statusIcon}${accountLabel}${defaultMark}`);
     if (quota.projectId) {
       console.log(`    Project: ${dim(quota.projectId)}`);
+    }
+    if (quota.tierLabel) {
+      console.log(`    Tier: ${dim(quota.tierLabel)}`);
+    }
+    if (quota.entitlement?.rawTierId) {
+      console.log(`    Tier ID: ${dim(quota.entitlement.rawTierId)}`);
+    }
+    if (quota.creditBalance !== null && quota.creditBalance !== undefined) {
+      console.log(`    Credits: ${dim(quota.creditBalance.toLocaleString())}`);
     }
 
     for (const bucket of quota.buckets) {
       const bar = formatQuotaBar(bucket.remainingPercent);
       const tokenLabel = bucket.tokenType ? dim(` (${bucket.tokenType})`) : '';
+      const amountLabel =
+        bucket.remainingAmount !== null && bucket.remainingAmount !== undefined
+          ? dim(` ${bucket.remainingAmount.toLocaleString()} left`)
+          : '';
       const resetLabel = bucket.resetTime
         ? dim(` Resets ${formatResetTimeISO(bucket.resetTime)}`)
         : '';
       console.log(
-        `    ${bucket.label.padEnd(24)} ${bar} ${bucket.remainingPercent.toFixed(0)}%${tokenLabel}${resetLabel}`
+        `    ${bucket.label.padEnd(24)} ${bar} ${bucket.remainingPercent.toFixed(0)}%${tokenLabel}${amountLabel}${resetLabel}`
       );
     }
     console.log('');
@@ -597,35 +742,42 @@ function displayGhcpQuotaSection(results: { account: string; quota: GhcpQuotaRes
 
   for (const { account, quota } of results) {
     const accountInfo = findAccountByQuery('ghcp', account);
+    const accountLabel = accountInfo ? formatCliAccountLabel(accountInfo) : account;
     const defaultMark = accountInfo?.isDefault ? color(' (default)', 'info') : '';
 
     if (!quota.success) {
-      console.log(`  ${fail(account)}${defaultMark}`);
-      console.log(`    ${color(quota.error || 'Failed to fetch quota', 'error')}`);
+      console.log(`  ${fail(accountLabel)}${defaultMark}`);
+      displayQuotaFailure(quota);
       console.log('');
       continue;
     }
 
-    const rows = [
-      quota.snapshots.premiumInteractions.percentRemaining,
-      quota.snapshots.chat.percentRemaining,
-      quota.snapshots.completions.percentRemaining,
-    ];
-    const minQuota = rows.length > 0 ? Math.min(...rows) : 0;
-    const statusIcon = minQuota > 50 ? ok('') : minQuota > 10 ? warn('') : fail('');
+    const reportedSnapshots = [
+      quota.snapshots.premiumInteractions,
+      quota.snapshots.chat,
+      quota.snapshots.completions,
+    ].filter((snapshot) => snapshot.reported !== false);
+    const rows = reportedSnapshots.map((snapshot) =>
+      snapshot.unlimited ? 100 : snapshot.percentRemaining
+    );
+    const minQuota = rows.length > 0 ? Math.min(...rows) : null;
+    const statusIcon =
+      minQuota === null ? info('') : minQuota > 50 ? ok('') : minQuota > 10 ? warn('') : fail('');
     const planBadge = quota.planType ? color(` [${quota.planType}]`, 'info') : '';
 
-    console.log(`  ${statusIcon}${account}${defaultMark}${planBadge}`);
+    console.log(`  ${statusIcon}${accountLabel}${defaultMark}${planBadge}`);
     if (quota.quotaResetDate) {
       console.log(`    ${dim(`Resets ${formatResetTimeISO(quota.quotaResetDate)}`)}`);
     }
 
-    const items: Array<[string, GhcpQuotaResult['snapshots'][keyof GhcpQuotaResult['snapshots']]]> =
-      [
-        ['Premium interactions', quota.snapshots.premiumInteractions],
-        ['Chat', quota.snapshots.chat],
-        ['Completions', quota.snapshots.completions],
-      ];
+    const allItems: Array<
+      [string, GhcpQuotaResult['snapshots'][keyof GhcpQuotaResult['snapshots']]]
+    > = [
+      ['Premium interactions', quota.snapshots.premiumInteractions],
+      ['Chat', quota.snapshots.chat],
+      ['Completions', quota.snapshots.completions],
+    ];
+    const items = allItems.filter(([, snapshot]) => snapshot.reported !== false);
 
     for (const [label, snapshot] of items) {
       const bar = formatQuotaBar(snapshot.percentRemaining);
@@ -697,6 +849,11 @@ const QUOTA_PROVIDER_RUNTIME: Record<QuotaSupportedProvider, QuotaProviderRuntim
   },
 };
 
+export const __testExports = {
+  getQuotaFailureDisplayEntries,
+  resolveDisplayedTier,
+};
+
 export async function handleQuotaStatus(
   verbose = false,
   providerFilter: QuotaSupportedProvider | 'all' = 'all'
@@ -766,12 +923,12 @@ export async function handleDoctor(verbose = false): Promise<void> {
   const quotaResult = await fetchAllProviderQuotas(provider, verbose);
 
   for (const { account, quota } of quotaResult.accounts) {
-    const accountLabel = account.email || account.id || 'Unknown Account';
+    const accountLabel = formatCliAccountLabel(account);
     const defaultBadge = account.isDefault ? color(' (default)', 'info') : '';
 
     if (!quota.success) {
       console.log(`  ${fail(accountLabel)}${defaultBadge}`);
-      console.log(`    ${color(quota.error || 'Failed to fetch quota', 'error')}`);
+      displayQuotaFailure(quota);
       if (quota.isUnprovisioned) {
         console.log(
           `    ${warn('Account not provisioned - open Gemini Code Assist in IDE first')}`
@@ -859,7 +1016,7 @@ export async function handleSetDefault(args: string[]): Promise<void> {
       console.log('Available accounts:');
       for (const acc of accounts) {
         const badge = acc.isDefault ? color(' (current default)', 'info') : '';
-        console.log(`  - ${acc.email || acc.id}${badge}`);
+        console.log(`  - ${formatCliAccountLabel(acc)}${badge}`);
       }
     } else {
       console.log(`No accounts found for provider: ${provider}`);
@@ -871,7 +1028,7 @@ export async function handleSetDefault(args: string[]): Promise<void> {
   const success = setDefaultAccount(provider, account.id);
 
   if (success) {
-    console.log(ok(`Default account set to: ${account.email || account.id}`));
+    console.log(ok(`Default account set to: ${formatCliAccountLabel(account)}`));
     console.log(info(`Provider: ${provider}`));
   } else {
     console.log(fail('Failed to set default account'));
@@ -899,7 +1056,7 @@ export async function handlePauseAccount(args: string[]): Promise<void> {
   }
 
   if (account.paused) {
-    console.log(warn(`Account already paused: ${account.email || account.id}`));
+    console.log(warn(`Account already paused: ${formatCliAccountLabel(account)}`));
     console.log(info(`Paused at: ${account.pausedAt || 'unknown'}`));
     return;
   }
@@ -907,7 +1064,7 @@ export async function handlePauseAccount(args: string[]): Promise<void> {
   const success = pauseAccount(provider, account.id);
 
   if (success) {
-    console.log(ok(`Account paused: ${account.email || account.id}`));
+    console.log(ok(`Account paused: ${formatCliAccountLabel(account)}`));
     console.log(info('Account will be skipped in quota rotation'));
   } else {
     console.log(fail('Failed to pause account'));
@@ -935,14 +1092,14 @@ export async function handleResumeAccount(args: string[]): Promise<void> {
   }
 
   if (!account.paused) {
-    console.log(warn(`Account is not paused: ${account.email || account.id}`));
+    console.log(warn(`Account is not paused: ${formatCliAccountLabel(account)}`));
     return;
   }
 
   const success = resumeAccount(provider, account.id);
 
   if (success) {
-    console.log(ok(`Account resumed: ${account.email || account.id}`));
+    console.log(ok(`Account resumed: ${formatCliAccountLabel(account)}`));
     console.log(info('Account is now active in quota rotation'));
   } else {
     console.log(fail('Failed to resume account'));

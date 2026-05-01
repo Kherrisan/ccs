@@ -9,6 +9,14 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ApiConflictError, withApiBase } from '@/lib/api-client';
 
 // Types
+export interface CopilotNormalizationWarning {
+  source: 'config' | 'settings';
+  tier: 'default' | 'opus' | 'sonnet' | 'haiku';
+  original: string;
+  replacement: string;
+  message: string;
+}
+
 export interface CopilotStatus {
   enabled: boolean;
   installed: boolean;
@@ -21,6 +29,10 @@ export interface CopilotStatus {
   auto_start: boolean;
   rate_limit: number | null;
   wait_on_limit: boolean;
+}
+
+export interface CopilotStatusResponse extends CopilotStatus {
+  warnings?: CopilotNormalizationWarning[];
 }
 
 export interface CopilotInfo {
@@ -49,6 +61,10 @@ export interface CopilotConfig {
   opus_model?: string;
   sonnet_model?: string;
   haiku_model?: string;
+}
+
+export interface CopilotConfigResponse extends CopilotConfig {
+  warnings?: CopilotNormalizationWarning[];
 }
 
 /** GitHub Copilot plan tiers */
@@ -80,25 +96,33 @@ export interface CopilotRawSettings {
   settings: {
     env?: Record<string, string>;
   };
+  effectiveSettings?: {
+    env?: Record<string, string>;
+  };
   mtime: number;
   path: string;
   exists: boolean;
+  warnings?: CopilotNormalizationWarning[];
 }
 
 // API functions
-async function fetchCopilotStatus(): Promise<CopilotStatus> {
+async function fetchCopilotStatus(): Promise<CopilotStatusResponse> {
   const res = await fetch(withApiBase('/copilot/status'));
   if (!res.ok) throw new Error('Failed to fetch copilot status');
   return res.json();
 }
 
-async function fetchCopilotConfig(): Promise<CopilotConfig> {
+async function fetchCopilotConfig(): Promise<CopilotConfigResponse> {
   const res = await fetch(withApiBase('/copilot/config'));
   if (!res.ok) throw new Error('Failed to fetch copilot config');
   return res.json();
 }
 
-async function fetchCopilotModels(): Promise<{ models: CopilotModel[]; current: string }> {
+async function fetchCopilotModels(): Promise<{
+  models: CopilotModel[];
+  current: string;
+  warnings?: CopilotNormalizationWarning[];
+}> {
   const res = await fetch(withApiBase('/copilot/models'));
   if (!res.ok) throw new Error('Failed to fetch copilot models');
   return res.json();
@@ -110,7 +134,11 @@ async function fetchCopilotRawSettings(): Promise<CopilotRawSettings> {
   return res.json();
 }
 
-async function updateCopilotConfig(config: Partial<CopilotConfig>): Promise<{ success: boolean }> {
+async function updateCopilotConfig(config: Partial<CopilotConfig>): Promise<{
+  success: boolean;
+  copilot: CopilotConfig;
+  warnings?: CopilotNormalizationWarning[];
+}> {
   const res = await fetch(withApiBase('/copilot/config'), {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
@@ -123,7 +151,12 @@ async function updateCopilotConfig(config: Partial<CopilotConfig>): Promise<{ su
 async function saveCopilotRawSettings(data: {
   settings: CopilotRawSettings['settings'];
   expectedMtime?: number;
-}): Promise<{ success: boolean; mtime: number }> {
+}): Promise<{
+  success: boolean;
+  mtime: number;
+  settings?: CopilotRawSettings['settings'];
+  warnings?: CopilotNormalizationWarning[];
+}> {
   const res = await fetch(withApiBase('/copilot/settings/raw'), {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },

@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Save, Loader2, RefreshCw, Globe, Network } from 'lucide-react';
 import { ProviderLogo } from '../provider-logo';
 import type { SettingsResponse } from './types';
+import { useTranslation } from 'react-i18next';
 
 interface ProviderEditorHeaderProps {
   provider: string;
@@ -24,6 +25,17 @@ interface ProviderEditorHeaderProps {
   onSave: () => void;
 }
 
+function formatSettingsPathBadgeLabel(pathValue: string): string {
+  const normalized = pathValue.replace(/\\/g, '/');
+  const cliproxySegment = '/cliproxy/providers/';
+  const cliproxyIndex = normalized.lastIndexOf(cliproxySegment);
+  if (cliproxyIndex !== -1) {
+    return normalized.slice(cliproxyIndex + 1);
+  }
+
+  return normalized.replace(/^.*\//, '');
+}
+
 export function ProviderEditorHeader({
   displayName,
   logoProvider,
@@ -38,6 +50,7 @@ export function ProviderEditorHeader({
   onRefetch,
   onSave,
 }: ProviderEditorHeaderProps) {
+  const { t } = useTranslation();
   return (
     <div className="px-6 py-4 border-b bg-background flex items-center justify-between shrink-0">
       <div className="flex items-center gap-3">
@@ -61,18 +74,19 @@ export function ProviderEditorHeader({
             )}
             {!isRemoteMode && data?.path && (
               <Badge variant="outline" className="text-xs">
-                {data.path.replace(/^.*[\\/]/, '')}
+                {formatSettingsPathBadgeLabel(data.path)}
               </Badge>
             )}
           </div>
           {isRemoteMode ? (
             <p className="text-xs text-blue-600 dark:text-blue-400 mt-0.5">
+              {/* TODO i18n: missing key for remote traffic text */}
               Traffic auto-routed to remote server
             </p>
           ) : (
             data && (
               <p className="text-xs text-muted-foreground mt-0.5">
-                Last modified: {new Date(data.mtime).toLocaleString()}
+                {t('providerEditor.lastModified')}: {new Date(data.mtime).toLocaleString()}
               </p>
             )
           )}

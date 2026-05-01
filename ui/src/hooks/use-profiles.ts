@@ -13,6 +13,7 @@ import {
   type ImportProfileRequest,
 } from '@/lib/api-client';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 
 export function useProfiles() {
   return useQuery({
@@ -23,12 +24,13 @@ export function useProfiles() {
 
 export function useCreateProfile() {
   const queryClient = useQueryClient();
+  const { t } = useTranslation();
 
   return useMutation({
     mutationFn: (data: CreateProfile) => api.profiles.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['profiles'] });
-      toast.success('Profile created successfully');
+      toast.success(t('toasts.profileCreated'));
     },
     onError: (error: Error) => {
       toast.error(error.message);
@@ -38,13 +40,14 @@ export function useCreateProfile() {
 
 export function useUpdateProfile() {
   const queryClient = useQueryClient();
+  const { t } = useTranslation();
 
   return useMutation({
     mutationFn: ({ name, data }: { name: string; data: UpdateProfile }) =>
       api.profiles.update(name, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['profiles'] });
-      toast.success('Profile updated successfully');
+      toast.success(t('toasts.profileUpdated'));
     },
     onError: (error: Error) => {
       toast.error(error.message);
@@ -54,12 +57,13 @@ export function useUpdateProfile() {
 
 export function useDeleteProfile() {
   const queryClient = useQueryClient();
+  const { t } = useTranslation();
 
   return useMutation({
     mutationFn: (name: string) => api.profiles.delete(name),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['profiles'] });
-      toast.success('Profile deleted successfully');
+      toast.success(t('toasts.profileDeleted'));
     },
     onError: (error: Error) => {
       toast.error(error.message);
@@ -75,25 +79,27 @@ export function useDiscoverProfileOrphans() {
 
 export function useRegisterProfileOrphans() {
   const queryClient = useQueryClient();
+  const { t } = useTranslation();
 
   return useMutation({
     mutationFn: (data: RegisterProfileOrphansRequest) => api.profiles.registerOrphans(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['profiles'] });
-      toast.success('Orphan profiles registration complete');
+      toast.success(t('toasts.orphanProfilesComplete'));
     },
   });
 }
 
 export function useCopyProfile() {
   const queryClient = useQueryClient();
+  const { t } = useTranslation();
 
   return useMutation({
     mutationFn: ({ name, data }: { name: string; data: CopyProfileRequest }) =>
       api.profiles.copy(name, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['profiles'] });
-      toast.success('Profile copied successfully');
+      toast.success(t('toasts.profileCopied'));
     },
   });
 }
@@ -107,12 +113,13 @@ export function useExportProfile() {
 
 export function useImportProfile() {
   const queryClient = useQueryClient();
+  const { t } = useTranslation();
 
   return useMutation({
     mutationFn: (data: ImportProfileRequest) => api.profiles.import(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['profiles'] });
-      toast.success('Profile imported successfully');
+      toast.success(t('toasts.profileImported'));
     },
   });
 }

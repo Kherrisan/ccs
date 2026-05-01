@@ -164,6 +164,104 @@ describe('web-server account-routes context normalization', () => {
     expect(work?.continuity_inferred).toBe(true);
   });
 
+  it('reports the plain ccs lane as native when no account default or inheritance exists', async () => {
+    const ccsDir = path.join(tempHome, '.ccs');
+    fs.mkdirSync(ccsDir, { recursive: true });
+
+    fs.writeFileSync(
+      path.join(ccsDir, 'config.yaml'),
+      [
+        'version: 12',
+        'accounts:',
+        '  work:',
+        '    created: "2026-02-01T00:00:00.000Z"',
+        'profiles: {}',
+        'cliproxy:',
+        '  oauth_accounts: {}',
+        '  providers: {}',
+        '  variants: {}',
+      ].join('\n'),
+      'utf8'
+    );
+
+    const payload = await getJson<{
+      plain_ccs_lane?: {
+        kind: string;
+        account_name?: string | null;
+      };
+    }>(baseUrl, '/api/accounts');
+
+    expect(payload.plain_ccs_lane?.kind).toBe('native');
+    expect(payload.plain_ccs_lane?.account_name).toBeNull();
+  });
+
+  it('reports the plain ccs lane as an account when default profile is an auth account', async () => {
+    const ccsDir = path.join(tempHome, '.ccs');
+    fs.mkdirSync(ccsDir, { recursive: true });
+
+    fs.writeFileSync(
+      path.join(ccsDir, 'config.yaml'),
+      [
+        'version: 12',
+        'default: work',
+        'accounts:',
+        '  work:',
+        '    created: "2026-02-01T00:00:00.000Z"',
+        '    context_mode: shared',
+        '    context_group: default',
+        '    continuity_mode: deeper',
+        'profiles: {}',
+        'cliproxy:',
+        '  oauth_accounts: {}',
+        '  providers: {}',
+        '  variants: {}',
+      ].join('\n'),
+      'utf8'
+    );
+
+    const payload = await getJson<{
+      plain_ccs_lane?: {
+        kind: string;
+        account_name?: string | null;
+      };
+    }>(baseUrl, '/api/accounts');
+
+    expect(payload.plain_ccs_lane?.kind).toBe('account-default');
+    expect(payload.plain_ccs_lane?.account_name).toBe('work');
+  });
+
+  it('does not initialize an account instance as a side effect of listing accounts', async () => {
+    const ccsDir = path.join(tempHome, '.ccs');
+    fs.mkdirSync(ccsDir, { recursive: true });
+
+    fs.writeFileSync(
+      path.join(ccsDir, 'config.yaml'),
+      [
+        'version: 12',
+        'default: work',
+        'accounts:',
+        '  work:',
+        '    created: "2026-02-01T00:00:00.000Z"',
+        '    context_mode: shared',
+        '    context_group: default',
+        '    continuity_mode: deeper',
+        'profiles: {}',
+        'cliproxy:',
+        '  oauth_accounts: {}',
+        '  providers: {}',
+        '  variants: {}',
+      ].join('\n'),
+      'utf8'
+    );
+
+    const instancePath = path.join(ccsDir, 'instances', 'work');
+    expect(fs.existsSync(instancePath)).toBe(false);
+
+    await getJson(baseUrl, '/api/accounts');
+
+    expect(fs.existsSync(instancePath)).toBe(false);
+  });
+
   it('does not delete metadata when instance deletion fails', async () => {
     const ccsDir = path.join(tempHome, '.ccs');
     fs.mkdirSync(ccsDir, { recursive: true });

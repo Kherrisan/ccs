@@ -5,6 +5,7 @@
 
 import { useMemo, useState, type ElementType } from 'react';
 import { toast } from 'sonner';
+import { useNavigate } from 'react-router-dom';
 import {
   AlertTriangle,
   CheckCircle2,
@@ -35,15 +36,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { RawEditorSection } from '@/components/copilot/config-form/raw-editor-section';
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectLabel,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import {
   Dialog,
   DialogContent,
@@ -68,6 +61,32 @@ interface RawSettingsParseResult {
   isValid: boolean;
   settings?: { env?: Record<string, string> };
   error?: string;
+}
+
+function buildProbeSnapshotKey(
+  status?: {
+    enabled?: boolean;
+    authenticated?: boolean;
+    token_expired?: boolean;
+    daemon_running?: boolean;
+    port?: number;
+    ghost_mode?: boolean;
+  },
+  config?: {
+    model?: string;
+    auto_start?: boolean;
+  }
+): string {
+  return JSON.stringify({
+    enabled: status?.enabled ?? null,
+    authenticated: status?.authenticated ?? null,
+    token_expired: status?.token_expired ?? null,
+    daemon_running: status?.daemon_running ?? null,
+    port: status?.port ?? null,
+    ghost_mode: status?.ghost_mode ?? null,
+    auto_start: config?.auto_start ?? null,
+    model: config?.model ?? null,
+  });
 }
 
 function buildConfigDraft(config?: {
@@ -124,6 +143,7 @@ function parseRawSettings(value: string): RawSettingsParseResult {
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
       return {
         isValid: false,
+        /* TODO i18n: missing key for "Raw settings must be a JSON object" */
         error: 'Raw settings must be a JSON object',
       };
     }
@@ -135,6 +155,7 @@ function parseRawSettings(value: string): RawSettingsParseResult {
   } catch (error) {
     return {
       isValid: false,
+      /* TODO i18n: missing key for "Invalid JSON" */
       error: (error as Error).message || 'Invalid JSON',
     };
   }
@@ -159,7 +180,47 @@ function CursorModelSelector({
 }) {
   const { t } = useTranslation();
   const selectorValue = value || (allowDefaultFallback ? '__default' : '');
-  const selected = models.find((model) => model.id === value);
+  const options = useMemo(() => {
+    const mappedModels = models.map((model) => ({
+      value: model.id,
+      groupKey: 'models',
+      searchText: `${model.name || model.id} ${model.id}`,
+      keywords: [model.provider],
+      triggerContent: (
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="truncate font-mono text-xs">{model.name || model.id}</span>
+          {model.provider && (
+            <Badge variant="outline" className="text-[9px] h-4 px-1 capitalize">
+              {model.provider}
+            </Badge>
+          )}
+        </div>
+      ),
+      itemContent: (
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="truncate text-xs font-mono">{model.name || model.id}</span>
+          <Badge variant="outline" className="text-[9px] h-4 px-1 capitalize">
+            {model.provider}
+          </Badge>
+        </div>
+      ),
+    }));
+
+    if (!allowDefaultFallback) return mappedModels;
+
+    return [
+      {
+        value: '__default',
+        groupKey: 'models',
+        searchText: t('cursorPage.useDefaultModel'),
+        triggerContent: (
+          <span className="truncate font-mono text-xs">{t('cursorPage.useDefaultModel')}</span>
+        ),
+        itemContent: <span>{t('cursorPage.useDefaultModel')}</span>,
+      },
+      ...mappedModels,
+    ];
+  }, [allowDefaultFallback, models, t]);
 
   return (
     <div className="space-y-1.5">
@@ -167,9 +228,9 @@ function CursorModelSelector({
         <Label className="text-xs font-medium">{label}</Label>
         <p className="text-[10px] text-muted-foreground">{description}</p>
       </div>
-      <Select
-        value={selectorValue}
-        onValueChange={(nextValue) => {
+      <SearchableSelect
+        value={selectorValue || undefined}
+        onChange={(nextValue) => {
           if (allowDefaultFallback && nextValue === '__default') {
             onChange('');
             return;
@@ -177,46 +238,18 @@ function CursorModelSelector({
           onChange(nextValue);
         }}
         disabled={disabled}
-      >
-        <SelectTrigger className="h-9">
-          <SelectValue placeholder={t('cursorPage.selectModel')}>
-            {selectorValue && (
-              <div className="flex items-center gap-2 min-w-0">
-                <span className="truncate font-mono text-xs">
-                  {allowDefaultFallback && selectorValue === '__default'
-                    ? t('cursorPage.useDefaultModel')
-                    : selected?.name || selectorValue}
-                </span>
-                {selected?.provider && (
-                  <Badge variant="outline" className="text-[9px] h-4 px-1 capitalize">
-                    {selected.provider}
-                  </Badge>
-                )}
-              </div>
-            )}
-          </SelectValue>
-        </SelectTrigger>
-        <SelectContent className="max-h-[300px]">
-          <SelectGroup>
-            <SelectLabel className="text-xs text-muted-foreground">
-              {t('cursorPage.availableModelCount', { count: models.length })}
-            </SelectLabel>
-            {allowDefaultFallback && (
-              <SelectItem value="__default">{t('cursorPage.useDefaultModel')}</SelectItem>
-            )}
-            {models.map((model) => (
-              <SelectItem key={model.id} value={model.id}>
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="truncate text-xs font-mono">{model.name || model.id}</span>
-                  <Badge variant="outline" className="text-[9px] h-4 px-1 capitalize">
-                    {model.provider}
-                  </Badge>
-                </div>
-              </SelectItem>
-            ))}
-          </SelectGroup>
-        </SelectContent>
-      </Select>
+        placeholder={t('cursorPage.selectModel')}
+        searchPlaceholder={t('searchableSelect.searchModels')}
+        emptyText={t('searchableSelect.noResults')}
+        triggerClassName="h-9"
+        groups={[
+          {
+            key: 'models',
+            label: t('cursorPage.availableModelCount', { count: models.length }),
+          },
+        ]}
+        options={options}
+      />
     </div>
   );
 }
@@ -257,11 +290,13 @@ function StatusItem({
 
 export function CursorPage() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const {
     status,
     statusLoading,
     refetchStatus,
     config,
+    refetchConfig,
     updateConfigAsync,
     isUpdatingConfig,
     models,
@@ -280,6 +315,10 @@ export function CursorPage() {
     isStartingDaemon,
     stopDaemonAsync,
     isStoppingDaemon,
+    runProbeAsync,
+    isRunningProbe,
+    probeResult,
+    resetProbe,
   } = useCursor();
 
   const [configDraft, setConfigDraft] = useState<CursorConfigDraft>(() => buildConfigDraft());
@@ -289,6 +328,9 @@ export function CursorPage() {
   const [manualAuthOpen, setManualAuthOpen] = useState(false);
   const [manualToken, setManualToken] = useState('');
   const [manualMachineId, setManualMachineId] = useState('');
+  const [probeSnapshotKey, setProbeSnapshotKey] = useState<string | null>(() =>
+    probeResult ? buildProbeSnapshotKey(status, config) : null
+  );
 
   const pristineConfigDraft = buildConfigDraft(config);
 
@@ -314,6 +356,14 @@ export function CursorPage() {
   const isRawJsonValid = rawParseResult.isValid;
   const hasChanges = configDirty || rawConfigDirty;
   const canSave = !rawConfigDirty || (rawSettingsReady && isRawJsonValid);
+  const currentProbeSnapshotKey = buildProbeSnapshotKey(status, config);
+  const visibleProbeResult =
+    probeResult &&
+    !hasChanges &&
+    probeSnapshotKey !== null &&
+    probeSnapshotKey === currentProbeSnapshotKey
+      ? probeResult
+      : null;
   const orderedModels = useMemo(() => {
     const seen = new Set<string>();
     const sorted = [...models].sort((a, b) => a.name.localeCompare(b.name));
@@ -343,6 +393,16 @@ export function CursorPage() {
       return updater(baseDraft);
     });
     setConfigDirty(true);
+  };
+
+  const clearProbeState = () => {
+    resetProbe();
+    setProbeSnapshotKey(null);
+  };
+
+  const resetConfigDraft = (nextConfig = config) => {
+    setConfigDraft(buildConfigDraft(nextConfig));
+    setConfigDirty(false);
   };
 
   const canStart = Boolean(status?.enabled && status?.authenticated && !status?.token_expired);
@@ -391,6 +451,7 @@ export function CursorPage() {
           haiku_model: effectiveHaikuModel || undefined,
         })
       );
+      clearProbeState();
       if (!suppressSuccessToast) {
         toast.success(t('cursorPage.savedConfig'));
       }
@@ -496,6 +557,7 @@ export function CursorPage() {
   const handleToggleEnabled = async (enabled: boolean) => {
     try {
       await updateConfigAsync({ enabled });
+      clearProbeState();
       toast.success(
         enabled ? t('cursorPage.integrationEnabled') : t('cursorPage.integrationDisabled')
       );
@@ -507,6 +569,7 @@ export function CursorPage() {
   const handleAutoDetectAuth = async () => {
     try {
       await autoDetectAuthAsync();
+      clearProbeState();
       toast.success(t('cursorPage.credentialsImported'));
     } catch (error) {
       toast.error((error as Error).message || t('cursorPage.autoDetectFailed'));
@@ -524,6 +587,7 @@ export function CursorPage() {
         accessToken: manualToken.trim(),
         machineId: manualMachineId.trim(),
       });
+      clearProbeState();
       toast.success(t('cursorPage.credentialsImported'));
       setManualAuthOpen(false);
       setManualToken('');
@@ -540,6 +604,7 @@ export function CursorPage() {
         toast.error(result.error || t('cursorPage.failedStartDaemon'));
         return;
       }
+      clearProbeState();
       toast.success(
         result.pid
           ? t('cursorPage.daemonStartedWithPid', { pid: result.pid })
@@ -557,9 +622,31 @@ export function CursorPage() {
         toast.error(result.error || t('cursorPage.failedStopDaemon'));
         return;
       }
+      clearProbeState();
       toast.success(t('cursorPage.daemonStopped'));
     } catch (error) {
       toast.error((error as Error).message || t('cursorPage.failedStopDaemon'));
+    }
+  };
+
+  const handleRunProbe = async () => {
+    if (hasChanges) {
+      toast.error(t('cursorPage.probeSaveFirst'));
+      return;
+    }
+
+    try {
+      const result = await runProbeAsync();
+      const refreshedStatus = await refetchStatus();
+      setProbeSnapshotKey(buildProbeSnapshotKey(refreshedStatus.data ?? status, config));
+      if (result.ok) {
+        toast.success(t('cursorPage.probeSucceeded'));
+        return;
+      }
+
+      toast.error(result.message || t('cursorPage.probeFailed'));
+    } catch (error) {
+      toast.error((error as Error).message || t('cursorPage.probeFailed'));
     }
   };
 
@@ -582,6 +669,7 @@ export function CursorPage() {
         expectedMtime: rawSettings?.mtime,
       });
       setRawConfigDirty(false);
+      clearProbeState();
       if (!suppressSuccessToast) {
         toast.success(t('cursorPage.rawSaved'));
       }
@@ -621,15 +709,20 @@ export function CursorPage() {
     }
   };
 
-  const handleHeaderRefresh = () => {
+  const handleHeaderRefresh = async () => {
     setRawConfigDirty(false);
-    refetchStatus();
-    refetchRawSettings();
+    clearProbeState();
+    const [, refreshedConfig] = await Promise.all([
+      refetchStatus(),
+      refetchConfig(),
+      refetchRawSettings(),
+    ]);
+    resetConfigDraft(refreshedConfig.data ?? config);
   };
 
   return (
     <>
-      <div className="h-[calc(100vh-100px)] flex">
+      <div className="flex h-full min-h-0 overflow-hidden">
         <div className="w-80 border-r flex flex-col bg-muted/30 shrink-0">
           <div className="p-4 border-b bg-background">
             <div className="flex items-center justify-between mb-1">
@@ -642,9 +735,9 @@ export function CursorPage() {
                 <h1 className="font-semibold">{t('cursorPage.title')}</h1>
                 <Badge
                   variant="outline"
-                  className="h-5 border-amber-500/60 bg-amber-500/10 px-1.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-300"
+                  className="h-5 border-red-500/50 bg-red-500/10 px-1.5 text-[10px] font-semibold uppercase tracking-wide text-red-700 dark:text-red-300"
                 >
-                  {t('cursorPage.beta')}
+                  {t('cursorPage.deprecated')}
                 </Badge>
                 {integrationBadge}
               </div>
@@ -654,6 +747,8 @@ export function CursorPage() {
                 className="h-8 w-8"
                 onClick={() => refetchStatus()}
                 disabled={statusLoading}
+                aria-label={t('cursorPage.refreshStatus')}
+                title={t('cursorPage.refreshStatus')}
               >
                 <RefreshCw className={cn('w-4 h-4', statusLoading && 'animate-spin')} />
               </Button>
@@ -675,6 +770,36 @@ export function CursorPage() {
                   <li>{t('cursorPage.unofficialItem2')}</li>
                   <li>{t('cursorPage.unofficialItem3')}</li>
                 </ul>
+              </div>
+
+              <div className="rounded-md border border-border/70 bg-background/90 p-3 space-y-3">
+                <div className="space-y-1">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    {t('cursorPage.supportedPathTitle')}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {t('cursorPage.supportedPathDesc')}
+                  </p>
+                </div>
+                <div className="grid gap-2">
+                  <Button
+                    size="sm"
+                    className="w-full"
+                    onClick={() => navigate('/cliproxy?provider=cursor&action=auth')}
+                  >
+                    <Key className="w-3.5 h-3.5 mr-1.5" />
+                    {t('cursorPage.startCliproxyAuth')}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full"
+                    onClick={() => navigate('/cliproxy?provider=cursor')}
+                  >
+                    <Zap className="w-3.5 h-3.5 mr-1.5" />
+                    {t('cursorPage.openCliproxyCursor')}
+                  </Button>
+                </div>
               </div>
 
               <div className="space-y-2">
@@ -704,6 +829,72 @@ export function CursorPage() {
                     status?.daemon_running ? t('cursorPage.running') : t('cursorPage.stopped')
                   }
                 />
+              </div>
+
+              <div className="rounded-md border bg-background/80 p-3 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Code2 className="h-4 w-4 text-muted-foreground shrink-0" />
+                    <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      {t('cursorPage.liveProbe')}
+                    </span>
+                  </div>
+                  <Badge
+                    variant={visibleProbeResult ? 'outline' : 'secondary'}
+                    className={cn(
+                      visibleProbeResult?.ok &&
+                        'border-green-500/40 text-green-600 dark:text-green-300',
+                      visibleProbeResult &&
+                        !visibleProbeResult.ok &&
+                        'border-red-500/40 text-red-600 dark:text-red-300'
+                    )}
+                  >
+                    {visibleProbeResult
+                      ? visibleProbeResult.ok
+                        ? t('cursorPage.probeSucceeded')
+                        : t('cursorPage.probeFailed')
+                      : t('cursorPage.probeNotRun')}
+                  </Badge>
+                </div>
+
+                {visibleProbeResult ? (
+                  <div className="space-y-1 text-xs">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-muted-foreground">{t('cursorPage.probeStage')}</span>
+                      <span className="font-mono uppercase">{visibleProbeResult.stage}</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-muted-foreground">
+                        {t('cursorPage.probeHttpStatus')}
+                      </span>
+                      <span className="font-mono">{visibleProbeResult.status}</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-muted-foreground">{t('cursorPage.probeDuration')}</span>
+                      <span className="font-mono">{visibleProbeResult.duration_ms} ms</span>
+                    </div>
+                    {visibleProbeResult.model ? (
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-muted-foreground">{t('cursorPage.probeModel')}</span>
+                        <span className="font-mono text-[11px] text-right break-all">
+                          {visibleProbeResult.model}
+                        </span>
+                      </div>
+                    ) : null}
+                    <div className="space-y-1 pt-1">
+                      <span className="text-muted-foreground">{t('cursorPage.probeMessage')}</span>
+                      <p className="text-[11px] leading-relaxed break-words">
+                        {visibleProbeResult.message}
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground">{t('cursorPage.probeNotRun')}</p>
+                )}
+
+                <p className="text-[11px] text-muted-foreground">
+                  {t('cursorPage.probeLocalReadinessHint')}
+                </p>
               </div>
 
               <div className="space-y-2">
@@ -757,6 +948,25 @@ export function CursorPage() {
                 >
                   <Key className="w-3.5 h-3.5 mr-1.5" />
                   {t('cursorPage.manualAuthImport')}
+                </Button>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full"
+                  onClick={handleRunProbe}
+                  disabled={isRunningProbe}
+                >
+                  {isRunningProbe ? (
+                    <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                  ) : (
+                    <Code2 className="w-3.5 h-3.5 mr-1.5" />
+                  )}
+                  {isRunningProbe
+                    ? t('cursorPage.probing')
+                    : visibleProbeResult
+                      ? t('cursorPage.rerunLiveProbe')
+                      : t('cursorPage.runLiveProbe')}
                 </Button>
 
                 {status?.daemon_running ? (
@@ -830,6 +1040,8 @@ export function CursorPage() {
                   size="sm"
                   onClick={handleHeaderRefresh}
                   disabled={statusLoading || rawSettingsLoading}
+                  aria-label={t('cursorPage.refreshConfiguration')}
+                  title={t('cursorPage.refreshConfiguration')}
                 >
                   <RefreshCw
                     className={cn(
@@ -897,6 +1109,7 @@ export function CursorPage() {
                                 className="text-xs h-7 gap-1"
                                 onClick={() => applyPreset('codex53')}
                                 disabled={modelsLoading || models.length === 0}
+                                /* TODO i18n: missing key for "OpenAI-only mapping: GPT-5.3 Codex / Codex Max / GPT-5 Mini" */
                                 title="OpenAI-only mapping: GPT-5.3 Codex / Codex Max / GPT-5 Mini"
                               >
                                 <Zap className="w-3 h-3" />
@@ -908,6 +1121,7 @@ export function CursorPage() {
                                 className="text-xs h-7 gap-1"
                                 onClick={() => applyPreset('claude46')}
                                 disabled={modelsLoading || models.length === 0}
+                                /* TODO i18n: missing key for "Claude-first mapping: Opus 4.6 / Sonnet 4.5 / Haiku 4.5" */
                                 title="Claude-first mapping: Opus 4.6 / Sonnet 4.5 / Haiku 4.5"
                               >
                                 <Zap className="w-3 h-3" />
@@ -919,6 +1133,7 @@ export function CursorPage() {
                                 className="text-xs h-7 gap-1"
                                 onClick={() => applyPreset('gemini3')}
                                 disabled={modelsLoading || models.length === 0}
+                                /* TODO i18n: missing key for "Gemini-first mapping: Gemini 3 Pro + Gemini 3 Flash" */
                                 title="Gemini-first mapping: Gemini 3 Pro + Gemini 3 Flash"
                               >
                                 <Zap className="w-3 h-3" />
@@ -999,7 +1214,7 @@ export function CursorPage() {
 
                             <div className="space-y-2">
                               <Label htmlFor="cursor-port" className="text-xs">
-                                Port
+                                {t('cursorPage.port')}
                               </Label>
                               <Input
                                 id="cursor-port"
@@ -1068,7 +1283,7 @@ export function CursorPage() {
                               <span className="font-medium text-muted-foreground">
                                 {t('cursorPage.provider')}
                               </span>
-                              <span className="font-mono">Cursor IDE</span>
+                              <span className="font-mono">Cursor IDE (Legacy)</span>
                             </div>
                             <div className="grid grid-cols-[100px_1fr] gap-2 text-sm items-center">
                               <span className="font-medium text-muted-foreground">
@@ -1078,8 +1293,9 @@ export function CursorPage() {
                                 {rawSettings?.path ?? '~/.ccs/cursor.settings.json'}
                               </code>
                             </div>
+                            {/* TODO i18n: missing key for model mapping env var info paragraph */}
                             <p className="text-xs text-muted-foreground">
-                              Model mapping writes `ANTHROPIC_MODEL`,
+                              Legacy bridge model mapping writes `ANTHROPIC_MODEL`,
                               `ANTHROPIC_DEFAULT_OPUS_MODEL`, `ANTHROPIC_DEFAULT_SONNET_MODEL`, and
                               `ANTHROPIC_DEFAULT_HAIKU_MODEL` in `cursor.settings.json`.
                             </p>

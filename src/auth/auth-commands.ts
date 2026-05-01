@@ -21,6 +21,7 @@ import packageJson from '../../package.json';
 import {
   type CommandContext,
   handleCreate,
+  handleBackup,
   handleList,
   handleShow,
   handleRemove,
@@ -68,6 +69,9 @@ class AuthCommands {
     console.log('');
     console.log(subheader('Commands'));
     console.log(`  ${color('create <profile>', 'command')}        Create new profile and login`);
+    console.log(
+      `  ${color('backup <profile>', 'command')}        Backup local continuity for an account`
+    );
     console.log(`  ${color('list', 'command')}                   List all saved profiles`);
     console.log(`  ${color('show <profile>', 'command')}         Show profile details`);
     console.log(`  ${color('remove <profile>', 'command')}       Remove saved profile`);
@@ -96,6 +100,12 @@ class AuthCommands {
     console.log('');
     console.log(`  ${dim('# Set work as default')}`);
     console.log(`  ${color('ccs auth default work', 'command')}`);
+    console.log('');
+    console.log(`  ${dim('# Backup the local continuity lane for an account or plain ccs')}`);
+    console.log(`  ${color('ccs auth backup work', 'command')}`);
+    console.log(
+      `  ${color('ccs auth backup default', 'command')}  ${dim('# backup plain ccs lane')}`
+    );
     console.log('');
     console.log(`  ${dim('# Restore original CCS behavior')}`);
     console.log(`  ${color('ccs auth reset-default', 'command')}`);
@@ -162,6 +172,10 @@ class AuthCommands {
     return handleCreate(this.getContext(), args);
   }
 
+  async handleBackup(args: string[]): Promise<void> {
+    return handleBackup(this.getContext(), args);
+  }
+
   /**
    * List all profiles - delegates to list-command.ts
    */
@@ -225,6 +239,10 @@ class AuthCommands {
 
       case 'list':
         await this.handleList(commandArgs);
+        break;
+
+      case 'backup':
+        await this.handleBackup(commandArgs);
         break;
 
       case 'show':

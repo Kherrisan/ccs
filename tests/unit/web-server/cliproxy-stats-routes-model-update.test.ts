@@ -4,7 +4,6 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import type { Server } from 'http';
-import cliproxyStatsRoutes from '../../../src/web-server/routes/cliproxy-stats-routes';
 
 function writeSettings(filePath: string, env: Record<string, string>): void {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
@@ -16,8 +15,16 @@ describe('cliproxy-stats-routes model update canonicalization', () => {
   let baseUrl = '';
   let tempHome = '';
   let originalCcsHome: string | undefined;
+  let setGlobalConfigDir: (dir: string | undefined) => void;
+  let cliproxyStatsRoutes: ReturnType<typeof express.Router>;
 
   beforeAll(async () => {
+    originalCcsHome = process.env.CCS_HOME;
+    ({ setGlobalConfigDir } = await import('../../../src/utils/config-manager'));
+    ({ default: cliproxyStatsRoutes } = await import(
+      '../../../src/web-server/routes/cliproxy-stats-routes'
+    ));
+
     const app = express();
     app.use(express.json());
     app.use('/api/cliproxy', cliproxyStatsRoutes);
@@ -41,20 +48,24 @@ describe('cliproxy-stats-routes model update canonicalization', () => {
 
   afterAll(async () => {
     await new Promise<void>((resolve) => server.close(() => resolve()));
-  });
+    setGlobalConfigDir(undefined);
 
-  beforeEach(() => {
-    tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'ccs-cliproxy-model-route-'));
-    originalCcsHome = process.env.CCS_HOME;
-    process.env.CCS_HOME = tempHome;
-  });
-
-  afterEach(() => {
     if (originalCcsHome !== undefined) {
       process.env.CCS_HOME = originalCcsHome;
     } else {
       delete process.env.CCS_HOME;
     }
+  });
+
+  beforeEach(() => {
+    tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'ccs-cliproxy-model-route-'));
+    process.env.CCS_HOME = tempHome;
+    setGlobalConfigDir(path.join(tempHome, '.ccs'));
+  });
+
+  afterEach(() => {
+    setGlobalConfigDir(undefined);
+    delete process.env.CCS_HOME;
 
     if (tempHome && fs.existsSync(tempHome)) {
       fs.rmSync(tempHome, { recursive: true, force: true });
@@ -118,7 +129,7 @@ describe('cliproxy-stats-routes model update canonicalization', () => {
     expect(persisted.env.ANTHROPIC_MODEL).toBe('claude-sonnet-4-6');
   });
 
-  it('canonicalizes Codex effort suffix and syncs linked core model env vars', async () => {
+  it('preserves Codex effort suffixes while syncing linked core model env vars', async () => {
     const settingsPath = path.join(tempHome, '.ccs', 'cliproxy', 'codex.settings.json');
     writeSettings(settingsPath, {
       ANTHROPIC_BASE_URL: 'http://127.0.0.1:8317/api/provider/codex',
@@ -126,7 +137,7 @@ describe('cliproxy-stats-routes model update canonicalization', () => {
       ANTHROPIC_MODEL: 'gpt-5.3-codex',
       ANTHROPIC_DEFAULT_OPUS_MODEL: 'gpt-5.3-codex',
       ANTHROPIC_DEFAULT_SONNET_MODEL: 'gpt-5.3-codex',
-      ANTHROPIC_DEFAULT_HAIKU_MODEL: 'gpt-5-mini',
+      ANTHROPIC_DEFAULT_HAIKU_MODEL: 'gpt-5.4-mini',
     });
 
     const response = await fetch(`${baseUrl}/api/cliproxy/models/codex`, {
@@ -137,15 +148,15 @@ describe('cliproxy-stats-routes model update canonicalization', () => {
     expect(response.status).toBe(200);
 
     const body = (await response.json()) as { model: string };
-    expect(body.model).toBe('gpt-5.3-codex');
+    expect(body.model).toBe('gpt-5.3-codex-xhigh');
 
     const persisted = JSON.parse(fs.readFileSync(settingsPath, 'utf8')) as {
       env: Record<string, string>;
     };
-    expect(persisted.env.ANTHROPIC_MODEL).toBe('gpt-5.3-codex');
-    expect(persisted.env.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe('gpt-5.3-codex');
-    expect(persisted.env.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe('gpt-5.3-codex');
-    expect(persisted.env.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe('gpt-5-mini');
+    expect(persisted.env.ANTHROPIC_MODEL).toBe('gpt-5.3-codex-xhigh');
+    expect(persisted.env.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe('gpt-5.3-codex-xhigh');
+    expect(persisted.env.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe('gpt-5.3-codex-xhigh');
+    expect(persisted.env.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe('gpt-5.4-mini');
   });
 
   it('canonicalizes legacy iflow model IDs to supported upstream IDs', async () => {

@@ -1,21 +1,22 @@
 import { Router, Request, Response } from 'express';
-import { getAllResolvedCatalogs, getCacheAge } from '../../cliproxy/catalog-cache';
+import { getCatalogRoutingSnapshot } from '../../cliproxy/services/catalog-routing';
 
 const router = Router();
 
 /**
  * GET /api/cliproxy/catalog - Get merged model catalogs
- * Returns resolved catalogs (cached + static merged)
+ * Returns resolved catalogs with live -> cache -> static fallback ordering.
  */
-router.get('/', (_req: Request, res: Response): void => {
+router.get('/', async (_req: Request, res: Response): Promise<void> => {
   try {
-    const catalogs = getAllResolvedCatalogs();
-    const cacheAge = getCacheAge();
+    const snapshot = await getCatalogRoutingSnapshot();
     res.json({
-      catalogs,
+      catalogs: snapshot.catalogs,
+      routing: snapshot.routing,
+      source: snapshot.source,
       cache: {
-        synced: cacheAge !== null,
-        age: cacheAge,
+        synced: snapshot.source !== 'static' || snapshot.cacheAge !== null,
+        age: snapshot.cacheAge,
       },
     });
   } catch (error) {

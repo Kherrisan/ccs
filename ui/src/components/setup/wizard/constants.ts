@@ -1,7 +1,7 @@
 /**
  * Constants for Quick Setup Wizard
  * Provider display info with custom ordering for wizard UI.
- * Provider IDs must match CLIPROXY_PROVIDERS from provider-config.ts
+ * IDs come from the provider-config presentation layer.
  */
 
 import type { ProviderOption } from './types';
@@ -17,9 +17,13 @@ const WIZARD_PROVIDER_ORDER: CLIProxyProvider[] = [
   'claude',
   'gemini',
   'codex',
+  'cursor',
+  'gitlab',
+  'codebuddy',
   'qwen',
   'kimi',
   'iflow',
+  'kilo',
   'kiro',
   'ghcp',
 ];

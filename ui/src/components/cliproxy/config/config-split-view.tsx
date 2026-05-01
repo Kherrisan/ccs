@@ -12,8 +12,10 @@ import { buildFileTree } from './file-tree-utils';
 import { YamlEditor, EditorStatusBar } from './yaml-editor';
 import { DiffDialog } from './diff-dialog';
 import { useCliproxyConfig, useCliproxyAuthFile } from '@/hooks/use-cliproxy-config';
+import { useTranslation } from 'react-i18next';
 
 export function ConfigSplitView() {
+  const { t } = useTranslation();
   const [selectedFile, setSelectedFile] = useState<string>('config.yaml');
   const [showDiff, setShowDiff] = useState(false);
 
@@ -82,7 +84,7 @@ export function ConfigSplitView() {
           <span className="font-medium text-sm">{selectedFile}</span>
           {isDirty && isEditingConfig && (
             <span className="text-xs text-amber-500 bg-amber-500/10 px-1.5 py-0.5 rounded">
-              Modified
+              {t('cliproxyConfig.modified')}
             </span>
           )}
         </div>

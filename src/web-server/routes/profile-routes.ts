@@ -9,6 +9,8 @@ import { Router, Request, Response } from 'express';
 import { isReservedName, RESERVED_PROFILE_NAMES } from '../../config/reserved-names';
 import {
   createApiProfile,
+  createCliproxyBridgeProfile,
+  getLocalRuntimeReadiness,
   removeApiProfile,
   updateApiProfileTarget,
   discoverApiProfileOrphans,
@@ -17,10 +19,13 @@ import {
   exportApiProfile,
   importApiProfileBundle,
   apiProfileExists,
+  listCliproxyBridgeProviders,
   listApiProfiles,
   validateApiName,
 } from '../../api/services';
 import { normalizeDroidProvider } from '../../targets/droid-provider';
+import { getPersistedTargetChoices } from '../../targets/target-metadata';
+import { isCLIProxyProvider } from '../../cliproxy/provider-capabilities';
 import { isAnthropicDirectProfile, updateSettingsFile, parseTarget } from './route-helpers';
 
 const router = Router();
@@ -66,11 +71,68 @@ router.get('/', (_req: Request, res: Response): void => {
       settingsPath: p.settingsPath,
       configured: p.isConfigured,
       target: p.target,
+      cliproxyBridge: p.cliproxyBridge ?? null,
     }));
     res.json({ profiles });
   } catch (error) {
     res.status(500).json({ error: (error as Error).message });
   }
+});
+
+router.get('/cliproxy-bridge/providers', (_req: Request, res: Response): void => {
+  try {
+    res.json({ providers: listCliproxyBridgeProviders() });
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+router.get('/local-runtime-readiness', async (_req: Request, res: Response): Promise<void> => {
+  try {
+    res.json({ runtimes: await getLocalRuntimeReadiness() });
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+router.post('/cliproxy-bridge', (req: Request, res: Response): void => {
+  const shape = validatePayloadShape(req.body, ['provider', 'name', 'target']);
+  if (!shape.ok) {
+    res.status(400).json({ error: shape.error });
+    return;
+  }
+
+  const provider = typeof shape.payload.provider === 'string' ? shape.payload.provider.trim() : '';
+  if (!isCLIProxyProvider(provider)) {
+    res.status(400).json({ error: 'Invalid provider. Expected a supported CLIProxy provider ID.' });
+    return;
+  }
+
+  const target = parseTarget(shape.payload.target);
+  if (shape.payload.target !== undefined && target === null) {
+    res.status(400).json({ error: `Invalid target. Expected: ${getPersistedTargetChoices()}` });
+    return;
+  }
+
+  const result = createCliproxyBridgeProfile(provider, {
+    name: typeof shape.payload.name === 'string' ? shape.payload.name : undefined,
+    target: target || 'claude',
+  });
+
+  if (!result.success || !result.name) {
+    const errorMessage = result.error || 'Failed to create CLIProxy bridge profile';
+    res.status(errorMessage.toLowerCase().includes('already exists') ? 409 : 400).json({
+      error: errorMessage,
+    });
+    return;
+  }
+
+  res.status(201).json({
+    name: result.name,
+    settingsPath: result.settingsFile,
+    target: result.target || 'claude',
+    cliproxyBridge: result.cliproxyBridge ?? null,
+  });
 });
 
 /**
@@ -82,6 +144,7 @@ router.post('/', (req: Request, res: Response): void => {
     'baseUrl',
     'apiKey',
     'model',
+    'extraModels',
     'opusModel',
     'sonnetModel',
     'haikuModel',
@@ -94,7 +157,8 @@ router.post('/', (req: Request, res: Response): void => {
     return;
   }
 
-  const { name, baseUrl, apiKey, model, opusModel, sonnetModel, haikuModel, target } = req.body;
+  const { name, baseUrl, apiKey, model, extraModels, opusModel, sonnetModel, haikuModel, target } =
+    req.body;
   const providerHint = req.body?.droidProvider ?? req.body?.provider;
   const parsedProvider = normalizeDroidProvider(providerHint);
   const normalizedBaseUrl = typeof baseUrl === 'string' ? baseUrl.trim() : '';
@@ -103,7 +167,7 @@ router.post('/', (req: Request, res: Response): void => {
 
   const parsedTarget = parseTarget(target);
   if (target !== undefined && parsedTarget === null) {
-    res.status(400).json({ error: 'Invalid target. Expected: claude or droid' });
+    res.status(400).json({ error: `Invalid target. Expected: ${getPersistedTargetChoices()}` });
     return;
   }
   if (providerHint !== undefined && parsedProvider === null) {
@@ -136,6 +200,14 @@ router.post('/', (req: Request, res: Response): void => {
   }
 
   // Create profile using unified-config-aware service
+  const parsedExtraModels: string[] | undefined =
+    typeof extraModels === 'string' && extraModels.trim()
+      ? extraModels
+          .split(',')
+          .map((m: string) => m.trim())
+          .filter((m: string) => m.length > 0)
+      : undefined;
+
   const result = createApiProfile(
     name,
     normalizedBaseUrl,
@@ -147,7 +219,8 @@ router.post('/', (req: Request, res: Response): void => {
       haiku: haikuModel || model || '',
     },
     parsedTarget || 'claude',
-    parsedProvider || undefined
+    parsedProvider || undefined,
+    parsedExtraModels
   );
 
   if (!result.success) {
@@ -160,6 +233,7 @@ router.post('/', (req: Request, res: Response): void => {
     name,
     settingsPath: result.settingsFile,
     target: parsedTarget || 'claude',
+    cliproxyBridge: null,
   });
 });
 
@@ -212,7 +286,7 @@ router.post('/orphans/register', (req: Request, res: Response): void => {
   const force = payload.force === true;
 
   if (payload.target !== undefined && target === null) {
-    res.status(400).json({ error: 'Invalid target. Expected: claude or droid' });
+    res.status(400).json({ error: `Invalid target. Expected: ${getPersistedTargetChoices()}` });
     return;
   }
 
@@ -253,7 +327,7 @@ router.post('/:name/copy', (req: Request, res: Response): void => {
     return;
   }
   if (shape.payload.target !== undefined && target === null) {
-    res.status(400).json({ error: 'Invalid target. Expected: claude or droid' });
+    res.status(400).json({ error: `Invalid target. Expected: ${getPersistedTargetChoices()}` });
     return;
   }
 
@@ -304,7 +378,7 @@ router.post('/import', (req: Request, res: Response): void => {
 
   const target = parseTarget(shape.payload.target);
   if (shape.payload.target !== undefined && target === null) {
-    res.status(400).json({ error: 'Invalid target. Expected: claude or droid' });
+    res.status(400).json({ error: `Invalid target. Expected: ${getPersistedTargetChoices()}` });
     return;
   }
 
@@ -315,7 +389,9 @@ router.post('/import', (req: Request, res: Response): void => {
   }
   const bundleTarget = (bundle as { profile?: { target?: unknown } }).profile?.target;
   if (bundleTarget !== undefined && parseTarget(bundleTarget) === null) {
-    res.status(400).json({ error: 'Invalid bundle profile target. Expected: claude or droid' });
+    res.status(400).json({
+      error: `Invalid bundle profile target. Expected: ${getPersistedTargetChoices()}`,
+    });
     return;
   }
 
@@ -344,6 +420,7 @@ router.put('/:name', (req: Request, res: Response): void => {
     'baseUrl',
     'apiKey',
     'model',
+    'extraModels',
     'opusModel',
     'sonnetModel',
     'haikuModel',
@@ -357,7 +434,8 @@ router.put('/:name', (req: Request, res: Response): void => {
   }
 
   const { name } = req.params;
-  const { baseUrl, apiKey, model, opusModel, sonnetModel, haikuModel, target } = req.body;
+  const { baseUrl, apiKey, model, extraModels, opusModel, sonnetModel, haikuModel, target } =
+    req.body;
   const providerHint = req.body?.droidProvider ?? req.body?.provider;
   const parsedProvider = normalizeDroidProvider(providerHint);
   const normalizedBaseUrl = typeof baseUrl === 'string' ? baseUrl.trim() : baseUrl;
@@ -365,7 +443,7 @@ router.put('/:name', (req: Request, res: Response): void => {
 
   const parsedTarget = parseTarget(target);
   if (target !== undefined && parsedTarget === null) {
-    res.status(400).json({ error: 'Invalid target. Expected: claude or droid' });
+    res.status(400).json({ error: `Invalid target. Expected: ${getPersistedTargetChoices()}` });
     return;
   }
   if (providerHint !== undefined && parsedProvider === null) {
@@ -392,6 +470,7 @@ router.put('/:name', (req: Request, res: Response): void => {
       baseUrl !== undefined ||
       apiKey !== undefined ||
       model !== undefined ||
+      extraModels !== undefined ||
       opusModel !== undefined ||
       sonnetModel !== undefined ||
       haikuModel !== undefined ||
@@ -408,6 +487,7 @@ router.put('/:name', (req: Request, res: Response): void => {
         baseUrl: normalizedBaseUrl,
         apiKey: normalizedApiKey,
         model,
+        extraModels,
         opusModel,
         sonnetModel,
         haikuModel,
@@ -458,3 +538,4 @@ router.delete('/:name', (req: Request, res: Response): void => {
 });
 
 export default router;
+export { parseTarget } from './route-helpers';

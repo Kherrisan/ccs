@@ -100,6 +100,19 @@ function resolveMappedAccount(
   return undefined;
 }
 
+export function resolveConfiguredContinuitySourceAccount(
+  profileName: string,
+  profileType: ProfileType
+): string | undefined {
+  const inheritFromAccount = getContinuityInheritanceMap();
+  return (
+    resolveMappedAccount(profileName, profileType, inheritFromAccount) ??
+    (!isUnifiedMode()
+      ? resolveMappedAccount(profileName, profileType, loadLegacyContinuityInheritanceMap())
+      : undefined)
+  );
+}
+
 /**
  * Resolve optional cross-profile continuity inheritance.
  *
@@ -115,16 +128,10 @@ export async function resolveProfileContinuityInheritance(
     return {};
   }
 
-  const inheritFromAccount = getContinuityInheritanceMap();
-  const sourceAccount =
-    resolveMappedAccount(input.profileName, input.profileType, inheritFromAccount) ??
-    (!isUnifiedMode()
-      ? resolveMappedAccount(
-          input.profileName,
-          input.profileType,
-          loadLegacyContinuityInheritanceMap()
-        )
-      : undefined);
+  const sourceAccount = resolveConfiguredContinuitySourceAccount(
+    input.profileName,
+    input.profileType
+  );
   if (!sourceAccount) {
     return {};
   }

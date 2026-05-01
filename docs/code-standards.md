@@ -1,6 +1,6 @@
 # CCS Code Standards
 
-Last Updated: 2026-02-04
+Last Updated: 2026-04-07
 
 Code standards, modularization patterns, and conventions for the CCS codebase.
 
@@ -162,7 +162,7 @@ Allowed when:
 
 ## Target Adapter Pattern
 
-The target adapter pattern enables pluggable support for multiple CLI implementations (Claude Code, Factory Droid, etc.) while preserving a unified profile system.
+The target adapter pattern enables pluggable support for multiple CLI implementations (Claude Code, Factory Droid, Codex CLI, etc.) while preserving a unified profile system.
 
 ### Pattern Overview
 
@@ -170,7 +170,7 @@ The target adapter pattern enables pluggable support for multiple CLI implementa
 
 ```typescript
 interface TargetAdapter {
-  readonly type: TargetType;                                    // 'claude' | 'droid'
+  readonly type: TargetType;                                    // 'claude' | 'droid' | 'codex'
   readonly displayName: string;                                 // Human-readable name
 
   detectBinary(): TargetBinaryInfo | null;                      // Find CLI on system
@@ -184,12 +184,12 @@ interface TargetAdapter {
 
 ### Key Differences Per Target
 
-| Aspect | Claude | Droid |
-|--------|--------|-------|
-| **Credential delivery** | Environment variables | Config file (~/.factory/settings.json) |
-| **Spawn args** | `claude <args>` | `droid -m custom:ccs-<profile> <args>` |
-| **Config write** | None (uses env) | `upsertCcsModel()` writes to settings |
-| **Binary detection** | `detectClaudeCli()` | `detectDroidCli()` with version check |
+| Aspect | Claude | Droid | Codex |
+|--------|--------|-------|-------|
+| **Credential delivery** | Environment variables | Config file (~/.factory/settings.json) | Transient `-c` overrides + `CCS_CODEX_API_KEY` |
+| **Spawn args** | `claude <args>` | `droid -m custom:ccs-<profile> <args>` | `codex <args>` or `codex -c ... <args>` |
+| **Config write** | None (uses env) | `upsertCcsModel()` writes to settings | None at runtime; dashboard edits user-owned `~/.codex/config.toml` only |
+| **Binary detection** | `detectClaudeCli()` | `detectDroidCli()` with version check | `detectCodexCli()` plus `--config` capability probe |
 
 ### Target Resolution Priority
 
@@ -198,13 +198,21 @@ Resolves which adapter to use via `resolveTargetType()`:
 ```
 1. --target <name> flag (highest priority)
    ↓
-2. Profile config: profileConfig.target field
+2. explicit runtime entrypoint (`CCS_INTERNAL_ENTRY_TARGET`):
+   - ccs-droid / ccsd → droid
+   - ccs-codex / ccsx → codex
+   - ccsxp → codex (native cliproxy shortcut)
    ↓
-3. argv[0] detection (busybox pattern):
+3. argv[0] detection (runtime alias pattern / custom alias map):
+   - ccs-droid → droid
    - ccsd → droid
+   - ccs-codex → codex
+   - ccsx → codex
    - ccs → default
    ↓
-4. Fallback: 'claude' (lowest priority)
+4. Profile config: profileConfig.target field
+   ↓
+5. Fallback: 'claude' (lowest priority)
 ```
 
 ### Registration Pattern
@@ -215,6 +223,7 @@ At startup, adapters self-register into the runtime registry:
 // In ccs.ts or initialization
 registerTarget(new ClaudeAdapter());
 registerTarget(new DroidAdapter());
+registerTarget(new CodexAdapter());
 
 // Later, when executing
 const targetType = resolveTargetType(args, profileConfig);
@@ -373,6 +382,14 @@ export type {
 ---
 
 ## Terminal Output Standards
+
+### CCS Logging Standards
+
+- Use the shared logger from `src/services/logging/` for CCS-owned runtime diagnostics, request tracing, and structured events.
+- Keep `utils/ui` and deliberate `console.log`/`console.error` output for user-facing CLI UX only.
+- Redact secrets before persistence; never write raw tokens, cookies, API keys, or password hashes into CCS-owned logs.
+- Persist CCS-owned logs only under `getCcsDir()/logs`; do not invent per-feature log roots.
+- When adding dashboard polling or diagnostics routes, prevent them from recursively logging the log viewer itself.
 
 ### ASCII Only
 
@@ -582,6 +599,7 @@ return (
 bun run format
 bun run lint:fix
 bun run validate
+bun run validate:ci-parity
 
 # UI project (if changed)
 cd ui
@@ -594,7 +612,7 @@ bun run validate
 
 | Project | Command | Checks |
 |---------|---------|--------|
-| Main | `bun run validate` | typecheck + lint + format:check + test |
+| Main | `bun run validate` | typecheck + lint + format:check + test:fast |
 | UI | `bun run validate` | typecheck + lint + format:check |
 
 ---
@@ -715,5 +733,5 @@ This pattern is used in:
 ## Related Documentation
 
 - [Codebase Summary](./codebase-summary.md) - Full directory structure
-- [System Architecture](./system-architecture.md) - Architecture diagrams
+- [System Architecture](./system-architecture/index.md) - Architecture diagrams
 - [CLAUDE.md](../CLAUDE.md) - AI-facing development guidance

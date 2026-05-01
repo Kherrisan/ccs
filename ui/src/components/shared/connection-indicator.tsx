@@ -6,22 +6,31 @@
 
 import { Wifi, WifiOff, RefreshCw } from 'lucide-react';
 import { useWebSocket } from '@/hooks/use-websocket';
+import { useTranslation } from 'react-i18next';
 
 export function ConnectionIndicator() {
   const { status, isReconnecting } = useWebSocket();
+  const { t } = useTranslation();
 
   const statusConfig = {
-    connected: { icon: Wifi, color: 'text-green-600', label: 'Connected', animate: false },
+    connected: {
+      icon: Wifi,
+      color: 'text-green-600',
+      label: t('connectionIndicator.connected'),
+      animate: false,
+    },
     connecting: {
       icon: RefreshCw,
       color: 'text-yellow-500',
-      label: 'Connecting...',
+      label: t('connectionIndicator.connecting'),
       animate: true,
     },
     disconnected: {
       icon: isReconnecting ? RefreshCw : WifiOff,
       color: isReconnecting ? 'text-amber-500' : 'text-red-500',
-      label: isReconnecting ? 'Reconnecting...' : 'Disconnected',
+      label: isReconnecting
+        ? t('connectionIndicator.reconnecting')
+        : t('connectionIndicator.disconnected'),
       animate: isReconnecting,
     },
   };

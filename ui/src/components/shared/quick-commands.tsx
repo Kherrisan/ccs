@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Copy, Check, Terminal } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
+import { useTranslation } from 'react-i18next';
 
 interface CommandSnippet {
   label: string;
@@ -39,6 +40,7 @@ interface QuickCommandsProps {
 
 export function QuickCommands({ snippets = defaultSnippets }: QuickCommandsProps) {
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+  const { t } = useTranslation();
 
   const copyToClipboard = async (text: string, index: number) => {
     await navigator.clipboard.writeText(text);
@@ -51,7 +53,7 @@ export function QuickCommands({ snippets = defaultSnippets }: QuickCommandsProps
       <CardHeader className="pb-3">
         <CardTitle className="text-lg flex items-center gap-2">
           <Terminal className="w-5 h-5 text-muted-foreground" />
-          Quick Commands
+          {t('quickCommands.title')}
         </CardTitle>
       </CardHeader>
       <CardContent>

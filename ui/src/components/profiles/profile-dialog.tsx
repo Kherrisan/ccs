@@ -19,6 +19,7 @@ import { ChevronDown, ChevronRight } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 const DEFAULT_MODEL = 'claude-sonnet-4-6';
+// TODO i18n: missing keys for Zod validation messages ("Invalid URL", "Name is required", "Invalid profile name", "API key must be at least 10 characters")
 const optionalUrlSchema = z
   .string()
   .refine((value) => value.trim().length === 0 || z.string().url().safeParse(value).success, {
@@ -33,6 +34,7 @@ const schema = z.object({
   baseUrl: optionalUrlSchema,
   apiKey: z.string().min(10, 'API key must be at least 10 characters'),
   model: z.string().optional(),
+  extraModels: z.string().optional(),
   opusModel: z.string().optional(),
   sonnetModel: z.string().optional(),
   haikuModel: z.string().optional(),
@@ -52,6 +54,13 @@ export function ProfileDialog({ open, onClose, profile }: ProfileDialogProps) {
   const updateMutation = useUpdateProfile();
   const [showModelMapping, setShowModelMapping] = useState(false);
 
+  // Tracks whether the user has interacted with the Extra Models field in
+  // edit mode. RHF's `dirtyFields` compares the current value against
+  // `defaultValues`, so typing "x" and erasing back to "" reverts dirty to
+  // false. We need a latch so an explicit-clear (type then delete) still
+  // forwards the empty-string delete signal to the backend.
+  const [extraModelsTouched, setExtraModelsTouched] = useState(false);
+
   const {
     register,
     handleSubmit,
@@ -66,6 +75,7 @@ export function ProfileDialog({ open, onClose, profile }: ProfileDialogProps) {
           baseUrl: '',
           apiKey: '',
           model: '',
+          extraModels: '',
           opusModel: '',
           sonnetModel: '',
           haikuModel: '',
@@ -88,19 +98,28 @@ export function ProfileDialog({ open, onClose, profile }: ProfileDialogProps) {
   useEffect(() => {
     if (!open) {
       setShowModelMapping(false);
+      setExtraModelsTouched(false);
     }
   }, [open]);
 
   const onSubmit = async (data: FormData) => {
     try {
       if (profile) {
-        // Update mode
+        // Update mode. The dialog cannot pre-populate `extraModels` from the
+        // existing profile (Profile type carries no env data), so the field
+        // always starts blank. Forwarding that blank value unconditionally
+        // would clobber any saved ANTHROPIC_EXTRA_MODELS, since the PUT route
+        // treats an empty string as a delete signal. Use a latch flipped on
+        // the first onChange so we can distinguish "user never touched it"
+        // (skip → preserve existing value) from "user typed then cleared"
+        // (forward "" → explicit delete).
         await updateMutation.mutateAsync({
           name: profile.name,
           data: {
             baseUrl: data.baseUrl,
             apiKey: data.apiKey,
             model: data.model,
+            ...(extraModelsTouched ? { extraModels: data.extraModels } : {}),
             opusModel: data.opusModel,
             sonnetModel: data.sonnetModel,
             haikuModel: data.haikuModel,
@@ -161,6 +180,21 @@ export function ProfileDialog({ open, onClose, profile }: ProfileDialogProps) {
             <Input id="model" {...register('model')} placeholder={DEFAULT_MODEL} />
             <p className="text-xs text-muted-foreground mt-1">
               {t('profileDialog.defaultModelHint', { model: DEFAULT_MODEL })}
+            </p>
+          </div>
+
+          <div>
+            <Label htmlFor="extraModels">Extra Models</Label>
+            <Input
+              id="extraModels"
+              {...register('extraModels', {
+                onChange: () => setExtraModelsTouched(true),
+              })}
+              placeholder="model-a,model-b,model-c"
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Comma-separated list of additional models available via this provider. These are
+              synced to CLIProxy alongside the default model.
             </p>
           </div>
 

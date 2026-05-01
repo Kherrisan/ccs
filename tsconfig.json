@@ -42,7 +42,10 @@
     "forceConsistentCasingInFileNames": true,
 
     // Performance
-    "incremental": true
+    "incremental": true,
+
+    // Runtime type declarations
+    "types": ["node", "bun"]
   },
   "include": [
     "src/**/*"
@@ -53,6 +56,7 @@
     "tests",
     "lib",
     "scripts",
-    "ui"
+    "ui",
+    "src/**/__tests__/**"
   ]
 }

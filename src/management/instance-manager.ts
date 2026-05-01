@@ -10,8 +10,14 @@ import * as fs from 'fs';
 import * as path from 'path';
 import SharedManager from './shared-manager';
 import ProfileContextSyncLock from './profile-context-sync-lock';
-import { AccountContextPolicy, DEFAULT_ACCOUNT_CONTEXT_MODE } from '../auth/account-context';
+import { DEFAULT_ACCOUNT_CONTEXT_MODE } from '../auth/account-context';
+import type { AccountContextPolicy } from '../auth/account-context';
 import { getCcsDir, getCcsHome } from '../utils/config-manager';
+import { createLogger } from '../services/logging';
+
+const logger = createLogger('management:instance-manager');
+
+const MANAGED_MCP_SERVER_NAMES = new Set(['ccs-websearch', 'ccs-image-analysis', 'ccs-browser']);
 
 /** Options for instance creation */
 export interface InstanceOptions {
@@ -26,11 +32,13 @@ class InstanceManager {
   private readonly instancesDir: string;
   private readonly sharedManager: SharedManager;
   private readonly contextSyncLock: ProfileContextSyncLock;
+  private readonly pluginLayoutLock: ProfileContextSyncLock;
 
   constructor() {
     this.instancesDir = path.join(getCcsDir(), 'instances');
     this.sharedManager = new SharedManager();
     this.contextSyncLock = new ProfileContextSyncLock(this.instancesDir);
+    this.pluginLayoutLock = new ProfileContextSyncLock(this.instancesDir);
   }
 
   /**
@@ -47,6 +55,10 @@ class InstanceManager {
     await this.contextSyncLock.withLock(profileName, async () => {
       // Lazy initialization
       if (!fs.existsSync(instancePath)) {
+        logger.stage('route', 'instance.init', 'Initializing new profile instance', {
+          profile: profileName,
+          bare: options.bare === true,
+        });
         this.initializeInstance(profileName, instancePath, options);
       }
 
@@ -56,6 +68,16 @@ class InstanceManager {
       // Apply context policy (isolated by default, optional shared group).
       await this.sharedManager.syncProjectContext(instancePath, contextPolicy);
       await this.sharedManager.syncAdvancedContinuityArtifacts(instancePath, contextPolicy);
+
+      await this.pluginLayoutLock.withNamedLock('__plugin-layout__', async () => {
+        if (!options.bare) {
+          this.sharedManager.linkSharedDirectories(instancePath);
+          return;
+        }
+
+        this.sharedManager.detachSharedDirectories(instancePath);
+        this.sharedManager.normalizeSharedPluginMetadataPaths();
+      });
     });
 
     // Sync MCP servers from global ~/.claude.json (unless bare)
@@ -80,7 +102,7 @@ class InstanceManager {
   private initializeInstance(
     profileName: string,
     instancePath: string,
-    options: InstanceOptions = {}
+    _options: InstanceOptions = {}
   ): void {
     try {
       // Create base directory
@@ -104,10 +126,7 @@ class InstanceManager {
         }
       });
 
-      // Bare profiles skip shared symlinks (commands, skills, agents, settings.json)
-      if (!options.bare) {
-        this.sharedManager.linkSharedDirectories(instancePath);
-      }
+      // Shared links are created during ensureInstance() under the plugin layout lock.
     } catch (error) {
       throw new Error(
         `Failed to initialize instance for ${profileName}: ${(error as Error).message}`
@@ -144,15 +163,25 @@ class InstanceManager {
   /**
    * Delete instance for profile
    */
-  deleteInstance(profileName: string): void {
+  async deleteInstance(profileName: string): Promise<void> {
     const instancePath = this.getInstancePath(profileName);
 
     if (!fs.existsSync(instancePath)) {
       return;
     }
 
-    // Recursive delete
-    fs.rmSync(instancePath, { recursive: true, force: true });
+    await this.contextSyncLock.withLock(profileName, async () => {
+      await this.pluginLayoutLock.withNamedLock('__plugin-layout__', async () => {
+        if (!fs.existsSync(instancePath)) {
+          return;
+        }
+
+        fs.rmSync(instancePath, { recursive: true, force: true });
+        logger.stage('cleanup', 'instance.deleted', 'Profile instance deleted', {
+          profile: profileName,
+        });
+      });
+    });
   }
 
   /**
@@ -164,6 +193,10 @@ class InstanceManager {
     }
 
     return fs.readdirSync(this.instancesDir).filter((name) => {
+      if (name.startsWith('.')) {
+        return false;
+      }
+
       const instancePath = path.join(this.instancesDir, name);
       return fs.statSync(instancePath).isDirectory();
     });
@@ -214,17 +247,27 @@ class InstanceManager {
         }
       }
 
-      // Merge: global MCP servers as base, instance-specific overrides on top
+      // Merge: global MCP servers as base, instance-specific overrides on top,
+      // except for CCS-managed entries which must stay aligned with the global runtime.
       const rawExistingMcp = instanceContent.mcpServers;
       const existingMcp =
         rawExistingMcp && typeof rawExistingMcp === 'object' && !Array.isArray(rawExistingMcp)
           ? (rawExistingMcp as Record<string, unknown>)
           : {};
-      instanceContent.mcpServers = { ...mcpServers, ...existingMcp };
+      const mergedMcpServers = { ...mcpServers, ...existingMcp };
+      for (const managedName of MANAGED_MCP_SERVER_NAMES) {
+        if (managedName in mcpServers) {
+          mergedMcpServers[managedName] = mcpServers[managedName];
+        }
+      }
+      instanceContent.mcpServers = mergedMcpServers;
 
+      const fileMode = fs.existsSync(instanceClaudeJson)
+        ? fs.statSync(instanceClaudeJson).mode & 0o777
+        : 0o600;
       fs.writeFileSync(instanceClaudeJson, JSON.stringify(instanceContent, null, 2), {
         encoding: 'utf8',
-        mode: 0o600,
+        mode: fileMode,
       });
       return true;
     } catch (error) {

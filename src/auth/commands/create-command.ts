@@ -7,7 +7,11 @@
 import { spawn, ChildProcess } from 'child_process';
 import { initUI, header, color, fail, warn, info, infoBox, warnBox } from '../../utils/ui';
 import { getClaudeCliInfo } from '../../utils/claude-detector';
-import { escapeShellArg, stripClaudeCodeEnv } from '../../utils/shell-executor';
+import {
+  escapeShellArg,
+  getWindowsEscapedCommandShell,
+  stripClaudeCodeEnv,
+} from '../../utils/shell-executor';
 import { isUnifiedMode } from '../../config/unified-config-loader';
 import { ProfileMetadata } from '../../types';
 import {
@@ -163,7 +167,7 @@ export async function handleCreate(ctx: CommandContext, args: string[]): Promise
 
     if (!profileExistedBeforeCreate) {
       try {
-        ctx.instanceMgr.deleteInstance(profileName);
+        await ctx.instanceMgr.deleteInstance(profileName);
       } catch {
         // Best-effort cleanup.
       }
@@ -249,7 +253,7 @@ export async function handleCreate(ctx: CommandContext, args: string[]): Promise
         child = spawn(cmdString, {
           stdio: 'inherit',
           windowsHide: true,
-          shell: true,
+          shell: getWindowsEscapedCommandShell(),
           env: childEnv,
         });
       } else {

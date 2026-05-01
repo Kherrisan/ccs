@@ -2,8 +2,32 @@
  * Result aggregation utilities for headless executor
  */
 
-import type { ExecutionResult, StreamMessage } from './types';
+import type { ExecutionResult, StreamMessage, ToolUsageSummary } from './types';
 import { warn } from '../../utils/ui';
+
+const WEBSEARCH_FALLBACK_TOOLS = new Set(['Bash', 'WebFetch']);
+
+export function summarizeToolUsage(messages: StreamMessage[]): ToolUsageSummary {
+  const toolNames = new Set<string>();
+
+  for (const message of messages) {
+    const content = message.message?.content || [];
+    for (const entry of content) {
+      if (entry.type === 'tool_use' && entry.name) {
+        toolNames.add(entry.name);
+      }
+    }
+  }
+
+  const orderedToolNames = [...toolNames];
+  return {
+    toolNames: orderedToolNames,
+    calledWebSearch: toolNames.has('WebSearch') || toolNames.has('search'),
+    fallbackToolsUsed: orderedToolNames.filter((toolName) =>
+      WEBSEARCH_FALLBACK_TOOLS.has(toolName)
+    ),
+  };
+}
 
 /**
  * Build execution result from stream messages
@@ -32,6 +56,7 @@ export function buildExecutionResult(params: {
     timedOut,
     success: exitCode === 0 && !timedOut,
     messages,
+    toolUsageSummary: summarizeToolUsage(messages),
   };
 
   // Extract metadata from final 'result' message in stream-json

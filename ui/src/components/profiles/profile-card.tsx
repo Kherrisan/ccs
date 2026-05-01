@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -23,6 +24,7 @@ interface ProfileCardProps {
 }
 
 export function ProfileCard({ profile, settings, onSwitch, onConfig, onTest }: ProfileCardProps) {
+  const { t } = useTranslation();
   const showOpenRouterIcon = isOpenRouterProfile(settings);
 
   return (
@@ -36,7 +38,7 @@ export function ProfileCard({ profile, settings, onSwitch, onConfig, onTest }: P
                 <TooltipTrigger asChild>
                   <img src="/icons/openrouter.svg" alt="OpenRouter" className="w-4 h-4" />
                 </TooltipTrigger>
-                <TooltipContent>OpenRouter profile</TooltipContent>
+                <TooltipContent>{t('profileCard.openRouter')}</TooltipContent>
               </Tooltip>
             )}
             {profile.isActive && (

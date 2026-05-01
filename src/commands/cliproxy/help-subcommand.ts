@@ -10,7 +10,7 @@ import {
   DEFAULT_BACKEND,
   getFallbackVersion,
   BACKEND_CONFIG,
-} from '../../cliproxy/platform-detector';
+} from '../../cliproxy/binary/platform-detector';
 import { QUOTA_PROVIDER_HELP_TEXT } from '../../cliproxy/provider-capabilities';
 
 export async function showHelp(): Promise<void> {
@@ -36,9 +36,10 @@ export async function showHelp(): Promise<void> {
     [
       'Catalog Commands:',
       [
-        ['catalog', 'Show catalog status (cached vs static)'],
+        ['catalog', 'Show catalog status, routing hints, and pinned short prefixes'],
         ['catalog refresh', 'Sync models from remote CLIProxy'],
         ['catalog reset', 'Clear cache, revert to static catalog'],
+        ['catalog --json', 'Output full model catalog as minified JSON'],
       ],
     ],
     [
@@ -57,6 +58,11 @@ export async function showHelp(): Promise<void> {
         ['resume <account>', 'Resume paused account'],
         ['quota', 'Show quota status for all providers (Codex/Claude include 5h + weekly reset)'],
         ['quota --provider <name>', `Filter by provider (${QUOTA_PROVIDER_HELP_TEXT})`],
+        ['routing', 'Show current routing strategy and manual guidance'],
+        ['routing explain', 'Explain strategy vs session-affinity and how sessions are recognized'],
+        ['routing set <mode>', 'Explicitly set round-robin or fill-first'],
+        ['routing affinity', 'Show local session-affinity status and TTL'],
+        ['routing affinity <on|off> [--ttl <duration>]', 'Toggle local session-affinity settings'],
       ],
     ],
     [
@@ -80,9 +86,12 @@ export async function showHelp(): Promise<void> {
     [
       'Options:',
       [
-        ['--backend <type>', 'Use specific backend: original | plus (default: from config)'],
+        [
+          '--backend <type>',
+          'Use specific backend: original | plus (default: original; plus uses community fork)',
+        ],
         ['--target <cli>', 'Default target for created/edited variants: claude | droid'],
-        ['--verbose, -v', 'Show detailed quota fetch diagnostics'],
+        ['--verbose, -v', 'Show detailed diagnostics including routing hints and quota fetches'],
       ],
     ],
   ];
@@ -97,6 +106,8 @@ export async function showHelp(): Promise<void> {
   }
 
   console.log(dim('  Note: CLIProxy now persists by default. Use "stop" to terminate.'));
+  console.log(dim('  Routing: use gcli/<model> or agy/<model> to keep overlapping models pinned.'));
+  console.log(dim('  Backend: original is the default; plus is opt-in for plus-only providers.'));
   console.log('');
   console.log(subheader('Notes:'));
   console.log(`  Default fallback version: ${color(getFallbackVersion(), 'info')}`);

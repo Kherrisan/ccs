@@ -81,6 +81,56 @@ describe('escapeShellArg', () => {
       const { escapeShellArg } = await import('../../../src/utils/shell-executor');
       expect(escapeShellArg('hello!')).toBe('"hello^^!"');
     });
+
+    it('prefers ComSpec when resolving the escaped command shell', async () => {
+      const originalComSpec = process.env.ComSpec;
+      const originalCOMSPEC = process.env.COMSPEC;
+
+      try {
+        process.env.ComSpec = 'C:\\Windows\\System32\\cmd.exe';
+        delete process.env.COMSPEC;
+        const { getWindowsEscapedCommandShell } = await import(
+          '../../../src/utils/shell-executor'
+        );
+        expect(getWindowsEscapedCommandShell()).toBe('C:\\Windows\\System32\\cmd.exe');
+      } finally {
+        if (originalComSpec === undefined) delete process.env.ComSpec;
+        else process.env.ComSpec = originalComSpec;
+        if (originalCOMSPEC === undefined) delete process.env.COMSPEC;
+        else process.env.COMSPEC = originalCOMSPEC;
+      }
+    });
+
+    it('falls back to cmd.exe when ComSpec is unavailable', async () => {
+      const originalComSpec = process.env.ComSpec;
+      const originalCOMSPEC = process.env.COMSPEC;
+
+      try {
+        delete process.env.ComSpec;
+        delete process.env.COMSPEC;
+        const { getWindowsEscapedCommandShell } = await import(
+          '../../../src/utils/shell-executor'
+        );
+        expect(getWindowsEscapedCommandShell()).toBe('cmd.exe');
+      } finally {
+        if (originalComSpec === undefined) delete process.env.ComSpec;
+        else process.env.ComSpec = originalComSpec;
+        if (originalCOMSPEC === undefined) delete process.env.COMSPEC;
+        else process.env.COMSPEC = originalCOMSPEC;
+      }
+    });
+  });
+});
+
+describe('getWindowsEscapedCommandShell', () => {
+  afterEach(() => {
+    Object.defineProperty(process, 'platform', { value: originalPlatform });
+  });
+
+  it('returns shell=true outside Windows if called defensively', async () => {
+    Object.defineProperty(process, 'platform', { value: 'linux' });
+    const { getWindowsEscapedCommandShell } = await import('../../../src/utils/shell-executor');
+    expect(getWindowsEscapedCommandShell()).toBe(true);
   });
 });
 

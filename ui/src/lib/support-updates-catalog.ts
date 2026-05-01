@@ -1,3 +1,5 @@
+import i18n from '@/lib/i18n';
+
 export type SupportStatus = 'new' | 'stable' | 'planned';
 
 export type SupportScope = 'target' | 'cliproxy' | 'api-profiles' | 'websearch';
@@ -47,14 +49,69 @@ export interface CliSupportEntry {
   notes?: string;
 }
 
-export const SUPPORT_SCOPE_LABELS: Record<SupportScope, string> = {
+const BASE_SUPPORT_SCOPE_LABELS: Record<SupportScope, string> = {
   target: 'Target CLI',
   cliproxy: 'CLIProxy Provider',
   'api-profiles': 'API Profile',
   websearch: 'WebSearch',
 };
 
-export const SUPPORT_NOTICES: SupportNotice[] = [
+const BASE_SUPPORT_NOTICES: SupportNotice[] = [
+  {
+    id: 'codex-target-runtime-support',
+    title: 'Native Codex runtime support is live',
+    summary:
+      'Codex now participates as a first-class runtime target through ccs-codex, ccsx, ccsxp, or --target codex.',
+    primaryAction:
+      'Use Codex as a runtime target for native Codex sessions and Codex-routed CLIProxy flows.',
+    publishedAt: '2026-03-28',
+    status: 'new',
+    scopes: ['target', 'cliproxy', 'api-profiles'],
+    entryIds: ['codex-target', 'codex-cliproxy'],
+    highlights: [
+      'Use ccs-codex or ccsx for native Codex runs.',
+      'Use ccsxp for native Codex with the cliproxy provider shortcut.',
+      'Use ccs codex --target codex when you want the explicit CCS-managed Codex bridge.',
+      'Codex remains runtime-only for saved defaults; use runtime aliases or --target codex at launch time.',
+    ],
+    actions: [
+      {
+        id: 'copy-codex-alias-command',
+        label: 'Open native Codex',
+        description: 'Launch Codex through the explicit CCS runtime alias.',
+        type: 'command',
+        command: 'ccs-codex',
+      },
+      {
+        id: 'copy-codex-provider-command',
+        label: 'Run native Codex with cliproxy',
+        description: 'Use the native Codex cliproxy shortcut through CCS.',
+        type: 'command',
+        command: 'ccsxp "your prompt"',
+      },
+      {
+        id: 'copy-codex-provider-command-explicit',
+        label: 'Run the managed Codex bridge explicitly',
+        description: 'Use the explicit CCS-managed Codex bridge on native Codex.',
+        type: 'command',
+        command: 'ccs codex --target codex "your prompt"',
+      },
+      {
+        id: 'open-codex-dashboard',
+        label: 'Open Codex dashboard',
+        description: 'Review Codex runtime support, config layers, and dashboard setup flows.',
+        type: 'route',
+        path: '/codex',
+      },
+    ],
+    routes: [{ label: 'Codex CLI', path: '/codex' }],
+    commands: [
+      'ccs-codex',
+      'ccsx',
+      'ccsxp "your prompt"',
+      'ccs codex --target codex "your prompt"',
+    ],
+  },
   {
     id: 'droid-target-support',
     title: 'Factory Droid support is live',
@@ -68,7 +125,7 @@ export const SUPPORT_NOTICES: SupportNotice[] = [
     highlights: [
       'Set default target to Droid when creating or editing API Profiles.',
       'Set default target to Droid for CLIProxy variants, including Codex and Antigravity flows.',
-      'Use ccsd alias or --target droid for one-off target overrides.',
+      'Use ccs-droid as the explicit alias, with ccsd kept as the legacy shortcut.',
     ],
     actions: [
       {
@@ -88,11 +145,11 @@ export const SUPPORT_NOTICES: SupportNotice[] = [
         path: '/cliproxy',
       },
       {
-        id: 'copy-ccsd-command',
-        label: 'Run once with Droid alias',
-        description: 'Use ccsd to force Droid target with your current profile.',
+        id: 'copy-ccs-droid-command',
+        label: 'Run once with explicit Droid alias',
+        description: 'Use ccs-droid to force the Droid target with your current profile.',
         type: 'command',
-        command: 'ccsd glm',
+        command: 'ccs-droid glm',
       },
       {
         id: 'copy-target-override',
@@ -107,16 +164,16 @@ export const SUPPORT_NOTICES: SupportNotice[] = [
       { label: 'CLIProxy', path: '/cliproxy' },
     ],
     commands: [
-      'ccsd glm',
+      'ccs-droid glm',
       'ccs codex --target droid "your prompt"',
       'ccs cliproxy create mycodex --provider codex --target droid',
     ],
   },
   {
     id: 'updates-center-launch',
-    title: 'Updates inbox is available for rollout tasks',
+    title: 'Updates Center is available for rollout tasks',
     summary:
-      'A focused updates inbox exists for setup tasks and rollout guidance when you need it.',
+      'A focused Updates Center exists for setup tasks and rollout guidance when you need it.',
     primaryAction:
       'Use this page only when needed for rollout tasks, then return to your normal workflow.',
     publishedAt: '2026-02-25',
@@ -131,7 +188,7 @@ export const SUPPORT_NOTICES: SupportNotice[] = [
     actions: [
       {
         id: 'open-updates-page',
-        label: 'Open updates inbox when needed',
+        label: 'Open Updates Center when needed',
         description: 'Review rollout tasks only when you want guided setup changes.',
         type: 'route',
         path: '/updates',
@@ -144,12 +201,12 @@ export const SUPPORT_NOTICES: SupportNotice[] = [
         command: 'ccs config',
       },
     ],
-    routes: [{ label: 'Updates Inbox', path: '/updates' }],
+    routes: [{ label: 'Updates Center', path: '/updates' }],
     commands: ['ccs config'],
   },
 ];
 
-export const CLI_SUPPORT_ENTRIES: CliSupportEntry[] = [
+const BASE_CLI_SUPPORT_ENTRIES: CliSupportEntry[] = [
   {
     id: 'claude-target',
     name: 'Claude Code',
@@ -182,15 +239,33 @@ export const CLI_SUPPORT_ENTRIES: CliSupportEntry[] = [
       { label: 'API Profiles', path: '/providers' },
       { label: 'CLIProxy', path: '/cliproxy' },
     ],
-    commands: ['ccsd glm', 'ccs km --target droid', 'ccs codex --target droid'],
-    notes: 'Use ccsd alias for automatic Droid target selection.',
+    commands: ['ccs-droid glm', 'ccs km --target droid', 'ccs codex --target droid'],
+    notes: 'Use ccs-droid as the explicit runtime alias. Legacy ccsd still works.',
+  },
+  {
+    id: 'codex-target',
+    name: 'Codex CLI',
+    scope: 'target',
+    status: 'new',
+    summary:
+      'First-class runtime target for native Codex sessions and Codex-routed CLIProxy flows.',
+    pillars: {
+      baseUrl:
+        'Native ~/.codex config for default mode, transient -c overrides for CCS-backed routes',
+      auth: 'Native Codex auth for default mode, env_key injection for CCS-backed routes',
+      model: 'Native Codex config or routed Codex model mapping from CLIProxy',
+    },
+    routes: [{ label: 'Codex CLI', path: '/codex' }],
+    commands: ['ccs-codex', 'ccsx', 'ccs codex --target codex', 'ccs codex-api --target codex'],
+    notes:
+      'Codex is still runtime-only for saved defaults; use --target codex or the runtime aliases at launch time.',
   },
   {
     id: 'codex-cliproxy',
     name: 'Codex via CLIProxy',
     scope: 'cliproxy',
     status: 'stable',
-    summary: 'OAuth-backed provider with configurable variant model and target.',
+    summary: 'OAuth-backed provider with configurable variant model and a native Codex shortcut.',
     pillars: {
       baseUrl: 'Managed by CLIProxy backend',
       auth: 'OAuth account via CLIProxy auth flow',
@@ -200,7 +275,15 @@ export const CLI_SUPPORT_ENTRIES: CliSupportEntry[] = [
       { label: 'CLIProxy', path: '/cliproxy' },
       { label: 'Control Panel', path: '/cliproxy/control-panel' },
     ],
-    commands: ['ccs codex', 'ccs cliproxy create mycodex --provider codex'],
+    commands: [
+      'ccsxp "your prompt"',
+      'ccs codex --target codex',
+      'ccs codex',
+      'ccs cliproxy create mycodex --provider codex',
+      'ccs api create codex-api --cliproxy-provider codex',
+    ],
+    notes:
+      'Use ccsxp when you want native Codex with the cliproxy shortcut; use ccs codex --target codex for the explicit managed bridge.',
   },
   {
     id: 'gemini-cliproxy',
@@ -267,20 +350,86 @@ export const CLI_SUPPORT_ENTRIES: CliSupportEntry[] = [
   },
 ];
 
-const SUPPORT_ENTRY_LOOKUP = new Map(CLI_SUPPORT_ENTRIES.map((entry) => [entry.id, entry]));
+function tx(key: string, defaultValue: string, options?: Record<string, unknown>): string {
+  return i18n.t(key, { defaultValue, ...options });
+}
+
+export function getSupportScopeLabels(): Record<SupportScope, string> {
+  return {
+    target: tx('supportCatalog.scope.target', BASE_SUPPORT_SCOPE_LABELS.target),
+    cliproxy: tx('supportCatalog.scope.cliproxy', BASE_SUPPORT_SCOPE_LABELS.cliproxy),
+    'api-profiles': tx(
+      'supportCatalog.scope.apiProfiles',
+      BASE_SUPPORT_SCOPE_LABELS['api-profiles']
+    ),
+    websearch: tx('supportCatalog.scope.websearch', BASE_SUPPORT_SCOPE_LABELS.websearch),
+  };
+}
+
+function localizeSupportNotice(notice: SupportNotice): SupportNotice {
+  return {
+    ...notice,
+    title: tx(`supportCatalog.notice.${notice.id}.title`, notice.title),
+    summary: tx(`supportCatalog.notice.${notice.id}.summary`, notice.summary),
+    primaryAction: tx(`supportCatalog.notice.${notice.id}.primaryAction`, notice.primaryAction),
+    highlights: notice.highlights.map((highlight, index) =>
+      tx(`supportCatalog.notice.${notice.id}.highlight.${index}`, highlight)
+    ),
+    actions: notice.actions.map((action) => ({
+      ...action,
+      label: tx(`supportCatalog.notice.${notice.id}.action.${action.id}.label`, action.label),
+      description: tx(
+        `supportCatalog.notice.${notice.id}.action.${action.id}.description`,
+        action.description
+      ),
+    })),
+    routes: notice.routes.map((route, index) => ({
+      ...route,
+      label: tx(`supportCatalog.notice.${notice.id}.route.${index}.label`, route.label),
+    })),
+  };
+}
+
+function localizeCliSupportEntry(entry: CliSupportEntry): CliSupportEntry {
+  return {
+    ...entry,
+    name: tx(`supportCatalog.entry.${entry.id}.name`, entry.name),
+    summary: tx(`supportCatalog.entry.${entry.id}.summary`, entry.summary),
+    pillars: {
+      baseUrl: tx(`supportCatalog.entry.${entry.id}.pillar.baseUrl`, entry.pillars.baseUrl),
+      auth: tx(`supportCatalog.entry.${entry.id}.pillar.auth`, entry.pillars.auth),
+      model: tx(`supportCatalog.entry.${entry.id}.pillar.model`, entry.pillars.model),
+    },
+    routes: entry.routes.map((route, index) => ({
+      ...route,
+      label: tx(`supportCatalog.entry.${entry.id}.route.${index}.label`, route.label),
+    })),
+    notes: entry.notes ? tx(`supportCatalog.entry.${entry.id}.notes`, entry.notes) : entry.notes,
+  };
+}
+
+export function getSupportNotices(): SupportNotice[] {
+  return BASE_SUPPORT_NOTICES.map(localizeSupportNotice);
+}
+
+export function getCliSupportEntries(): CliSupportEntry[] {
+  return BASE_CLI_SUPPORT_ENTRIES.map(localizeCliSupportEntry);
+}
 
 export function getSupportEntriesForNotice(notice: SupportNotice): CliSupportEntry[] {
+  const supportEntryLookup = new Map(getCliSupportEntries().map((entry) => [entry.id, entry]));
   return notice.entryIds
-    .map((entryId) => SUPPORT_ENTRY_LOOKUP.get(entryId))
+    .map((entryId) => supportEntryLookup.get(entryId))
     .filter((entry): entry is CliSupportEntry => Boolean(entry));
 }
 
 export function getLatestSupportNotice(): SupportNotice | null {
-  if (SUPPORT_NOTICES.length === 0) {
+  const notices = getSupportNotices();
+  if (notices.length === 0) {
     return null;
   }
 
-  return [...SUPPORT_NOTICES].sort((a, b) => b.publishedAt.localeCompare(a.publishedAt))[0];
+  return [...notices].sort((a, b) => b.publishedAt.localeCompare(a.publishedAt))[0];
 }
 
 export function formatCatalogDate(value: string): string {

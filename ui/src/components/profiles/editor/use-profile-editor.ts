@@ -6,6 +6,7 @@
 import { useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import type { Settings, SettingsResponse } from './types';
 
 /** Required env vars for profiles to function (informational only - runtime fills defaults) */
@@ -34,6 +35,7 @@ export function useProfileEditor({
   onSuccess,
   onConflict,
 }: UseProfileEditorOptions) {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
 
   // Fetch settings for selected profile
@@ -132,11 +134,11 @@ export function useProfileEditor({
       onSuccess();
       // Show warning if fields missing (runtime uses defaults)
       if (data?.warning) {
-        toast.success('Settings saved', {
+        toast.success(t('commonToast.settingsSaved'), {
           description: data.warning,
         });
       } else {
-        toast.success('Settings saved');
+        toast.success(t('commonToast.settingsSaved'));
       }
     },
     onError: (error: Error) => {

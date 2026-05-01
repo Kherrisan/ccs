@@ -5,13 +5,13 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { CLIProxyProvider, ProviderModelMapping } from '../types';
-import { getModelMappingFromConfig, getEnvVarsFromConfig } from '../base-config-loader';
+import type { CLIProxyProvider, ProviderModelMapping } from '../types';
+import { getModelMappingFromConfig, getEnvVarsFromConfig } from '../config/base-config-loader';
 import { getGlobalEnvConfig } from '../../config/unified-config-loader';
-import { getEffectiveApiKey } from '../auth-token-manager';
+import { getEffectiveApiKey } from '../auth/auth-token-manager';
 import { expandPath } from '../../utils/helpers';
 import { warn } from '../../utils/ui';
-import { CompositeTierConfig } from '../../config/unified-config-types';
+import type { CompositeTierConfig } from '../../config/unified-config-types';
 import {
   validatePort,
   validateRemotePort,
@@ -19,7 +19,10 @@ import {
   normalizeProtocol,
   CLIPROXY_DEFAULT_PORT,
 } from './port-manager';
-import { getProviderSettingsPath } from './path-resolver';
+import {
+  getLegacyProviderSettingsPath,
+  migrateLegacyProviderSettingsIfNeeded,
+} from './path-resolver';
 import {
   canonicalizeModelIdForProvider,
   MODEL_ENV_VAR_KEYS,
@@ -27,7 +30,7 @@ import {
   normalizeModelEnvVarsForProvider,
   normalizeIFlowLegacyModelAliases,
   normalizeModelIdForProvider,
-} from '../model-id-normalizer';
+} from '../ai-providers/model-id-normalizer';
 
 /** Settings file structure for user overrides */
 interface ProviderSettings {
@@ -39,7 +42,6 @@ interface ProviderSettings {
 const DEPRECATED_MODEL_PREFIX = 'gemini-claude-';
 /** Replacement prefix matching actual upstream model names */
 const UPSTREAM_MODEL_PREFIX = 'claude-';
-const CODEX_EFFORT_SUFFIX_REGEX = /-(xhigh|high|medium)$/i;
 const PRESET_MODEL_KEYS = ['default', 'opus', 'sonnet', 'haiku'] as const;
 const REQUIRED_PROVIDER_ENV_KEYS = [
   'ANTHROPIC_BASE_URL',
@@ -49,9 +51,14 @@ const REQUIRED_PROVIDER_ENV_KEYS = [
   'ANTHROPIC_DEFAULT_SONNET_MODEL',
   'ANTHROPIC_DEFAULT_HAIKU_MODEL',
 ] as const;
+const CURSOR_LEGACY_ENV_OVERRIDE_KEYS = new Set([
+  'ANTHROPIC_BASE_URL',
+  'ANTHROPIC_AUTH_TOKEN',
+  'ANTHROPIC_API_KEY',
+]);
 
-function stripCodexEffortSuffix(modelId: string): string {
-  return modelId.replace(CODEX_EFFORT_SUFFIX_REGEX, '');
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 /**
@@ -99,58 +106,6 @@ function migrateDeprecatedModelNames(
         if (typeof value !== 'string') continue;
         let canonical = normalizeModelIdForProvider(value, provider);
         canonical = migrateDeniedAntigravityModelAliases(canonical);
-        if (canonical !== value) {
-          presetRecord[key] = canonical;
-          migrated = true;
-        }
-      }
-    }
-  }
-
-  if (migrated) {
-    try {
-      fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n', { mode: 0o600 });
-    } catch {
-      // Best-effort migration — don't block startup if write fails
-    }
-  }
-
-  return migrated;
-}
-
-/**
- * Migrate codex effort-suffixed model IDs in settings to canonical IDs.
- * Example: gpt-5.3-codex-xhigh -> gpt-5.3-codex
- */
-function migrateCodexEffortSuffixes(
-  settingsPath: string,
-  provider: CLIProxyProvider,
-  settings: ProviderSettings
-): boolean {
-  if (provider !== 'codex') return false;
-  if (!settings.env || typeof settings.env !== 'object') return false;
-
-  let migrated = false;
-
-  for (const key of MODEL_ENV_VAR_KEYS) {
-    const value = settings.env[key];
-    if (typeof value !== 'string') continue;
-    const canonical = stripCodexEffortSuffix(value);
-    if (canonical !== value) {
-      settings.env[key] = canonical;
-      migrated = true;
-    }
-  }
-
-  if (Array.isArray(settings.presets)) {
-    for (const preset of settings.presets) {
-      if (!preset || typeof preset !== 'object') continue;
-      const presetRecord = preset as Record<string, unknown>;
-
-      for (const key of PRESET_MODEL_KEYS) {
-        const value = presetRecord[key];
-        if (typeof value !== 'string') continue;
-        const canonical = stripCodexEffortSuffix(value);
         if (canonical !== value) {
           presetRecord[key] = canonical;
           migrated = true;
@@ -283,6 +238,63 @@ export function getClaudeEnvVars(
   };
 
   return normalizeModelEnvVarsForProvider(mergedEnv, provider);
+}
+
+function buildCursorProviderSettingsFromLegacy(
+  legacySettings: Record<string, unknown>
+): Record<string, unknown> {
+  const defaultEnv = getClaudeEnvVars('cursor');
+  const legacyEnvSource = legacySettings.env;
+  const legacyEnv = isObjectRecord(legacyEnvSource) ? legacyEnvSource : {};
+  const migratedEnv: NodeJS.ProcessEnv = { ...defaultEnv };
+
+  for (const [key, value] of Object.entries(legacyEnv)) {
+    if (typeof value !== 'string' || CURSOR_LEGACY_ENV_OVERRIDE_KEYS.has(key)) {
+      continue;
+    }
+    migratedEnv[key] = value;
+  }
+
+  delete migratedEnv.ANTHROPIC_API_KEY;
+
+  return {
+    ...legacySettings,
+    env: normalizeModelEnvVarsForProvider(migratedEnv, 'cursor'),
+  };
+}
+
+/**
+ * Resolve the provider settings path, migrating legacy Cursor provider settings into
+ * the dedicated cliproxy/providers namespace on first access.
+ */
+export function resolveProviderSettingsPath(provider: CLIProxyProvider): string {
+  const settingsPath = migrateLegacyProviderSettingsIfNeeded(provider);
+  if (provider !== 'cursor' || fs.existsSync(settingsPath)) {
+    return settingsPath;
+  }
+
+  const legacySettingsPath = getLegacyProviderSettingsPath(provider);
+  if (!fs.existsSync(legacySettingsPath)) {
+    return settingsPath;
+  }
+
+  try {
+    const parsed = JSON.parse(fs.readFileSync(legacySettingsPath, 'utf-8')) as unknown;
+    if (!isObjectRecord(parsed)) {
+      return settingsPath;
+    }
+
+    fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
+    fs.writeFileSync(
+      settingsPath,
+      JSON.stringify(buildCursorProviderSettingsFromLegacy(parsed), null, 2) + '\n',
+      { mode: 0o600 }
+    );
+  } catch {
+    // Best-effort migration only. Callers will fall back to defaults if the legacy file is invalid.
+  }
+
+  return settingsPath;
 }
 
 /**
@@ -441,8 +453,6 @@ export function getEffectiveEnvVars(
         if (settings.env && typeof settings.env === 'object') {
           // Migrate deprecated gemini-claude-* model names if present
           migrateDeprecatedModelNames(expandedPath, provider, settings);
-          // Migrate codex effort suffixes to canonical IDs if present
-          migrateCodexEffortSuffixes(expandedPath, provider, settings);
           // Migrate legacy iFlow placeholders to supported model IDs
           migrateIFlowPlaceholderModel(expandedPath, provider, settings);
           // Custom variant settings found - merge with global env
@@ -465,7 +475,7 @@ export function getEffectiveEnvVars(
   }
 
   // Priority 2: Default provider settings file
-  const settingsPath = getProviderSettingsPath(provider);
+  const settingsPath = resolveProviderSettingsPath(provider);
 
   // Check for user override file
   if (fs.existsSync(settingsPath)) {
@@ -476,8 +486,6 @@ export function getEffectiveEnvVars(
       if (settings.env && typeof settings.env === 'object') {
         // Migrate deprecated gemini-claude-* model names if present
         migrateDeprecatedModelNames(settingsPath, provider, settings);
-        // Migrate codex effort suffixes to canonical IDs if present
-        migrateCodexEffortSuffixes(settingsPath, provider, settings);
         // Migrate legacy iFlow placeholders to supported model IDs
         migrateIFlowPlaceholderModel(settingsPath, provider, settings);
         // User override found - merge with global env
@@ -505,7 +513,7 @@ export function getEffectiveEnvVars(
  * Called during installation/first run
  */
 export function ensureProviderSettings(provider: CLIProxyProvider): void {
-  const settingsPath = getProviderSettingsPath(provider);
+  const settingsPath = resolveProviderSettingsPath(provider);
   const defaultEnv = getClaudeEnvVars(provider);
 
   const writeSettings = (settings: Record<string, unknown>): void => {
@@ -650,7 +658,6 @@ export function getRemoteEnvVars(
         const settings: ProviderSettings = JSON.parse(content);
         if (settings.env && typeof settings.env === 'object') {
           migrateDeprecatedModelNames(expandedPath, provider, settings);
-          migrateCodexEffortSuffixes(expandedPath, provider, settings);
           migrateIFlowPlaceholderModel(expandedPath, provider, settings);
           userEnvVars = settings.env as Record<string, string>;
         }
@@ -663,14 +670,13 @@ export function getRemoteEnvVars(
 
   // Priority 2: Default provider settings file (~/.ccs/{provider}.settings.json)
   if (Object.keys(userEnvVars).length === 0) {
-    const settingsPath = getProviderSettingsPath(provider);
+    const settingsPath = resolveProviderSettingsPath(provider);
     if (fs.existsSync(settingsPath)) {
       try {
         const content = fs.readFileSync(settingsPath, 'utf-8');
         const settings: ProviderSettings = JSON.parse(content);
         if (settings.env && typeof settings.env === 'object') {
           migrateDeprecatedModelNames(settingsPath, provider, settings);
-          migrateCodexEffortSuffixes(settingsPath, provider, settings);
           migrateIFlowPlaceholderModel(settingsPath, provider, settings);
           userEnvVars = settings.env as Record<string, string>;
         }

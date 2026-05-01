@@ -11,6 +11,7 @@ import {
   stopDaemon,
   checkAuthStatus,
   autoDetectTokens,
+  probeCursorRuntime,
   saveCredentials,
   validateToken,
 } from '../../cursor';
@@ -28,6 +29,34 @@ interface DaemonStartPreconditionInput {
 interface DaemonStartPreconditionError {
   status: number;
   error: string;
+}
+
+export function getAutoDetectFailureStatus(
+  reason?: ReturnType<typeof autoDetectTokens>['reason']
+): number {
+  switch (reason) {
+    case 'sqlite_unavailable':
+      return 503;
+    case 'db_query_failed':
+      return 500;
+    case 'invalid_token_format':
+      return 400;
+    default:
+      return 404;
+  }
+}
+
+function getPublicAutoDetectError(result: ReturnType<typeof autoDetectTokens>): string {
+  switch (result.reason) {
+    case 'db_not_found':
+      return 'Cursor state database not found on this host.';
+    case 'sqlite_unavailable':
+      return 'Cursor state database was found, but sqlite3 is not available in PATH.';
+    case 'db_query_failed':
+      return 'Cursor state database was found, but CCS could not query it.';
+    default:
+      return result.error ?? 'Token not found';
+  }
 }
 
 export function getDaemonStartPreconditionError(
@@ -124,7 +153,11 @@ router.post('/auth/auto-detect', async (_req: Request, res: Response): Promise<v
     const result = autoDetectTokens();
 
     if (!result.found || !result.accessToken || !result.machineId) {
-      res.status(404).json({ error: result.error ?? 'Token not found' });
+      const status = getAutoDetectFailureStatus(result.reason);
+      res.status(status).json({
+        error: getPublicAutoDetectError(result),
+        reason: result.reason ?? null,
+      });
       return;
     }
 
@@ -150,6 +183,19 @@ router.get('/models', async (_req: Request, res: Response): Promise<void> => {
     const cursorConfig = getCursorConfig();
     const models = await getAvailableModels(cursorConfig.port);
     res.json({ models, current: cursorConfig.model });
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+/**
+ * POST /api/cursor/probe - Run a live authenticated runtime probe
+ */
+router.post('/probe', async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const cursorConfig = getCursorConfig();
+    const result = await probeCursorRuntime(cursorConfig);
+    res.status(result.status).json(result);
   } catch (error) {
     res.status(500).json({ error: (error as Error).message });
   }

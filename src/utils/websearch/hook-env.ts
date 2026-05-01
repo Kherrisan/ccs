@@ -7,6 +7,8 @@
  */
 
 import { getWebSearchConfig } from '../../config/unified-config-loader';
+import { normalizeSearxngBaseUrl } from './types';
+import { resolveAllowedWebSearchTraceFile } from './trace';
 
 /**
  * Get environment variables for WebSearch hook configuration.
@@ -17,7 +19,26 @@ import { getWebSearchConfig } from '../../config/unified-config-loader';
  */
 export function getWebSearchHookEnv(): Record<string, string> {
   const wsConfig = getWebSearchConfig();
-  const env: Record<string, string> = {};
+  const env: Record<string, string> = {
+    CCS_WEBSEARCH_ENABLED: '0',
+    CCS_WEBSEARCH_SKIP: '0',
+    CCS_WEBSEARCH_EXA: '0',
+    CCS_WEBSEARCH_TAVILY: '0',
+    CCS_WEBSEARCH_BRAVE: '0',
+    CCS_WEBSEARCH_SEARXNG: '0',
+    CCS_WEBSEARCH_DUCKDUCKGO: '0',
+    CCS_WEBSEARCH_GEMINI: '0',
+    CCS_WEBSEARCH_OPENCODE: '0',
+    CCS_WEBSEARCH_GROK: '0',
+  };
+
+  if (process.env.CCS_WEBSEARCH_TRACE === '1' || process.env.CCS_DEBUG === '1') {
+    env.CCS_WEBSEARCH_TRACE = '1';
+  }
+  const traceFileOverride = resolveAllowedWebSearchTraceFile(process.env);
+  if (traceFileOverride) {
+    env.CCS_WEBSEARCH_TRACE_FILE = traceFileOverride;
+  }
 
   // Skip hook entirely if disabled
   if (!wsConfig.enabled) {
@@ -29,7 +50,36 @@ export function getWebSearchHookEnv(): Record<string, string> {
   env.CCS_WEBSEARCH_ENABLED = '1';
 
   // Pass individual provider enabled states
-  // Hook will only use providers that are BOTH enabled AND installed
+  // Hook will only use providers that are BOTH enabled AND ready.
+  if (wsConfig.providers?.exa?.enabled) {
+    env.CCS_WEBSEARCH_EXA = '1';
+    env.CCS_WEBSEARCH_EXA_MAX_RESULTS = String(wsConfig.providers.exa.max_results || 5);
+  }
+
+  if (wsConfig.providers?.tavily?.enabled) {
+    env.CCS_WEBSEARCH_TAVILY = '1';
+    env.CCS_WEBSEARCH_TAVILY_MAX_RESULTS = String(wsConfig.providers.tavily.max_results || 5);
+  }
+
+  if (wsConfig.providers?.duckduckgo?.enabled) {
+    env.CCS_WEBSEARCH_DUCKDUCKGO = '1';
+    env.CCS_WEBSEARCH_DUCKDUCKGO_MAX_RESULTS = String(
+      wsConfig.providers.duckduckgo.max_results || 5
+    );
+  }
+
+  if (wsConfig.providers?.brave?.enabled) {
+    env.CCS_WEBSEARCH_BRAVE = '1';
+    env.CCS_WEBSEARCH_BRAVE_MAX_RESULTS = String(wsConfig.providers.brave.max_results || 5);
+  }
+
+  const searxngBaseUrl = normalizeSearxngBaseUrl(wsConfig.providers?.searxng?.url);
+  if (wsConfig.providers?.searxng?.enabled && searxngBaseUrl) {
+    env.CCS_WEBSEARCH_SEARXNG = '1';
+    env.CCS_WEBSEARCH_SEARXNG_URL = searxngBaseUrl;
+    env.CCS_WEBSEARCH_SEARXNG_MAX_RESULTS = String(wsConfig.providers.searxng.max_results || 5);
+  }
+
   if (wsConfig.providers?.gemini?.enabled) {
     env.CCS_WEBSEARCH_GEMINI = '1';
     if (wsConfig.providers.gemini.model) {

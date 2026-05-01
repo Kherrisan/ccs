@@ -1,8 +1,8 @@
 # Provider Integration Flows
 
-Last Updated: 2026-02-16
+Last Updated: 2026-03-30
 
-Detailed provider integration flows including CLIProxyAPI, GLMT proxy, remote CLIProxy, quota management, and authentication.
+Detailed provider integration flows including CLIProxyAPI, legacy GLMT compatibility transforms, remote CLIProxy, quota management, and authentication.
 
 ---
 
@@ -11,6 +11,10 @@ Detailed provider integration flows including CLIProxyAPI, GLMT proxy, remote CL
 ### Overview
 
 CLIProxyAPI is a local OAuth proxy binary that enables seamless integration with multiple AI providers. CCS manages the binary and configuration automatically.
+
+### Local Backend Choice
+
+CCS defaults to the original `router-for-me/CLIProxyAPI` backend because it is the stable MIT upstream. The `plus` backend is an explicit opt-in path that downloads the community-maintained `kaitranntt/CLIProxyAPIPlus` fork for providers that still require Plus-only support, such as Kiro, GitHub Copilot, Cursor, GitLab, CodeBuddy, and Kilo. CCS does not silently downgrade `backend: plus` to `original`; users choose that backend deliberately when they need those providers.
 
 ```
 +===========================================================================+
@@ -22,7 +26,7 @@ CLIProxyAPI is a local OAuth proxy binary that enables seamless integration with
         | ANTHROPIC_BASE_URL = localhost:XXXX
         v
   +------------------+
-  |   CLIProxyAPI    |  Local proxy binary (CLIProxyAPIPlus for kiro/ghcp)
+  |   CLIProxyAPI    |  Local proxy binary (Plus fork opt-in for plus-only providers)
   |   (binary)       |
   +------------------+
         |
@@ -73,8 +77,20 @@ CLIProxyAPI is a local OAuth proxy binary that enables seamless integration with
 | Gemini | `gemini` | Authorization Code | 9876 | CLIProxyAPI |
 | Codex | `codex` | Authorization Code | 9876 | CLIProxyAPI |
 | Antigravity | `agy` | Authorization Code | 9876 | CLIProxyAPI |
-| Kiro (AWS) | `kiro` | Method-aware (default: Device Code) | 9876 | CLIProxyAPIPlus |
-| GitHub Copilot | `ghcp` | Device Code | none | CLIProxyAPIPlus |
+| Kiro (AWS) | `kiro` | Method-aware (default: Device Code) | 9876 | CLIProxyAPIPlus fork |
+| GitHub Copilot | `ghcp` | Device Code | none | CLIProxyAPIPlus fork |
+
+### Codex Duplicate-Email Account Identity
+
+Codex can legitimately produce multiple auth files for the same email when the user has both a team/business login and a personal/free login. CCS now treats those as separate accounts instead of collapsing them by email.
+
+- Internal account IDs stay duplicate-aware for Codex only: `email#variant`
+- Variant keys are derived from the auth filename, for example `kaidu.kd@gmail.com#04a0f049-team` and `kaidu.kd@gmail.com#free`
+- Dashboard surfaces continue to show the canonical email, with a compact variant badge such as `Team` or `Free`
+- Quota fetch resolves the exact registry `tokenFile` for the selected account instead of scanning by email and taking the first match
+- Live usage/account monitor stats key by `provider + account identity`, so duplicate Codex emails no longer merge into one runtime bucket
+
+This preserves the user-visible distinction between business and personal Codex sessions while keeping other providers on their existing email-backed identity model.
 
 ### Hardcoded Provider Detection
 
@@ -91,63 +107,55 @@ if (hardcodedProviders.includes(profileName)) {
 
 ---
 
-## GLMT Proxy Flow
+## Legacy GLMT Compatibility Flow
 
 ### Overview
 
-GLMT proxy enables seamless integration with GLM-compatible APIs (Z.AI, Kimi, OpenRouter, etc.) using a Node.js-based embedded proxy.
+GLMT is no longer a marketed runtime surface in CCS. Existing `glmt` profiles are kept as a compatibility path and normalized at launch to the direct GLM endpoint. The `src/glmt/` module remains because Cursor response translation still imports its transformer pipeline.
 
 ```
 +===========================================================================+
-|                        GLMT Proxy Integration                              |
+|                Legacy GLMT Compatibility + Internal Transforms             |
 +===========================================================================+
 
   Claude CLI
         |
-        | ANTHROPIC_BASE_URL = localhost:XXXX
+        | legacy glmt settings detected
         v
   +------------------+
-  |   GLMT Proxy     |  Embedded Node.js proxy (src/glmt/)
-  |   (glmt-proxy.ts)|
+  | Compatibility    |  normalizeDeprecatedGlmtEnv()
+  | Layer            |  (src/utils/glmt-deprecation.ts)
   +------------------+
         |
         v
   +------------------+
-  | Delta Accumulator|  Stream transformation
+  | Direct GLM API   |  https://api.z.ai/api/anthropic
   +------------------+
         |
         v
   +------------------+
-  |   Pipeline       |  Request/Response transformation
-  +------------------+
-        |
-        v
-  +------------------+
-  |   GLM API        |  Z.AI / Kimi API
+  | src/glmt/*       |  retained for Cursor translation
   +------------------+
 ```
 
-### Supported GLM Providers
+### Supported Migration Targets
 
 | Provider | Config Key | Endpoint | Auth |
 |----------|------------|----------|------|
-| Z.AI (GLM) | `glmt` | https://open.bigmodel.cn/api/paas/v4/ | API key |
-| Kimi | `kimi` | https://api.moonshot.cn/v1/ | API key |
-| OpenRouter | `openrouter` | https://openrouter.ai/api/v1/ | API key |
+| Z.AI (GLM) | `glm` | https://api.z.ai/api/anthropic | API key |
+| Kimi API | `km` | https://api.kimi.com/coding/ | API key |
+| Legacy compatibility | `glmt` | normalized to direct GLM at runtime | existing profile only |
 
-Note for `config/base-kimi.settings.json`: the default base URL is `http://127.0.0.1:8317/api/provider/kimi` (local CLIProxy route). For direct Moonshot API access, override `ANTHROPIC_BASE_URL` to `https://api.moonshot.cn/v1/`.
+Use `ccs glm` for Z.AI profiles and `ccs km` for reasoning-first Kimi API profiles. Keep `glmt` only when migrating an existing settings file.
 
-### GLMT Profile Detection
+### Runtime Handling
 
-CCS detects GLMT profiles and routes through `execClaudeWithProxy()`:
+CCS detects the deprecated `glmt` profile name and normalizes legacy proxy-only settings before dispatching through the normal settings-profile flow:
 
 ```typescript
-// Settings-based profile detection
-const settings = loadSettings(profileName);
-if (settings.env?.ANTHROPIC_BASE_URL?.includes('glm') ||
-    settings.env?.ANTHROPIC_BASE_URL?.includes('moonshot') ||
-    settings.env?.ANTHROPIC_BASE_URL?.includes('openrouter')) {
-  return execClaudeWithProxy(claudeCli, profileName, args);
+if (isDeprecatedGlmtProfileName(profileName)) {
+  const normalized = normalizeDeprecatedGlmtEnv(settingsEnv);
+  // warn user, validate against direct GLM endpoint, continue through settings flow
 }
 ```
 
@@ -253,6 +261,7 @@ async function checkRemoteProxyHealth(config: ResolvedProxyConfig): Promise<bool
 ### Overview
 
 Hybrid quota management enables automatic detection of exhausted accounts and failover to next available account.
+When CCS detects exhaustion and a healthy fallback exists, it temporarily pauses the exhausted account out of CLIProxy rotation and automatically resumes that pause after the configured cooldown expires. This durable self-pause uses the same account registry and token movement path as dashboard/manual pause, so the dashboard shows the account as paused and CLIProxy cannot rediscover its token from the live `auth/` folder.
 
 ```
 +===========================================================================+
@@ -278,9 +287,11 @@ Hybrid quota management enables automatic detection of exhausted accounts and fa
         |           +---> Check isPaused flag --> Skip if paused
         |           |
         |           +---> Fetch quota from provider API
-        |           |       - Gemini: /models endpoint
-        |           |       - Codex: /api/v1/account
-        |           |       - Kiro: /api/usage
+        |           |       - Antigravity: fetchAvailableModels
+        |           |       - Claude: policy limits endpoint
+        |           |       - Codex: ChatGPT usage windows
+        |           |       - Gemini CLI: Code Assist quota buckets
+        |           |       - GitHub Copilot: copilot_internal/user snapshots
         |           |
         |           +---> Detect tier (free/paid/unknown)
         |           |
@@ -289,6 +300,11 @@ Hybrid quota management enables automatic detection of exhausted accounts and fa
         +---> Select best account (not paused, not exhausted)
         |
         +---> Auto-failover to next account if current exhausted
+        |
+        +---> Temporarily pause exhausted account when fallback exists
+        |       - move token out of live auth discovery
+        |       - persist cooldown expiry across launches
+        |       - auto-resume only CCS-created quota pauses
 
   CLI Commands:
     ccs cliproxy pause <account>   --> Set isPaused=true in account-manager
@@ -334,7 +350,7 @@ function selectBestAccount(accounts: AccountInfo[]): AccountInfo | null {
 |              OAuth - Authorization Code Flow (Port-based)                 |
 +===========================================================================+
 
-  1. User runs: ccs gemini
+  1. User runs: ccs codex
         |
         v
   2. Check token cache (~/.ccs/cliproxy/auth/)
@@ -368,6 +384,10 @@ function selectBestAccount(accounts: AccountInfo[]): AccountInfo | null {
 ### OAuth Providers - Device Code Flow
 
 **Providers**: GitHub Copilot (ghcp)
+
+Provider identity note:
+- Providers that do not expose a reliable email no longer require a manual nickname during first auth.
+- CCS derives a stable internal account identifier from the token/cache context and still allows the user to rename the account later.
 
 ```
 +===========================================================================+
@@ -440,6 +460,8 @@ function selectBestAccount(accounts: AccountInfo[]): AccountInfo | null {
     - Device Code method uses /start route (no callback port)
     - Callback/social methods use /start-url + status polling
     - Some management flows return state first, auth_url later
+    - Manual nicknames are optional when the upstream provider does not return an email
+    - Account storage uses a stable internal identifier so reauth/update flows do not depend on dashboard list order
 ```
 
 ### API Key Profiles (GLM, Kimi)
@@ -527,29 +549,29 @@ Image Analysis Hook enables vision model proxying through CLIProxy with automati
   Claude CLI processes image request
         |
         v
-  Hook intercepts image request
+  Claude prefers ImageAnalysis MCP tool
         |
         v
-  Vision Model Proxying (via CLIProxyAPI)
+  CCS provider-backed image analysis
         |
-        +---> Gemini, Codex, AGY support vision
+        +---> Provider route resolved before launch
         |
-        +---> Kiro (Claude native vision)
+        +---> Direct request to /api/provider/<backend>/v1/messages
         |
-        +---> Skip for Claude Sub accounts (native vision)
+        +---> Native Read fallback if runtime/auth/proxy is unavailable
         |
         v
-  Vision response returned to Claude CLI
+  Text description returned to Claude CLI
 ```
 
-### Hook Environment
+### Runtime Environment
 
 ```typescript
 // getImageAnalysisHookEnv()
 {
-  ANTHROPIC_IMAGE_HOOK_URL: 'http://localhost:8317/api/image-analysis',
-  // or for remote proxy:
-  ANTHROPIC_IMAGE_HOOK_URL: 'https://proxy.example.com:8317/api/image-analysis',
+  CCS_IMAGE_ANALYSIS_RUNTIME_BASE_URL: 'http://127.0.0.1:8317',
+  CCS_IMAGE_ANALYSIS_RUNTIME_PATH: '/api/provider/agy',
+  CCS_IMAGE_ANALYSIS_RUNTIME_API_KEY: 'ccs-internal-managed',
 }
 ```
 
@@ -557,12 +579,12 @@ Image Analysis Hook enables vision model proxying through CLIProxy with automati
 
 | Provider | Vision Support | Notes |
 |----------|---|---|
-| Gemini | ✓ | Via CLIProxy image analysis |
-| Codex | ✓ | Via CLIProxy image analysis |
-| Antigravity | ✓ | Via CLIProxy image analysis |
-| Kiro | ✓ | Native Claude vision (no proxy needed) |
-| Copilot | ✗ | Not supported |
-| GLM/Kimi | ✗ | Requires direct API implementation |
+| Gemini | ✓ | Via CCS ImageAnalysis provider route |
+| Codex | ✓ | Via CCS ImageAnalysis provider route |
+| Antigravity | ✓ | Via CCS ImageAnalysis provider route |
+| Kiro | ✓ | Via mapped CCS provider route when configured |
+| Copilot | ✓ | Via mapped ghcp provider route |
+| GLM/Kimi | ✓ | Via explicit or fallback backend mapping |
 
 ---
 

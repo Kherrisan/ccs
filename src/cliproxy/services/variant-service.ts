@@ -8,22 +8,20 @@
 import * as os from 'os';
 import * as path from 'path';
 import { CLIProxyProfileName } from '../../auth/profile-detector';
-import { CLIProxyProvider, CLIProxyBackend, PLUS_ONLY_PROVIDERS } from '../types';
+import { CLIProxyProvider, PLUS_ONLY_PROVIDERS } from '../types';
 import { CompositeTierConfig, CompositeVariantConfig } from '../../config/unified-config-types';
 import type { TargetType } from '../../targets/target-adapter';
 import { isReservedName, isWindowsReservedName } from '../../config/reserved-names';
-import { loadOrCreateUnifiedConfig } from '../../config/unified-config-loader';
-import { DEFAULT_BACKEND } from '../platform-detector';
 import { isUnifiedMode } from '../../config/unified-config-loader';
-import { deleteConfigForPort } from '../config-generator';
+import { deleteConfigForPort } from '../config/config-generator';
 import { hasActiveSessions, deleteSessionLockForPort } from '../session-tracker';
 import { warn } from '../../utils/ui';
 import { getCcsDir } from '../../utils/config-manager';
-import { validateCompositeTiers } from '../composite-validator';
+import { validateCompositeTiers } from '../config/composite-validator';
 import {
   canonicalizeModelIdForProvider,
   getDeniedModelIdReasonForProvider,
-} from '../model-id-normalizer';
+} from '../ai-providers/model-id-normalizer';
 import {
   createSettingsFile,
   createSettingsFileUnified,
@@ -44,6 +42,7 @@ import {
   removeVariantFromLegacyConfig,
   getNextAvailablePort,
 } from './variant-config-adapter';
+import { getConfiguredBackend, getPlusBackendUnavailableMessage } from '../binary-manager';
 
 // Re-export VariantConfig from adapter
 export type { VariantConfig } from './variant-config-adapter';
@@ -80,16 +79,15 @@ export function validateProfileName(name: string): string | null {
 
 /**
  * Validate provider/backend compatibility
- * Returns error message if provider requires Plus backend but original is configured
+ * Returns an error message if a provider requires Plus while local CLIProxy is
+ * configured for the default original backend.
  */
 export function validateProviderBackend(provider: CLIProxyProfileName): string | null {
-  const config = loadOrCreateUnifiedConfig();
-  const backend: CLIProxyBackend = config.cliproxy?.backend ?? DEFAULT_BACKEND;
-
   // Normalize provider to lowercase for case-insensitive comparison
   const normalizedProvider = provider.toLowerCase() as CLIProxyProvider;
+  const backend = getConfiguredBackend();
   if (backend === 'original' && PLUS_ONLY_PROVIDERS.includes(normalizedProvider)) {
-    return `${provider} requires CLIProxyAPIPlus. Set \`cliproxy.backend: plus\` in config.yaml or use --backend=plus`;
+    return getPlusBackendUnavailableMessage(provider);
   }
   return null;
 }
@@ -280,6 +278,13 @@ export function updateVariant(name: string, updates: UpdateVariantOptions): Vari
       }
     }
 
+    if (updates.provider !== undefined) {
+      const backendError = validateProviderBackend(updates.provider);
+      if (backendError) {
+        return { success: false, error: backendError };
+      }
+    }
+
     // Update settings file
     if (existing.settings) {
       const settingsPath = existing.settings.replace(/^~/, os.homedir());
@@ -302,14 +307,6 @@ export function updateVariant(name: string, updates: UpdateVariantOptions): Vari
     // Update config entry if provider/account/target changed
     if (updates.provider !== undefined || updates.account !== undefined || targetChanged) {
       const newProvider = updates.provider ?? existing.provider;
-
-      // Validate provider/backend compatibility on provider change
-      if (updates.provider !== undefined) {
-        const backendError = validateProviderBackend(updates.provider);
-        if (backendError) {
-          return { success: false, error: backendError };
-        }
-      }
       const newAccount = updates.account !== undefined ? updates.account : existing.account;
       const newTarget = updates.target ?? existingTarget;
 

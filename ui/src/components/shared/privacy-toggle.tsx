@@ -8,9 +8,11 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { usePrivacy } from '@/contexts/privacy-context';
 import { Eye, EyeOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useTranslation } from 'react-i18next';
 
 export function PrivacyToggle() {
   const { privacyMode, togglePrivacyMode } = usePrivacy();
+  const { t } = useTranslation();
 
   return (
     <Tooltip>
@@ -28,11 +30,7 @@ export function PrivacyToggle() {
         </Button>
       </TooltipTrigger>
       <TooltipContent>
-        <p>
-          {privacyMode
-            ? 'Privacy mode ON - Click to show data'
-            : 'Privacy mode OFF - Click to hide data'}
-        </p>
+        <p>{privacyMode ? t('privacyToggle.modeOn') : t('privacyToggle.modeOff')}</p>
       </TooltipContent>
     </Tooltip>
   );
