@@ -8,7 +8,7 @@ import * as path from 'path';
 import * as lockfile from 'proper-lockfile';
 import { CLIProxyProvider } from '../types';
 import { PROVIDER_TYPE_VALUES } from '../auth/auth-types';
-import { getAuthDir, getCliproxyDir } from '../config-generator';
+import { getAuthDir, getCliproxyDir } from '../config/config-generator';
 import { AccountsRegistry, AccountInfo, PROVIDERS_WITHOUT_EMAIL } from './types';
 import {
   getAccountsRegistryPath,

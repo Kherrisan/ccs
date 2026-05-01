@@ -9,13 +9,13 @@
 
 import { getImageAnalysisConfig } from '../../config/unified-config-loader';
 import { resolveCliproxyBridgeProfile } from '../../api/services/cliproxy-profile-bridge';
-import { getEffectiveApiKey } from '../../cliproxy/auth-token-manager';
+import { getEffectiveApiKey } from '../../cliproxy/auth/auth-token-manager';
 import { mapExternalProviderName } from '../../cliproxy/provider-capabilities';
 import {
   buildProxyUrl,
   getProxyTarget,
   type ProxyTarget,
-} from '../../cliproxy/proxy-target-resolver';
+} from '../../cliproxy/proxy/proxy-target-resolver';
 import { getPromptsDir } from '../image-analysis/hook-installer';
 import {
   resolveImageAnalysisStatus,

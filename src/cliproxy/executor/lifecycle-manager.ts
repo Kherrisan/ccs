@@ -11,7 +11,7 @@ import { spawn, ChildProcess } from 'child_process';
 import * as net from 'net';
 import { ProgressIndicator } from '../../utils/progress-indicator';
 import { fail } from '../../utils/ui';
-import { getCliproxyWritablePath } from '../config-generator';
+import { getCliproxyWritablePath } from '../config/config-generator';
 import { getPortCheckCommand, getCatCommand } from '../../utils/platform-commands';
 import { CLIProxyBackend } from '../types';
 

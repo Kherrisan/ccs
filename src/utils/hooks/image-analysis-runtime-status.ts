@@ -1,13 +1,20 @@
-import { getAuthStatus, initializeAccounts, type AuthStatus } from '../../cliproxy/auth-handler';
+import {
+  getAuthStatus,
+  initializeAccounts,
+  type AuthStatus,
+} from '../../cliproxy/auth/auth-handler';
 import {
   checkRemoteProxy,
   type RemoteProxyClientConfig,
   type RemoteProxyStatus,
-} from '../../cliproxy/remote-proxy-client';
-import { fetchRemoteAuthStatus, type RemoteAuthStatus } from '../../cliproxy/remote-auth-fetcher';
-import { getProxyTarget, type ProxyTarget } from '../../cliproxy/proxy-target-resolver';
+} from '../../cliproxy/services/remote-proxy-client';
+import {
+  fetchRemoteAuthStatus,
+  type RemoteAuthStatus,
+} from '../../cliproxy/services/remote-auth-fetcher';
+import { getProxyTarget, type ProxyTarget } from '../../cliproxy/proxy/proxy-target-resolver';
 import { getProviderDisplayName, isCLIProxyProvider } from '../../cliproxy/provider-capabilities';
-import { isCliproxyRunning } from '../../cliproxy/stats-fetcher';
+import { isCliproxyRunning } from '../../cliproxy/services/stats-fetcher';
 import type { CLIProxyProvider } from '../../cliproxy/types';
 import {
   DEFAULT_IMAGE_ANALYSIS_CONFIG,

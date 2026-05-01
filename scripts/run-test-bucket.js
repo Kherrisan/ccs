@@ -5,7 +5,7 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
 const rootDir = path.resolve(__dirname, '..');
-const candidateRoots = ['tests/unit', 'tests/integration', 'tests/npm'];
+const candidateRoots = ['tests/unit', 'tests/integration', 'tests/npm', 'src'];
 // Add a `.ts` test to `slowTests` when ANY of these apply:
 //   1. It spawns a child process (CLI, bun test, node, gh, etc.).
 //   2. It binds a port, starts a server, or talks to localhost.
@@ -20,6 +20,7 @@ const candidateRoots = ['tests/unit', 'tests/integration', 'tests/npm'];
 // Automated perf-budget enforcement tracked in issue #1071.
 const slowTests = [
   'tests/integration/cursor-daemon-lifecycle.test.ts',
+  'tests/integration/logging-request-context.test.ts',
   'tests/integration/proxy/daemon-lifecycle.test.ts',
   'tests/unit/commands/persist-command-handler.test.ts',
   'tests/unit/hooks/browser-mcp-advanced-interactions.test.ts',
@@ -32,6 +33,7 @@ const slowTests = [
   'tests/unit/targets/codex-settings-bridge-launch.test.ts',
   'tests/unit/targets/droid-command-routing-integration.test.ts',
   'tests/unit/targets/droid-config-manager.test.ts',
+  'tests/unit/targets/native-claude-effort-launch.test.ts',
   'tests/unit/targets/settings-profile-browser-launch.test.ts',
   'tests/unit/targets/settings-profile-image-analysis-launch.test.ts',
   'tests/unit/targets/settings-profile-websearch-launch.test.ts',

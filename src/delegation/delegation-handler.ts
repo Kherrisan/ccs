@@ -8,6 +8,8 @@ import { SettingsParser } from './settings-parser';
 import { fail, warn } from '../utils/ui';
 import { getCcsDir } from '../utils/config-manager';
 
+const PROFILE_FLAGS_WITH_VALUE = new Set(['-p', '--prompt', '--effort']);
+
 /**
  * Parse and validate a string flag value
  * @returns value if valid, undefined if invalid/missing
@@ -158,10 +160,12 @@ export class DelegationHandler {
         continue;
       }
 
-      if (args[i] === '-p' || args[i] === '--prompt') {
+      if (PROFILE_FLAGS_WITH_VALUE.has(args[i])) {
         skipNext = true;
         continue;
       }
+
+      if (args[i].startsWith('--effort=')) continue;
 
       if (!args[i].startsWith('-')) {
         return args[i];

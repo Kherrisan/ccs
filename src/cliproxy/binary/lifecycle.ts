@@ -13,13 +13,13 @@ import {
 } from './version-checker';
 import { downloadAndInstall, deleteBinary, getBinaryPath } from './installer';
 import { info, warn } from '../../utils/ui';
-import { isCliproxyRunning } from '../stats-fetcher';
-import { CLIPROXY_DEFAULT_PORT } from '../config-generator';
+import { isCliproxyRunning } from '../services/stats-fetcher';
+import { CLIPROXY_DEFAULT_PORT } from '../config/config-generator';
 import {
   CLIPROXY_MAX_STABLE_VERSION,
   CLIPROXY_FAULTY_RANGE,
   DEFAULT_BACKEND,
-} from '../platform-detector';
+} from '../binary/platform-detector';
 
 /** Log helper */
 function log(message: string, verbose: boolean): void {

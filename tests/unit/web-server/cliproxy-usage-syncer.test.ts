@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import type { CliproxyUsageApiResponse } from '../../../src/cliproxy/stats-fetcher';
+import type { CliproxyUsageApiResponse } from '../../../src/cliproxy/services/stats-fetcher';
 import { runWithScopedConfigDir } from '../../../src/utils/config-manager';
 import {
   loadCachedCliproxyData,

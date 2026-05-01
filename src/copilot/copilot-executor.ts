@@ -9,7 +9,7 @@ import { spawn } from 'child_process';
 import { CopilotConfig } from '../config/unified-config-types';
 import { getGlobalEnvConfig } from '../config/unified-config-loader';
 import { ensureCliproxyService } from '../cliproxy';
-import { getEffectiveApiKey } from '../cliproxy/auth-token-manager';
+import { getEffectiveApiKey } from '../cliproxy/auth/auth-token-manager';
 import { CLIPROXY_DEFAULT_PORT } from '../cliproxy/config/port-manager';
 import { checkAuthStatus, isCopilotApiInstalled } from './copilot-auth';
 import { isDaemonRunning, startDaemon } from './copilot-daemon';
@@ -35,6 +35,9 @@ import {
   resolveImageAnalysisRuntimeStatus,
 } from '../utils/hooks';
 import { stripClaudeCodeEnv } from '../utils/shell-executor';
+import { createLogger } from '../services/logging';
+
+const logger = createLogger('copilot:executor');
 
 interface CopilotImageAnalysisDeps {
   ensureCliproxyService: typeof ensureCliproxyService;
@@ -185,6 +188,12 @@ export async function executeCopilotProfile(
 ): Promise<number> {
   const { config: normalizedConfig, warnings } = normalizeCopilotConfigWithWarnings(config);
 
+  logger.stage('intake', 'copilot.execute.start', 'Starting Copilot profile execution', {
+    provider: 'copilot',
+    model: normalizedConfig.model,
+    port: normalizedConfig.port,
+  });
+
   if (warnings.length > 0) {
     warnings.forEach(({ message }) => console.log(warn(message)));
     console.log(
@@ -216,6 +225,10 @@ export async function executeCopilotProfile(
 
   // Check authentication
   const authStatus = await checkAuthStatus();
+  logger.stage('auth', 'copilot.execute.auth_check', 'Checked Copilot auth status', {
+    provider: 'copilot',
+    authenticated: authStatus.authenticated,
+  });
   if (!authStatus.authenticated) {
     console.error(fail('Not authenticated with GitHub.'));
     console.error('');
@@ -289,6 +302,7 @@ export async function executeCopilotProfile(
   console.log('');
 
   // Spawn Claude CLI
+  const spawnStartedAt = Date.now();
   return new Promise((resolve) => {
     const imageAnalysisArgs = imageAnalysisMcpReady
       ? appendThirdPartyImageAnalysisToolArgs(claudeArgs)
@@ -302,6 +316,11 @@ export async function executeCopilotProfile(
       claudeConfigDir,
     });
 
+    logger.stage('dispatch', 'copilot.execute.spawn', 'Spawning Claude via Copilot proxy', {
+      provider: 'copilot',
+      argCount: launchArgs.length,
+    });
+
     const proc = spawn(claudeCliPath, launchArgs, {
       stdio: 'inherit',
       env: { ...env, ...traceEnv },
@@ -309,10 +328,28 @@ export async function executeCopilotProfile(
     });
 
     proc.on('close', (code) => {
+      logger.stage(
+        'respond',
+        'copilot.execute.exit',
+        'Claude process exited (Copilot)',
+        { provider: 'copilot', exitCode: code },
+        { latencyMs: Date.now() - spawnStartedAt }
+      );
       resolve(code ?? 0);
     });
 
     proc.on('error', (err) => {
+      logger.stage(
+        'cleanup',
+        'copilot.execute.error',
+        'Failed to spawn Claude (Copilot)',
+        { provider: 'copilot' },
+        {
+          level: 'error',
+          latencyMs: Date.now() - spawnStartedAt,
+          error: { name: err.name, message: err.message },
+        }
+      );
       console.error(fail(`Failed to start Claude: ${err.message}`));
       resolve(1);
     });

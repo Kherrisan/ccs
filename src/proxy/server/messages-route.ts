@@ -2,13 +2,17 @@ import * as http from 'http';
 import type { Dispatcher } from 'undici';
 import type { OpenAICompatProfileConfig } from '../profile-router';
 import { resolveProxyRequestRoute } from '../request-router';
-import { ProxyRequestTransformer } from '../transformers/request-transformer';
+import {
+  ProxyRequestTransformer,
+  type ProxyOpenAIRequest,
+} from '../transformers/request-transformer';
 import { ProxySseStreamTransformer } from '../transformers/sse-stream-transformer';
 import { resolveOpenAIChatCompletionsUrl } from '../upstream-url';
 import { createLogger } from '../../services/logging';
 import { pipeWebResponseToNode, readJsonBody, writeJson } from './http-helpers';
 
 const REQUEST_TIMEOUT_MS = 600_000;
+const DIRECT_OPENAI_REASONING_CHAT_MODEL = /^(?:gpt-5|o[134])(?:[-.]|$)/;
 const logger = createLogger('proxy:openai-compat:messages');
 
 class ProxyInputError extends Error {
@@ -26,11 +30,46 @@ function buildUpstreamHeaders(profile: OpenAICompatProfileConfig): Record<string
   };
 }
 
+function isDirectOpenAIReasoningChatModel(
+  profile: OpenAICompatProfileConfig,
+  model: string | undefined
+): boolean {
+  return (
+    profile.provider === 'openai' &&
+    typeof model === 'string' &&
+    DIRECT_OPENAI_REASONING_CHAT_MODEL.test(model.trim().toLowerCase())
+  );
+}
+
+function shapeUpstreamChatPayload(
+  payload: ProxyOpenAIRequest,
+  profile: OpenAICompatProfileConfig
+): ProxyOpenAIRequest {
+  if (!isDirectOpenAIReasoningChatModel(profile, payload.model)) {
+    return payload;
+  }
+
+  const shaped = { ...payload };
+
+  if (shaped.max_tokens !== undefined) {
+    shaped.max_completion_tokens = shaped.max_tokens;
+    delete shaped.max_tokens;
+  }
+
+  delete shaped.metadata;
+
+  if ((shaped.tools?.length ?? 0) > 0) {
+    delete shaped.reasoning_effort;
+  }
+
+  return shaped;
+}
+
 function buildUpstreamRequest(
   profile: OpenAICompatProfileConfig,
   rawBody: unknown
 ): { body: string; route: ReturnType<typeof resolveProxyRequestRoute> } {
-  let transformed;
+  let transformed: ProxyOpenAIRequest;
   try {
     const transformer = new ProxyRequestTransformer();
     transformed = transformer.transform(rawBody);
@@ -39,11 +78,14 @@ function buildUpstreamRequest(
     throw new ProxyInputError(message);
   }
   const route = resolveProxyRequestRoute(profile, transformed);
-  const body = {
-    ...transformed,
-    model: route.model || route.profile.model,
-    stream: transformed.stream === true,
-  };
+  const body = shapeUpstreamChatPayload(
+    {
+      ...transformed,
+      model: route.model || route.profile.model,
+      stream: transformed.stream === true,
+    },
+    route.profile
+  );
   return { body: JSON.stringify(body), route };
 }
 
@@ -165,11 +207,23 @@ export async function handleProxyMessagesRequest(
   insecureDispatcher?: Dispatcher
 ): Promise<void> {
   const transformer = new ProxySseStreamTransformer();
+  const startedAt = Date.now();
+
+  logger.stage('intake', 'request.received', 'Proxy /v1/messages request received', {
+    method: req.method || 'POST',
+    remoteAddress: req.socket.remoteAddress || null,
+  });
 
   if (!validateIncomingProxyAuth(req.headers, expectedAuthToken)) {
-    logger.warn('auth.invalid', 'Rejected proxy message request with invalid auth token', {
-      remoteAddress: req.socket.remoteAddress || null,
-    });
+    logger.stage(
+      'auth',
+      'auth.invalid',
+      'Rejected proxy message request with invalid auth token',
+      {
+        remoteAddress: req.socket.remoteAddress || null,
+      },
+      { level: 'warn' }
+    );
     await pipeWebResponseToNode(
       transformer.error(401, 'authentication_error', 'Missing or invalid local proxy token'),
       res
@@ -177,11 +231,14 @@ export async function handleProxyMessagesRequest(
     return;
   }
 
+  logger.stage('auth', 'auth.ok', 'Proxy auth validated');
+
   let timeoutMs = REQUEST_TIMEOUT_MS;
   try {
     const rawBody = await readJsonBody(req);
+    logger.stage('transform', 'request.transform.start', 'Transforming inbound proxy body');
     const upstream = buildUpstreamRequest(profile, rawBody);
-    logger.info('request.forward', 'Forwarding Anthropic request to OpenAI-compatible upstream', {
+    logger.stage('route', 'request.routed', 'Resolved proxy upstream route', {
       profileName: upstream.route.profile.profileName,
       provider: upstream.route.profile.provider,
       baseUrl: upstream.route.profile.baseUrl,
@@ -198,7 +255,8 @@ export async function handleProxyMessagesRequest(
       res,
       controller,
       (source) => {
-        logger.info(
+        logger.stage(
+          'cleanup',
           'request.disconnect',
           'Aborting upstream request after local client disconnect',
           {
@@ -210,28 +268,47 @@ export async function handleProxyMessagesRequest(
     );
 
     try {
+      logger.stage('dispatch', 'upstream.dispatch', 'Dispatching upstream fetch', {
+        profileName: profile.profileName,
+      });
       const upstreamResponse = await fetch(
         resolveOpenAIChatCompletionsUrl(upstream.route.profile.baseUrl),
         buildFetchInit(upstream.route.profile, upstream.body, controller.signal, insecureDispatcher)
       );
-      logger.info('response.received', 'Received upstream response', {
+      logger.stage('upstream', 'upstream.response', 'Received upstream response', {
         profileName: profile.profileName,
         routedProfileName: upstream.route.profile.profileName,
         status: upstreamResponse.status,
       });
       const response = await transformer.transform(upstreamResponse);
       await pipeWebResponseToNode(response, res);
+      logger.stage('respond', 'request.respond', 'Proxy response written', undefined, {
+        latencyMs: Date.now() - startedAt,
+      });
     } finally {
       clearTimeout(timeout);
       cleanupDisconnectHandlers();
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown proxy error';
-    logger.error('request.failed', 'Proxy message request failed', {
-      profileName: profile.profileName,
-      error: message,
-      abort: error instanceof Error && error.name === 'AbortError',
-    });
+    const errInfo = {
+      name: error instanceof Error ? error.name : 'Error',
+      message,
+    };
+    logger.stage(
+      'cleanup',
+      'request.failed',
+      'Proxy message request failed',
+      {
+        profileName: profile.profileName,
+        abort: error instanceof Error && error.name === 'AbortError',
+      },
+      {
+        level: 'error',
+        latencyMs: Date.now() - startedAt,
+        error: errInfo,
+      }
+    );
     const status =
       error instanceof Error && error.name === 'AbortError'
         ? 502

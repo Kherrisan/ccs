@@ -7,7 +7,7 @@ import {
   normalizeCliproxySessionAffinityTtl,
   readCliproxyRoutingState,
   readCliproxySessionAffinityState,
-} from '../../cliproxy/routing-strategy';
+} from '../../cliproxy/routing/routing-strategy';
 import { requireLocalAccessWhenAuthDisabled } from '../middleware/auth-middleware';
 
 const router = Router();

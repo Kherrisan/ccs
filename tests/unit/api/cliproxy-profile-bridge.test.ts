@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { getEffectiveApiKey } from '../../../src/cliproxy/auth-token-manager';
+import { getEffectiveApiKey } from '../../../src/cliproxy/auth/auth-token-manager';
 import {
   resolveCliproxyBridgeMetadata,
   resolveCliproxyBridgeProfile,

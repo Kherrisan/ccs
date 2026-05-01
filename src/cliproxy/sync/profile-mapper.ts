@@ -9,7 +9,7 @@ import * as path from 'path';
 import { getCcsDir } from '../../utils/config-manager';
 import { expandPath } from '../../utils/helpers';
 import { listApiProfiles, isApiProfileConfigured } from '../../api/services/profile-reader';
-import type { ClaudeKey } from '../management-api-types';
+import type { ClaudeKey } from '../management/management-api-types';
 
 /**
  * Profile info with settings for sync.

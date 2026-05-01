@@ -8,14 +8,14 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { info, warn } from '../utils/ui';
-import { getBinDir, CLIPROXY_DEFAULT_PORT } from './config-generator';
+import { getBinDir, CLIPROXY_DEFAULT_PORT } from './config/config-generator';
 import { BinaryInfo, BinaryManagerConfig } from './types';
 import {
   BACKEND_CONFIG,
   DEFAULT_BACKEND,
   CLIPROXY_MAX_STABLE_VERSION,
   getExecutableName,
-} from './platform-detector';
+} from './binary/platform-detector';
 import { stopProxy } from './services/proxy-lifecycle-service';
 import { waitForPortFree } from '../utils/port-utils';
 import { loadOrCreateUnifiedConfig } from '../config/unified-config-loader';

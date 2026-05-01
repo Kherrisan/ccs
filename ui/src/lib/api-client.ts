@@ -9,7 +9,7 @@ import type {
   ListAiProvidersResult,
   UpsertAiProviderEntryInput,
 } from '../../../src/cliproxy/ai-providers';
-import type { ProviderEntitlementEvidence } from '../../../src/cliproxy/provider-entitlement-types';
+import type { ProviderEntitlementEvidence } from '../../../src/cliproxy/auth/provider-entitlement-types';
 import type { BrowserRuntimeEnv } from '../../../src/utils/browser/chrome-reuse';
 
 export const API_BASE_URL = '/api';
@@ -981,6 +981,14 @@ export interface LogsEntry {
   processId: number | null;
   runId: string | null;
   context?: unknown;
+  // Structured-log fields from #1141 contract. All optional; UI ships first,
+  // backend fills these incrementally. Order is stable and additive.
+  requestId?: string;
+  module?: string;
+  stage?: string;
+  latencyMs?: number;
+  metadata?: Record<string, unknown>;
+  error?: { message: string; stack?: string; code?: string };
 }
 
 export interface LogsEntriesParams {

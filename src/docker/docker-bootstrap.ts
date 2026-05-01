@@ -6,7 +6,7 @@ import {
   generateConfig,
   getCliproxyWritablePath,
   regenerateConfig,
-} from '../cliproxy/config-generator';
+} from '../cliproxy/config/config-generator';
 import { CLIPROXY_DEFAULT_PORT } from '../cliproxy/config/port-manager';
 import { getCliproxyConfigPath } from '../cliproxy/config/path-resolver';
 import { registerSession, unregisterSession } from '../cliproxy/session-tracker';

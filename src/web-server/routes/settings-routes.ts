@@ -17,7 +17,7 @@ import {
   setGlobalManagementSecret,
   resetAuthToDefaults,
 } from '../../cliproxy';
-import { regenerateConfig } from '../../cliproxy/config-generator';
+import { regenerateConfig } from '../../cliproxy/config/config-generator';
 import { deduplicateCcsHooks } from '../../utils/websearch/hook-utils';
 import { removeCcsImageAnalyzerHooks } from '../../utils/hooks/image-analyzer-hook-utils';
 import { resolveCliproxyBridgeMetadata } from '../../api/services';
@@ -36,7 +36,7 @@ import {
   canonicalizeModelIdForProvider,
   extractProviderFromPathname,
   getDeniedModelIdReasonForProvider,
-} from '../../cliproxy/model-id-normalizer';
+} from '../../cliproxy/ai-providers/model-id-normalizer';
 import { createRouteErrorHelpers } from './route-helpers';
 import {
   getImageAnalysisProfileSettingsPath,

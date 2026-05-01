@@ -13,15 +13,15 @@ import { CompositeTierConfig, CompositeVariantConfig } from '../../config/unifie
 import type { TargetType } from '../../targets/target-adapter';
 import { isReservedName, isWindowsReservedName } from '../../config/reserved-names';
 import { isUnifiedMode } from '../../config/unified-config-loader';
-import { deleteConfigForPort } from '../config-generator';
+import { deleteConfigForPort } from '../config/config-generator';
 import { hasActiveSessions, deleteSessionLockForPort } from '../session-tracker';
 import { warn } from '../../utils/ui';
 import { getCcsDir } from '../../utils/config-manager';
-import { validateCompositeTiers } from '../composite-validator';
+import { validateCompositeTiers } from '../config/composite-validator';
 import {
   canonicalizeModelIdForProvider,
   getDeniedModelIdReasonForProvider,
-} from '../model-id-normalizer';
+} from '../ai-providers/model-id-normalizer';
 import {
   createSettingsFile,
   createSettingsFileUnified,

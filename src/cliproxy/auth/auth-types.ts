@@ -5,7 +5,7 @@
  */
 
 import { CLIProxyProvider } from '../types';
-import type { AccountInfo } from '../account-manager';
+import type { AccountInfo } from '../accounts/account-manager';
 import {
   buildProviderMap,
   CLIPROXY_PROVIDER_IDS,

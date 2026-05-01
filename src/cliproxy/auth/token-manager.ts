@@ -10,8 +10,8 @@ import * as path from 'path';
 import { createHash } from 'crypto';
 import { CLIProxyProvider } from '../types';
 import { CLIPROXY_PROFILES } from '../../auth/profile-detector';
-import { getProviderAuthDir } from '../config-generator';
-import { getProviderAccounts, getDefaultAccount } from '../account-manager';
+import { getProviderAuthDir } from '../config/config-generator';
+import { getProviderAccounts, getDefaultAccount } from '../accounts/account-manager';
 import { deleteTokenFile, extractAccountIdFromTokenFile } from '../accounts/token-file-ops';
 import { buildEmailBackedAccountId } from '../accounts/email-account-identity';
 import { getTokenRefreshOwnership } from '../provider-capabilities';
@@ -367,8 +367,8 @@ export function registerAccountFromToken(
   nickname?: string,
   verbose = false,
   expectedAccountId?: string
-): import('../account-manager').AccountInfo | null {
-  const { registerAccount } = require('../account-manager');
+): import('../accounts/account-manager').AccountInfo | null {
+  const { registerAccount } = require('../accounts/account-manager');
   let selectedCandidate: Omit<TokenCandidate, 'mtimeMs'> | null = null;
   try {
     const candidates = listTokenCandidates(provider, tokenDir);
@@ -438,7 +438,7 @@ export function registerAccountFromToken(
  */
 function uploadTokenToRemoteAsync(tokenPath: string, verbose: boolean): void {
   // Dynamic import to avoid circular dependencies
-  import('../remote-token-uploader')
+  import('../management/remote-token-uploader')
     .then(({ uploadTokenToRemote, isRemoteUploadEnabled }) => {
       if (isRemoteUploadEnabled()) {
         // uploadTokenToRemote handles its own success/failure logging

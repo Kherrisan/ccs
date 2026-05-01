@@ -23,7 +23,7 @@ import {
   resetAuthToDefaults,
   getAuthSummary,
 } from '../cliproxy';
-import { regenerateConfig } from '../cliproxy/config-generator';
+import { regenerateConfig } from '../cliproxy/config/config-generator';
 
 /**
  * Display current auth status

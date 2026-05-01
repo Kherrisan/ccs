@@ -12,8 +12,9 @@
 
 import * as fs from 'fs';
 import { fail, info, warn, color, ok } from '../../utils/ui';
+import { createLogger } from '../../services/logging';
 import { ensureCLIProxyBinary } from '../binary-manager';
-import { generateConfig } from '../config-generator';
+import { generateConfig } from '../config/config-generator';
 import { CLIProxyProvider } from '../types';
 import {
   AccountInfo,
@@ -24,7 +25,7 @@ import {
   findAccountNameMatch,
   PROVIDERS_WITHOUT_EMAIL,
   validateNickname,
-} from '../account-manager';
+} from '../accounts/account-manager';
 import {
   enhancedPreflightOAuthCheck,
   OAUTH_CALLBACK_PORTS as OAUTH_PORTS,
@@ -62,14 +63,14 @@ import {
   buildProxyUrl,
   buildManagementHeaders,
   type ProxyTarget,
-} from '../proxy-target-resolver';
+} from '../proxy/proxy-target-resolver';
 import {
   checkNewAccountConflict,
   warnNewAccountConflict,
   warnOAuthBanRisk,
   warnPossible403Ban,
-} from '../account-safety';
-import { ensureCliAntigravityResponsibility } from '../antigravity-responsibility';
+} from '../accounts/account-safety';
+import { ensureCliAntigravityResponsibility } from '../auth/antigravity-responsibility';
 import { InteractivePrompt } from '../../utils/prompt';
 
 interface PasteCallbackStartData {
@@ -81,6 +82,8 @@ interface PasteCallbackStartData {
 
 const PASTE_CALLBACK_AUTH_URL_POLL_INTERVAL_MS = 3000;
 const POLLED_AUTH_LOCAL_TOKEN_GRACE_MS = 15 * 1000;
+
+const logger = createLogger('cliproxy:auth:oauth');
 
 export async function requestPasteCallbackStart(
   provider: CLIProxyProvider,
@@ -800,6 +803,12 @@ export async function triggerOAuth(
 ): Promise<AccountInfo | null> {
   const oauthConfig = getOAuthConfig(provider);
   warnOAuthBanRisk(provider);
+  const oauthStartedAt = Date.now();
+  logger.stage('auth', 'cliproxy.oauth.start', 'Triggering OAuth flow', {
+    provider,
+    add: options.add === true,
+    fromUI: options.fromUI === true,
+  });
   const { verbose = false, add = false, fromUI = false, noIncognito = true } = options;
   const acceptAgyRisk = options.acceptAgyRisk === true;
   const { nickname } = options;
@@ -1055,6 +1064,24 @@ export async function triggerOAuth(
     }
   }
 
+  if (account) {
+    logger.stage(
+      'auth',
+      'cliproxy.oauth.success',
+      'OAuth flow completed successfully',
+      { provider, accountId: account.id },
+      { latencyMs: Date.now() - oauthStartedAt }
+    );
+  } else {
+    logger.stage(
+      'cleanup',
+      'cliproxy.oauth.failed',
+      'OAuth flow failed or was cancelled',
+      { provider },
+      { level: 'warn', latencyMs: Date.now() - oauthStartedAt }
+    );
+  }
+
   return account;
 }
 
@@ -1067,6 +1094,9 @@ export async function ensureAuth(
   options: { verbose?: boolean; headless?: boolean; account?: string } = {}
 ): Promise<boolean> {
   if (isAuthenticated(provider)) {
+    logger.stage('auth', 'cliproxy.auth.cached', 'Provider already authenticated', {
+      provider,
+    });
     if (options.verbose) {
       console.error(`[auth] ${provider} already authenticated`);
     }
@@ -1076,6 +1106,10 @@ export async function ensureAuth(
     }
     return true;
   }
+
+  logger.stage('auth', 'cliproxy.auth.required', 'Provider needs authentication', {
+    provider,
+  });
 
   const oauthConfig = getOAuthConfig(provider);
   console.log(info(`${oauthConfig.displayName} authentication required`));

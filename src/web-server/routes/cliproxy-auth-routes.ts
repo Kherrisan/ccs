@@ -4,16 +4,16 @@ import {
   getOAuthConfig,
   initializeAccounts,
   triggerOAuth,
-} from '../../cliproxy/auth-handler';
+} from '../../cliproxy/auth/auth-handler';
 import {
   submitProjectSelection,
   getPendingSelection,
-} from '../../cliproxy/project-selection-handler';
+} from '../../cliproxy/auth/project-selection-handler';
 import {
   cancelAllSessionsForProvider,
   hasActiveSession,
-} from '../../cliproxy/auth-session-manager';
-import { fetchCliproxyStats } from '../../cliproxy/stats-fetcher';
+} from '../../cliproxy/auth/auth-session-manager';
+import { fetchCliproxyStats } from '../../cliproxy/services/stats-fetcher';
 import {
   getAllAccountsSummary,
   getProviderAccounts,
@@ -25,15 +25,15 @@ import {
   hasAccountNameConflict,
   PROVIDERS_WITHOUT_EMAIL,
   validateNickname,
-} from '../../cliproxy/account-manager';
+} from '../../cliproxy/accounts/account-manager';
 import {
   getProxyTarget,
   buildProxyUrl,
   buildManagementHeaders,
-} from '../../cliproxy/proxy-target-resolver';
-import { fetchRemoteAuthStatus } from '../../cliproxy/remote-auth-fetcher';
-import { ensureManagedModelPrefixes } from '../../cliproxy/managed-model-prefixes';
-import { invalidateQuotaCache } from '../../cliproxy/quota-response-cache';
+} from '../../cliproxy/proxy/proxy-target-resolver';
+import { fetchRemoteAuthStatus } from '../../cliproxy/services/remote-auth-fetcher';
+import { ensureManagedModelPrefixes } from '../../cliproxy/ai-providers/managed-model-prefixes';
+import { invalidateQuotaCache } from '../../cliproxy/quota/quota-response-cache';
 import { loadOrCreateUnifiedConfig } from '../../config/unified-config-loader';
 import { tryKiroImport } from '../../cliproxy/auth/kiro-import';
 import {
@@ -62,7 +62,7 @@ import { CLIPROXY_PROFILES } from '../../auth/profile-detector';
 import {
   validateAntigravityRiskAcknowledgement,
   isAntigravityResponsibilityBypassEnabled,
-} from '../../cliproxy/antigravity-responsibility';
+} from '../../cliproxy/auth/antigravity-responsibility';
 import { createRouteErrorHelpers } from './route-helpers';
 import { requireLocalAccessWhenAuthDisabled } from '../middleware/auth-middleware';
 

@@ -10,8 +10,8 @@ import { createFileWatcher, FileChangeEvent } from './file-watcher';
 import {
   projectSelectionEvents,
   type ProjectSelectionPrompt,
-} from '../cliproxy/project-selection-handler';
-import { deviceCodeEvents, type DeviceCodePrompt } from '../cliproxy/device-code-handler';
+} from '../cliproxy/auth/project-selection-handler';
+import { deviceCodeEvents, type DeviceCodePrompt } from '../cliproxy/auth/device-code-handler';
 import { createLogger } from '../services/logging';
 
 const logger = createLogger('web-server:websocket');

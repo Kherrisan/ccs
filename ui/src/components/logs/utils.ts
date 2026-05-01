@@ -1,4 +1,4 @@
-import type { LogsLevel } from '@/lib/api-client';
+import type { LogsEntry, LogsLevel } from '@/lib/api-client';
 // NOTE: This module contains utility functions that are not directly i18n-aware.
 // String literals here ("No activity yet", "Error", etc.) are used as fallbacks
 // and defaults in non-component contexts. Components consuming these values
@@ -79,4 +79,38 @@ export function getLevelLabel(level: LogsLevel) {
     case 'debug':
       return 'Debug';
   }
+}
+
+// Field accessors shared by list row + detail panel.
+// Without these, list and detail diverged — list fell back to source/sourceLabel
+// while detail showed `—` for the same entry. Single source of truth.
+
+export function getDisplayModule(entry: LogsEntry, sourceLabel?: string): string {
+  return entry.module ?? sourceLabel ?? entry.source ?? '—';
+}
+
+export function getDisplayStage(entry: LogsEntry): string {
+  return entry.stage ?? '—';
+}
+
+export function getDisplayRequestId(entry: LogsEntry, options: { short?: boolean } = {}): string {
+  if (!entry.requestId) return '—';
+  return options.short ? entry.requestId.slice(-8) : entry.requestId;
+}
+
+export function getDisplayLatency(entry: LogsEntry): string {
+  if (entry.latencyMs === undefined || entry.latencyMs === null) return '—';
+  return `${entry.latencyMs}ms`;
+}
+
+/**
+ * Default filter pattern: dashboard self-polling sources start with `web-server:`.
+ * UI applies as a default exclusion to keep the logs view focused on signal,
+ * not the dashboard observing itself.
+ */
+export const DASHBOARD_INTERNALS_PATTERN = /^web-server:/i;
+
+export function isDashboardInternal(entry: LogsEntry): boolean {
+  if (!entry.source) return false;
+  return DASHBOARD_INTERNALS_PATTERN.test(entry.source);
 }

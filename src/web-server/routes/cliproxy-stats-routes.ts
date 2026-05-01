@@ -15,27 +15,27 @@ import {
   isCliproxyRunning,
   fetchCliproxyErrorLogs,
   fetchCliproxyErrorLogContent,
-} from '../../cliproxy/stats-fetcher';
-import { fetchAccountQuota } from '../../cliproxy/quota-fetcher';
-import { fetchCodexQuota } from '../../cliproxy/quota-fetcher-codex';
-import { fetchClaudeQuota } from '../../cliproxy/quota-fetcher-claude';
-import { fetchGeminiCliQuota } from '../../cliproxy/quota-fetcher-gemini-cli';
-import { fetchGhcpQuota } from '../../cliproxy/quota-fetcher-ghcp';
-import { getCachedQuota, setCachedQuota } from '../../cliproxy/quota-response-cache';
+} from '../../cliproxy/services/stats-fetcher';
+import { fetchAccountQuota } from '../../cliproxy/quota/quota-fetcher';
+import { fetchCodexQuota } from '../../cliproxy/quota/quota-fetcher-codex';
+import { fetchClaudeQuota } from '../../cliproxy/quota/quota-fetcher-claude';
+import { fetchGeminiCliQuota } from '../../cliproxy/quota/quota-fetcher-gemini-cli';
+import { fetchGhcpQuota } from '../../cliproxy/quota/quota-fetcher-ghcp';
+import { getCachedQuota, setCachedQuota } from '../../cliproxy/quota/quota-response-cache';
 import type {
   CodexQuotaResult,
   ClaudeQuotaResult,
   GeminiCliQuotaResult,
   GhcpQuotaResult,
-} from '../../cliproxy/quota-types';
-import type { QuotaResult } from '../../cliproxy/quota-fetcher';
+} from '../../cliproxy/quota/quota-types';
+import type { QuotaResult } from '../../cliproxy/quota/quota-fetcher';
 import type { CLIProxyProvider } from '../../cliproxy/types';
 import { CLIPROXY_PROFILES } from '../../auth/profile-detector';
 import {
   getCliproxyWritablePath,
   getCliproxyConfigPath,
   getAuthDir,
-} from '../../cliproxy/config-generator';
+} from '../../cliproxy/config/config-generator';
 import { getProxyStatus as getProxyProcessStatus, stopProxy } from '../../cliproxy/session-tracker';
 import { ensureCliproxyService } from '../../cliproxy/service-manager';
 import {
@@ -51,13 +51,13 @@ import {
 import {
   CLIPROXY_MAX_STABLE_VERSION,
   CLIPROXY_FAULTY_RANGE,
-} from '../../cliproxy/platform-detector';
+} from '../../cliproxy/binary/platform-detector';
 import { CLIPROXY_DEFAULT_PORT } from '../../cliproxy/config/port-manager';
 import {
   MODEL_ENV_VAR_KEYS,
   canonicalizeModelIdForProvider,
   getDeniedModelIdReasonForProvider,
-} from '../../cliproxy/model-id-normalizer';
+} from '../../cliproxy/ai-providers/model-id-normalizer';
 import { installDashboardCliproxyVersion } from '../services/cliproxy-dashboard-install-service';
 import { requireLocalAccessWhenAuthDisabled } from '../middleware/auth-middleware';
 

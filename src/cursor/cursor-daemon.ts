@@ -12,7 +12,10 @@ import * as http from 'http';
 import type { CursorDaemonConfig, CursorDaemonStatus } from './types';
 import { getPidFromFile, writePidToFile, removePidFile } from './cursor-daemon-pid';
 import { verifyDaemonOwnership } from './daemon-process-ownership';
+import { createLogger } from '../services/logging';
 export { getPidFromFile, writePidToFile, removePidFile } from './cursor-daemon-pid';
+
+const logger = createLogger('cursor:daemon');
 
 /**
  * Resolve daemon entrypoint candidates for current runtime.
@@ -125,6 +128,10 @@ export async function startDaemon(
 ): Promise<{ success: boolean; pid?: number; error?: string }> {
   // Check if already running
   if (await isDaemonRunning(config.port)) {
+    logger.stage('dispatch', 'cursor.daemon.already_running', 'Cursor daemon already running', {
+      provider: 'cursor',
+      port: config.port,
+    });
     return { success: true, pid: getPidFromFile() ?? undefined };
   }
 
@@ -141,6 +148,13 @@ export async function startDaemon(
     };
   }
 
+  const startedAt = Date.now();
+  logger.stage('dispatch', 'cursor.daemon.spawn', 'Spawning Cursor daemon', {
+    provider: 'cursor',
+    port: config.port,
+    ghostMode: config.ghost_mode !== false,
+  });
+
   return new Promise((resolve) => {
     let proc: ChildProcess;
     let resolved = false;
@@ -149,7 +163,30 @@ export async function startDaemon(
       if (resolved) return;
       resolved = true;
       if (checkTimeout) clearTimeout(checkTimeout);
-      if (!result.success) removePidFile();
+      if (!result.success) {
+        removePidFile();
+        logger.stage(
+          'cleanup',
+          'cursor.daemon.start_failed',
+          'Cursor daemon failed to start',
+          { provider: 'cursor', port: config.port },
+          {
+            level: 'error',
+            latencyMs: Date.now() - startedAt,
+            error: result.error
+              ? { name: 'CursorDaemonStartError', message: result.error }
+              : undefined,
+          }
+        );
+      } else {
+        logger.stage(
+          'upstream',
+          'cursor.daemon.ready',
+          'Cursor daemon is ready',
+          { provider: 'cursor', port: config.port, pid: result.pid },
+          { latencyMs: Date.now() - startedAt }
+        );
+      }
       resolve(result);
     };
 
@@ -270,6 +307,10 @@ export async function stopDaemon(): Promise<{ success: boolean; error?: string }
     }
 
     // Send SIGTERM to the process
+    logger.stage('cleanup', 'cursor.daemon.stop', 'Sending SIGTERM to Cursor daemon', {
+      provider: 'cursor',
+      pid,
+    });
     process.kill(pid, 'SIGTERM');
 
     // Wait for process to exit (up to 5 seconds)

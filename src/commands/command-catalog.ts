@@ -211,6 +211,10 @@ export const BUILTIN_PROVIDER_SHORTCUTS: readonly ShortcutEntry[] = CLIPROXY_PRO
 
 export const ROOT_PROFILE_EXAMPLES: readonly ShortcutEntry[] = [
   { name: 'ccs auth create work', summary: 'Create a concurrent Claude account profile' },
+  {
+    name: 'ccs --effort high "debug this"',
+    summary: 'Use a native Claude effort override for one session',
+  },
   { name: 'ccs api create --preset glm', summary: 'Create a GLM-backed API profile' },
   {
     name: 'ccs api create --preset anthropic --1m',

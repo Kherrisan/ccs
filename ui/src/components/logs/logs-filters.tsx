@@ -1,26 +1,28 @@
-import { Search, RefreshCw, Filter, Shield, Zap } from 'lucide-react';
+import { useState } from 'react';
+import { ChevronDown, Search, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import type { LogsSource } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
-import type { LogsLevelFilter, LogsSourceFilter } from '@/hooks/use-logs';
-import { getLogLevelOptions } from '@/hooks/use-logs';
-import { useTranslation } from 'react-i18next';
+import {
+  getLogLevelOptions,
+  getLogsTimeWindowOptions,
+  type LogsLevelFilter,
+  type LogsSourceFilter,
+  type LogsTimeWindow,
+} from '@/hooks/use-logs';
+import { FOCUS_RING } from './tokens';
 
-export function LogsFilters({
-  sources,
-  selectedSource,
-  onSourceChange,
-  selectedLevel,
-  onLevelChange,
-  search,
-  onSearchChange,
-  limit,
-  onLimitChange,
-  onRefresh,
-  isRefreshing,
-}: {
+export interface LogsFiltersProps {
   sources: LogsSource[];
   selectedSource: LogsSourceFilter;
   onSourceChange: (value: LogsSourceFilter) => void;
@@ -32,169 +34,355 @@ export function LogsFilters({
   onLimitChange: (value: number) => void;
   onRefresh: () => void;
   isRefreshing: boolean;
-}) {
-  const { t } = useTranslation();
+
+  /** Phase-04 advanced filters (optional for back-compat). */
+  moduleFilter?: string;
+  onModuleChange?: (v: string) => void;
+  stageFilter?: string;
+  onStageChange?: (v: string) => void;
+  requestIdFilter?: string;
+  onRequestIdChange?: (v: string) => void;
+  timeWindow?: LogsTimeWindow;
+  onTimeWindowChange?: (v: LogsTimeWindow) => void;
+  /** When true, hides entries from `web-server:*` sources. Default ON. */
+  hideDashboardInternals?: boolean;
+  onHideDashboardInternalsChange?: (next: boolean) => void;
+  onClearAll?: () => void;
+}
+
+interface ChipProps {
+  label: string;
+  onRemove: () => void;
+}
+
+function Chip({ label, onRemove }: ChipProps) {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/40 px-2 py-0.5 text-[11px] text-foreground/80">
+      {label}
+      <button
+        type="button"
+        onClick={onRemove}
+        aria-label={`Remove ${label}`}
+        className={cn('rounded-full p-0.5 hover:bg-muted', FOCUS_RING)}
+      >
+        <X className="h-3 w-3" aria-hidden="true" />
+      </button>
+    </span>
+  );
+}
+
+export function LogsFilters({
+  sources,
+  selectedSource,
+  onSourceChange,
+  selectedLevel,
+  onLevelChange,
+  search,
+  onSearchChange,
+  limit,
+  onLimitChange,
+  onRefresh: _onRefresh,
+  isRefreshing: _isRefreshing,
+  moduleFilter = '',
+  onModuleChange,
+  stageFilter = '',
+  onStageChange,
+  requestIdFilter = '',
+  onRequestIdChange,
+  timeWindow = 'all',
+  onTimeWindowChange,
+  hideDashboardInternals = true,
+  onHideDashboardInternalsChange,
+  onClearAll,
+}: LogsFiltersProps) {
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const levels = getLogLevelOptions();
   const limits = [50, 100, 150, 250];
+  const timeWindows = getLogsTimeWindowOptions();
+
+  const activeChips: Array<{ key: string; label: string; clear: () => void }> = [];
+  if (selectedLevel !== 'all') {
+    activeChips.push({
+      key: 'level',
+      label: `level: ${selectedLevel}`,
+      clear: () => onLevelChange('all'),
+    });
+  }
+  if (selectedSource !== 'all') {
+    const label = sources.find((s) => s.source === selectedSource)?.label ?? selectedSource;
+    activeChips.push({
+      key: 'source',
+      label: `source: ${label}`,
+      clear: () => onSourceChange('all'),
+    });
+  }
+  if (search.trim()) {
+    activeChips.push({
+      key: 'search',
+      label: `search: ${search}`,
+      clear: () => onSearchChange(''),
+    });
+  }
+  if (moduleFilter) {
+    activeChips.push({
+      key: 'module',
+      label: `module: ${moduleFilter}`,
+      clear: () => onModuleChange?.(''),
+    });
+  }
+  if (stageFilter) {
+    activeChips.push({
+      key: 'stage',
+      label: `stage: ${stageFilter}`,
+      clear: () => onStageChange?.(''),
+    });
+  }
+  if (requestIdFilter) {
+    activeChips.push({
+      key: 'requestId',
+      label: `requestId: ${requestIdFilter}`,
+      clear: () => onRequestIdChange?.(''),
+    });
+  }
+  if (timeWindow !== 'all') {
+    activeChips.push({
+      key: 'timeWindow',
+      label: `time: ${timeWindow}`,
+      clear: () => onTimeWindowChange?.('all'),
+    });
+  }
 
   return (
-    <div className="flex flex-col gap-6 animate-in fade-in slide-in-from-left-2 duration-700">
-      <div className="space-y-3">
-        <div className="flex items-center justify-between px-1">
-          <div className="flex items-center gap-2">
-            <div className="h-1.5 w-1.5 rounded-full bg-primary shadow-[0_0_8px_rgba(var(--primary),0.5)]" />
-            <Label
-              htmlFor="logs-search"
-              className="text-[11px] font-semibold uppercase tracking-[0.14em] text-foreground/80"
-            >
-              Payload Search
-            </Label>
-          </div>
-          <Zap className="h-3 w-3 text-primary/20" />
-        </div>
-        <div className="group relative">
-          <div className="pointer-events-none absolute inset-y-0 left-3.5 flex items-center transition-all group-focus-within:translate-x-1">
-            <Search className="h-3.5 w-3.5 text-foreground/20 group-focus-within:text-primary transition-colors" />
-          </div>
+    <div className="flex flex-col gap-4">
+      {/* Primary row */}
+      <div className="space-y-2">
+        <Label
+          htmlFor="logs-search"
+          className="text-[11px] uppercase tracking-wide text-muted-foreground"
+        >
+          Search
+        </Label>
+        <div className="relative">
+          <Search
+            className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
+            aria-hidden="true"
+          />
           <Input
             id="logs-search"
-            aria-label="Search"
             value={search}
-            onChange={(event) => onSearchChange(event.target.value)}
-            placeholder="Scan for patterns..."
-            className="h-11 rounded-xl border-2 border-border/40 bg-background/50 pl-10 text-[13px] font-medium text-foreground placeholder:text-foreground/35 focus-visible:border-primary/40 focus-visible:ring-0 transition-all shadow-inner"
+            onChange={(e) => onSearchChange(e.target.value)}
+            placeholder="Search message, event, module"
+            className="h-9 pl-8"
           />
         </div>
       </div>
 
-      <div className="space-y-4">
-        <div className="flex items-center gap-2 px-1">
-          <Filter className="h-3 w-3 text-primary/40" />
-          <Label className="text-[11px] font-semibold uppercase tracking-[0.14em] text-foreground/80">
-            Source Matrix
-          </Label>
-        </div>
-        <div className="flex flex-col gap-1" aria-label="Source filter">
-          <button
-            type="button"
-            onClick={() => onSourceChange('all')}
-            className={cn(
-              'group relative flex items-center justify-between rounded-lg border px-3 py-2 transition-all active:scale-[0.98]',
-              selectedSource === 'all'
-                ? 'border-primary/50 bg-primary/10 text-primary shadow-[0_0_15px_rgba(var(--primary),0.1)]'
-                : 'border-border/40 bg-muted/20 text-foreground/40 hover:border-border hover:bg-muted/40 hover:text-foreground/80'
-            )}
+      <div className="grid grid-cols-2 gap-2">
+        <div className="space-y-2">
+          <Label
+            htmlFor="logs-level"
+            className="text-[11px] uppercase tracking-wide text-muted-foreground"
           >
-            <span className="text-[11px] font-semibold uppercase tracking-[0.12em]">
-              Global Stream
-            </span>
-            {selectedSource === 'all' && (
-              <div className="h-1.5 w-1.5 rounded-full bg-primary shadow-[0_0_8px_rgba(var(--primary),0.8)]" />
-            )}
-          </button>
-
-          <div className="grid grid-cols-2 gap-1 mt-1">
-            {sources.map((source) => (
-              <button
-                key={source.source}
-                type="button"
-                onClick={() => onSourceChange(source.source)}
-                className={cn(
-                  'rounded-lg border px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-[0.1em] transition-all active:scale-[0.97]',
-                  selectedSource === source.source
-                    ? 'border-primary/50 bg-primary/10 text-primary shadow-sm'
-                    : 'border-border/40 bg-muted/20 text-foreground/40 hover:border-border hover:bg-muted/40 hover:text-foreground/80'
-                )}
-              >
-                {source.label}
-              </button>
-            ))}
-          </div>
+            Level
+          </Label>
+          <Select value={selectedLevel} onValueChange={(v) => onLevelChange(v as LogsLevelFilter)}>
+            <SelectTrigger id="logs-level" className="h-9">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {levels.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>
+                  {opt.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-2">
+          <Label
+            htmlFor="logs-source"
+            className="text-[11px] uppercase tracking-wide text-muted-foreground"
+          >
+            Source
+          </Label>
+          <Select
+            value={selectedSource}
+            onValueChange={(v) => onSourceChange(v as LogsSourceFilter)}
+          >
+            <SelectTrigger id="logs-source" className="h-9">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All sources</SelectItem>
+              {sources.map((s) => (
+                <SelectItem key={s.source} value={s.source}>
+                  {s.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
-      {/* Threshold Control */}
-      <div className="space-y-4">
-        <div className="flex items-center gap-2 px-1">
-          <Shield className="h-3 w-3 text-primary/40" />
-          <Label className="text-[11px] font-semibold uppercase tracking-[0.14em] text-foreground/80">
-            Sensitivity
-          </Label>
-        </div>
-        <div className="grid grid-cols-2 gap-1.5" aria-label="Level filter">
-          {levels.map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              onClick={() => onLevelChange(option.value)}
-              className={cn(
-                'flex flex-col items-center gap-1 rounded-lg border px-2 py-2 text-[10px] font-semibold uppercase tracking-[0.1em] transition-all active:scale-[0.97]',
-                selectedLevel === option.value
-                  ? 'border-primary/50 bg-primary/10 text-primary shadow-[0_0_15px_rgba(var(--primary),0.1)]'
-                  : 'border-border/40 bg-muted/20 text-foreground/40 hover:border-border hover:bg-muted/40 hover:text-foreground/80'
-              )}
-            >
-              <span>{option.label}</span>
-              <div
-                className={cn(
-                  'h-0.5 w-4 rounded-full transition-colors',
-                  selectedLevel === option.value ? 'bg-primary' : 'bg-foreground/10'
-                )}
+      {/* Advanced */}
+      <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
+        <CollapsibleTrigger asChild>
+          <Button
+            variant="ghost"
+            size="sm"
+            className={cn('h-7 w-full justify-between px-2 text-xs font-medium', FOCUS_RING)}
+            aria-expanded={advancedOpen}
+          >
+            Advanced filters
+            <ChevronDown
+              className={cn('h-3.5 w-3.5 transition-transform', advancedOpen && 'rotate-180')}
+              aria-hidden="true"
+            />
+          </Button>
+        </CollapsibleTrigger>
+        <CollapsibleContent className="mt-2 space-y-2">
+          {onModuleChange ? (
+            <div className="space-y-1">
+              <Label
+                htmlFor="logs-module"
+                className="text-[11px] uppercase tracking-wide text-muted-foreground"
+              >
+                Module
+              </Label>
+              <Input
+                id="logs-module"
+                value={moduleFilter}
+                onChange={(e) => onModuleChange(e.target.value)}
+                placeholder="e.g. cliproxy.router"
+                className="h-9"
               />
-            </button>
+            </div>
+          ) : null}
+          {onStageChange ? (
+            <div className="space-y-1">
+              <Label
+                htmlFor="logs-stage"
+                className="text-[11px] uppercase tracking-wide text-muted-foreground"
+              >
+                Stage
+              </Label>
+              <Input
+                id="logs-stage"
+                value={stageFilter}
+                onChange={(e) => onStageChange(e.target.value)}
+                placeholder="e.g. handler"
+                className="h-9"
+              />
+            </div>
+          ) : null}
+          {onRequestIdChange ? (
+            <div className="space-y-1">
+              <Label
+                htmlFor="logs-request-id"
+                className="text-[11px] uppercase tracking-wide text-muted-foreground"
+              >
+                Request ID
+              </Label>
+              <Input
+                id="logs-request-id"
+                value={requestIdFilter}
+                onChange={(e) => onRequestIdChange(e.target.value)}
+                placeholder="req_…"
+                className="h-9 font-mono"
+              />
+            </div>
+          ) : null}
+          {onTimeWindowChange ? (
+            <div className="space-y-1">
+              <Label
+                htmlFor="logs-time-window"
+                className="text-[11px] uppercase tracking-wide text-muted-foreground"
+              >
+                Time window
+              </Label>
+              <Select
+                value={timeWindow}
+                onValueChange={(v) => onTimeWindowChange(v as LogsTimeWindow)}
+              >
+                <SelectTrigger id="logs-time-window" className="h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {timeWindows.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          ) : null}
+          {onHideDashboardInternalsChange ? (
+            <div className="flex items-start justify-between gap-3 rounded border border-border/60 bg-muted/20 p-2">
+              <div className="space-y-0.5">
+                <Label
+                  htmlFor="logs-hide-internals"
+                  className="block text-[12px] font-medium text-foreground"
+                >
+                  Hide dashboard internals
+                </Label>
+                <p className="text-[11px] text-muted-foreground">
+                  Suppress <code className="rounded bg-background px-1">web-server:*</code>{' '}
+                  self-polling.
+                </p>
+              </div>
+              <input
+                id="logs-hide-internals"
+                type="checkbox"
+                role="switch"
+                checked={hideDashboardInternals}
+                onChange={(e) => onHideDashboardInternalsChange(e.target.checked)}
+                className={cn('mt-0.5 h-4 w-4 cursor-pointer accent-foreground', FOCUS_RING)}
+                aria-label="Hide dashboard internals"
+              />
+            </div>
+          ) : null}
+        </CollapsibleContent>
+      </Collapsible>
+
+      <div className="space-y-2">
+        <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">
+          Visible entries
+        </Label>
+        <div className="grid grid-cols-4 gap-1">
+          {limits.map((option) => (
+            <Button
+              key={option}
+              type="button"
+              variant={limit === option ? 'default' : 'outline'}
+              size="sm"
+              className="h-8 text-xs"
+              onClick={() => onLimitChange(option)}
+            >
+              {option}
+            </Button>
           ))}
         </div>
       </div>
 
-      {/* Operational Deck */}
-      <div className="mt-4 rounded-2xl border-2 border-border bg-card/40 p-1.5 shadow-xl shadow-black/5">
-        <div className="rounded-[calc(1rem-2px)] border border-dashed border-border bg-background/60 p-4 space-y-5">
-          <div className="flex items-center justify-between">
-            <div className="space-y-0.5">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-primary">
-                Operational Window
-              </p>
-              <p className="text-[11px] font-medium uppercase tracking-[0.1em] text-foreground/45">
-                Tail Capacity
-              </p>
-            </div>
-            <div className="h-8 w-8 rounded-lg bg-primary/5 border border-primary/10 flex items-center justify-center">
-              <Zap className="h-4 w-4 text-primary/40" />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-4 gap-1.5" aria-label="Visible entries">
-            {limits.map((option) => (
-              <button
-                key={option}
-                type="button"
-                onClick={() => onLimitChange(option)}
-                className={cn(
-                  'rounded-md border py-1.5 text-[11px] font-semibold tabular-nums transition-all active:scale-[0.95]',
-                  limit === option
-                    ? 'border-foreground bg-foreground text-background'
-                    : 'border-border/60 bg-muted/40 text-foreground/40 hover:bg-muted hover:text-foreground'
-                )}
-              >
-                {option}
-              </button>
-            ))}
-          </div>
-
-          <Button
-            variant="ghost"
-            size="sm"
-            className="group relative h-10 w-full overflow-hidden rounded-xl border-none bg-primary text-[11px] font-semibold uppercase tracking-[0.14em] text-primary-foreground transition-all hover:scale-[1.02] hover:shadow-lg hover:shadow-primary/20 active:scale-[0.98]"
-            onClick={onRefresh}
-          >
-            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
-            <div className="flex items-center gap-2">
-              <RefreshCw className={cn('h-3.5 w-3.5', isRefreshing && 'animate-spin')} />
-              <span>{t('logsConfig.refreshEntries')}</span>
-            </div>
-          </Button>
+      {activeChips.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-1.5 border-t border-border pt-3">
+          <span className="text-[11px] uppercase tracking-wide text-muted-foreground">Active:</span>
+          {activeChips.map((c) => (
+            <Chip key={c.key} label={c.label} onRemove={c.clear} />
+          ))}
+          {onClearAll ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onClearAll}
+              className="h-7 px-2 text-[11px] text-muted-foreground"
+            >
+              Clear all
+            </Button>
+          ) : null}
         </div>
-      </div>
+      ) : null}
     </div>
   );
 }

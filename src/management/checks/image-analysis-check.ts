@@ -13,8 +13,8 @@ import {
   repairImageAnalysisRuntimeState,
 } from '../../utils/image-analysis';
 import { ok, warn, dim } from '../../utils/ui';
-import { isCliproxyRunning } from '../../cliproxy/stats-fetcher';
-import { CLIPROXY_DEFAULT_PORT } from '../../cliproxy/config-generator';
+import { isCliproxyRunning } from '../../cliproxy/services/stats-fetcher';
+import { CLIPROXY_DEFAULT_PORT } from '../../cliproxy/config/config-generator';
 import type { HealthCheck } from './types';
 import { hasImageAnalyzerHook } from '../../utils/hooks/image-analyzer-hook-installer';
 

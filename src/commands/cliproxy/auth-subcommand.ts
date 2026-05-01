@@ -7,7 +7,7 @@
  * - Built-in profile authentication status
  */
 
-import { getAllAuthStatus, getOAuthConfig } from '../../cliproxy/auth-handler';
+import { getAllAuthStatus, getOAuthConfig } from '../../cliproxy/auth/auth-handler';
 import { listVariants } from '../../cliproxy/services';
 import { initUI, header, subheader, color, dim, ok, warn, table } from '../../utils/ui';
 

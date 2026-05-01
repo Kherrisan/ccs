@@ -233,6 +233,11 @@ export class ClaudeAdapter implements TargetAdapter {
 }
 ```
 
+Native Claude launches keep user arguments session-scoped. The launch layer validates and normalizes
+`--effort low|medium|high|xhigh|max` before spawning Claude, then passes it through without writing
+to Claude or CCS configuration. CLIProxy-backed Claude launches still treat `--effort` as the CCS
+thinking alias handled by CLIProxy.
+
 ### Credential Delivery
 
 **Method**: Environment variables
