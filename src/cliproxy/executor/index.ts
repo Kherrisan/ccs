@@ -14,29 +14,20 @@ import { spawn, ChildProcess } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { ProgressIndicator } from '../../utils/progress-indicator';
 import { ok, fail, info, warn } from '../../utils/ui';
 import { getCcsDir } from '../../utils/config-manager';
 import { escapeShellArg, getWindowsEscapedCommandShell } from '../../utils/shell-executor';
-import {
-  ensureCLIProxyBinary,
-  getConfiguredBackend,
-  getPlusBackendUnavailableMessage,
-} from '../binary-manager';
 import {
   generateConfig,
   getProviderConfig,
   ensureProviderSettings,
   getProviderSettingsPath,
   CLIPROXY_DEFAULT_PORT,
-  validatePort,
 } from '../config/config-generator';
-import { checkRemoteProxy } from '../services/remote-proxy-client';
 import { isAuthenticated } from '../auth/auth-handler';
-import { CLIProxyProvider, CLIProxyBackend, PLUS_ONLY_PROVIDERS, ExecutorConfig } from '../types';
+import { CLIProxyProvider, ExecutorConfig } from '../types';
 import { configureProviderModel, getCurrentModel } from '../config/model-config';
 import { reconcileCodexModelForActivePlan } from '../ai-providers/codex-plan-compatibility';
-import { resolveProxyConfig } from '../proxy/proxy-config-resolver';
 import {
   supportsModelConfig,
   isModelBroken,
@@ -92,12 +83,7 @@ import {
   logEnvironment,
   resolveCliproxyImageAnalysisEnv,
 } from './env-resolver';
-import {
-  isNetworkError,
-  handleNetworkError,
-  handleTokenExpiration,
-  handleQuotaCheck,
-} from './retry-handler';
+import { handleTokenExpiration, handleQuotaCheck } from './retry-handler';
 import { MANAGED_QUOTA_PROVIDERS, type ManagedQuotaProvider } from '../quota/quota-manager';
 import { checkOrJoinProxy, registerProxySession, setupCleanupHandlers } from './session-bridge';
 import {
@@ -119,6 +105,7 @@ import {
 } from './thinking-override-resolver';
 import { shouldStartHttpsTunnel } from './https-tunnel-policy';
 import { filterCcsFlags, parseExecutorFlags, validateFlagCombinations } from './arg-parser';
+import { resolveExecutorProxy } from './proxy-resolver';
 
 function resolveRuntimeQuotaMonitorProviders(
   provider: CLIProxyProvider,
@@ -197,26 +184,15 @@ export async function execClaudeWithCLIProxy(
   // Collect all providers to validate (default + composite tiers)
   const allProviders = [provider, ...compositeProviders];
 
-  const cliproxyServerConfig = unifiedConfig.cliproxy_server;
-  const { config: proxyConfig, remainingArgs: argsWithoutProxy } = resolveProxyConfig(args, {
-    remote: cliproxyServerConfig?.remote
-      ? {
-          enabled: cliproxyServerConfig.remote.enabled,
-          host: cliproxyServerConfig.remote.host,
-          port: cliproxyServerConfig.remote.port,
-          protocol: cliproxyServerConfig.remote.protocol,
-          auth_token: cliproxyServerConfig.remote.auth_token,
-          management_key: cliproxyServerConfig.remote.management_key,
-          timeout: cliproxyServerConfig.remote.timeout,
-        }
-      : undefined,
-    local: cliproxyServerConfig?.local
-      ? {
-          port: cliproxyServerConfig.local.port,
-          auto_start: cliproxyServerConfig.local.auto_start,
-        }
-      : undefined,
-  });
+  const { proxyConfig, useRemoteProxy, localBackend, binaryPath, argsWithoutProxy } =
+    await resolveExecutorProxy(args, {
+      unifiedConfig,
+      allProviders,
+      verbose,
+      cfg,
+      log,
+    });
+
   let browserLaunchOverride: BrowserLaunchOverride | undefined;
   let argsWithoutBrowserFlags = argsWithoutProxy;
   try {
@@ -245,21 +221,6 @@ export async function execClaudeWithCLIProxy(
     console.error(warn(blockedBrowserOverrideWarning));
   }
 
-  // Port resolution and validation
-  if (cfg.port && cfg.port !== CLIPROXY_DEFAULT_PORT) {
-    if (proxyConfig.port !== CLIPROXY_DEFAULT_PORT) {
-      cfg.port = proxyConfig.port;
-    }
-  } else if (proxyConfig.port !== CLIPROXY_DEFAULT_PORT) {
-    cfg.port = proxyConfig.port;
-  }
-  cfg.port = validatePort(cfg.port);
-
-  log(`Proxy mode: ${proxyConfig.mode}`);
-  if (proxyConfig.mode === 'remote') {
-    log(`Remote host: ${proxyConfig.host}:${proxyConfig.port} (${proxyConfig.protocol})`);
-  }
-
   // Setup first-class CCS WebSearch runtime
   ensureWebSearchMcpOrThrow();
   const imageAnalysisMcpReady = ensureImageAnalysisMcpOrThrow();
@@ -280,92 +241,8 @@ export async function execClaudeWithCLIProxy(
   log(`Provider: ${providerConfig.displayName}`);
   warnOAuthBanRisk(provider);
 
-  // Check remote proxy if configured
-  let useRemoteProxy = false;
-  let localBackend: CLIProxyBackend = 'original';
-  if (proxyConfig.mode === 'remote' && proxyConfig.host) {
-    const status = await checkRemoteProxy({
-      host: proxyConfig.host,
-      port: proxyConfig.port,
-      protocol: proxyConfig.protocol,
-      authToken: proxyConfig.authToken,
-      timeout: proxyConfig.timeout ?? 2000,
-      allowSelfSigned: proxyConfig.allowSelfSigned ?? false,
-    });
-
-    if (status.reachable) {
-      useRemoteProxy = true;
-      console.log(
-        ok(
-          `Connected to remote proxy at ${proxyConfig.host}:${proxyConfig.port} (${status.latencyMs}ms)`
-        )
-      );
-    } else {
-      console.error(warn(`Remote proxy unreachable: ${status.error}`));
-
-      if (proxyConfig.remoteOnly) {
-        throw new Error('Remote proxy unreachable and --remote-only specified');
-      }
-
-      if (proxyConfig.fallbackEnabled) {
-        if (proxyConfig.autoStartLocal) {
-          console.log(info('Falling back to local proxy...'));
-        } else {
-          if (process.stdin.isTTY) {
-            const readline = await import('readline');
-            const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-            const answer = await new Promise<string>((resolve) => {
-              rl.question('Start local proxy instead? [Y/n] ', resolve);
-            });
-            rl.close();
-            if (answer.toLowerCase() === 'n') {
-              throw new Error('Remote proxy unreachable and user declined fallback');
-            }
-          }
-          console.log(info('Starting local proxy...'));
-        }
-      } else {
-        throw new Error('Remote proxy unreachable and fallback disabled');
-      }
-    }
-  }
-
-  if (!useRemoteProxy) {
-    localBackend = getConfiguredBackend({ notifyOnPlus: true });
-
-    for (const p of allProviders) {
-      if (localBackend === 'original' && PLUS_ONLY_PROVIDERS.includes(p as CLIProxyProvider)) {
-        console.error('');
-        console.error(fail(getPlusBackendUnavailableMessage(p)));
-        console.error('');
-        throw new Error(`Provider ${p} requires local CLIProxy Plus backend`);
-      }
-    }
-  }
-
   // Variables for local proxy mode
-  let binaryPath: string | undefined;
   let sessionId: string | undefined;
-
-  // 1. Ensure binary exists (downloads if needed) - SKIP for remote mode
-  if (!useRemoteProxy) {
-    const spinner = new ProgressIndicator('Preparing CLIProxy');
-    spinner.start();
-
-    try {
-      binaryPath = await ensureCLIProxyBinary(verbose, { skipAutoUpdate: true });
-      spinner.succeed('CLIProxy binary ready');
-    } catch (error) {
-      spinner.fail('Failed to prepare CLIProxy');
-      const err = error as Error;
-
-      if (isNetworkError(err)) {
-        handleNetworkError(err);
-      }
-
-      throw error;
-    }
-  }
 
   // 2. Parse all CCS executor flags (extracted to arg-parser.ts)
   const parsedFlags = parseExecutorFlags(argsWithoutProxy, {
