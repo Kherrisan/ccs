@@ -28,7 +28,7 @@ import {
   ensureImageAnalysisMcpOrThrow,
   syncImageAnalysisMcpToConfigDir,
 } from '../../utils/image-analysis';
-import { loadOrCreateUnifiedConfig, getThinkingConfig } from '../../config/unified-config-loader';
+import { loadOrCreateUnifiedConfig, getThinkingConfig } from '../../config/config-loader-facade';
 import { HttpsTunnelProxy } from '../proxy/https-tunnel-proxy';
 import { resolveProfileContinuityInheritance } from '../../auth/profile-continuity-inheritance';
 

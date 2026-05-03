@@ -7,13 +7,14 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { info } from '../utils/ui';
-import { getCcsHome, getCcsDir } from '../utils/config-manager';
+import { getCcsHome } from '../utils/config-manager';
 import { createEmptyUnifiedConfig, UNIFIED_CONFIG_VERSION } from '../config/unified-config-types';
 import {
-  saveUnifiedConfig,
+  getCcsDir,
   hasUnifiedConfig,
   loadUnifiedConfig,
-} from '../config/unified-config-loader';
+  saveConfig,
+} from '../config/config-loader-facade';
 
 /**
  * Recovery Manager Class
@@ -137,7 +138,7 @@ class RecoveryManager {
     config.version = UNIFIED_CONFIG_VERSION;
 
     try {
-      saveUnifiedConfig(config);
+      saveConfig(config);
       this.recovered.push(`Created ${this.ccsDir}/config.yaml`);
       return true;
     } catch (_saveErr) {

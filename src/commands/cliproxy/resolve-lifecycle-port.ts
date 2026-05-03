@@ -1,6 +1,7 @@
 import { CLIPROXY_DEFAULT_PORT, validatePort } from '../../cliproxy/config/port-manager';
-import { loadOrCreateUnifiedConfig } from '../../config/unified-config-loader';
+
 import type { UnifiedConfig } from '../../config/unified-config-types';
+import { loadOrCreateUnifiedConfig } from '../../config/config-loader-facade';
 
 type LifecyclePortConfig = Pick<UnifiedConfig, 'cliproxy_server'>;
 

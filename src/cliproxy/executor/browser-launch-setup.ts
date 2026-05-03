@@ -20,7 +20,7 @@ import {
   resolveOptionalBrowserAttachRuntime,
   syncBrowserMcpToConfigDir,
 } from '../../utils/browser';
-import { getBrowserConfig } from '../../config/unified-config-loader';
+import { getBrowserConfig } from '../../config/config-loader-facade';
 
 export interface BrowserLaunchSetupResult {
   /** CLI override flag if --browser-launch / --no-browser-launch was passed */

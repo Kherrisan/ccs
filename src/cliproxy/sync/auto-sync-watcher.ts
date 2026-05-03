@@ -7,9 +7,9 @@
 
 import * as chokidar from 'chokidar';
 import * as path from 'path';
-import { getCcsDir } from '../../utils/config-manager';
-import { loadOrCreateUnifiedConfig } from '../../config/unified-config-loader';
+
 import { syncToLocalConfig } from './local-config-sync';
+import { getCcsDir, loadOrCreateUnifiedConfig } from '../../config/config-loader-facade';
 
 /** Debounce delay in milliseconds */
 const DEBOUNCE_MS = 3000;

@@ -6,7 +6,7 @@ import { Router, Request, Response } from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as lockfile from 'proper-lockfile';
-import { getCcsDir, loadConfigSafe, loadSettings } from '../../utils/config-manager';
+
 import { isSensitiveKey, maskSensitiveValue } from '../../utils/sensitive-keys';
 import { listVariants } from '../../cliproxy/services/variant-service';
 import {
@@ -21,11 +21,7 @@ import { regenerateConfig } from '../../cliproxy/config/config-generator';
 import { deduplicateCcsHooks } from '../../utils/websearch/hook-utils';
 import { removeCcsImageAnalyzerHooks } from '../../utils/hooks/image-analyzer-hook-utils';
 import { resolveCliproxyBridgeMetadata } from '../../api/services';
-import {
-  getImageAnalysisConfig,
-  loadOrCreateUnifiedConfig,
-  mutateUnifiedConfig,
-} from '../../config/unified-config-loader';
+
 import { requireLocalAccessWhenAuthDisabled } from '../middleware/auth-middleware';
 import type { Settings } from '../../types/config';
 import type { CLIProxyProvider } from '../../cliproxy/types';
@@ -44,6 +40,14 @@ import {
 } from '../../utils/hooks/image-analyzer-profile-hook-injector';
 import { hasImageAnalyzerHook } from '../../utils/hooks/image-analyzer-hook-installer';
 import { resolveImageAnalysisRuntimeStatus } from '../../utils/hooks';
+import {
+  getCcsDir,
+  getImageAnalysisConfig,
+  loadConfigSafe,
+  loadOrCreateUnifiedConfig,
+  loadSettings,
+  mutateConfig,
+} from '../../config/config-loader-facade';
 
 const router = Router();
 const MODEL_ENV_KEYS = [
@@ -765,7 +769,7 @@ router.put('/auth/antigravity-risk', (req: Request, res: Response): void => {
       return;
     }
 
-    const updatedConfig = mutateUnifiedConfig((config) => {
+    const updatedConfig = mutateConfig((config) => {
       config.cliproxy.safety = {
         ...(config.cliproxy.safety ?? {}),
         antigravity_ack_bypass: antigravityAckBypass,

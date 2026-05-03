@@ -1,7 +1,7 @@
 import { spawn } from 'child_process';
 
 import type { CursorConfig } from '../config/unified-config-types';
-import { getGlobalEnvConfig } from '../config/unified-config-loader';
+
 import { ensureCliproxyService } from '../cliproxy';
 import { CLIPROXY_DEFAULT_PORT } from '../cliproxy/config/port-manager';
 import { fail, info, ok } from '../utils/ui';
@@ -15,6 +15,7 @@ import { getImageAnalysisHookEnv, resolveImageAnalysisRuntimeStatus } from '../u
 import { stripClaudeCodeEnv } from '../utils/shell-executor';
 import { checkAuthStatus } from './cursor-auth';
 import { isDaemonRunning, startDaemon } from './cursor-daemon';
+import { getGlobalEnvConfig } from '../config/config-loader-facade';
 
 interface CursorImageAnalysisResolution {
   env: Record<string, string>;

@@ -6,9 +6,10 @@
 import { Router, type Request, type Response } from 'express';
 import bcrypt from 'bcrypt';
 import crypto from 'crypto';
-import { getDashboardAuthConfig } from '../../config/unified-config-loader';
+
 import type { DashboardAuthConfig } from '../../config/unified-config-types';
 import { isLoopbackRemoteAddress, loginRateLimiter } from '../middleware/auth-middleware';
+import { getDashboardAuthConfig } from '../../config/config-loader-facade';
 
 /**
  * Timing-safe string comparison to prevent timing attacks.

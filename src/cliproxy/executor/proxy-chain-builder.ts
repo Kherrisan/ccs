@@ -21,7 +21,7 @@
 
 import * as path from 'path';
 import { warn } from '../../utils/ui';
-import { getCcsDir } from '../../utils/config-manager';
+import { getCcsDir } from '../../config/config-loader-facade';
 import {
   ToolSanitizationProxy,
   type ToolSanitizationProxyConfig,

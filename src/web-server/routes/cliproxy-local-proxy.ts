@@ -10,8 +10,9 @@
 import http from 'http';
 import { Request, Response, Router } from 'express';
 import { CLIPROXY_DEFAULT_PORT, validatePort } from '../../cliproxy/config/port-manager';
-import { loadOrCreateUnifiedConfig } from '../../config/unified-config-loader';
+
 import { requireLocalAccessWhenAuthDisabled } from '../middleware/auth-middleware';
+import { loadOrCreateUnifiedConfig } from '../../config/config-loader-facade';
 
 export interface CliproxyLocalProxyDeps {
   enforceAccess?: (req: Request, res: Response) => boolean;

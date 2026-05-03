@@ -13,11 +13,12 @@ import ProfileContextSyncLock from './profile-context-sync-lock';
 import { ok, info, warn } from '../utils/ui';
 import { DEFAULT_ACCOUNT_CONTEXT_GROUP } from '../auth/account-context';
 import type { AccountContextPolicy } from '../auth/account-context';
-import { getCcsDir } from '../utils/config-manager';
+
 import {
   normalizePluginMetadataContent,
   normalizePluginMetadataValue,
 } from './plugin-path-normalizer';
+import { getCcsDir } from '../config/config-loader-facade';
 export {
   normalizePluginMetadataContent,
   normalizePluginMetadataPathString,

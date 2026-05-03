@@ -16,15 +16,17 @@ import * as readline from 'readline';
 import * as fs from 'fs';
 import * as path from 'path';
 import { initUI, header, ok, info, warn } from '../utils/ui';
+
+import { DEFAULT_CLIPROXY_SERVER_CONFIG } from '../config/unified-config-types';
+
+import { CLIPROXY_DEFAULT_PORT } from '../cliproxy/config/port-manager';
 import {
+  getCcsDir,
+  hasUnifiedConfig,
   loadOrCreateUnifiedConfig,
   loadUnifiedConfig,
-  mutateUnifiedConfig,
-  hasUnifiedConfig,
-} from '../config/unified-config-loader';
-import { DEFAULT_CLIPROXY_SERVER_CONFIG } from '../config/unified-config-types';
-import { getCcsDir } from '../utils/config-manager';
-import { CLIPROXY_DEFAULT_PORT } from '../cliproxy/config/port-manager';
+  mutateConfig,
+} from '../config/config-loader-facade';
 
 /** Custom error for user cancellation (Ctrl+C) */
 class UserCancelledError extends Error {
@@ -377,7 +379,7 @@ async function runSetupWizard(force: boolean = false): Promise<void> {
       console.log('  After creating, edit the settings file to add your API key.');
     }
 
-    mutateUnifiedConfig((currentConfig) => {
+    mutateConfig((currentConfig) => {
       currentConfig.setup_completed = true;
       currentConfig.cliproxy_server = config.cliproxy_server;
     });

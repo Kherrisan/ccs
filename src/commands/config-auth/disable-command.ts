@@ -5,8 +5,9 @@
  */
 
 import { InteractivePrompt } from '../../utils/prompt';
-import { getDashboardAuthConfig, mutateUnifiedConfig } from '../../config/unified-config-loader';
+
 import { initUI, header, ok, info, warn, dim } from '../../utils/ui';
+import { getDashboardAuthConfig, mutateConfig } from '../../config/config-loader-facade';
 
 /**
  * Handle disable command - disable auth with confirmation
@@ -53,7 +54,7 @@ export async function handleDisable(): Promise<void> {
   }
 
   // Disable auth
-  mutateUnifiedConfig((fullConfig) => {
+  mutateConfig((fullConfig) => {
     fullConfig.dashboard_auth = {
       enabled: false,
       username: fullConfig.dashboard_auth?.username ?? '',

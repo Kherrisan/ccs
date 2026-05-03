@@ -8,7 +8,7 @@
  */
 
 import { Router, Request, Response } from 'express';
-import { loadOrCreateUnifiedConfig, mutateUnifiedConfig } from '../../config/unified-config-loader';
+
 import { testConnection } from '../../cliproxy/services/remote-proxy-client';
 import { isProxyRunning } from '../../cliproxy/services/proxy-lifecycle-service';
 import { DEFAULT_BACKEND } from '../../cliproxy/binary/platform-detector';
@@ -18,6 +18,7 @@ import {
 } from '../../config/unified-config-types';
 import { CLIPROXY_PROVIDER_IDS } from '../../cliproxy/provider-capabilities';
 import { requireLocalAccessWhenAuthDisabled } from '../middleware/auth-middleware';
+import { loadOrCreateUnifiedConfig, mutateConfig } from '../../config/config-loader-facade';
 
 const router = Router();
 
@@ -54,7 +55,7 @@ router.put('/', (req: Request, res: Response) => {
     const updates = req.body as Partial<CliproxyServerConfig>;
 
     // Atomic read-modify-write — avoids race between load and save
-    const updated = mutateUnifiedConfig((config) => {
+    const updated = mutateConfig((config) => {
       config.cliproxy_server = {
         remote: {
           ...DEFAULT_CLIPROXY_SERVER_CONFIG.remote,
@@ -125,7 +126,7 @@ router.put('/backend', (req: Request, res: Response) => {
     }
 
     // Atomic write — avoids race between load and save
-    mutateUnifiedConfig((config) => {
+    mutateConfig((config) => {
       if (!config.cliproxy) {
         config.cliproxy = {
           backend,

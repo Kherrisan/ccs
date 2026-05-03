@@ -8,7 +8,7 @@
 import { Router, Request, Response } from 'express';
 import ProfileRegistry from '../../auth/profile-registry';
 import InstanceManager from '../../management/instance-manager';
-import { isUnifiedMode, loadOrCreateUnifiedConfig } from '../../config/unified-config-loader';
+
 import {
   getAllAccountsSummary,
   setDefaultAccount as setCliproxyDefault,
@@ -33,6 +33,7 @@ import {
 } from './account-route-helpers';
 import type { AccountConfig } from '../../config/unified-config-types';
 import { resolveConfiguredPlainCcsResumeLane } from '../../auth/resume-lane-diagnostics';
+import { isUnifiedMode, loadOrCreateUnifiedConfig } from '../../config/config-loader-facade';
 
 const router = Router();
 

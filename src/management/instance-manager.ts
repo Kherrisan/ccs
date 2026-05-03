@@ -12,8 +12,9 @@ import SharedManager from './shared-manager';
 import ProfileContextSyncLock from './profile-context-sync-lock';
 import { DEFAULT_ACCOUNT_CONTEXT_MODE } from '../auth/account-context';
 import type { AccountContextPolicy } from '../auth/account-context';
-import { getCcsDir, getCcsHome } from '../utils/config-manager';
+import { getCcsHome } from '../utils/config-manager';
 import { createLogger } from '../services/logging';
+import { getCcsDir } from '../config/config-loader-facade';
 
 const logger = createLogger('management:instance-manager');
 

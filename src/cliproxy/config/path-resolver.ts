@@ -4,9 +4,10 @@
  */
 
 import * as path from 'path';
-import { getCcsDir } from '../../utils/config-manager';
+
 import type { CLIProxyProvider } from '../types';
 import { CLIPROXY_DEFAULT_PORT } from './port-manager';
+import { getCcsDir } from '../../config/config-loader-facade';
 
 /**
  * Get CLIProxy base directory

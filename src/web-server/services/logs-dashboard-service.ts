@@ -1,4 +1,3 @@
-import { mutateUnifiedConfig } from '../../config/unified-config-loader';
 import {
   getResolvedLoggingConfig,
   invalidateLoggingConfigCache,
@@ -7,13 +6,14 @@ import {
 } from '../../services/logging';
 import type { LoggingConfig } from '../../config/unified-config-types';
 import type { ReadLogEntriesOptions } from '../../services/logging';
+import { mutateConfig } from '../../config/config-loader-facade';
 
 export function getDashboardLoggingConfig(): LoggingConfig {
   return getResolvedLoggingConfig();
 }
 
 export function updateDashboardLoggingConfig(updates: Partial<LoggingConfig>): LoggingConfig {
-  const updated = mutateUnifiedConfig((config) => {
+  const updated = mutateConfig((config) => {
     config.logging = {
       ...getResolvedLoggingConfig(),
       ...config.logging,

@@ -15,8 +15,8 @@ import { ui, warn, info } from '../utils/ui';
 import { type ExecutionOptions, type ExecutionResult, type StreamMessage } from './executor/types';
 import { StreamBuffer, formatToolVerbose } from './executor/stream-parser';
 import { buildExecutionResult } from './executor/result-aggregator';
-import { getCcsDir, getModelDisplayName, loadSettings } from '../utils/config-manager';
-import { getGlobalEnvConfig } from '../config/unified-config-loader';
+import { getModelDisplayName } from '../utils/config-manager';
+
 import { getProfileLookupCandidates } from '../utils/profile-compat';
 import {
   getClaudeLaunchEnvOverrides,
@@ -58,6 +58,7 @@ import {
   readWebSearchTraceRecords,
   syncWebSearchMcpToConfigDir,
 } from '../utils/websearch-manager';
+import { getCcsDir, getGlobalEnvConfig, loadSettings } from '../config/config-loader-facade';
 
 // Re-export types for consumers
 export type { ExecutionOptions, ExecutionResult, StreamMessage } from './executor/types';

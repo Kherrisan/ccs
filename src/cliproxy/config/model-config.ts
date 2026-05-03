@@ -12,8 +12,9 @@ import { getProviderCatalog, supportsModelConfig, ModelEntry } from '../model-ca
 import { getClaudeEnvVars, resolveProviderSettingsPath } from './config-generator';
 import { CLIProxyProvider } from '../types';
 import { initUI, color, bold, dim, ok, info, header } from '../../utils/ui';
-import { getCcsDir } from '../../utils/config-manager';
+
 import { normalizeModelIdForProvider } from '../ai-providers/model-id-normalizer';
+import { getCcsDir } from '../../config/config-loader-facade';
 
 function canonicalizeModelForProvider(provider: CLIProxyProvider, model: string): string {
   return normalizeModelIdForProvider(model, provider);

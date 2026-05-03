@@ -1,4 +1,3 @@
-import { loadConfigSafe, loadSettings } from '../utils/config-manager';
 import { expandPath } from '../utils/helpers';
 import type { ProxyOpenAIRequest } from './transformers/request-transformer';
 import {
@@ -6,6 +5,7 @@ import {
   type OpenAICompatProxyRoutingConfig,
 } from './routing-config';
 import { resolveOpenAICompatProfileConfig, type OpenAICompatProfileConfig } from './profile-router';
+import { loadConfigSafe, loadSettings } from '../config/config-loader-facade';
 
 export type ProxyRoutingScenario = 'default' | 'background' | 'think' | 'longContext' | 'webSearch';
 

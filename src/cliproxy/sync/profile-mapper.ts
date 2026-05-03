@@ -6,10 +6,11 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { getCcsDir } from '../../utils/config-manager';
+
 import { expandPath } from '../../utils/helpers';
 import { listApiProfiles, isApiProfileConfigured } from '../../api/services/profile-reader';
 import type { ClaudeKey } from '../management/management-api-types';
+import { getCcsDir } from '../../config/config-loader-facade';
 
 /**
  * Profile info with settings for sync.

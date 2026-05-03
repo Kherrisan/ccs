@@ -1,7 +1,7 @@
-import { loadSettings } from '../utils/config-manager';
 import { resolveOpenAICompatProfileConfig } from './profile-router';
 import { OPENAI_COMPAT_PROXY_DEFAULT_PORT } from './proxy-daemon-paths';
 import { startOpenAICompatProxyServer } from './server/proxy-server';
+import { loadSettings } from '../config/config-loader-facade';
 
 interface RuntimeOptions {
   port: number;

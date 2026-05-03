@@ -9,13 +9,14 @@
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { ok, warn, fail, info } from '../ui';
-import { getWebSearchConfig } from '../../config/unified-config-loader';
+
 import { getCcsDir } from '../config-manager';
 import { getGeminiCliStatus, isGeminiAuthenticated } from './gemini-cli';
 import { getGrokCliStatus } from './grok-cli';
 import { getOpenCodeCliStatus } from './opencode-cli';
 import { getWebSearchApiKeyStates } from './provider-secrets';
 import { normalizeSearxngBaseUrl, type WebSearchCliInfo, type WebSearchStatus } from './types';
+import { getWebSearchConfig } from '../../config/config-loader-facade';
 
 const PROVIDER_STATE_FILE = 'websearch-provider-state.json';
 
