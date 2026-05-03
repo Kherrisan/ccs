@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { CLIPROXY_DEFAULT_PORT } from '../../../src/cliproxy/config/port-manager';
-import { resolveLifecyclePort } from '../../../src/commands/cliproxy/resolve-lifecycle-port';
+import { CLIPROXY_DEFAULT_PORT, resolveLifecyclePort } from '../../../src/cliproxy/config/port-manager';
 
 describe('resolveLifecyclePort', () => {
   it('uses configured cliproxy_server.local.port', () => {
@@ -29,5 +28,13 @@ describe('resolveLifecyclePort', () => {
 
   it('falls back to default port when config file is missing', () => {
     expect(resolveLifecyclePort({})).toBe(CLIPROXY_DEFAULT_PORT);
+  });
+
+  it('falls back to default port when loading unified config throws', () => {
+    expect(
+      resolveLifecyclePort(undefined, () => {
+        throw new Error('malformed config');
+      })
+    ).toBe(CLIPROXY_DEFAULT_PORT);
   });
 });

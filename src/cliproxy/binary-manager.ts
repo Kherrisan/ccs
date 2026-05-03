@@ -8,7 +8,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { info, warn } from '../utils/ui';
-import { getBinDir, CLIPROXY_DEFAULT_PORT } from './config/config-generator';
+import { getBinDir } from './config/config-generator';
+import { resolveLifecyclePort } from './config/port-manager';
 import { BinaryInfo, BinaryManagerConfig } from './types';
 import {
   BACKEND_CONFIG,
@@ -340,8 +341,9 @@ export async function installCliproxyVersion(
   if (verbose) console.log(formatInfo('Stopping running CLIProxy before update...'));
   const result = await stopProxyFn();
   if (result.stopped) {
+    const stoppedPort = result.port ?? resolveLifecyclePort();
     // Wait for port to be fully released
-    const portFree = await waitForPortFreeFn(CLIPROXY_DEFAULT_PORT, 5000);
+    const portFree = await waitForPortFreeFn(stoppedPort, 5000);
     if (!portFree && verbose) {
       console.log(formatWarn('Port did not free up in time, proceeding anyway...'));
     }

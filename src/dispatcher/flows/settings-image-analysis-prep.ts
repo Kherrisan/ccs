@@ -13,7 +13,7 @@ import {
   resolveImageAnalysisRuntimeStatus,
 } from '../../utils/hooks';
 import { ensureCliproxyService } from '../../cliproxy';
-import { CLIPROXY_DEFAULT_PORT } from '../../cliproxy/config/port-manager';
+import { resolveLifecyclePort } from '../../cliproxy/config/port-manager';
 import type { ProfileDetectionResult } from '../../auth/profile-detector';
 import type { loadSettings } from '../../config/config-loader-facade';
 import type { resolveCliproxyBridgeMetadata } from '../../api/services/cliproxy-profile-bridge';
@@ -104,7 +104,7 @@ export async function resolveSettingsImageAnalysisEnv(
       };
     } else if (imageAnalysisStatus.proxyReadiness === 'stopped') {
       const ensureServiceResult = await ensureCliproxyService(
-        CLIPROXY_DEFAULT_PORT,
+        resolveLifecyclePort(),
         verboseProxyLaunch
       );
       if (!ensureServiceResult.started) {

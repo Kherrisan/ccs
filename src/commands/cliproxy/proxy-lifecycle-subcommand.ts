@@ -11,7 +11,7 @@
 import { initUI, header, color, dim, ok, warn, info } from '../../utils/ui';
 import { getProxyStatus, startProxy, stopProxy } from '../../cliproxy/services';
 import { detectRunningProxy } from '../../cliproxy/proxy/proxy-detector';
-import { resolveLifecyclePort } from './resolve-lifecycle-port';
+import { resolveLifecyclePort } from '../../cliproxy/config/port-manager';
 
 export async function handleStart(verbose = false): Promise<void> {
   await initUI();

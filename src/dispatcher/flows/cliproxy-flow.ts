@@ -13,7 +13,7 @@ import {
   isAuthenticated,
 } from '../../cliproxy';
 import { getEffectiveEnvVars, getCompositeEnvVars } from '../../cliproxy/config/env-builder';
-import { CLIPROXY_DEFAULT_PORT } from '../../cliproxy/config/port-manager';
+import { resolveLifecyclePort } from '../../cliproxy/config/port-manager';
 import { ensureWebSearchMcpOrThrow } from '../../utils/websearch-manager';
 import { ensureImageAnalysisMcpOrThrow } from '../../utils/image-analysis';
 import {
@@ -62,7 +62,7 @@ export async function runCliproxyFlow(ctx: ProfileDispatchContext): Promise<void
   }
   const customSettingsPath = profileInfo.settingsPath; // undefined for hardcoded profiles
   const variantPort = profileInfo.port; // variant-specific port for isolation
-  const cliproxyPort = variantPort || CLIPROXY_DEFAULT_PORT;
+  const cliproxyPort = variantPort || resolveLifecyclePort();
 
   if (resolvedTarget !== 'claude') {
     const adapter = targetAdapter;

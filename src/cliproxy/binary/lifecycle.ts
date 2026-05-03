@@ -14,7 +14,7 @@ import {
 import { downloadAndInstall, deleteBinary, getBinaryPath } from './installer';
 import { info, warn } from '../../utils/ui';
 import { isCliproxyRunning } from '../services/stats-fetcher';
-import { CLIPROXY_DEFAULT_PORT } from '../config/config-generator';
+import { resolveLifecyclePort } from '../config/port-manager';
 import {
   CLIPROXY_MAX_STABLE_VERSION,
   CLIPROXY_FAULTY_RANGE,
@@ -82,7 +82,7 @@ async function handleAutoUpdate(config: BinaryManagerConfig, verbose: boolean): 
     return;
   }
 
-  const proxyRunning = await isCliproxyRunning(CLIPROXY_DEFAULT_PORT);
+  const proxyRunning = await isCliproxyRunning(resolveLifecyclePort());
   const latestNote = isAboveMaxStable(latestVersion) ? ` (latest v${latestVersion} unstable)` : '';
   const updateMsg = `${backendLabel} update: v${currentVersion} -> v${targetVersion}${latestNote}`;
 

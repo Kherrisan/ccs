@@ -10,6 +10,7 @@ import {
   CLIPROXY_DEFAULT_PORT,
   getRemoteDefaultPort,
   normalizeProtocol,
+  validatePort,
   validateRemotePort,
 } from '../config/port-manager';
 import { getProxyEnvVars } from './proxy-config-resolver';
@@ -69,7 +70,7 @@ export function getProxyTarget(): ProxyTarget {
     };
   }
 
-  const localPort = config?.local?.port ?? CLIPROXY_DEFAULT_PORT;
+  const localPort = validatePort(config?.local?.port ?? CLIPROXY_DEFAULT_PORT);
 
   return {
     host: '127.0.0.1',
