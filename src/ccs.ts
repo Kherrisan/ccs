@@ -1,6 +1,5 @@
 import './utils/fetch-proxy-setup';
 
-import { detectClaudeCli } from './utils/claude-detector';
 import { getSettingsPath, loadSettings } from './utils/config-manager';
 import { expandPath } from './utils/helpers';
 import {
@@ -33,13 +32,10 @@ import {
 import {
   appendBrowserToolArgs,
   ensureBrowserMcpOrThrow,
-  getBlockedBrowserOverrideWarning,
-  getEffectiveClaudeBrowserAttachConfig,
-  resolveBrowserExposure,
   resolveOptionalBrowserAttachRuntime,
   syncBrowserMcpToConfigDir,
 } from './utils/browser';
-import { getBrowserConfig, getGlobalEnvConfig } from './config/unified-config-loader';
+import { getGlobalEnvConfig } from './config/unified-config-loader';
 import {
   ensureProfileHooks as ensureImageAnalyzerHooks,
   removeImageAnalysisProfileHook,
@@ -62,23 +58,16 @@ import { isDeprecatedGlmtProfileName, normalizeDeprecatedGlmtEnv } from './utils
 import { createOpenAICompatLaunchSettings } from './utils/openai-compat-launch-settings';
 import { maybeWarnAboutResumeLaneMismatch } from './auth/resume-lane-warning';
 import { createLogger, runWithRequestId } from './services/logging';
-import type { ProfileDetectionResult } from './auth/profile-detector';
-
 // Import target adapter system
 import {
   registerTarget,
-  getTarget,
   ClaudeAdapter,
   DroidAdapter,
   CodexAdapter,
   evaluateTargetRuntimeCompatibility,
-  pruneOrphanedModels,
   resolveDroidProvider,
   type TargetCredentials,
 } from './targets';
-import { resolveTargetType, stripTargetFlag } from './targets/target-resolver';
-import { DroidReasoningFlagError } from './targets/droid-reasoning-runtime';
-import { DroidCommandRouterError, routeDroidCommandArgs } from './targets/droid-command-router';
 import { resolveCliproxyBridgeMetadata } from './api/services/cliproxy-profile-bridge';
 import {
   buildOpenAICompatProxyEnv,
@@ -87,21 +76,11 @@ import {
 } from './proxy';
 
 // Import extracted dispatcher modules
-import {
-  detectProfile,
-  resolveRuntimeReasoningFlags,
-  normalizeCodexRuntimeReasoningOverride,
-  exitWithRuntimeReasoningFlagError,
-  normalizeNativeClaudeEffortArgs,
-  shouldNormalizeNativeClaudeEffort,
-  bootstrapAndParseEarlyCli,
-} from './dispatcher/cli-argument-parser';
-import {
-  resolveCodexRuntimeConfigOverrides,
-  resolveNativeClaudeLaunchArgs,
-} from './dispatcher/environment-builder';
+import { bootstrapAndParseEarlyCli } from './dispatcher/cli-argument-parser';
+import { resolveNativeClaudeLaunchArgs } from './dispatcher/environment-builder';
 import { type ProfileError } from './dispatcher/target-executor';
 import { runPreDispatchHandlers } from './dispatcher/pre-dispatch';
+import { resolveProfileAndTarget } from './dispatcher/profile-resolver';
 
 // ========== Main Execution ==========
 
@@ -133,9 +112,37 @@ async function main(): Promise<void> {
     return;
   }
 
-  // Use ProfileDetector to determine profile type
-  const ProfileDetectorModule = await import('./auth/profile-detector');
-  const ProfileDetector = ProfileDetectorModule.default;
+  // Phase C: profile + target detection (extracted to dispatcher/profile-resolver.ts)
+  const {
+    profile,
+    remainingArgs,
+    profileInfo,
+    resolvedTarget,
+    claudeCli,
+    targetAdapter,
+    targetBinaryInfo,
+    resolvedSettingsPath: initialResolvedSettingsPath,
+    resolvedSettings: initialResolvedSettings,
+    resolvedCliproxyBridge: initialResolvedCliproxyBridge,
+    targetRemainingArgs: initialTargetRemainingArgs,
+    nativeClaudeRemainingArgs: initialNativeClaudeRemainingArgs,
+    runtimeReasoningOverride: initialRuntimeReasoningOverride,
+    codexRuntimeConfigOverrides,
+    claudeBrowserExposure,
+    codexBrowserExposure: _codexBrowserExposure,
+    claudeAttachConfig,
+    detector: _detector,
+  } = await resolveProfileAndTarget({ args, browserLaunchOverride, cliLogger });
+
+  // Re-assign mutable state that Phase E flows may update
+  const resolvedSettingsPath = initialResolvedSettingsPath;
+  const resolvedSettings = initialResolvedSettings;
+  const resolvedCliproxyBridge = initialResolvedCliproxyBridge;
+  const targetRemainingArgs = initialTargetRemainingArgs;
+  const nativeClaudeRemainingArgs = initialNativeClaudeRemainingArgs;
+  const runtimeReasoningOverride = initialRuntimeReasoningOverride;
+
+  // Re-import dynamic modules needed by Phase E flows (preserving original ordering).
   const InstanceManagerModule = await import('./management/instance-manager');
   const InstanceManager = InstanceManagerModule.default;
   const ProfileRegistryModule = await import('./auth/profile-registry');
@@ -145,236 +152,7 @@ async function main(): Promise<void> {
   const ProfileContinuityModule = await import('./auth/profile-continuity-inheritance');
   const { resolveProfileContinuityInheritance } = ProfileContinuityModule;
 
-  const detector = new ProfileDetector();
-
   try {
-    // Detect profile (strip --target flags before profile detection)
-    const cleanArgs = stripTargetFlag(args);
-    const { profile, remainingArgs } = detectProfile(cleanArgs);
-    const profileInfo: ProfileDetectionResult = detector.detectProfileType(profile);
-    let resolvedTarget: ReturnType<typeof resolveTargetType>;
-    try {
-      resolvedTarget = resolveTargetType(
-        args,
-        profileInfo.target ? { target: profileInfo.target } : undefined
-      );
-    } catch (error) {
-      console.error(fail((error as Error).message));
-      process.exit(1);
-      return;
-    }
-
-    // Detect Claude CLI (needed for claude target and all CLIProxy-derived flows)
-    const claudeCliRaw = detectClaudeCli();
-    if (resolvedTarget === 'claude' && !claudeCliRaw) {
-      await ErrorManager.showClaudeNotFound();
-      process.exit(1);
-    }
-    const claudeCli = claudeCliRaw || '';
-
-    // Resolve non-claude target adapter once.
-    const targetAdapter = resolvedTarget !== 'claude' ? getTarget(resolvedTarget) : null;
-    let resolvedSettingsPath: string | undefined;
-    let resolvedSettings: ReturnType<typeof loadSettings> | undefined;
-    let resolvedCliproxyBridge: ReturnType<typeof resolveCliproxyBridgeMetadata> | undefined;
-
-    // Preflight unsupported profile/target combinations BEFORE binary detection,
-    // so users get the most actionable error even when the target CLI is not installed.
-    if (resolvedTarget !== 'claude') {
-      if (!targetAdapter) {
-        console.error(fail(`Target adapter not found for "${resolvedTarget}"`));
-        process.exit(1);
-      }
-
-      if (profileInfo.type === 'settings') {
-        resolvedSettingsPath = profileInfo.settingsPath
-          ? expandPath(profileInfo.settingsPath)
-          : getSettingsPath(profileInfo.name);
-        resolvedSettings = loadSettings(resolvedSettingsPath);
-        resolvedCliproxyBridge = resolveCliproxyBridgeMetadata(resolvedSettings);
-        const compatibility = evaluateTargetRuntimeCompatibility({
-          target: resolvedTarget,
-          profileType: profileInfo.type,
-          cliproxyBridgeProvider: resolvedCliproxyBridge?.provider ?? null,
-        });
-        if (!compatibility.supported) {
-          console.error(
-            fail(
-              compatibility.reason || `${targetAdapter.displayName} does not support this profile.`
-            )
-          );
-          if (compatibility.suggestion) {
-            console.error(info(compatibility.suggestion));
-          }
-          process.exit(1);
-        }
-      } else {
-        const compatibility = evaluateTargetRuntimeCompatibility({
-          target: resolvedTarget,
-          profileType: profileInfo.type,
-          cliproxyProvider: profileInfo.type === 'cliproxy' ? profileInfo.provider : undefined,
-          isComposite:
-            profileInfo.type === 'cliproxy' ? Boolean(profileInfo.isComposite) : undefined,
-        });
-        if (!compatibility.supported) {
-          console.error(
-            fail(
-              compatibility.reason || `${targetAdapter.displayName} does not support this profile.`
-            )
-          );
-          if (compatibility.suggestion) {
-            console.error(info(compatibility.suggestion));
-          }
-          process.exit(1);
-        }
-      }
-
-      if (profileInfo.type === 'default') {
-        if (!targetAdapter.supportsProfileType('default')) {
-          console.error(fail(`${targetAdapter.displayName} does not support default profile mode`));
-          process.exit(1);
-        }
-
-        // For default mode, Droid requires explicit credentials from environment.
-        if (resolvedTarget === 'droid') {
-          const baseUrl = process.env['ANTHROPIC_BASE_URL'] || '';
-          const apiKey = process.env['ANTHROPIC_AUTH_TOKEN'] || '';
-          if (!baseUrl.trim() || !apiKey.trim()) {
-            console.error(
-              fail(
-                `${targetAdapter.displayName} default mode requires ANTHROPIC_BASE_URL and ANTHROPIC_AUTH_TOKEN`
-              )
-            );
-            console.error(info('Use a settings-based profile instead: ccs glm --target droid'));
-            process.exit(1);
-          }
-        }
-      }
-    }
-
-    // For non-claude targets, verify target binary exists once and pass it through.
-    const targetBinaryInfo = targetAdapter?.detectBinary() ?? null;
-    const browserConfig = getBrowserConfig();
-    const claudeAttachConfig =
-      resolvedTarget === 'claude'
-        ? getEffectiveClaudeBrowserAttachConfig(browserConfig)
-        : undefined;
-    const codexRuntimeConfigOverrides = resolveCodexRuntimeConfigOverrides(
-      resolvedTarget,
-      browserLaunchOverride
-    );
-    const claudeBrowserExposure =
-      resolvedTarget === 'claude'
-        ? resolveBrowserExposure(
-            {
-              enabled: claudeAttachConfig?.enabled ?? browserConfig.claude.enabled,
-              policy: browserConfig.claude.policy,
-            },
-            browserLaunchOverride
-          )
-        : undefined;
-    const codexBrowserExposure =
-      resolvedTarget === 'codex'
-        ? resolveBrowserExposure(browserConfig.codex, browserLaunchOverride)
-        : undefined;
-    const blockedBrowserOverrideWarning =
-      resolvedTarget === 'claude' && claudeBrowserExposure
-        ? getBlockedBrowserOverrideWarning('Claude Browser Attach', claudeBrowserExposure)
-        : resolvedTarget === 'codex' && codexBrowserExposure
-          ? getBlockedBrowserOverrideWarning('Codex Browser Tools', codexBrowserExposure)
-          : undefined;
-    if (blockedBrowserOverrideWarning) {
-      console.error(warn(blockedBrowserOverrideWarning));
-    }
-    if (resolvedTarget !== 'claude' && !targetBinaryInfo) {
-      const displayName = targetAdapter?.displayName || resolvedTarget;
-      console.error(fail(`${displayName} CLI not found.`));
-      if (resolvedTarget === 'droid') {
-        console.error(info('Install: npm i -g @factory/cli'));
-      } else if (resolvedTarget === 'codex') {
-        console.error(info('Install a recent @openai/codex build, then retry.'));
-      }
-      process.exit(1);
-    }
-
-    // Best-effort: prune stale Droid model entries at runtime so settings.json stays clean.
-    if (resolvedTarget === 'droid') {
-      try {
-        const allProfiles = detector.getAllProfiles();
-        const activeProfiles = allProfiles.settings.filter((name) =>
-          /^[a-zA-Z0-9._-]+$/.test(name)
-        );
-        await pruneOrphanedModels(activeProfiles);
-      } catch (error) {
-        console.error(warn(`[!] Droid prune skipped: ${(error as Error).message}`));
-      }
-    }
-
-    let targetRemainingArgs = remainingArgs;
-    let runtimeReasoningOverride: string | number | undefined;
-    let nativeClaudeRemainingArgs = remainingArgs;
-    if (resolvedTarget === 'droid') {
-      try {
-        const droidRoute = routeDroidCommandArgs(remainingArgs);
-        targetRemainingArgs = droidRoute.argsForDroid;
-
-        if (droidRoute.mode === 'interactive') {
-          const runtime = resolveRuntimeReasoningFlags(remainingArgs, process.env.CCS_THINKING);
-          targetRemainingArgs = runtime.argsWithoutReasoningFlags;
-          runtimeReasoningOverride = runtime.reasoningOverride;
-        } else {
-          if (droidRoute.duplicateReasoningDisplays.length > 0) {
-            console.error(
-              warn(
-                `[!] Multiple reasoning flags detected. Using first occurrence: ${droidRoute.reasoningSourceDisplay || '<first-flag>'}`
-              )
-            );
-          }
-          if (droidRoute.autoPrependedExec && process.stdout.isTTY) {
-            console.error(
-              info('Detected Droid exec-only flags. Routing as: droid exec <flags> [prompt]')
-            );
-          }
-        }
-      } catch (error) {
-        if (error instanceof DroidReasoningFlagError || error instanceof DroidCommandRouterError) {
-          exitWithRuntimeReasoningFlagError(error.message, {
-            codexAliasLevels: 'minimal|low|medium|high|xhigh',
-            includeDroidExecExample: true,
-          });
-        }
-        throw error;
-      }
-    } else if (resolvedTarget === 'codex') {
-      try {
-        const runtime = resolveRuntimeReasoningFlags(remainingArgs, process.env.CCS_THINKING);
-        targetRemainingArgs = runtime.argsWithoutReasoningFlags;
-        const normalizedReasoning = normalizeCodexRuntimeReasoningOverride(
-          runtime.reasoningOverride
-        );
-        if (runtime.reasoningOverride !== undefined && !normalizedReasoning) {
-          if (runtime.reasoningSource === 'flag') {
-            throw new DroidReasoningFlagError(
-              'Codex target supports reasoning levels only: minimal, low, medium, high, xhigh.',
-              '--effort'
-            );
-          }
-          runtimeReasoningOverride = undefined;
-        } else {
-          runtimeReasoningOverride = normalizedReasoning;
-        }
-      } catch (error) {
-        if (error instanceof DroidReasoningFlagError) {
-          exitWithRuntimeReasoningFlagError(error.message, {
-            codexAliasLevels: 'minimal|low|medium|high|xhigh',
-          });
-        }
-        throw error;
-      }
-    } else if (resolvedTarget === 'claude' && shouldNormalizeNativeClaudeEffort(profileInfo.type)) {
-      nativeClaudeRemainingArgs = normalizeNativeClaudeEffortArgs(remainingArgs);
-    }
-
     // Special case: headless delegation (-p/--prompt)
     // Keep existing behavior for Claude targets only; non-claude targets must continue
     // through normal adapter dispatch logic.
