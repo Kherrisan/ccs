@@ -14,22 +14,19 @@ import { spawn, ChildProcess } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { ok, fail, info, warn } from '../../utils/ui';
+import { fail, info, warn } from '../../utils/ui';
 import { getCcsDir } from '../../utils/config-manager';
 import { escapeShellArg, getWindowsEscapedCommandShell } from '../../utils/shell-executor';
 import {
   generateConfig,
   getProviderConfig,
-  ensureProviderSettings,
   getProviderSettingsPath,
   CLIPROXY_DEFAULT_PORT,
 } from '../config/config-generator';
-import { isAuthenticated } from '../auth/auth-handler';
-import { CLIProxyProvider, ExecutorConfig } from '../types';
 import { configureProviderModel, getCurrentModel } from '../config/model-config';
-import { reconcileCodexModelForActivePlan } from '../ai-providers/codex-plan-compatibility';
+import { supportsModelConfig } from '../model-catalog';
+import { CLIProxyProvider, ExecutorConfig } from '../types';
 import {
-  supportsModelConfig,
   isModelBroken,
   getModelIssueUrl,
   findModel,
@@ -58,9 +55,7 @@ import { resolveProfileContinuityInheritance } from '../../auth/profile-continui
 import { resolveBrowserLaunchFlags, resolveBrowserRuntime } from './browser-launch-setup';
 import {
   resolveRuntimeQuotaMonitorProviders as _resolveRuntimeQuotaMonitorProviders,
-  applyAccountSafetyGuards,
   resolveAccounts,
-  touchDefaultAccount,
 } from './account-resolution';
 import { waitForProxyReadyWithSpinner, spawnProxy } from './lifecycle-manager';
 import {
@@ -68,14 +63,19 @@ import {
   logEnvironment,
   resolveCliproxyImageAnalysisEnv,
 } from './env-resolver';
-import { handleTokenExpiration, handleQuotaCheck } from './retry-handler';
-import { MANAGED_QUOTA_PROVIDERS } from '../quota/quota-manager';
 import { checkOrJoinProxy, registerProxySession, setupCleanupHandlers } from './session-bridge';
-import {
-  ensureCliAntigravityResponsibility,
-  ANTIGRAVITY_ACCEPT_RISK_FLAGS,
-} from '../auth/antigravity-responsibility';
 import { getWebSearchHookEnv } from '../../utils/websearch-manager';
+import {
+  handleLogout,
+  handleImport,
+  resolveSkipLocalAuth,
+  runAntigravityGate,
+  ensureProviderAuthentication,
+  runPreflightQuotaCheck,
+  runAccountSafetyGuards,
+  ensureModelConfiguration,
+  ensureProviderSettingsFile,
+} from './auth-coordinator';
 import {
   buildThinkingStartupStatus,
   resolveRuntimeThinkingOverride,
@@ -182,25 +182,11 @@ export async function execClaudeWithCLIProxy(
   if (process.exitCode === 1) return;
 
   const {
-    forceAuth,
-    pasteCallback,
-    portForward,
-    forceHeadless,
-    forceLogout,
     forceConfig,
     addAccount,
     showAccounts,
-    forceImport,
-    gitlabTokenLogin,
-    acceptAgyRisk,
-    noIncognito,
     useAccount,
     setNickname,
-    kiroAuthMethod,
-    kiroIDCStartUrl,
-    kiroIDCRegion,
-    kiroIDCFlow,
-    gitlabBaseUrl,
     extendedContextOverride,
     thinkingParse,
   } = parsedFlags;
@@ -244,209 +230,51 @@ export async function execClaudeWithCLIProxy(
     }
   }
 
-  // Handle --logout
-  if (forceLogout) {
-    const { clearAuth } = await import('../auth/auth-handler');
-    if (clearAuth(provider)) {
-      console.log(ok(`Logged out from ${providerConfig.displayName}`));
-    } else {
-      console.log(info(`No authentication found for ${providerConfig.displayName}`));
-    }
-    process.exit(0);
-  }
+  // Build auth coordination context (used for logout/import/antigravity/oauth)
+  const authCtx = {
+    provider,
+    compositeProviders,
+    parsedFlags,
+    cfg,
+    unifiedConfig,
+    verbose,
+    log,
+  };
 
-  // Handle --import (Kiro only)
-  if (forceImport) {
-    if (provider !== 'kiro') {
-      console.error(fail('--import is only available for Kiro'));
-      console.error(`    Run "ccs ${provider} --auth" to authenticate`);
-      process.exit(1);
-    }
-    if (forceAuth) {
-      console.error(fail('Cannot use --import with --auth'));
-      console.error('    --import: Import existing token from Kiro IDE');
-      console.error('    --auth: Trigger new OAuth flow in browser');
-      process.exit(1);
-    }
-    if (forceLogout) {
-      console.error(fail('Cannot use --import with --logout'));
-      process.exit(1);
-    }
-    const { triggerOAuth } = await import('../auth/auth-handler');
-    const authSuccess = await triggerOAuth(provider, {
-      verbose,
-      import: true,
-      ...(kiroAuthMethod ? { kiroMethod: kiroAuthMethod } : {}),
-      ...(kiroIDCStartUrl ? { kiroIDCStartUrl } : {}),
-      ...(kiroIDCRegion ? { kiroIDCRegion } : {}),
-      ...(kiroIDCFlow ? { kiroIDCFlow } : {}),
-      ...(setNickname ? { nickname: setNickname } : {}),
-    });
-    if (!authSuccess) {
-      console.error(fail('Failed to import Kiro token from IDE'));
-      console.error('    Make sure you are logged into Kiro IDE first');
-      process.exit(1);
-    }
-    process.exit(0);
-  }
+  // Handle --logout (early exit)
+  await handleLogout(authCtx);
+
+  // Handle --import (early exit, Kiro only)
+  await handleImport(authCtx);
 
   // 3. Ensure OAuth completed (if provider requires it)
   const remoteAuthToken = proxyConfig.authToken?.trim();
-  const skipLocalAuth = useRemoteProxy && !!remoteAuthToken;
+  const skipLocalAuth = resolveSkipLocalAuth(remoteAuthToken, useRemoteProxy);
   if (skipLocalAuth) {
     log(`Using remote proxy authentication (skipping local OAuth)`);
   }
 
-  if (provider === 'agy' && forceAuth && skipLocalAuth) {
-    const acknowledged = await ensureCliAntigravityResponsibility({
-      context: 'oauth',
-      acceptedByFlag: acceptAgyRisk,
-    });
-    if (!acknowledged) {
-      throw new Error(
-        `Antigravity auth blocked. Re-run after completing confirmation or pass ${ANTIGRAVITY_ACCEPT_RISK_FLAGS[0]}.`
-      );
-    }
-    console.error(info('Remote proxy mode is active; local OAuth flow is skipped in --auth mode.'));
-    return;
-  }
-
-  if (provider === 'agy' && !forceAuth) {
-    const requiresAuthNow = providerConfig.requiresOAuth && !isAuthenticated(provider);
-    if (skipLocalAuth || !requiresAuthNow) {
-      const acknowledged = await ensureCliAntigravityResponsibility({
-        context: 'run',
-        acceptedByFlag: acceptAgyRisk,
-      });
-      if (!acknowledged) {
-        console.error(
-          fail(
-            `Antigravity session blocked. Re-run after completing confirmation or pass ${ANTIGRAVITY_ACCEPT_RISK_FLAGS[0]}.`
-          )
-        );
-        process.exit(1);
-      }
-    }
-  }
+  // Antigravity gate (runs before OAuth check)
+  const { earlyReturn: agyEarlyReturn } = await runAntigravityGate(authCtx, skipLocalAuth);
+  if (agyEarlyReturn) return;
 
   if (providerConfig.requiresOAuth && !skipLocalAuth) {
-    log(`Checking authentication for ${provider}`);
-
-    // Multi-provider auth check for composite variants
-    if (compositeProviders.length > 0) {
-      // Handle forceAuth for composite providers
-      if (forceAuth) {
-        const { triggerOAuth } = await import('../auth/auth-handler');
-        const failures: string[] = [];
-        for (const p of compositeProviders) {
-          const authSuccess = await triggerOAuth(p, {
-            verbose,
-            add: addAccount,
-            ...(acceptAgyRisk ? { acceptAgyRisk: true } : {}),
-            ...(kiroAuthMethod && p === 'kiro' ? { kiroMethod: kiroAuthMethod } : {}),
-            ...(kiroIDCStartUrl && p === 'kiro' ? { kiroIDCStartUrl } : {}),
-            ...(kiroIDCRegion && p === 'kiro' ? { kiroIDCRegion } : {}),
-            ...(kiroIDCFlow && p === 'kiro' ? { kiroIDCFlow } : {}),
-            ...(gitlabTokenLogin && p === 'gitlab' ? { gitlabAuthMode: 'pat' as const } : {}),
-            ...(gitlabBaseUrl && p === 'gitlab' ? { gitlabBaseUrl } : {}),
-            ...(forceHeadless ? { headless: true } : {}),
-            ...(setNickname ? { nickname: setNickname } : {}),
-            ...(noIncognito ? { noIncognito: true } : {}),
-            ...(pasteCallback ? { pasteCallback: true } : {}),
-            ...(portForward ? { portForward: true } : {}),
-          });
-          if (!authSuccess) {
-            failures.push(p);
-          }
-        }
-        if (failures.length > 0) {
-          const succeeded = compositeProviders.filter((p) => !failures.includes(p));
-          console.error(fail(`Auth failed for: ${failures.join(', ')}`));
-          if (succeeded.length > 0) {
-            console.error(info(`Succeeded: ${succeeded.join(', ')}`));
-          }
-          process.exit(1);
-        }
-        process.exit(0);
-      }
-
-      // Check for unauthenticated providers
-      const unauthenticatedProviders: string[] = [];
-      for (const p of compositeProviders) {
-        if (!isAuthenticated(p)) {
-          unauthenticatedProviders.push(p);
-        }
-      }
-      if (unauthenticatedProviders.length > 0) {
-        console.error(fail('Composite variant requires authentication for multiple providers:'));
-        for (const p of unauthenticatedProviders) {
-          console.error(`    - ${p} (run "ccs ${p} --auth")`);
-        }
-        process.exit(1);
-      }
-    } else if (forceAuth || !isAuthenticated(provider)) {
-      const { triggerOAuth } = await import('../auth/auth-handler');
-      const authSuccess = await triggerOAuth(provider, {
-        verbose,
-        add: addAccount,
-        ...(acceptAgyRisk ? { acceptAgyRisk: true } : {}),
-        ...(kiroAuthMethod ? { kiroMethod: kiroAuthMethod } : {}),
-        ...(kiroIDCStartUrl ? { kiroIDCStartUrl } : {}),
-        ...(kiroIDCRegion ? { kiroIDCRegion } : {}),
-        ...(kiroIDCFlow ? { kiroIDCFlow } : {}),
-        ...(gitlabTokenLogin ? { gitlabAuthMode: 'pat' as const } : {}),
-        ...(gitlabBaseUrl ? { gitlabBaseUrl } : {}),
-        ...(forceHeadless ? { headless: true } : {}),
-        ...(setNickname ? { nickname: setNickname } : {}),
-        ...(noIncognito ? { noIncognito: true } : {}),
-        ...(pasteCallback ? { pasteCallback: true } : {}),
-        ...(portForward ? { portForward: true } : {}),
-      });
-      if (!authSuccess) {
-        throw new Error(`Authentication required for ${providerConfig.displayName}`);
-      }
-      if (forceAuth) {
-        process.exit(0);
-      }
-    } else {
-      log(`${provider} already authenticated`);
-    }
-
-    // 3a. Proactive token refresh (multi-provider for composite)
-    if (compositeProviders.length > 0) {
-      for (const p of compositeProviders) {
-        await handleTokenExpiration(p, verbose);
-      }
-    } else {
-      await handleTokenExpiration(provider, verbose);
-    }
-
-    // 3a-1. Update lastUsedAt
-    touchDefaultAccount(provider);
+    await ensureProviderAuthentication(authCtx);
   }
 
   // 3b. Preflight quota check (providers with quota-based rotation)
   if (!skipLocalAuth) {
-    // Multi-tier quota check for composite variants (check if any tier uses a managed provider)
-    if (compositeProviders.length > 0) {
-      for (const managedProvider of MANAGED_QUOTA_PROVIDERS) {
-        if (compositeProviders.includes(managedProvider)) {
-          await handleQuotaCheck(managedProvider);
-        }
-      }
-    } else {
-      await handleQuotaCheck(provider);
-    }
+    await runPreflightQuotaCheck(provider, compositeProviders);
   }
 
   // 3c. Account safety: enforce cross-provider isolation
   if (!skipLocalAuth) {
-    applyAccountSafetyGuards(provider, compositeProviders);
+    runAccountSafetyGuards(provider, compositeProviders);
   }
 
-  // 4. First-run model configuration
-  if (!cfg.isComposite && supportsModelConfig(provider) && !skipLocalAuth) {
-    await configureProviderModel(provider, false, cfg.customSettingsPath);
+  // 4. First-run model configuration + codex plan reconcile
+  if (!skipLocalAuth) {
+    await ensureModelConfiguration(provider, cfg, verbose);
   }
 
   // 5. Check for broken models (multi-tier for composite)
@@ -497,14 +325,7 @@ export async function execClaudeWithCLIProxy(
   }
 
   // 6. Ensure user settings file exists
-  ensureProviderSettings(provider);
-
-  if (provider === 'codex' && !cfg.isComposite && !skipLocalAuth) {
-    await reconcileCodexModelForActivePlan({
-      currentModel: getCurrentModel(provider, cfg.customSettingsPath),
-      verbose,
-    });
-  }
+  ensureProviderSettingsFile(provider);
 
   // Local proxy mode: generate config, spawn/join proxy, track session
   let proxy: ChildProcess | null = null;
