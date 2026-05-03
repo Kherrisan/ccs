@@ -1,10 +1,11 @@
 import * as fs from 'fs';
 import { DEFAULT_LOGGING_CONFIG } from '../../config/unified-config-types';
+
+import type { LoggingConfig } from './log-types';
 import {
   getConfigYamlPath,
   getLoggingConfig as getUnifiedLoggingConfig,
-} from '../../config/unified-config-loader';
-import type { LoggingConfig } from './log-types';
+} from '../../config/config-loader-facade';
 
 const CACHE_RECHECK_MS = 1000;
 let cachedConfig: LoggingConfig = { ...DEFAULT_LOGGING_CONFIG };

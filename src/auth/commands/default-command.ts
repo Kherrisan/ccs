@@ -5,10 +5,11 @@
  */
 
 import { initUI, color, dim, ok, fail } from '../../utils/ui';
-import { isUnifiedMode } from '../../config/unified-config-loader';
+
 import { exitWithError } from '../../errors';
 import { ExitCode } from '../../errors/exit-codes';
 import { CommandContext, parseArgs } from './types';
+import { isUnifiedMode } from '../../config/config-loader-facade';
 
 /**
  * Handle the default command (set default profile)

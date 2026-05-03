@@ -12,7 +12,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { DailyUsage, HourlyUsage, MonthlyUsage, SessionUsage } from './types';
 import { ok, info, warn } from '../../utils/ui';
-import { getCcsDir } from '../../utils/config-manager';
+import { getCcsDir } from '../../config/config-loader-facade';
 
 // Cache configuration
 function getCacheDir() {

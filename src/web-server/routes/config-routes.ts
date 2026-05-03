@@ -4,13 +4,7 @@
 
 import { Router, Request, Response } from 'express';
 import * as fs from 'fs';
-import {
-  hasUnifiedConfig,
-  loadUnifiedConfig,
-  mutateUnifiedConfig,
-  getConfigFormat,
-  getConfigYamlPath,
-} from '../../config/unified-config-loader';
+
 import {
   needsMigration,
   migrate,
@@ -28,6 +22,13 @@ import {
 import { DEFAULT_CLIPROXY_SERVER_CONFIG } from '../../config/unified-config-types';
 import { requireLocalAccessWhenAuthDisabled } from '../middleware/auth-middleware';
 import { isSensitiveKey } from '../../utils/sensitive-keys';
+import {
+  getConfigFormat,
+  getConfigYamlPath,
+  hasUnifiedConfig,
+  loadUnifiedConfig,
+  mutateConfig,
+} from '../../config/config-loader-facade';
 
 const router = Router();
 const LOCAL_CONFIG_ERROR =
@@ -652,7 +653,7 @@ router.put('/', (req: Request, res: Response): void => {
   }
 
   try {
-    mutateUnifiedConfig((currentConfig) => {
+    mutateConfig((currentConfig) => {
       if ('setup_completed' in config) {
         currentConfig.setup_completed = config.setup_completed;
       }

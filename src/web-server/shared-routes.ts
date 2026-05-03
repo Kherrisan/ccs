@@ -8,9 +8,10 @@ import { Router, Request, Response } from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
-import { getCcsDir } from '../utils/config-manager';
+
 import { getClaudeConfigDir } from '../utils/claude-config-path';
 import { requireLocalAccessWhenAuthDisabled } from './middleware/auth-middleware';
+import { getCcsDir } from '../config/config-loader-facade';
 
 export const sharedRoutes = Router();
 

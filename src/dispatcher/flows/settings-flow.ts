@@ -5,7 +5,8 @@
  * Image-analysis prep is large enough to split; see settings-image-analysis-prep.ts.
  */
 
-import { getSettingsPath, loadSettings } from '../../utils/config-manager';
+import { getSettingsPath } from '../../utils/config-manager';
+import { loadSettings } from '../../config/config-loader-facade';
 import { expandPath } from '../../utils/helpers';
 import {
   validateGlmKey,
@@ -31,7 +32,7 @@ import {
   resolveOptionalBrowserAttachRuntime,
   syncBrowserMcpToConfigDir,
 } from '../../utils/browser';
-import { getGlobalEnvConfig } from '../../config/unified-config-loader';
+import { getGlobalEnvConfig } from '../../config/config-loader-facade';
 import {
   ensureProfileHooks as ensureImageAnalyzerHooks,
   removeImageAnalysisProfileHook,

@@ -7,7 +7,7 @@
 
 import { warn } from '../utils/ui';
 import { resolveBrowserExposure } from '../utils/browser';
-import { getBrowserConfig, getOfficialChannelsConfig } from '../config/unified-config-loader';
+import { getBrowserConfig, getOfficialChannelsConfig } from '../config/config-loader-facade';
 import {
   buildOfficialChannelsArgs,
   getOfficialChannelsEnvironmentStatus,

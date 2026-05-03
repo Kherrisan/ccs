@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from 'express';
-import { getOfficialChannelsConfig, mutateUnifiedConfig } from '../../config/unified-config-loader';
+
 import {
   clearConfiguredOfficialChannelTokensEverywhere,
   getOfficialChannelTokenStatus,
@@ -24,6 +24,7 @@ import {
   isOfficialChannelId,
 } from '../../channels/official-channels-runtime';
 import { requireLocalAccessWhenAuthDisabled } from '../middleware/auth-middleware';
+import { getOfficialChannelsConfig, mutateConfig } from '../../config/config-loader-facade';
 
 const router = Router();
 
@@ -146,7 +147,7 @@ router.put('/', (req: Request, res: Response): void => {
   }
 
   try {
-    const updated = mutateUnifiedConfig((config) => {
+    const updated = mutateConfig((config) => {
       config.channels = {
         selected:
           selected !== undefined ? [...new Set(selected)] : (config.channels?.selected ?? []),

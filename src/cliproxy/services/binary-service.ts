@@ -22,7 +22,7 @@ import {
 } from '../binary-manager';
 import { BACKEND_CONFIG, DEFAULT_BACKEND } from '../binary/platform-detector';
 import { CLIProxyBackend } from '../types';
-import { loadOrCreateUnifiedConfig } from '../../config/unified-config-loader';
+import { loadOrCreateUnifiedConfig } from '../../config/config-loader-facade';
 
 /** Binary status result */
 export interface BinaryStatusResult {

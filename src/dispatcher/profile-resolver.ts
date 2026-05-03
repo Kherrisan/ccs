@@ -13,11 +13,12 @@
  */
 
 import { detectClaudeCli } from '../utils/claude-detector';
-import { getSettingsPath, loadSettings } from '../utils/config-manager';
+import { getSettingsPath } from '../utils/config-manager';
+import { loadSettings } from '../config/config-loader-facade';
 import { expandPath } from '../utils/helpers';
 import { fail, info, warn } from '../utils/ui';
 import { ErrorManager } from '../utils/error-manager';
-import { getBrowserConfig } from '../config/unified-config-loader';
+import { getBrowserConfig } from '../config/config-loader-facade';
 import {
   getEffectiveClaudeBrowserAttachConfig,
   resolveBrowserExposure,

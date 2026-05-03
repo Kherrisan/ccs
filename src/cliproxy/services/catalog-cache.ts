@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { getCcsDir } from '../../utils/config-manager';
+
 import type { CLIProxyProvider } from '../types';
 import type { ModelEntry, ProviderCatalog, ThinkingSupport } from '../model-catalog';
 import { MODEL_CATALOG } from '../model-catalog';
@@ -15,6 +15,7 @@ import {
   buildProxyUrl,
   getProxyTarget,
 } from '../proxy/proxy-target-resolver';
+import { getCcsDir } from '../../config/config-loader-facade';
 
 const CACHE_FILE_NAME = 'model-catalog-cache.json';
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours

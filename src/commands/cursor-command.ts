@@ -16,7 +16,7 @@ import {
   getDefaultModel,
   probeCursorRuntime,
 } from '../cursor';
-import { getCursorConfig, mutateUnifiedConfig } from '../config/unified-config-loader';
+
 import { DEFAULT_CURSOR_CONFIG } from '../config/unified-config-types';
 import {
   renderCursorHelp,
@@ -25,6 +25,7 @@ import {
   renderCursorStatus,
 } from './cursor-command-display';
 import { ok, fail, info } from '../utils/ui';
+import { getCursorConfig, mutateConfig } from '../config/config-loader-facade';
 
 const LEGACY_CURSOR_COMMAND = 'ccs legacy cursor';
 const CLIPROXY_CURSOR_COMMAND = 'ccs cursor';
@@ -286,7 +287,7 @@ async function handleStop(): Promise<number> {
  */
 async function handleEnable(): Promise<number> {
   printLegacyCursorDeprecationNotice();
-  mutateUnifiedConfig((config) => {
+  mutateConfig((config) => {
     if (!config.cursor) {
       config.cursor = { ...DEFAULT_CURSOR_CONFIG };
     }
@@ -310,7 +311,7 @@ async function handleEnable(): Promise<number> {
  */
 async function handleDisable(): Promise<number> {
   printLegacyCursorDeprecationNotice();
-  mutateUnifiedConfig((config) => {
+  mutateConfig((config) => {
     if (config.cursor) {
       config.cursor.enabled = false;
     }

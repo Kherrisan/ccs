@@ -8,7 +8,7 @@
  */
 
 import type { ResolvedProfile } from './profile-resolver';
-import type { loadSettings } from '../utils/config-manager';
+import type { loadSettings } from '../config/config-loader-facade';
 import type { getEffectiveClaudeBrowserAttachConfig } from '../utils/browser';
 import type { resolveCliproxyBridgeMetadata } from '../api/services/cliproxy-profile-bridge';
 import type { resolveTargetType } from '../targets/target-resolver';

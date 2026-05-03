@@ -15,7 +15,7 @@ import * as path from 'path';
 import { spawn, spawnSync } from 'child_process';
 import { ProgressIndicator } from '../utils/progress-indicator';
 import { ok, info } from '../utils/ui';
-import { getCcsDir } from '../utils/config-manager';
+import { getCcsDir } from '../config/config-loader-facade';
 
 /** Cache duration for version check (1 hour in milliseconds) */
 const VERSION_CACHE_DURATION_MS = 60 * 60 * 1000;

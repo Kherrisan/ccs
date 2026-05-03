@@ -4,7 +4,7 @@ import * as path from 'path';
 import ProfileDetector from '../../auth/profile-detector';
 import type { ClaudeExtensionHost } from '../../shared/claude-extension-hosts';
 import { expandPath } from '../../utils/helpers';
-import { getCcsDir } from '../../utils/config-manager';
+import { getCcsDir } from '../../config/config-loader-facade';
 
 export interface ClaudeExtensionBinding {
   id: string;

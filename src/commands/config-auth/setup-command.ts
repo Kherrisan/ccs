@@ -8,9 +8,10 @@
 
 import bcrypt from 'bcrypt';
 import { InteractivePrompt } from '../../utils/prompt';
-import { mutateUnifiedConfig } from '../../config/unified-config-loader';
+
 import { initUI, header, subheader, ok, fail, info, warn, dim } from '../../utils/ui';
 import type { AuthSetupResult } from './types';
+import { mutateConfig } from '../../config/config-loader-facade';
 
 const BCRYPT_ROUNDS = 10;
 const MIN_PASSWORD_LENGTH = 8;
@@ -99,7 +100,7 @@ export async function handleSetup(): Promise<AuthSetupResult> {
     // Hash password
     const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
 
-    const config = mutateUnifiedConfig((currentConfig) => {
+    const config = mutateConfig((currentConfig) => {
       currentConfig.dashboard_auth = {
         enabled: true,
         username,

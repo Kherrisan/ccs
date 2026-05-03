@@ -6,11 +6,15 @@
 import type { NextFunction, Request, Response } from 'express';
 import session from 'express-session';
 import rateLimit from 'express-rate-limit';
-import { getDashboardAuthConfig, isDashboardAuthEnabled } from '../../config/unified-config-loader';
+
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
-import { getCcsDir } from '../../utils/config-manager';
+import {
+  getCcsDir,
+  getDashboardAuthConfig,
+  isDashboardAuthEnabled,
+} from '../../config/config-loader-facade';
 
 // Extend Express Request with session
 declare module 'express-session' {

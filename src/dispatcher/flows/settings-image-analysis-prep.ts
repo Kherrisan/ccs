@@ -15,7 +15,7 @@ import {
 import { ensureCliproxyService } from '../../cliproxy';
 import { CLIPROXY_DEFAULT_PORT } from '../../cliproxy/config/port-manager';
 import type { ProfileDetectionResult } from '../../auth/profile-detector';
-import type { loadSettings } from '../../utils/config-manager';
+import type { loadSettings } from '../../config/config-loader-facade';
 import type { resolveCliproxyBridgeMetadata } from '../../api/services/cliproxy-profile-bridge';
 import type { resolveTargetType } from '../../targets/target-resolver';
 

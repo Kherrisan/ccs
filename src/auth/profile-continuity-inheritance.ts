@@ -1,15 +1,16 @@
 import * as fs from 'fs';
-import {
-  getConfigJsonPath,
-  getContinuityInheritanceMap,
-  isUnifiedMode,
-} from '../config/unified-config-loader';
+
 import { warn } from '../utils/ui';
 import InstanceManager from '../management/instance-manager';
 import ProfileRegistry from './profile-registry';
 import { isAccountContextMetadata, resolveAccountContextPolicy } from './account-context';
 import type { ProfileType } from '../types/profile';
 import { getProfileLookupCandidates, resolveAliasToCanonical } from '../utils/profile-compat';
+import {
+  getConfigJsonPath,
+  getContinuityInheritanceMap,
+  isUnifiedMode,
+} from '../config/config-loader-facade';
 
 export interface ProfileContinuityInheritanceInput {
   profileName: string;

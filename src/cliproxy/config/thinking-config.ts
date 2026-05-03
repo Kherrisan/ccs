@@ -6,11 +6,12 @@
 import type { CLIProxyProvider } from '../types';
 import { DEFAULT_THINKING_TIER_DEFAULTS } from '../../config/unified-config-types';
 import type { ThinkingConfig } from '../../config/unified-config-types';
-import { getThinkingConfig } from '../../config/unified-config-loader';
+
 import { getModelThinkingSupport, supportsThinking } from '../model-catalog';
 import { isThinkingOffValue, validateThinking } from '../thinking-validator';
 import { normalizeModelIdForProvider } from '../ai-providers/model-id-normalizer';
 import { warn } from '../../utils/ui';
+import { getThinkingConfig } from '../../config/config-loader-facade';
 
 /** Model tier types for thinking budget defaults */
 export type ModelTier = 'opus' | 'sonnet' | 'haiku';

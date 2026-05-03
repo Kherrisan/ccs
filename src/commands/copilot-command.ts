@@ -15,10 +15,11 @@ import {
   normalizeCopilotConfigWithWarnings,
 } from '../copilot';
 import type { CopilotModel } from '../copilot';
-import { loadOrCreateUnifiedConfig, mutateUnifiedConfig } from '../config/unified-config-loader';
+
 import { DEFAULT_COPILOT_CONFIG } from '../config/unified-config-types';
 import { ok, fail, info, color, warn } from '../utils/ui';
 import { normalizeCopilotSubcommand } from '../copilot/constants';
+import { loadOrCreateUnifiedConfig, mutateConfig } from '../config/config-loader-facade';
 
 /**
  * Handle copilot subcommand.
@@ -361,7 +362,7 @@ async function handleStop(): Promise<number> {
  * Handle enable subcommand.
  */
 async function handleEnable(): Promise<number> {
-  mutateUnifiedConfig((config) => {
+  mutateConfig((config) => {
     if (!config.copilot) {
       config.copilot = { ...DEFAULT_COPILOT_CONFIG };
     }
@@ -383,7 +384,7 @@ async function handleEnable(): Promise<number> {
  * Handle disable subcommand.
  */
 async function handleDisable(): Promise<number> {
-  mutateUnifiedConfig((config) => {
+  mutateConfig((config) => {
     if (config.copilot) {
       config.copilot.enabled = false;
     }
