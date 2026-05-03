@@ -32,8 +32,9 @@ import {
   touchAccount,
   type AccountInfo,
 } from '../accounts/account-manager';
-import { loadOrCreateUnifiedConfig } from '../../config/unified-config-loader';
+
 import type { RuntimeMonitorConfig } from '../../config/unified-config-types';
+import { loadOrCreateUnifiedConfig } from '../../config/config-loader-facade';
 
 export type ManagedQuotaProvider = 'agy' | 'claude' | 'codex' | 'gemini' | 'ghcp';
 type ManagedQuotaResult =

@@ -21,8 +21,7 @@ import {
   CompositeVariantConfig,
   CompositeTierConfig,
 } from '../config/unified-config-types';
-import { loadUnifiedConfig, isUnifiedMode, getCursorConfig } from '../config/unified-config-loader';
-import { getCcsDir } from '../utils/config-manager';
+
 import { getProfileLookupCandidates, isLegacyProfileAlias } from '../utils/profile-compat';
 import type { CLIProxyProvider } from '../cliproxy/types';
 import { CLIPROXY_PROVIDER_IDS, isCLIProxyProvider } from '../cliproxy/provider-capabilities';
@@ -30,6 +29,12 @@ import { LEGACY_CURSOR_PROFILE_NAME } from '../cursor/constants';
 import { normalizeCopilotModelId } from '../copilot/copilot-model-normalizer';
 import type { TargetType } from '../targets/target-adapter';
 import type { ProfileType } from '../types/profile';
+import {
+  getCcsDir,
+  getCursorConfig,
+  isUnifiedMode,
+  loadUnifiedConfig,
+} from '../config/config-loader-facade';
 export type { ProfileType } from '../types/profile';
 
 /** CLIProxy profile names (OAuth-based, zero config) */

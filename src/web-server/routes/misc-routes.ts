@@ -5,14 +5,9 @@
 import { Router, Request, Response } from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
-import { getCcsDir } from '../../utils/config-manager';
+
 import { expandPath } from '../../utils/helpers';
-import {
-  mutateUnifiedConfig,
-  getGlobalEnvConfig,
-  getThinkingConfig,
-  getConfigYamlPath,
-} from '../../config/unified-config-loader';
+
 import type { ThinkingConfig } from '../../config/unified-config-types';
 import {
   THINKING_BUDGET_MIN,
@@ -23,6 +18,13 @@ import {
 } from '../../cliproxy';
 import { validateFilePath } from './route-helpers';
 import { requireLocalAccessWhenAuthDisabled } from '../middleware/auth-middleware';
+import {
+  getCcsDir,
+  getConfigYamlPath,
+  getGlobalEnvConfig,
+  getThinkingConfig,
+  mutateConfig,
+} from '../../config/config-loader-facade';
 
 const router = Router();
 
@@ -244,7 +246,7 @@ router.put('/global-env', (req: Request, res: Response): void => {
 
   try {
     // Atomic read-modify-write — avoids race between load and save
-    const updated = mutateUnifiedConfig((config) => {
+    const updated = mutateConfig((config) => {
       config.global_env = {
         enabled: enabled ?? config.global_env?.enabled ?? true,
         env: env ?? config.global_env?.env ?? {},
@@ -445,7 +447,7 @@ router.put('/thinking', (req: Request, res: Response): void => {
         Object.keys(sanitizedOverrides).length > 0 ? sanitizedOverrides : undefined;
     }
 
-    const config = mutateUnifiedConfig((currentConfig) => {
+    const config = mutateConfig((currentConfig) => {
       currentConfig.thinking = {
         mode: updates.mode ?? currentConfig.thinking?.mode ?? 'auto',
         override: shouldClearOverride

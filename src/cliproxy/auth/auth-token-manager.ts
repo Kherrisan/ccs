@@ -8,8 +8,9 @@
  */
 
 import { randomBytes } from 'crypto';
-import { loadOrCreateUnifiedConfig, mutateUnifiedConfig } from '../../config/unified-config-loader';
+
 import { CCS_INTERNAL_API_KEY, CCS_CONTROL_PANEL_SECRET } from '../config/generator';
+import { loadOrCreateUnifiedConfig, mutateConfig } from '../../config/config-loader-facade';
 
 /**
  * Generate a cryptographically secure token.
@@ -87,7 +88,7 @@ export function getEffectiveManagementSecret(): string {
  * @param apiKey - New API key (or undefined to reset to default)
  */
 export function setGlobalApiKey(apiKey: string | undefined): void {
-  mutateUnifiedConfig((config) => {
+  mutateConfig((config) => {
     if (!config.cliproxy.auth) {
       config.cliproxy.auth = {};
     }
@@ -107,7 +108,7 @@ export function setGlobalApiKey(apiKey: string | undefined): void {
  * @param secret - New management secret (or undefined to reset to default)
  */
 export function setGlobalManagementSecret(secret: string | undefined): void {
-  mutateUnifiedConfig((config) => {
+  mutateConfig((config) => {
     if (!config.cliproxy.auth) {
       config.cliproxy.auth = {};
     }
@@ -128,7 +129,7 @@ export function setGlobalManagementSecret(secret: string | undefined): void {
  * @param apiKey - New API key (or undefined to remove override)
  */
 export function setVariantApiKey(variantName: string, apiKey: string | undefined): void {
-  mutateUnifiedConfig((config) => {
+  mutateConfig((config) => {
     const variant = config.cliproxy.variants[variantName];
 
     if (!variant) {
@@ -155,7 +156,7 @@ export function setVariantApiKey(variantName: string, apiKey: string | undefined
  * Removes cliproxy.auth and all variant auth overrides.
  */
 export function resetAuthToDefaults(): void {
-  mutateUnifiedConfig((config) => {
+  mutateConfig((config) => {
     delete config.cliproxy.auth;
 
     for (const variantName of Object.keys(config.cliproxy.variants)) {

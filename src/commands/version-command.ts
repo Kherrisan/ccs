@@ -7,9 +7,10 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import { initUI, header, subheader, color, warn } from '../utils/ui';
-import { getActiveConfigPath, getCcsDir } from '../utils/config-manager';
+import { getActiveConfigPath } from '../utils/config-manager';
 import { getVersion } from '../utils/version';
 import { getProfileLookupCandidates } from '../utils/profile-compat';
+import { getCcsDir } from '../config/config-loader-facade';
 
 /**
  * Handle version command

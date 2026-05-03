@@ -7,10 +7,11 @@ import { Router } from 'express';
 import * as fs from 'fs';
 import { promises as fsp } from 'fs';
 import * as path from 'path';
-import { getCcsDir } from '../../utils/config-manager';
+
 import { DEFAULT_CURSOR_CONFIG } from '../../config/unified-config-types';
-import { mutateUnifiedConfig, getCursorConfig } from '../../config/unified-config-loader';
+
 import type { CursorConfig } from '../../config/unified-config-types';
+import { getCcsDir, getCursorConfig, mutateConfig } from '../../config/config-loader-facade';
 
 const router = Router();
 
@@ -181,7 +182,7 @@ router.put('/', async (req: Request, res: Response): Promise<void> => {
     }
 
     const normalizedModel = parseRequiredModel(updates.model);
-    const config = mutateUnifiedConfig((currentConfig) => {
+    const config = mutateConfig((currentConfig) => {
       currentConfig.cursor = {
         enabled: updates.enabled ?? currentConfig.cursor?.enabled ?? DEFAULT_CURSOR_CONFIG.enabled,
         port: updates.port ?? currentConfig.cursor?.port ?? DEFAULT_CURSOR_CONFIG.port,
@@ -294,7 +295,7 @@ router.put('/raw', (req: Request, res: Response): void => {
     // Keep unified config aligned with raw settings edits (parity with Copilot raw editor).
     const parsedPort = parseLocalCursorPort(settings);
     const env = (settings as { env?: Record<string, unknown> }).env ?? {};
-    mutateUnifiedConfig((config) => {
+    mutateConfig((config) => {
       const model = parseRequiredModel(env.ANTHROPIC_MODEL) ?? config.cursor?.model;
 
       config.cursor = {

@@ -12,7 +12,7 @@ import {
   getWindowsEscapedCommandShell,
   stripClaudeCodeEnv,
 } from '../../utils/shell-executor';
-import { isUnifiedMode } from '../../config/unified-config-loader';
+
 import { ProfileMetadata } from '../../types';
 import {
   resolveCreateAccountContext,
@@ -25,6 +25,7 @@ import { exitWithError } from '../../errors';
 import { ExitCode } from '../../errors/exit-codes';
 import { CommandContext, parseArgs } from './types';
 import { stripAmbientProviderCredentials } from './create-command-env';
+import { isUnifiedMode } from '../../config/config-loader-facade';
 
 function sanitizeProfileNameForInstance(name: string): string {
   return name.replace(/[^a-zA-Z0-9_-]/g, '-').toLowerCase();

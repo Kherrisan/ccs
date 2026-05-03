@@ -10,7 +10,7 @@
 
 import { createInterface, Interface } from 'readline';
 import { fail, info, ok, warn } from '../../utils/ui';
-import { getCliproxySafetyConfig } from '../../config/unified-config-loader';
+import { getCliproxySafetyConfig } from '../../config/config-loader-facade';
 
 export const ANTIGRAVITY_RISK_ISSUE_URL = 'https://github.com/kaitranntt/ccs/issues/509';
 export const ANTIGRAVITY_ACK_VERSION = '2026-02-24-antigravity-oauth-v2';

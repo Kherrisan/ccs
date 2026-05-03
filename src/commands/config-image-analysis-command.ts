@@ -6,11 +6,7 @@
  */
 
 import { initUI, header, ok, info, warn, fail, subheader, color, dim } from '../utils/ui';
-import {
-  getImageAnalysisConfig,
-  updateUnifiedConfig,
-  loadOrCreateUnifiedConfig,
-} from '../config/unified-config-loader';
+
 import { DEFAULT_IMAGE_ANALYSIS_CONFIG } from '../config/unified-config-types';
 import {
   CLIPROXY_PROVIDER_IDS,
@@ -19,6 +15,11 @@ import {
 } from '../cliproxy/provider-capabilities';
 import { extractOption, hasAnyFlag } from './arg-extractor';
 import { normalizeImageAnalysisBackendId } from '../utils/hooks';
+import {
+  getImageAnalysisConfig,
+  loadOrCreateUnifiedConfig,
+  updateConfig,
+} from '../config/config-loader-facade';
 
 interface ImageAnalysisCommandOptions {
   enable?: boolean;
@@ -346,7 +347,7 @@ export async function handleConfigImageAnalysisCommand(args: string[]): Promise<
   }
 
   if (hasChanges) {
-    updateUnifiedConfig({ image_analysis: imageConfig });
+    updateConfig({ image_analysis: imageConfig });
     console.log(ok('Configuration updated'));
     console.log('');
   }

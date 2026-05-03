@@ -5,7 +5,6 @@
  * based on unified config. Used by stats-fetcher, auth-routes, and UI.
  */
 
-import { loadOrCreateUnifiedConfig } from '../../config/unified-config-loader';
 import type { CliproxyServerConfig } from '../../config/unified-config-types';
 import {
   CLIPROXY_DEFAULT_PORT,
@@ -15,6 +14,7 @@ import {
 } from '../config/port-manager';
 import { getProxyEnvVars } from './proxy-config-resolver';
 import { getEffectiveManagementSecret } from '../auth/auth-token-manager';
+import { loadOrCreateUnifiedConfig } from '../../config/config-loader-facade';
 
 /** Resolved proxy target for making requests */
 export interface ProxyTarget {

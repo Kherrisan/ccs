@@ -1,9 +1,5 @@
 import { initUI, header, ok, info, warn, fail, subheader, color, dim } from '../utils/ui';
-import {
-  getOfficialChannelsConfig,
-  loadOrCreateUnifiedConfig,
-  updateUnifiedConfig,
-} from '../config/unified-config-loader';
+
 import type { OfficialChannelId } from '../config/unified-config-types';
 import { DEFAULT_OFFICIAL_CHANNELS_CONFIG } from '../config/unified-config-types';
 import {
@@ -42,6 +38,11 @@ import {
   isOfficialChannelSelectionValid,
 } from '../channels/official-channels-runtime';
 import { extractOption, hasAnyFlag } from './arg-extractor';
+import {
+  getOfficialChannelsConfig,
+  loadOrCreateUnifiedConfig,
+  updateConfig,
+} from '../config/config-loader-facade';
 
 interface ChannelsCommandOptions {
   enable: boolean;
@@ -440,7 +441,7 @@ export async function handleConfigChannelsCommand(args: string[]): Promise<void>
 
   try {
     if (hasConfigMutation) {
-      updateUnifiedConfig({ channels: nextConfig });
+      updateConfig({ channels: nextConfig });
     }
 
     if (options.setToken) {

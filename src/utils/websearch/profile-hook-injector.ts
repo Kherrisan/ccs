@@ -12,11 +12,12 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { info, warn } from '../ui';
 import { getWebSearchHookConfig, getHookPath } from './hook-config';
-import { getWebSearchConfig } from '../../config/unified-config-loader';
+
 import { removeHookConfig } from './hook-config';
 import { getCcsDir } from '../config-manager';
 import { isCcsWebSearchHook, deduplicateCcsHooks } from './hook-utils';
 import { getMigrationMarkerPath, installWebSearchHook } from './hook-installer';
+import { getWebSearchConfig } from '../../config/config-loader-facade';
 
 // Valid profile name pattern (alphanumeric, dash, underscore only)
 const VALID_PROFILE_NAME = /^[a-zA-Z0-9_-]+$/;

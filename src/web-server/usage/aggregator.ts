@@ -24,7 +24,7 @@ import {
   getCacheAge,
 } from './disk-cache';
 import { ok, info, fail } from '../../utils/ui';
-import { getCcsDir } from '../../utils/config-manager';
+
 import { getClaudeConfigDir, getDefaultClaudeConfigDir } from '../../utils/claude-config-path';
 import {
   loadCachedCliproxyData,
@@ -40,6 +40,7 @@ import {
   getModelsUsed,
   getProviderModelKey,
 } from './model-identity';
+import { getCcsDir } from '../../config/config-loader-facade';
 
 // ============================================================================
 // Multi-Instance Support - Aggregate usage from CCS profiles

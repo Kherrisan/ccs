@@ -5,7 +5,6 @@
  * Checks: enabled status, provider_models, timeout, CLIProxy availability.
  */
 
-import { getImageAnalysisConfig } from '../../config/unified-config-loader';
 import { DEFAULT_IMAGE_ANALYSIS_CONFIG } from '../../config/unified-config-types';
 import {
   countManagedImageAnalysisHookFiles,
@@ -17,6 +16,7 @@ import { isCliproxyRunning } from '../../cliproxy/services/stats-fetcher';
 import { CLIPROXY_DEFAULT_PORT } from '../../cliproxy/config/config-generator';
 import type { HealthCheck } from './types';
 import { hasImageAnalyzerHook } from '../../utils/hooks/image-analyzer-hook-installer';
+import { getImageAnalysisConfig } from '../../config/config-loader-facade';
 
 /**
  * Run image analysis configuration check
@@ -112,8 +112,8 @@ export async function runImageAnalysisCheck(results: HealthCheck): Promise<void>
  * Fix image analysis configuration issues
  */
 export async function fixImageAnalysisConfig(): Promise<boolean> {
-  const { updateUnifiedConfig, loadOrCreateUnifiedConfig } = await import(
-    '../../config/unified-config-loader'
+  const { updateConfig, loadOrCreateUnifiedConfig } = await import(
+    '../../config/config-loader-facade'
   );
 
   const config = loadOrCreateUnifiedConfig();
@@ -145,7 +145,7 @@ export async function fixImageAnalysisConfig(): Promise<boolean> {
   }
 
   if (fixed) {
-    updateUnifiedConfig({ image_analysis: config.image_analysis });
+    updateConfig({ image_analysis: config.image_analysis });
   }
 
   const repairStats = repairImageAnalysisRuntimeState();
