@@ -46,11 +46,7 @@ import {
   resolveOptionalBrowserAttachRuntime,
   syncBrowserMcpToConfigDir,
 } from './utils/browser';
-import {
-  getBrowserConfig,
-  getGlobalEnvConfig,
-  getOfficialChannelsConfig,
-} from './config/unified-config-loader';
+import { getBrowserConfig, getGlobalEnvConfig } from './config/unified-config-loader';
 import {
   ensureProfileHooks as ensureImageAnalyzerHooks,
   removeImageAnalysisProfileHook,
@@ -65,13 +61,6 @@ import {
 } from './utils/hooks';
 import { fail, info, warn } from './utils/ui';
 import { isCopilotSubcommandToken } from './copilot/constants';
-import {
-  buildOfficialChannelsArgs,
-  getOfficialChannelsEnvironmentStatus,
-  officialChannelRequiresMacOS,
-  resolveOfficialChannelsLaunchPlan,
-} from './channels/official-channels-runtime';
-import { getOfficialChannelReadiness } from './channels/official-channels-store';
 import { isCursorSubcommandToken, LEGACY_CURSOR_PROFILE_NAME } from './cursor/constants';
 import { isCLIProxyProvider } from './cliproxy/provider-capabilities';
 
@@ -85,7 +74,6 @@ import { isDeprecatedGlmtProfileName, normalizeDeprecatedGlmtEnv } from './utils
 import { createOpenAICompatLaunchSettings } from './utils/openai-compat-launch-settings';
 import { maybeWarnAboutResumeLaneMismatch } from './auth/resume-lane-warning';
 import { createLogger, runWithRequestId } from './services/logging';
-import { buildCodexBrowserMcpOverrides } from './utils/browser-codex-overrides';
 import type { ProfileDetectionResult } from './auth/profile-detector';
 import type { BrowserLaunchOverride } from './utils/browser';
 
@@ -102,10 +90,7 @@ import {
   type TargetCredentials,
 } from './targets';
 import { resolveTargetType, stripTargetFlag } from './targets/target-resolver';
-import {
-  DroidReasoningFlagError,
-  resolveDroidReasoningRuntime,
-} from './targets/droid-reasoning-runtime';
+import { DroidReasoningFlagError } from './targets/droid-reasoning-runtime';
 import { DroidCommandRouterError, routeDroidCommandArgs } from './targets/droid-command-router';
 import { resolveCliproxyBridgeMetadata } from './api/services/cliproxy-profile-bridge';
 import {
@@ -115,315 +100,30 @@ import {
 } from './proxy';
 
 // Version and Update check utilities
-import { getVersion } from './utils/version';
-import {
-  checkForUpdates,
-  showUpdateNotification,
-  checkCachedUpdate,
-  isCacheStale,
-} from './utils/update-checker';
+import { isCacheStale } from './utils/update-checker';
 // Note: npm is now the only supported installation method
 
-// ========== Profile Detection ==========
-
-interface DetectedProfile {
-  profile: string;
-  remainingArgs: string[];
-}
-
-interface RuntimeReasoningResolution {
-  argsWithoutReasoningFlags: string[];
-  reasoningOverride: string | number | undefined;
-  reasoningSource: 'flag' | 'env' | undefined;
-  sourceDisplay: string | undefined;
-}
-
-const CODEX_RUNTIME_REASONING_LEVELS = new Set(['minimal', 'low', 'medium', 'high', 'xhigh']);
-const CODEX_NATIVE_PASSTHROUGH_FLAGS = new Set(['--help', '-h', '--version', '-v']);
-const NATIVE_CLAUDE_EFFORT_LEVELS = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
-const NATIVE_CLAUDE_EFFORT_LEVEL_SET = new Set<string>(NATIVE_CLAUDE_EFFORT_LEVELS);
-
-function resolveCodexRuntimeConfigOverrides(
-  target: ReturnType<typeof resolveTargetType>,
-  browserLaunchOverride: BrowserLaunchOverride | undefined
-): string[] {
-  if (target !== 'codex') {
-    return [];
-  }
-
-  const codexBrowserExposure = resolveBrowserExposure(
-    getBrowserConfig().codex,
-    browserLaunchOverride
-  );
-  if (!codexBrowserExposure.exposeForLaunch) {
-    return [];
-  }
-
-  return buildCodexBrowserMcpOverrides();
-}
-
-/**
- * Smart profile detection
- */
-function detectProfile(args: string[]): DetectedProfile {
-  if (args.length === 0 || args[0].startsWith('-')) {
-    // No args or first arg is a flag → use default profile
-    return { profile: 'default', remainingArgs: args };
-  } else {
-    // First arg doesn't start with '-' → treat as profile name
-    return { profile: args[0], remainingArgs: args.slice(1) };
-  }
-}
-
-function normalizeLegacyCursorArgs(args: string[]): string[] {
-  if (args[0] === 'legacy' && args[1] === 'cursor') {
-    return [LEGACY_CURSOR_PROFILE_NAME, ...args.slice(2)];
-  }
-
-  return args;
-}
-
-function printCursorLegacySubcommandDeprecation(subcommand: string): void {
-  console.error(
-    info(`\`ccs cursor ${subcommand}\` is deprecated for the legacy Cursor IDE bridge.`)
-  );
-  console.error(
-    info(
-      `Use \`ccs legacy cursor ${subcommand}\` for the old bridge, or \`ccs cursor --auth|--accounts|--config\` for the CLIProxy provider.`
-    )
-  );
-  console.error('');
-}
-
-function resolveRuntimeReasoningFlags(
-  args: string[],
-  envThinkingValue: string | undefined
-): RuntimeReasoningResolution {
-  const runtime = resolveDroidReasoningRuntime(args, envThinkingValue);
-
-  if (runtime.duplicateDisplays.length > 0) {
-    console.error(
-      warn(
-        `[!] Multiple reasoning flags detected. Using first occurrence: ${runtime.sourceDisplay || '<first-flag>'}`
-      )
-    );
-  }
-
-  return {
-    argsWithoutReasoningFlags: runtime.argsWithoutReasoningFlags,
-    reasoningOverride: runtime.reasoningOverride,
-    reasoningSource: runtime.sourceFlag
-      ? 'flag'
-      : runtime.reasoningOverride !== undefined
-        ? 'env'
-        : undefined,
-    sourceDisplay: runtime.sourceDisplay,
-  };
-}
-
-function normalizeCodexRuntimeReasoningOverride(
-  value: string | number | undefined
-): string | undefined {
-  return typeof value === 'string' && CODEX_RUNTIME_REASONING_LEVELS.has(value) ? value : undefined;
-}
-
-function exitWithRuntimeReasoningFlagError(
-  message: string,
-  options: {
-    codexAliasLevels: string;
-    includeDroidExecExample?: boolean;
-  }
-): never {
-  console.error(fail(message));
-  console.error('    Examples: --thinking low, --thinking 8192, --thinking off');
-  console.error(`    Codex alias: --effort ${options.codexAliasLevels}`);
-  if (options.includeDroidExecExample) {
-    console.error('    Droid exec: --reasoning-effort high');
-  }
-  process.exit(1);
-}
-
-function normalizeNativeClaudeEffortArgs(args: string[]): string[] {
-  const normalizedArgs: string[] = [];
-  const allowedValues = NATIVE_CLAUDE_EFFORT_LEVELS.join(', ');
-
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-    if (arg === '--effort') {
-      const rawValue = args[i + 1];
-      if (!rawValue || rawValue.startsWith('-') || !rawValue.trim()) {
-        throw new Error(`--effort requires a value: ${allowedValues}`);
-      }
-      const value = rawValue.toLowerCase();
-      if (!NATIVE_CLAUDE_EFFORT_LEVEL_SET.has(value)) {
-        throw new Error(`Invalid --effort value: ${rawValue}. Expected one of: ${allowedValues}.`);
-      }
-      normalizedArgs.push(arg, value);
-      i++;
-      continue;
-    }
-
-    if (arg.startsWith('--effort=')) {
-      const rawValue = arg.slice('--effort='.length);
-      if (!rawValue.trim()) {
-        throw new Error(`--effort requires a value: ${allowedValues}`);
-      }
-      const value = rawValue.toLowerCase();
-      if (!NATIVE_CLAUDE_EFFORT_LEVEL_SET.has(value)) {
-        throw new Error(`Invalid --effort value: ${rawValue}. Expected one of: ${allowedValues}.`);
-      }
-      normalizedArgs.push(`--effort=${value}`);
-      continue;
-    }
-
-    normalizedArgs.push(arg);
-  }
-
-  return normalizedArgs;
-}
-
-function shouldNormalizeNativeClaudeEffort(profileType: ProfileDetectionResult['type']): boolean {
-  return profileType === 'default' || profileType === 'account' || profileType === 'settings';
-}
+// Import extracted dispatcher modules
+import {
+  detectProfile,
+  normalizeLegacyCursorArgs,
+  printCursorLegacySubcommandDeprecation,
+  resolveRuntimeReasoningFlags,
+  normalizeCodexRuntimeReasoningOverride,
+  exitWithRuntimeReasoningFlagError,
+  normalizeNativeClaudeEffortArgs,
+  shouldNormalizeNativeClaudeEffort,
+  shouldPassthroughNativeCodexFlagCommand,
+} from './dispatcher/cli-argument-parser';
+import {
+  resolveCodexRuntimeConfigOverrides,
+  refreshUpdateCache,
+  showCachedUpdateNotification,
+  resolveNativeClaudeLaunchArgs,
+} from './dispatcher/environment-builder';
+import { type ProfileError, execNativeCodexFlagCommand } from './dispatcher/target-executor';
 
 // ========== Main Execution ==========
-
-interface ProfileError extends Error {
-  profileName?: string;
-  availableProfiles?: string;
-  suggestions?: string[];
-}
-
-/**
- * Perform background update check (refreshes cache, no notification)
- */
-async function refreshUpdateCache(): Promise<void> {
-  try {
-    const currentVersion = getVersion();
-    // npm is now the only supported installation method
-    await checkForUpdates(currentVersion, true, 'npm');
-  } catch (_e) {
-    // Silently fail - update check shouldn't crash main CLI
-  }
-}
-
-/**
- * Show update notification if cached result indicates update available
- * Returns true if notification was shown
- */
-async function showCachedUpdateNotification(): Promise<boolean> {
-  try {
-    const currentVersion = getVersion();
-    const updateInfo = checkCachedUpdate(currentVersion);
-
-    if (updateInfo) {
-      await showUpdateNotification(updateInfo);
-      return true;
-    }
-  } catch (_e) {
-    // Silently fail
-  }
-  return false;
-}
-
-function resolveNativeClaudeLaunchArgs(
-  args: string[],
-  profileType: 'default' | 'account',
-  targetConfigDir?: string
-): string[] {
-  const config = getOfficialChannelsConfig();
-  const environment = getOfficialChannelsEnvironmentStatus(
-    targetConfigDir ? { CLAUDE_CONFIG_DIR: targetConfigDir } : undefined
-  );
-  const channelReadiness = {
-    telegram: getOfficialChannelReadiness('telegram'),
-    discord: getOfficialChannelReadiness('discord'),
-    imessage: !officialChannelRequiresMacOS('imessage') || process.platform === 'darwin',
-  };
-  const plan = resolveOfficialChannelsLaunchPlan({
-    args,
-    config,
-    target: 'claude',
-    profileType,
-    environment,
-    channelReadiness,
-  });
-
-  for (const message of plan.skippedMessages) {
-    console.error(warn(message));
-  }
-
-  if (
-    config.selected.length > 0 &&
-    environment.auth.state === 'eligible' &&
-    environment.auth.orgRequirementMessage
-  ) {
-    console.error(warn(environment.auth.orgRequirementMessage));
-  }
-
-  if (!plan.applied) {
-    return args;
-  }
-
-  return buildOfficialChannelsArgs(args, plan.appliedChannels, plan.wantsPermissionBypass);
-}
-
-function shouldPassthroughNativeCodexFlagCommand(args: string[]): boolean {
-  return getNativeCodexPassthroughArgs(args) !== null;
-}
-
-function getNativeCodexPassthroughArgs(args: string[]): string[] | null {
-  const targetArgs = stripTargetFlag(args);
-  if (resolveTargetType(args) !== 'codex' || targetArgs.length === 0) {
-    return null;
-  }
-
-  const firstArg = targetArgs[0] || '';
-  if (CODEX_NATIVE_PASSTHROUGH_FLAGS.has(firstArg)) {
-    return targetArgs;
-  }
-
-  const secondArg = targetArgs[1] || '';
-  if (firstArg === 'codex' && CODEX_NATIVE_PASSTHROUGH_FLAGS.has(secondArg)) {
-    return targetArgs.slice(1);
-  }
-
-  return null;
-}
-
-function execNativeCodexFlagCommand(args: string[]): void {
-  const adapter = getTarget('codex');
-  if (!adapter) {
-    console.error(fail('Target adapter not found for "codex"'));
-    process.exit(1);
-  }
-
-  const binaryInfo = adapter.detectBinary();
-  if (!binaryInfo) {
-    console.error(fail('Codex CLI not found.'));
-    console.error(info('Install a recent @openai/codex build, then retry.'));
-    process.exit(1);
-  }
-
-  const targetArgs = getNativeCodexPassthroughArgs(args);
-  if (!targetArgs) {
-    console.error(fail('Native Codex passthrough args could not be resolved.'));
-    process.exit(1);
-  }
-  const creds: TargetCredentials = {
-    profile: 'default',
-    baseUrl: '',
-    apiKey: '',
-  };
-
-  const builtArgs = adapter.buildArgs('default', targetArgs, {
-    creds,
-    profileType: 'default',
-    binaryInfo,
-  });
-  const targetEnv = adapter.buildEnv(creds, 'default');
-  adapter.exec(builtArgs, targetEnv, { binaryInfo });
-}
 
 async function main(): Promise<void> {
   // Register target adapters
