@@ -4,7 +4,7 @@ import type {
   BrowserEvalMode,
   BrowserToolPolicy,
 } from '../../config/unified-config-types';
-import { getBrowserConfig, loadUnifiedConfig } from '../../config/unified-config-loader';
+
 import { getCcsPathDisplay } from '../config-manager';
 import { getCodexBinaryInfo } from '../../targets/codex-detector';
 import { type BrowserRuntimeEnv, resolveBrowserRuntimeEnv } from './chrome-reuse';
@@ -19,6 +19,7 @@ import {
   getEffectiveClaudeBrowserAttachConfig,
   getRecommendedBrowserUserDataDir,
 } from './browser-settings';
+import { getBrowserConfig, loadUnifiedConfig } from '../../config/config-loader-facade';
 
 export interface ClaudeBrowserStatus {
   enabled: boolean;

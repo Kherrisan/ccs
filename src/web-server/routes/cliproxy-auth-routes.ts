@@ -34,7 +34,7 @@ import {
 import { fetchRemoteAuthStatus } from '../../cliproxy/services/remote-auth-fetcher';
 import { ensureManagedModelPrefixes } from '../../cliproxy/ai-providers/managed-model-prefixes';
 import { invalidateQuotaCache } from '../../cliproxy/quota/quota-response-cache';
-import { loadOrCreateUnifiedConfig } from '../../config/unified-config-loader';
+
 import { tryKiroImport } from '../../cliproxy/auth/kiro-import';
 import {
   type ProviderTokenSnapshot,
@@ -65,6 +65,7 @@ import {
 } from '../../cliproxy/auth/antigravity-responsibility';
 import { createRouteErrorHelpers } from './route-helpers';
 import { requireLocalAccessWhenAuthDisabled } from '../middleware/auth-middleware';
+import { loadOrCreateUnifiedConfig } from '../../config/config-loader-facade';
 
 const router = Router();
 const MANUAL_AUTH_STATE_TTL_MS = 10 * 60 * 1000;

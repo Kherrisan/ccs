@@ -2,12 +2,7 @@ import './utils/fetch-proxy-setup';
 
 import * as fs from 'fs';
 import { detectClaudeCli } from './utils/claude-detector';
-import {
-  getSettingsPath,
-  loadSettings,
-  setGlobalConfigDir,
-  detectCloudSyncPath,
-} from './utils/config-manager';
+import { getSettingsPath, setGlobalConfigDir, detectCloudSyncPath } from './utils/config-manager';
 import { expandPath } from './utils/helpers';
 import {
   validateGlmKey,
@@ -46,11 +41,7 @@ import {
   resolveOptionalBrowserAttachRuntime,
   syncBrowserMcpToConfigDir,
 } from './utils/browser';
-import {
-  getBrowserConfig,
-  getGlobalEnvConfig,
-  getOfficialChannelsConfig,
-} from './config/unified-config-loader';
+
 import {
   ensureProfileHooks as ensureImageAnalyzerHooks,
   removeImageAnalysisProfileHook,
@@ -122,6 +113,12 @@ import {
   checkCachedUpdate,
   isCacheStale,
 } from './utils/update-checker';
+import {
+  getBrowserConfig,
+  getGlobalEnvConfig,
+  getOfficialChannelsConfig,
+  loadSettings,
+} from './config/config-loader-facade';
 // Note: npm is now the only supported installation method
 
 // ========== Profile Detection ==========

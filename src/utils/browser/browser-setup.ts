@@ -1,4 +1,3 @@
-import { getBrowserConfig, mutateUnifiedConfig } from '../../config/unified-config-loader';
 import type { BrowserConfig } from '../../config/unified-config-types';
 import { getNodePlatformKey } from './platform';
 import { type BrowserStatusPayload, getBrowserStatus } from './browser-status';
@@ -9,6 +8,7 @@ import {
   getRecommendedBrowserUserDataDir,
   isManagedClaudeBrowserAttachConfig,
 } from './browser-settings';
+import { getBrowserConfig, mutateConfig } from '../../config/config-loader-facade';
 
 export interface BrowserSetupResult {
   configUpdated: boolean;
@@ -23,14 +23,14 @@ export interface BrowserSetupResult {
 
 export interface BrowserSetupDeps {
   getBrowserConfig: typeof getBrowserConfig;
-  mutateUnifiedConfig: typeof mutateUnifiedConfig;
+  mutateConfig: typeof mutateConfig;
   ensureBrowserMcp: typeof ensureBrowserMcp;
   getBrowserStatus: typeof getBrowserStatus;
 }
 
 const defaultBrowserSetupDeps: BrowserSetupDeps = {
   getBrowserConfig,
-  mutateUnifiedConfig,
+  mutateConfig,
   ensureBrowserMcp,
   getBrowserStatus,
 };
@@ -81,7 +81,7 @@ export async function runBrowserSetup(
 function persistBrowserSetupConfig(deps: BrowserSetupDeps, currentConfig: BrowserConfig): boolean {
   const before = JSON.stringify(currentConfig);
 
-  deps.mutateUnifiedConfig((config) => {
+  deps.mutateConfig((config) => {
     const existingBrowser = config.browser ?? currentConfig;
     const currentUserDataDir = existingBrowser.claude.user_data_dir?.trim();
 

@@ -6,12 +6,13 @@
  */
 
 import { initUI, header, dim, color, subheader, fail, warn } from '../utils/ui';
-import { getCcsDir } from '../utils/config-manager';
+
 import { CLAUDE_EXTENSION_HOSTS, type ClaudeExtensionHost } from '../shared/claude-extension-hosts';
 import {
   renderClaudeExtensionSettingsJson,
   resolveClaudeExtensionSetup,
 } from '../shared/claude-extension-setup';
+import { getCcsDir } from '../config/config-loader-facade';
 
 type ShellType = 'bash' | 'fish' | 'powershell';
 type OutputFormat = 'openai' | 'anthropic' | 'raw' | 'claude-extension';

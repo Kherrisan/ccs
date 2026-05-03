@@ -18,7 +18,7 @@ import {
 } from './binary/platform-detector';
 import { stopProxy } from './services/proxy-lifecycle-service';
 import { waitForPortFree } from '../utils/port-utils';
-import { loadOrCreateUnifiedConfig } from '../config/unified-config-loader';
+
 import {
   UpdateCheckResult,
   checkForUpdates,
@@ -39,6 +39,7 @@ import {
 
 import type { CLIProxyBackend } from './types';
 import { getVersionListCachePath } from './binary/version-cache';
+import { loadOrCreateUnifiedConfig } from '../config/config-loader-facade';
 
 export const CLIPROXY_DELETED_PLUS_REPO = 'router-for-me/CLIProxyAPIPlus';
 export const CLIPROXY_PLUS_FALLBACK_TRACKING_URL = 'https://github.com/kaitranntt/ccs/issues/1062';

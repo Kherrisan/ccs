@@ -19,8 +19,9 @@ import {
   type CliproxyUsageHistoryDetail,
 } from './cliproxy-usage-transformer';
 import type { DailyUsage, HourlyUsage, MonthlyUsage } from './types';
-import { getCcsDir } from '../../utils/config-manager';
+
 import { ok, info, warn } from '../../utils/ui';
+import { getCcsDir } from '../../config/config-loader-facade';
 
 interface CliproxyUsageSnapshot {
   version: number;

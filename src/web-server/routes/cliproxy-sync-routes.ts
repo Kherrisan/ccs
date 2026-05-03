@@ -3,7 +3,7 @@
  */
 
 import { Router, Request, Response } from 'express';
-import { mutateUnifiedConfig } from '../../config/unified-config-loader';
+
 import {
   generateSyncPayload,
   generateSyncPreview,
@@ -12,6 +12,7 @@ import {
   syncToLocalConfig,
   getLocalSyncStatus,
 } from '../../cliproxy/sync';
+import { mutateConfig } from '../../config/config-loader-facade';
 
 const router = Router();
 
@@ -130,7 +131,7 @@ router.put('/auto-sync', async (req: Request, res: Response): Promise<void> => {
     }
 
     try {
-      mutateUnifiedConfig((config) => {
+      mutateConfig((config) => {
         if (!config.cliproxy) {
           throw new Error('CLIProxy config not initialized');
         }

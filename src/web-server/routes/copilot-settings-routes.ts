@@ -10,8 +10,11 @@ import {
   normalizeCopilotSettingsWithWarnings,
 } from '../../copilot/copilot-model-normalizer';
 import { DEFAULT_COPILOT_CONFIG, type CopilotConfig } from '../../config/unified-config-types';
-import { loadOrCreateUnifiedConfig, mutateUnifiedConfig } from '../../config/unified-config-loader';
-import { getCcsDir } from '../../utils/config-manager';
+import {
+  getCcsDir,
+  loadOrCreateUnifiedConfig,
+  mutateConfig,
+} from '../../config/config-loader-facade';
 
 const router = Router();
 
@@ -150,7 +153,7 @@ router.put('/raw', (req: Request, res: Response): void => {
     );
 
     try {
-      mutateUnifiedConfig((config) => {
+      mutateConfig((config) => {
         config.copilot = settingsResult.effectiveConfig;
       });
     } catch (error) {

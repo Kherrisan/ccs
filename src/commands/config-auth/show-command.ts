@@ -4,9 +4,9 @@
  * Display current dashboard authentication status.
  */
 
-import { getDashboardAuthConfig } from '../../config/unified-config-loader';
 import { initUI, header, subheader, ok, info, warn, dim, color } from '../../utils/ui';
 import type { AuthStatusInfo } from './types';
+import { getDashboardAuthConfig } from '../../config/config-loader-facade';
 
 /**
  * Get auth status info with ENV override detection

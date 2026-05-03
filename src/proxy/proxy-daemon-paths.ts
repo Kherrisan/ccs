@@ -1,5 +1,5 @@
 import * as path from 'path';
-import { getCcsDir } from '../utils/config-manager';
+import { getCcsDir } from '../config/config-loader-facade';
 
 export const OPENAI_COMPAT_PROXY_LEGACY_DEFAULT_PORT = 3456;
 export const OPENAI_COMPAT_PROXY_ADAPTIVE_PORT_START = 43_456;

@@ -9,12 +9,12 @@ import * as path from 'path';
 import type { Config, Settings } from '../../types';
 import type { TargetType } from '../../targets/target-adapter';
 import { getPersistedTargetChoices, isPersistedTargetType } from '../../targets/target-metadata';
-import { getCcsDir, getConfigPath, loadConfigSafe } from '../../utils/config-manager';
+import { getConfigPath } from '../../utils/config-manager';
 import { ensureWebSearchMcpOrThrow } from '../../utils/websearch-manager';
 import { ensureImageAnalysisMcpOrThrow } from '../../utils/image-analysis';
 import { isSensitiveKey } from '../../utils/sensitive-keys';
 import { isReservedName } from '../../config/reserved-names';
-import { isUnifiedMode, mutateUnifiedConfig } from '../../config/unified-config-loader';
+
 import { validateApiName } from './validation-service';
 import { listApiProfiles } from './profile-reader';
 import { validateApiProfileSettingsPayload } from './profile-lifecycle-validation';
@@ -26,6 +26,12 @@ import type {
   ImportApiProfileResult,
   RegisterApiProfileOrphansResult,
 } from './profile-types';
+import {
+  getCcsDir,
+  isUnifiedMode,
+  loadConfigSafe,
+  mutateConfig,
+} from '../../config/config-loader-facade';
 
 const SETTINGS_FILE_SUFFIX = '.settings.json';
 const REDACTED_TOKEN_SENTINEL = '__CCS_REDACTED__';
@@ -62,7 +68,7 @@ function writeJsonObjectAtomically(filePath: string, value: unknown): void {
 
 function registerApiProfileInConfig(name: string, target: TargetType, force = false): void {
   if (isUnifiedMode()) {
-    mutateUnifiedConfig((config) => {
+    mutateConfig((config) => {
       if (config.profiles[name] && !force) {
         throw new Error(`API profile already exists: ${name}`);
       }

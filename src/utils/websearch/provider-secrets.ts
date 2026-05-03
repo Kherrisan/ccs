@@ -1,5 +1,5 @@
-import { getGlobalEnvConfig } from '../../config/unified-config-loader';
 import { maskSensitiveValue } from '../sensitive-keys';
+import { getGlobalEnvConfig } from '../../config/config-loader-facade';
 
 export type WebSearchApiKeyProviderId = 'exa' | 'tavily' | 'brave';
 export type WebSearchApiKeySource = 'global_env' | 'process_env' | 'both' | 'none';

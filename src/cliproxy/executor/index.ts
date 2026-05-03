@@ -16,7 +16,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { ProgressIndicator } from '../../utils/progress-indicator';
 import { ok, fail, info, warn } from '../../utils/ui';
-import { getCcsDir } from '../../utils/config-manager';
+
 import { escapeShellArg, getWindowsEscapedCommandShell } from '../../utils/shell-executor';
 import {
   ensureCLIProxyBinary,
@@ -77,11 +77,7 @@ import {
   resolveOptionalBrowserAttachRuntime,
   syncBrowserMcpToConfigDir,
 } from '../../utils/browser';
-import {
-  getBrowserConfig,
-  loadOrCreateUnifiedConfig,
-  getThinkingConfig,
-} from '../../config/unified-config-loader';
+
 import { HttpsTunnelProxy } from '../proxy/https-tunnel-proxy';
 import {
   isKiroAuthMethod,
@@ -128,6 +124,12 @@ import {
   shouldDisableCodexReasoning,
 } from './thinking-override-resolver';
 import { shouldStartHttpsTunnel } from './https-tunnel-policy';
+import {
+  getBrowserConfig,
+  getCcsDir,
+  getThinkingConfig,
+  loadOrCreateUnifiedConfig,
+} from '../../config/config-loader-facade';
 
 function resolveRuntimeQuotaMonitorProviders(
   provider: CLIProxyProvider,

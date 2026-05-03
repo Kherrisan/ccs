@@ -1,4 +1,3 @@
-import { mutateUnifiedConfig, loadOrCreateUnifiedConfig } from '../../config/unified-config-loader';
 import { regenerateConfig } from '../config/generator';
 import { getAuthDir, getConfigPathForPort } from '../config/path-resolver';
 import {
@@ -7,6 +6,7 @@ import {
   getRoutingErrorMessage,
 } from './routing-strategy-http';
 import type { CliproxyRoutingStrategy } from '../types';
+import { loadOrCreateUnifiedConfig, mutateConfig } from '../../config/config-loader-facade';
 
 export const DEFAULT_CLIPROXY_ROUTING_STRATEGY: CliproxyRoutingStrategy = 'round-robin';
 export const DEFAULT_CLIPROXY_SESSION_AFFINITY_ENABLED = false;
@@ -223,7 +223,7 @@ export async function applyCliproxyRoutingStrategy(
     };
   }
 
-  mutateUnifiedConfig((config) => {
+  mutateConfig((config) => {
     if (config.cliproxy) {
       config.cliproxy.routing = { ...config.cliproxy.routing, strategy };
     }
@@ -278,7 +278,7 @@ export async function applyCliproxySessionAffinitySettings(
     current.ttl ??
     DEFAULT_CLIPROXY_SESSION_AFFINITY_TTL;
 
-  mutateUnifiedConfig((config) => {
+  mutateConfig((config) => {
     if (config.cliproxy) {
       config.cliproxy.routing = {
         ...config.cliproxy.routing,

@@ -8,10 +8,11 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { initUI, color, ok, fail, info } from '../../utils/ui';
 import { InteractivePrompt } from '../../utils/prompt';
-import { isUnifiedMode } from '../../config/unified-config-loader';
+
 import { exitWithError } from '../../errors';
 import { ExitCode } from '../../errors/exit-codes';
 import { CommandContext, parseArgs } from './types';
+import { isUnifiedMode } from '../../config/config-loader-facade';
 
 /**
  * Handle the remove command

@@ -19,7 +19,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import type { CursorCredentials, CursorAuthStatus, AutoDetectResult } from './types';
-import { getCcsDir } from '../utils/config-manager';
+import { getCcsDir } from '../config/config-loader-facade';
 
 const ACCESS_TOKEN_KEYS = ['cursorAuth/accessToken', 'cursorAuth/token'] as const;
 const MACHINE_ID_KEYS = [

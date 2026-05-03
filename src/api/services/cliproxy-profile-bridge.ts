@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { getCcsDir, loadConfigSafe } from '../../utils/config-manager';
+
 import { buildProxyUrl, getProxyTarget } from '../../cliproxy/proxy/proxy-target-resolver';
 import { getEffectiveApiKey } from '../../cliproxy/auth/auth-token-manager';
 import { getModelMappingFromConfig } from '../../cliproxy/config/base-config-loader';
@@ -11,7 +11,7 @@ import {
   mapExternalProviderName,
 } from '../../cliproxy/provider-capabilities';
 import { extractProviderFromPathname } from '../../cliproxy/ai-providers/model-id-normalizer';
-import { isUnifiedMode, loadOrCreateUnifiedConfig } from '../../config/unified-config-loader';
+
 import type { TargetType } from '../../targets/target-adapter';
 import type { Settings } from '../../types/config';
 import type { CLIProxyProvider } from '../../cliproxy/types';
@@ -21,6 +21,12 @@ import type {
   ModelMapping,
   ResolvedCliproxyBridgeProfile,
 } from './profile-types';
+import {
+  getCcsDir,
+  isUnifiedMode,
+  loadConfigSafe,
+  loadOrCreateUnifiedConfig,
+} from '../../config/config-loader-facade';
 
 const DEFAULT_PROFILE_SUFFIX = '-api';
 

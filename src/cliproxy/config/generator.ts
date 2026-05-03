@@ -9,11 +9,12 @@ import type { CLIProxyProvider, ProviderConfig } from '../types';
 import { getProviderDisplayName } from '../provider-capabilities';
 import { getModelMappingFromConfig } from '../config/base-config-loader';
 import { AI_PROVIDER_FAMILY_IDS } from '../ai-providers/types';
-import { loadOrCreateUnifiedConfig } from '../../config/unified-config-loader';
+
 import { getEffectiveApiKey, getEffectiveManagementSecret } from '../auth/auth-token-manager';
 import { getDeniedModelIdReasonForProvider } from '../ai-providers/model-id-normalizer';
 import { getAuthDir, getProviderAuthDir, getConfigPathForPort } from './path-resolver';
 import { CLIPROXY_DEFAULT_PORT } from './port-manager';
+import { loadOrCreateUnifiedConfig } from '../../config/config-loader-facade';
 
 /** Internal API key for CCS-managed requests */
 export const CCS_INTERNAL_API_KEY = 'ccs-internal-managed';

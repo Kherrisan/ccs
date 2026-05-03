@@ -5,7 +5,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { ok, warn, fail, info, header, color } from '../../utils/ui';
-import { getCcsDir } from '../../utils/config-manager';
+
 import {
   CLIPROXY_DEFAULT_PORT,
   configNeedsRegeneration,
@@ -16,6 +16,7 @@ import { getPortProcess, isCLIProxyProcess } from '../../utils/port-utils';
 import { killProcessOnPort, getPlatformName } from '../../utils/platform-commands';
 import { createSpinner } from '../checks/types';
 import { fixImageAnalysisConfig } from '../checks/image-analysis-check';
+import { getCcsDir } from '../../config/config-loader-facade';
 
 const ora = createSpinner();
 

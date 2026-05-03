@@ -3,7 +3,7 @@
  */
 
 import { Router, Request, Response } from 'express';
-import { mutateUnifiedConfig, getWebSearchConfig } from '../../config/unified-config-loader';
+
 import type { WebSearchConfig } from '../../config/unified-config-types';
 import { getWebSearchReadiness, getWebSearchCliProviders } from '../../utils/websearch-manager';
 import {
@@ -14,6 +14,7 @@ import {
 } from '../../utils/websearch/provider-secrets';
 import { normalizeSearxngBaseUrl } from '../../utils/websearch/types';
 import { requireLocalAccessWhenAuthDisabled } from '../middleware/auth-middleware';
+import { getWebSearchConfig, mutateConfig } from '../../config/config-loader-facade';
 
 const router = Router();
 const WEBSEARCH_LOCAL_ACCESS_ERROR =
@@ -143,7 +144,7 @@ router.put('/', (req: Request, res: Response): void => {
   }
 
   try {
-    mutateUnifiedConfig((config) => {
+    mutateConfig((config) => {
       const existingSearxngUrl =
         normalizeSearxngBaseUrl(config.websearch?.providers?.searxng?.url) ?? '';
 
