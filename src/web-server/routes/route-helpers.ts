@@ -5,7 +5,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import type { Response } from 'express';
-import { getCcsDir, getConfigPath, loadConfigSafe, loadSettings } from '../../utils/config-manager';
+import { getConfigPath } from '../../utils/config-manager';
 import { expandPath } from '../../utils/helpers';
 import { getClaudeSettingsPath } from '../../utils/claude-config-path';
 import { resolveDroidProvider } from '../../targets/droid-provider';
@@ -20,6 +20,7 @@ import type { Config, Settings } from '../../types/config';
 import type { TargetType } from '../../targets/target-adapter';
 import { isPersistedTargetType } from '../../targets/target-metadata';
 import { ValidationError } from '../../errors/error-types';
+import { getCcsDir, loadConfigSafe, loadSettings } from '../../config/config-loader-facade';
 
 /** Model mapping for API profiles */
 export interface ModelMapping {

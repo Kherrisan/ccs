@@ -1,11 +1,12 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { getDefaultClaudeConfigDir } from '../utils/claude-config-path';
-import { getCcsDir } from '../utils/config-manager';
+
 import InstanceManager from '../management/instance-manager';
 import ProfileDetector from './profile-detector';
 import { resolveConfiguredContinuitySourceAccount } from './profile-continuity-inheritance';
 import type { ProfileType } from '../types/profile';
+import { getCcsDir } from '../config/config-loader-facade';
 
 export type ResumeLaneKind =
   | 'native'

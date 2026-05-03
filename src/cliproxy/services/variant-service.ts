@@ -12,11 +12,11 @@ import { CLIProxyProvider, PLUS_ONLY_PROVIDERS } from '../types';
 import { CompositeTierConfig, CompositeVariantConfig } from '../../config/unified-config-types';
 import type { TargetType } from '../../targets/target-adapter';
 import { isReservedName, isWindowsReservedName } from '../../config/reserved-names';
-import { isUnifiedMode } from '../../config/unified-config-loader';
+
 import { deleteConfigForPort } from '../config/config-generator';
 import { hasActiveSessions, deleteSessionLockForPort } from '../session-tracker';
 import { warn } from '../../utils/ui';
-import { getCcsDir } from '../../utils/config-manager';
+
 import { validateCompositeTiers } from '../config/composite-validator';
 import {
   canonicalizeModelIdForProvider,
@@ -43,6 +43,7 @@ import {
   getNextAvailablePort,
 } from './variant-config-adapter';
 import { getConfiguredBackend, getPlusBackendUnavailableMessage } from '../binary-manager';
+import { getCcsDir, isUnifiedMode } from '../../config/config-loader-facade';
 
 // Re-export VariantConfig from adapter
 export type { VariantConfig } from './variant-config-adapter';

@@ -9,9 +9,10 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { info, warn } from '../ui';
-import { getWebSearchConfig } from '../../config/unified-config-loader';
+
 import { getCcsDir, getCcsHooksDir } from '../config-manager';
 import { getHookPath } from './hook-config';
+import { getWebSearchConfig } from '../../config/config-loader-facade';
 
 // Re-export from hook-config for backward compatibility
 export { getHookPath, getWebSearchHookConfig } from './hook-config';

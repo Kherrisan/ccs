@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { getCcsDir } from '../utils/config-manager';
+
 import { getDefaultClaudeConfigDir } from '../utils/claude-config-path';
 import type { OfficialChannelId } from '../config/unified-config-types';
 import {
@@ -10,6 +10,7 @@ import {
   getOfficialChannelTokenIds,
   isOfficialChannelTokenRequired,
 } from './official-channels-runtime';
+import { getCcsDir } from '../config/config-loader-facade';
 
 export type OfficialChannelTokenSource = 'saved_env' | 'process_env' | 'missing';
 

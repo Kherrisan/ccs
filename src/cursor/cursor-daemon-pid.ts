@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { getCcsDir } from '../utils/config-manager';
+import { getCcsDir } from '../config/config-loader-facade';
 
 function getCursorDir(): string {
   return path.join(getCcsDir(), 'cursor');

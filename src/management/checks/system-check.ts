@@ -8,7 +8,7 @@ import { getClaudeCliInfo } from '../../utils/claude-detector';
 import { escapeShellArg, stripClaudeCodeEnv } from '../../utils/shell-executor';
 import { ok, fail } from '../../utils/ui';
 import { HealthCheck, IHealthChecker, createSpinner } from './types';
-import { getCcsDir } from '../../utils/config-manager';
+import { getCcsDir } from '../../config/config-loader-facade';
 
 const ora = createSpinner();
 

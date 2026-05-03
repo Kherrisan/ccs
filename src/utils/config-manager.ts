@@ -6,7 +6,7 @@ import { isConfig, isSettings } from '../types';
 import type { Config, Settings, CLIProxyVariantsConfig, CLIProxyVariantConfig } from '../types';
 import { expandPath, error } from './helpers';
 import { info } from './ui';
-import { isUnifiedMode, loadOrCreateUnifiedConfig } from '../config/unified-config-loader';
+import { isUnifiedMode, loadOrCreateUnifiedConfig } from '../config/config-loader-facade';
 
 // TODO: Replace with proper imports after converting these files
 // const { ErrorManager } = require('./error-manager');

@@ -16,8 +16,9 @@ import {
   needsMigration,
   getBackupDirectories,
 } from '../config/migration-manager';
-import { hasUnifiedConfig } from '../config/unified-config-loader';
+
 import { initUI, ok, fail, info, warn, infoBox, dim } from '../utils/ui';
+import { hasUnifiedConfig } from '../config/config-loader-facade';
 
 export async function handleMigrateCommand(args: string[]): Promise<void> {
   await initUI();

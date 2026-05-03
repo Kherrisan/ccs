@@ -7,8 +7,9 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { isUnifiedMode, loadUnifiedConfig } from '../../config/unified-config-loader';
+
 import type { HealthCheck } from './types';
+import { isUnifiedMode, loadUnifiedConfig } from '../../config/config-loader-facade';
 
 /**
  * Check profiles configuration (API profiles from config.json or config.yaml)

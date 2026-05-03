@@ -111,7 +111,7 @@ describe('browser setup', () => {
 
     const deps: BrowserSetupDeps = {
       getBrowserConfig: () => config.browser,
-      mutateUnifiedConfig: (mutator) => {
+      mutateConfig: (mutator) => {
         mutator(config);
         return config;
       },
@@ -166,7 +166,7 @@ describe('browser setup', () => {
 
     const deps: BrowserSetupDeps = {
       getBrowserConfig: () => config.browser,
-      mutateUnifiedConfig: (mutator) => {
+      mutateConfig: (mutator) => {
         mutator(config);
         return config;
       },

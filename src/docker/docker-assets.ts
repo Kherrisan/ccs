@@ -1,6 +1,7 @@
 import * as path from 'path';
-import { getCcsDir } from '../utils/config-manager';
+
 import type { DockerConfigSummary } from './docker-types';
+import { getCcsDir } from '../config/config-loader-facade';
 
 export const DOCKER_REMOTE_DIR = '~/.ccs/docker';
 export const DOCKER_COMPOSE_SERVICE = 'ccs-cliproxy';

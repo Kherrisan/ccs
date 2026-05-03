@@ -15,8 +15,9 @@ import {
   saveCredentials,
   validateToken,
 } from '../../cursor';
-import { getCursorConfig } from '../../config/unified-config-loader';
+
 import cursorSettingsRoutes from './cursor-settings-routes';
+import { getCursorConfig } from '../../config/config-loader-facade';
 
 const router = Router();
 

@@ -6,8 +6,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { ok, fail, warn, info } from '../../utils/ui';
 import { HealthCheck, IHealthChecker, createSpinner } from './types';
-import { getCcsDir } from '../../utils/config-manager';
+
 import { getClaudeConfigDir } from '../../utils/claude-config-path';
+import { getCcsDir } from '../../config/config-loader-facade';
 
 const ora = createSpinner();
 

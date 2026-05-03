@@ -7,7 +7,7 @@
 
 import { spawn } from 'child_process';
 import { CopilotConfig } from '../config/unified-config-types';
-import { getGlobalEnvConfig } from '../config/unified-config-loader';
+
 import { ensureCliproxyService } from '../cliproxy';
 import { getEffectiveApiKey } from '../cliproxy/auth/auth-token-manager';
 import { CLIPROXY_DEFAULT_PORT } from '../cliproxy/config/port-manager';
@@ -36,6 +36,7 @@ import {
 } from '../utils/hooks';
 import { stripClaudeCodeEnv } from '../utils/shell-executor';
 import { createLogger } from '../services/logging';
+import { getGlobalEnvConfig } from '../config/config-loader-facade';
 
 const logger = createLogger('copilot:executor');
 

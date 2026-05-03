@@ -1,9 +1,10 @@
 import { Router, type Request, type Response } from 'express';
-import { mutateUnifiedConfig } from '../../config/unified-config-loader';
+
 import type { BrowserConfig, BrowserEvalMode } from '../../config/unified-config-types';
 import { getBrowserStatus } from '../../utils/browser';
 import { getUserFacingBrowserConfig } from '../../utils/browser/browser-status';
 import { requireLocalAccessWhenAuthDisabled } from '../middleware/auth-middleware';
+import { mutateConfig } from '../../config/config-loader-facade';
 
 const router = Router();
 const BROWSER_LOCAL_ACCESS_ERROR =
@@ -173,7 +174,7 @@ router.put('/', async (req: Request, res: Response): Promise<void> => {
     const current = getUserFacingBrowserConfig();
     const nextClaudeUserDataDir =
       claude?.userDataDir === undefined ? current.claude.user_data_dir : claude.userDataDir.trim();
-    mutateUnifiedConfig((config) => {
+    mutateConfig((config) => {
       config.browser = {
         claude: {
           enabled: claude?.enabled ?? current.claude.enabled,

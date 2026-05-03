@@ -1,9 +1,10 @@
 import * as browserUtils from '../utils/browser';
-import { getBrowserConfig, mutateUnifiedConfig } from '../config/unified-config-loader';
+
 import type { BrowserToolPolicy } from '../config/unified-config-types';
 import { getCcsPathDisplay } from '../utils/config-manager';
 import { getNodePlatformKey } from '../utils/browser/platform';
 import { color, dim, header, initUI, subheader } from '../utils/ui';
+import { getBrowserConfig, mutateConfig } from '../config/config-loader-facade';
 
 type HelpWriter = (line: string) => void;
 type BrowserLane = 'claude' | 'codex' | 'all';
@@ -216,7 +217,7 @@ function updateBrowserPolicies(updates: {
   claude?: BrowserToolPolicy;
   codex?: BrowserToolPolicy;
 }): void {
-  mutateUnifiedConfig((config) => {
+  mutateConfig((config) => {
     const current = getBrowserConfig();
     config.browser = {
       claude: {
@@ -235,7 +236,7 @@ function updateBrowserPolicies(updates: {
 
 function updateBrowserEnabled(subcommand: 'enable' | 'disable', lane: BrowserLane): void {
   const nextEnabled = subcommand === 'enable';
-  mutateUnifiedConfig((config) => {
+  mutateConfig((config) => {
     const current = getBrowserConfig();
     config.browser = {
       claude: {

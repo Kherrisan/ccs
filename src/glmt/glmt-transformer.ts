@@ -11,7 +11,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { DeltaAccumulator } from './delta-accumulator';
-import { getCcsDir } from '../utils/config-manager';
+
 import { createLogger } from '../services/logging';
 import {
   RequestTransformer,
@@ -32,6 +32,7 @@ import {
   type ThinkingSignature,
   type ValidationResult,
 } from './pipeline';
+import { getCcsDir } from '../config/config-loader-facade';
 
 export class GlmtTransformer {
   private verbose: boolean;

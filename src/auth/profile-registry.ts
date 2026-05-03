@@ -1,15 +1,17 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { ProfileMetadata } from '../types';
-import {
-  loadOrCreateUnifiedConfig,
-  mutateUnifiedConfig,
-  isUnifiedMode,
-} from '../config/unified-config-loader';
+
 import type { AccountConfig } from '../config/unified-config-types';
-import { getCcsDir } from '../utils/config-manager';
+
 import { isValidContextGroupName, normalizeContextGroupName } from './account-context';
 import { createLogger } from '../services/logging';
+import {
+  getCcsDir,
+  isUnifiedMode,
+  loadOrCreateUnifiedConfig,
+  mutateConfig,
+} from '../config/config-loader-facade';
 
 const logger = createLogger('auth:profile-registry');
 
@@ -323,7 +325,7 @@ export class ProfileRegistry {
    * Create account in unified config (config.yaml)
    */
   createAccountUnified(name: string, metadata: CreateMetadata = {}): void {
-    mutateUnifiedConfig((config) => {
+    mutateConfig((config) => {
       if (config.accounts[name]) {
         throw new Error(`Account already exists: ${name}`);
       }
@@ -342,7 +344,7 @@ export class ProfileRegistry {
    * Update account metadata in unified config
    */
   updateAccountUnified(name: string, updates: Partial<AccountConfig>): void {
-    mutateUnifiedConfig((config) => {
+    mutateConfig((config) => {
       if (!config.accounts[name]) {
         throw new Error(`Account not found: ${name}`);
       }
@@ -357,7 +359,7 @@ export class ProfileRegistry {
    * Remove account from unified config
    */
   removeAccountUnified(name: string): void {
-    mutateUnifiedConfig((config) => {
+    mutateConfig((config) => {
       if (!config.accounts[name]) {
         throw new Error(`Account not found: ${name}`);
       }
@@ -372,7 +374,7 @@ export class ProfileRegistry {
    * Set default profile in unified config
    */
   setDefaultUnified(name: string): void {
-    mutateUnifiedConfig((config) => {
+    mutateConfig((config) => {
       const exists =
         config.accounts[name] || config.profiles[name] || config.cliproxy?.variants?.[name];
       if (!exists) {
@@ -386,7 +388,7 @@ export class ProfileRegistry {
    * Clear default profile in unified config (restore original CCS behavior)
    */
   clearDefaultUnified(): void {
-    mutateUnifiedConfig((config) => {
+    mutateConfig((config) => {
       config.default = undefined;
     });
   }
@@ -426,7 +428,7 @@ export class ProfileRegistry {
    * Update account last_used in unified config
    */
   touchAccountUnified(name: string): void {
-    mutateUnifiedConfig((config) => {
+    mutateConfig((config) => {
       if (!config.accounts[name]) {
         throw new Error(`Account not found: ${name}`);
       }

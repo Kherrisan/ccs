@@ -5,7 +5,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { getCcsDir } from '../../utils/config-manager';
+import { getCcsDir } from '../../config/config-loader-facade';
 
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/models';
 function getCacheFile() {
