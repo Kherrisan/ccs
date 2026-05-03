@@ -38,15 +38,6 @@ import {
 import { CodexReasoningProxy } from '../ai-providers/codex-reasoning-proxy';
 import { ToolSanitizationProxy } from '../proxy/tool-sanitization-proxy';
 import {
-  findAccountByQuery,
-  getProviderAccounts,
-  setDefaultAccount,
-  touchAccount,
-  renameAccount,
-  getDefaultAccount,
-} from '../accounts/account-manager';
-import { formatAccountDisplayName } from '../accounts/email-account-identity';
-import {
   ensureWebSearchMcpOrThrow,
   displayWebSearchStatus,
   appendThirdPartyWebSearchToolArgs,
@@ -57,26 +48,20 @@ import {
   syncImageAnalysisMcpToConfigDir,
   appendThirdPartyImageAnalysisToolArgs,
 } from '../../utils/image-analysis';
-import {
-  appendBrowserToolArgs,
-  type BrowserLaunchOverride,
-  ensureBrowserMcpOrThrow,
-  getBlockedBrowserOverrideWarning,
-  getEffectiveClaudeBrowserAttachConfig,
-  resolveBrowserExposure,
-  resolveBrowserLaunchFlagResolution,
-  resolveOptionalBrowserAttachRuntime,
-  syncBrowserMcpToConfigDir,
-} from '../../utils/browser';
-import {
-  getBrowserConfig,
-  loadOrCreateUnifiedConfig,
-  getThinkingConfig,
-} from '../../config/unified-config-loader';
+import { getDefaultAccount } from '../accounts/account-manager';
+import { appendBrowserToolArgs } from '../../utils/browser';
+import { loadOrCreateUnifiedConfig, getThinkingConfig } from '../../config/unified-config-loader';
 import { HttpsTunnelProxy } from '../proxy/https-tunnel-proxy';
 import { resolveProfileContinuityInheritance } from '../../auth/profile-continuity-inheritance';
 
 // Import modular components
+import { resolveBrowserLaunchFlags, resolveBrowserRuntime } from './browser-launch-setup';
+import {
+  resolveRuntimeQuotaMonitorProviders as _resolveRuntimeQuotaMonitorProviders,
+  applyAccountSafetyGuards,
+  resolveAccounts,
+  touchDefaultAccount,
+} from './account-resolution';
 import { waitForProxyReadyWithSpinner, spawnProxy } from './lifecycle-manager';
 import {
   buildClaudeEnvironment,
@@ -84,15 +69,8 @@ import {
   resolveCliproxyImageAnalysisEnv,
 } from './env-resolver';
 import { handleTokenExpiration, handleQuotaCheck } from './retry-handler';
-import { MANAGED_QUOTA_PROVIDERS, type ManagedQuotaProvider } from '../quota/quota-manager';
+import { MANAGED_QUOTA_PROVIDERS } from '../quota/quota-manager';
 import { checkOrJoinProxy, registerProxySession, setupCleanupHandlers } from './session-bridge';
-import {
-  warnCrossProviderDuplicates,
-  warnOAuthBanRisk,
-  cleanupStaleAutoPauses,
-  enforceProviderIsolation,
-  restoreAutoPausedAccounts,
-} from '../accounts/account-safety';
 import {
   ensureCliAntigravityResponsibility,
   ANTIGRAVITY_ACCEPT_RISK_FLAGS,
@@ -107,24 +85,8 @@ import { shouldStartHttpsTunnel } from './https-tunnel-policy';
 import { filterCcsFlags, parseExecutorFlags, validateFlagCombinations } from './arg-parser';
 import { resolveExecutorProxy } from './proxy-resolver';
 
-function resolveRuntimeQuotaMonitorProviders(
-  provider: CLIProxyProvider,
-  compositeProviders: CLIProxyProvider[]
-): ManagedQuotaProvider[] {
-  const candidates = compositeProviders.length > 0 ? compositeProviders : [provider];
-  const resolved: ManagedQuotaProvider[] = [];
-
-  for (const candidate of candidates) {
-    if (
-      MANAGED_QUOTA_PROVIDERS.includes(candidate as ManagedQuotaProvider) &&
-      !resolved.includes(candidate as ManagedQuotaProvider)
-    ) {
-      resolved.push(candidate as ManagedQuotaProvider);
-    }
-  }
-
-  return resolved;
-}
+/** Local alias so internal call sites need no change */
+const resolveRuntimeQuotaMonitorProviders = _resolveRuntimeQuotaMonitorProviders;
 
 /** Default executor configuration */
 const DEFAULT_CONFIG: ExecutorConfig = {
@@ -193,53 +155,16 @@ export async function execClaudeWithCLIProxy(
       log,
     });
 
-  let browserLaunchOverride: BrowserLaunchOverride | undefined;
-  let argsWithoutBrowserFlags = argsWithoutProxy;
-  try {
-    const browserLaunchFlags = resolveBrowserLaunchFlagResolution(argsWithoutProxy);
-    browserLaunchOverride = browserLaunchFlags.override;
-    argsWithoutBrowserFlags = browserLaunchFlags.argsWithoutFlags;
-  } catch (error) {
-    console.error(fail((error as Error).message));
-    process.exit(1);
-    return;
-  }
-  const browserConfig = getBrowserConfig();
-  const browserAttachConfig = getEffectiveClaudeBrowserAttachConfig(browserConfig);
-  const claudeBrowserExposure = resolveBrowserExposure(
-    {
-      enabled: browserAttachConfig.enabled,
-      policy: browserConfig.claude.policy,
-    },
-    browserLaunchOverride
-  );
-  const blockedBrowserOverrideWarning = getBlockedBrowserOverrideWarning(
-    'Claude Browser Attach',
-    claudeBrowserExposure
-  );
-  if (blockedBrowserOverrideWarning) {
-    console.error(warn(blockedBrowserOverrideWarning));
-  }
+  const { browserLaunchOverride, argsWithoutBrowserFlags } =
+    resolveBrowserLaunchFlags(argsWithoutProxy);
 
   // Setup first-class CCS WebSearch runtime
   ensureWebSearchMcpOrThrow();
   const imageAnalysisMcpReady = ensureImageAnalysisMcpOrThrow();
-  const browserAttachRuntime =
-    browserAttachConfig.enabled && claudeBrowserExposure.exposeForLaunch
-      ? await resolveOptionalBrowserAttachRuntime(browserAttachConfig)
-      : undefined;
-  const browserRuntimeEnv = browserAttachRuntime?.runtimeEnv;
-  if (browserAttachRuntime?.warning) {
-    process.stderr.write(`${warn(browserAttachRuntime.warning)}\n`);
-  }
-  if (browserRuntimeEnv) {
-    ensureBrowserMcpOrThrow();
-  }
   displayWebSearchStatus();
 
   const providerConfig = getProviderConfig(provider);
   log(`Provider: ${providerConfig.displayName}`);
-  warnOAuthBanRisk(provider);
 
   // Variables for local proxy mode
   let sessionId: string | undefined;
@@ -300,70 +225,8 @@ export async function execClaudeWithCLIProxy(
     );
   }
 
-  // Handle --accounts
-  if (showAccounts) {
-    const accounts = getProviderAccounts(provider);
-    if (accounts.length === 0) {
-      console.log(info(`No accounts registered for ${providerConfig.displayName}`));
-      console.log(`    Run "ccs ${provider} --auth" to add an account`);
-    } else {
-      console.log(`\n${providerConfig.displayName} Accounts:\n`);
-      for (const acct of accounts) {
-        const defaultMark = acct.isDefault ? ' (default)' : '';
-        const nickname = acct.nickname ? `[${acct.nickname}]` : '';
-        console.log(`  ${nickname.padEnd(12)} ${formatAccountDisplayName(acct)}${defaultMark}`);
-      }
-      console.log(`\n  Use "ccs ${provider} --use <nickname-or-id>" to switch accounts`);
-    }
-    process.exit(0);
-  }
-
-  // Handle --use
-  if (useAccount) {
-    const account = findAccountByQuery(provider, useAccount);
-    if (!account) {
-      console.error(fail(`Account not found: "${useAccount}"`));
-      const accounts = getProviderAccounts(provider);
-      if (accounts.length > 0) {
-        console.error(`    Available accounts:`);
-        for (const acct of accounts) {
-          const displayName = formatAccountDisplayName(acct);
-          const label = acct.nickname ? `${acct.nickname} (${displayName})` : displayName;
-          console.error(`      - ${label}`);
-        }
-      }
-      process.exit(1);
-    }
-    setDefaultAccount(provider, account.id);
-    touchAccount(provider, account.id);
-    const switchedLabel = account.nickname
-      ? `${account.nickname} (${formatAccountDisplayName(account)})`
-      : formatAccountDisplayName(account);
-    console.log(ok(`Switched to account: ${switchedLabel}`));
-  }
-
-  // Handle --nickname (rename account)
-  if (setNickname && !addAccount) {
-    const defaultAccount = getDefaultAccount(provider);
-    if (!defaultAccount) {
-      console.error(fail(`No account found for ${providerConfig.displayName}`));
-      console.error(`    Run "ccs ${provider} --auth" to add an account first`);
-      process.exit(1);
-    }
-    try {
-      const success = renameAccount(provider, defaultAccount.id, setNickname);
-      if (success) {
-        console.log(ok(`Renamed account to: ${setNickname}`));
-      } else {
-        console.error(fail('Failed to rename account'));
-        process.exit(1);
-      }
-    } catch (err) {
-      console.error(fail(err instanceof Error ? err.message : 'Failed to rename account'));
-      process.exit(1);
-    }
-    process.exit(0);
-  }
+  // Handle --accounts / --use / --nickname (warnOAuthBanRisk emitted inside)
+  await resolveAccounts({ provider, showAccounts, useAccount, setNickname, addAccount });
 
   // Handle --config
   if (forceConfig && supportsModelConfig(provider)) {
@@ -559,10 +422,7 @@ export async function execClaudeWithCLIProxy(
     }
 
     // 3a-1. Update lastUsedAt
-    const usedAccount = getDefaultAccount(provider);
-    if (usedAccount) {
-      touchAccount(provider, usedAccount.id);
-    }
+    touchDefaultAccount(provider);
   }
 
   // 3b. Preflight quota check (providers with quota-based rotation)
@@ -581,17 +441,7 @@ export async function execClaudeWithCLIProxy(
 
   // 3c. Account safety: enforce cross-provider isolation
   if (!skipLocalAuth) {
-    cleanupStaleAutoPauses();
-    const isolated = enforceProviderIsolation(provider);
-    if (isolated === 0) {
-      // No enforcement — still warn about duplicates for awareness
-      warnCrossProviderDuplicates(provider);
-    } else {
-      // 'exit' handlers must be synchronous — restoreAutoPausedAccounts uses sync fs APIs
-      process.on('exit', () => {
-        restoreAutoPausedAccounts(provider);
-      });
-    }
+    applyAccountSafetyGuards(provider, compositeProviders);
   }
 
   // 4. First-run model configuration
@@ -784,15 +634,12 @@ export async function execClaudeWithCLIProxy(
   }
 
   syncImageAnalysisMcpToConfigDir(inheritedClaudeConfigDir);
-  if (
-    browserRuntimeEnv &&
-    inheritedClaudeConfigDir &&
-    !syncBrowserMcpToConfigDir(inheritedClaudeConfigDir)
-  ) {
-    throw new Error(
-      'Browser MCP is enabled, but CCS could not sync the browser MCP config into the inherited Claude instance.'
-    );
-  }
+
+  // Resolve browser attach runtime and sync browser MCP (needs inheritedClaudeConfigDir)
+  const { browserRuntimeEnv } = await resolveBrowserRuntime(
+    browserLaunchOverride,
+    inheritedClaudeConfigDir
+  );
 
   // Build initial env vars to get ANTHROPIC_BASE_URL
   const initialEnvVars = buildClaudeEnvironment({
@@ -1037,6 +884,9 @@ export { isPortAvailable, findAvailablePort } from './lifecycle-manager';
 // Re-export arg-parser helpers (previously inlined here; external callers can
 // import from index or directly from ./arg-parser)
 export { readOptionValue, hasGitLabTokenLoginFlag, CCS_FLAGS, filterCcsFlags } from './arg-parser';
+
+// Re-export account-resolution helpers for backwards compat with __testExports consumers
+export { resolveRuntimeQuotaMonitorProviders as _resolveRuntimeQuotaMonitorProviders } from './account-resolution';
 
 export const __testExports = {
   resolveRuntimeQuotaMonitorProviders,
