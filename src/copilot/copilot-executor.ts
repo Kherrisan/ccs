@@ -10,7 +10,7 @@ import { CopilotConfig } from '../config/unified-config-types';
 import { getGlobalEnvConfig } from '../config/unified-config-loader';
 import { ensureCliproxyService } from '../cliproxy';
 import { getEffectiveApiKey } from '../cliproxy/auth/auth-token-manager';
-import { CLIPROXY_DEFAULT_PORT } from '../cliproxy/config/port-manager';
+import { resolveLifecyclePort } from '../cliproxy/config/port-manager';
 import { checkAuthStatus, isCopilotApiInstalled } from './copilot-auth';
 import { isDaemonRunning, startDaemon } from './copilot-daemon';
 import { ensureCopilotApi } from './copilot-package-manager';
@@ -142,7 +142,7 @@ export async function resolveCopilotImageAnalysisEnv(
 
   if (status.proxyReadiness === 'stopped') {
     const ensureServiceResult = await resolvedDeps.ensureCliproxyService(
-      CLIPROXY_DEFAULT_PORT,
+      resolveLifecyclePort(),
       verbose
     );
     if (!ensureServiceResult.started) {

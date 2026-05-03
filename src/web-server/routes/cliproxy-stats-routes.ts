@@ -52,7 +52,7 @@ import {
   CLIPROXY_MAX_STABLE_VERSION,
   CLIPROXY_FAULTY_RANGE,
 } from '../../cliproxy/binary/platform-detector';
-import { CLIPROXY_DEFAULT_PORT } from '../../cliproxy/config/port-manager';
+import { resolveLifecyclePort } from '../../cliproxy/config/port-manager';
 import {
   MODEL_ENV_VAR_KEYS,
   canonicalizeModelIdForProvider,
@@ -321,7 +321,7 @@ router.get('/usage', handleStatsRequest);
  */
 router.get('/status', async (_req: Request, res: Response): Promise<void> => {
   try {
-    const running = await isCliproxyRunning();
+    const running = await isCliproxyRunning(resolveLifecyclePort());
     res.json({ running });
   } catch (error) {
     console.error(`[cliproxy-stats] ${(error as Error).message}`);
@@ -345,15 +345,16 @@ router.get('/proxy-status', async (_req: Request, res: Response): Promise<void> 
       return;
     }
 
+    const port = resolveLifecyclePort();
     // Session tracker says not running, but proxy might be running without session tracking
     // (e.g., started before session persistence was implemented)
-    const actuallyRunning = await isCliproxyRunning();
+    const actuallyRunning = await isCliproxyRunning(port);
 
     if (actuallyRunning) {
       // Proxy running but no session lock - legacy/untracked instance
       res.json({
         running: true,
-        port: CLIPROXY_DEFAULT_PORT,
+        port,
         sessionCount: 0, // Unknown sessions
         // No pid/startedAt since we don't have session lock
       });

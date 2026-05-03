@@ -11,7 +11,7 @@ import open from 'open';
 import { startServer } from '../web-server';
 import { setupGracefulShutdown } from '../web-server/shutdown';
 import { ensureCliproxyService } from '../cliproxy/service-manager';
-import { CLIPROXY_DEFAULT_PORT } from '../cliproxy/config/config-generator';
+import { resolveLifecyclePort } from '../cliproxy/config/port-manager';
 import { getDashboardAuthConfig } from '../config/unified-config-loader';
 import { initUI, header, ok, info, warn, fail } from '../utils/ui';
 import { resolveNamedCommand, type NamedCommandRoute } from './named-command-router';
@@ -137,7 +137,7 @@ export async function handleConfigCommand(
 
   // Ensure CLIProxy service is running for dashboard features
   console.log(deps.info('Starting CLIProxy service...'));
-  const cliproxyResult = await deps.ensureCliproxyService(CLIPROXY_DEFAULT_PORT, verbose);
+  const cliproxyResult = await deps.ensureCliproxyService(resolveLifecyclePort(), verbose);
   logger.info('cliproxy.ensure_result', 'Config command checked CLIProxy availability', {
     started: cliproxyResult.started,
     alreadyRunning: cliproxyResult.alreadyRunning,

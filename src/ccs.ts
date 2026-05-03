@@ -22,7 +22,7 @@ import {
   isAuthenticated,
 } from './cliproxy';
 import { getEffectiveEnvVars, getCompositeEnvVars } from './cliproxy/config/env-builder';
-import { CLIPROXY_DEFAULT_PORT } from './cliproxy/config/port-manager';
+import { resolveLifecyclePort } from './cliproxy/config/port-manager';
 import {
   ensureWebSearchMcpOrThrow,
   displayWebSearchStatus,
@@ -929,7 +929,7 @@ async function main(): Promise<void> {
       }
       const customSettingsPath = profileInfo.settingsPath; // undefined for hardcoded profiles
       const variantPort = profileInfo.port; // variant-specific port for isolation
-      const cliproxyPort = variantPort || CLIPROXY_DEFAULT_PORT;
+      const cliproxyPort = variantPort || resolveLifecyclePort();
 
       if (resolvedTarget !== 'claude') {
         const adapter = targetAdapter;
@@ -1385,7 +1385,7 @@ async function main(): Promise<void> {
           };
         } else if (imageAnalysisStatus.proxyReadiness === 'stopped') {
           const ensureServiceResult = await ensureCliproxyService(
-            CLIPROXY_DEFAULT_PORT,
+            resolveLifecyclePort(),
             verboseProxyLaunch
           );
           if (!ensureServiceResult.started) {

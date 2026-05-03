@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { CLIPROXY_DEFAULT_PORT } from '../../../src/cliproxy/config/port-manager';
-import { resolveLifecyclePort } from '../../../src/commands/cliproxy/resolve-lifecycle-port';
+import { CLIPROXY_DEFAULT_PORT, resolveLifecyclePort } from '../../../src/cliproxy/config/port-manager';
 
 describe('resolveLifecyclePort', () => {
   it('uses configured cliproxy_server.local.port', () => {

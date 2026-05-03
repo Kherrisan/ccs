@@ -3,6 +3,9 @@
  * Handles port number validation and default port resolution
  */
 
+import { loadOrCreateUnifiedConfig } from '../../config/unified-config-loader';
+import type { UnifiedConfig } from '../../config/unified-config-types';
+
 /** Default CLIProxy port */
 export const CLIPROXY_DEFAULT_PORT = 8317;
 
@@ -56,4 +59,14 @@ export function normalizeProtocol(protocol: string | undefined): 'http' | 'https
   if (normalized === 'http') return 'http';
   // Invalid protocol (e.g., 'ftp') - default to http
   return 'http';
+}
+
+/**
+ * Resolve the local CLIProxy lifecycle port from unified config.
+ * Falls back to default port when unset/invalid.
+ */
+export function resolveLifecyclePort(
+  config: Pick<UnifiedConfig, 'cliproxy_server'> = loadOrCreateUnifiedConfig()
+): number {
+  return validatePort(config.cliproxy_server?.local?.port ?? CLIPROXY_DEFAULT_PORT);
 }
