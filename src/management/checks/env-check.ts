@@ -4,8 +4,9 @@
 
 import { getEnvironmentDiagnostics } from '../environment-diagnostics';
 import { ok, warn } from '../../utils/ui';
-import { getCcsDir, getCcsDirSource } from '../../utils/config-manager';
+import { getCcsDirSource } from '../../utils/config-manager';
 import { HealthCheck, IHealthChecker, createSpinner } from './types';
+import { getCcsDir } from '../../config/config-loader-facade';
 
 const ora = createSpinner();
 

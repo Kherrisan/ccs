@@ -1,9 +1,9 @@
-import { loadOrCreateUnifiedConfig } from '../config/unified-config-loader';
 import {
   OPENAI_COMPAT_PROXY_ADAPTIVE_PORT_END,
   OPENAI_COMPAT_PROXY_ADAPTIVE_PORT_START,
   OPENAI_COMPAT_PROXY_LEGACY_DEFAULT_PORT,
 } from './proxy-daemon-paths';
+import { loadOrCreateUnifiedConfig } from '../config/config-loader-facade';
 
 export interface OpenAICompatProxyPortPreference {
   port: number;

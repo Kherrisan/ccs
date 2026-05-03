@@ -1,5 +1,5 @@
 import * as fs from 'fs';
-import { getConfigPath, loadConfigSafe } from '../../utils/config-manager';
+import { getConfigPath } from '../../utils/config-manager';
 import { CLIProxyProvider } from '../types';
 import type { TargetType } from '../../targets/target-adapter';
 import {
@@ -8,12 +8,14 @@ import {
   CompositeTierConfig,
   CLIPROXY_SUPPORTED_PROVIDERS,
 } from '../../config/unified-config-types';
-import {
-  loadOrCreateUnifiedConfig,
-  mutateUnifiedConfig,
-  isUnifiedMode,
-} from '../../config/unified-config-loader';
+
 import { CLIPROXY_DEFAULT_PORT } from '../config/config-generator';
+import {
+  isUnifiedMode,
+  loadConfigSafe,
+  loadOrCreateUnifiedConfig,
+  mutateConfig,
+} from '../../config/config-loader-facade';
 
 export const VARIANT_PORT_BASE = CLIPROXY_DEFAULT_PORT + 1;
 export const VARIANT_PORT_MAX_OFFSET = 100;
@@ -171,7 +173,7 @@ export function listVariantsFromConfig(): Record<string, VariantConfig> {
 }
 
 export function saveCompositeVariantUnified(name: string, config: CompositeVariantConfig): void {
-  mutateUnifiedConfig((unifiedConfig) => {
+  mutateConfig((unifiedConfig) => {
     if (!unifiedConfig.cliproxy) {
       unifiedConfig.cliproxy = {
         oauth_accounts: {},
@@ -195,7 +197,7 @@ export function saveVariantUnified(
   port?: number,
   target: TargetType = 'claude'
 ): void {
-  mutateUnifiedConfig((config) => {
+  mutateConfig((config) => {
     if (!config.cliproxy) {
       config.cliproxy = {
         oauth_accounts: {},
@@ -266,7 +268,7 @@ export function saveVariantLegacy(
 
 export function removeVariantFromUnifiedConfig(name: string): VariantConfig | null {
   let removedVariant: CLIProxyVariantConfig | CompositeVariantConfig | null = null;
-  mutateUnifiedConfig((config) => {
+  mutateConfig((config) => {
     if (!config.cliproxy?.variants || !(name in config.cliproxy.variants)) {
       return;
     }

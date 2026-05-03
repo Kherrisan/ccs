@@ -29,4 +29,12 @@ describe('resolveLifecyclePort', () => {
   it('falls back to default port when config file is missing', () => {
     expect(resolveLifecyclePort({})).toBe(CLIPROXY_DEFAULT_PORT);
   });
+
+  it('falls back to default port when loading unified config throws', () => {
+    expect(
+      resolveLifecyclePort(undefined, () => {
+        throw new Error('malformed config');
+      })
+    ).toBe(CLIPROXY_DEFAULT_PORT);
+  });
 });

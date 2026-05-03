@@ -336,8 +336,9 @@ router.get('/status', async (_req: Request, res: Response): Promise<void> => {
  */
 router.get('/proxy-status', async (_req: Request, res: Response): Promise<void> => {
   try {
+    const port = resolveLifecyclePort();
     // First check session tracker for detailed info
-    const sessionStatus = getProxyProcessStatus();
+    const sessionStatus = getProxyProcessStatus(port);
 
     // If session tracker says running, trust it
     if (sessionStatus.running) {
@@ -345,7 +346,6 @@ router.get('/proxy-status', async (_req: Request, res: Response): Promise<void> 
       return;
     }
 
-    const port = resolveLifecyclePort();
     // Session tracker says not running, but proxy might be running without session tracking
     // (e.g., started before session persistence was implemented)
     const actuallyRunning = await isCliproxyRunning(port);
@@ -374,7 +374,7 @@ router.get('/proxy-status', async (_req: Request, res: Response): Promise<void> 
  */
 router.post('/proxy-start', async (_req: Request, res: Response): Promise<void> => {
   try {
-    const result = await ensureCliproxyService();
+    const result = await ensureCliproxyService(resolveLifecyclePort());
     res.json(result);
   } catch (error) {
     console.error(`[cliproxy-stats] ${(error as Error).message}`);
@@ -388,7 +388,7 @@ router.post('/proxy-start', async (_req: Request, res: Response): Promise<void> 
  */
 router.post('/proxy-stop', async (_req: Request, res: Response): Promise<void> => {
   try {
-    const result = await stopProxy();
+    const result = await stopProxy(resolveLifecyclePort());
     res.json(result);
   } catch (error) {
     console.error(`[cliproxy-stats] ${(error as Error).message}`);
@@ -1087,6 +1087,7 @@ router.post('/install', async (req: Request, res: Response): Promise<void> => {
  */
 router.post('/restart', async (_req: Request, res: Response): Promise<void> => {
   try {
+    const port = resolveLifecyclePort();
     if (isRunningUnderSupervisord()) {
       // Docker mode: delegate to supervisord which owns the process lifecycle
       const result = restartCliproxyViaSupervisord();
@@ -1095,13 +1096,13 @@ router.post('/restart', async (_req: Request, res: Response): Promise<void> => {
     }
 
     // Local mode: direct process management
-    await stopProxy();
+    await stopProxy(port);
 
     // Small delay to ensure port is released
     await new Promise((r) => setTimeout(r, 500));
 
     // Start proxy
-    const startResult = await ensureCliproxyService();
+    const startResult = await ensureCliproxyService(port);
 
     if (startResult.started || startResult.alreadyRunning) {
       res.json({ success: true, port: startResult.port });

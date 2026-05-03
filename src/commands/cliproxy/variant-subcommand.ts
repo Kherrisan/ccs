@@ -17,7 +17,7 @@ import type { CliproxyProviderRoutingHints } from '../../shared/cliproxy-model-r
 import { CLIProxyProvider, CLIProxyBackend } from '../../cliproxy/types';
 import type { TargetType } from '../../targets/target-adapter';
 import { getPersistedTargetChoices, isPersistedTargetType } from '../../targets/target-metadata';
-import { isUnifiedMode } from '../../config/unified-config-loader';
+
 import { initUI, header, color, ok, fail, warn, info, infoBox, dim } from '../../utils/ui';
 import { InteractivePrompt } from '../../utils/prompt';
 import {
@@ -32,6 +32,7 @@ import {
 import { DEFAULT_BACKEND } from '../../cliproxy/binary/platform-detector';
 import { CompositeTierConfig } from '../../config/unified-config-types';
 import { formatAccountDisplayName } from '../../cliproxy/accounts/email-account-identity';
+import { isUnifiedMode } from '../../config/config-loader-facade';
 
 interface CliproxyProfileArgs {
   name?: string;

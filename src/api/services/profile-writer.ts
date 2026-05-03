@@ -4,10 +4,10 @@
  */
 import * as fs from 'fs';
 import * as path from 'path';
-import { getCcsDir, getConfigPath, loadConfigSafe } from '../../utils/config-manager';
+import { getConfigPath } from '../../utils/config-manager';
 import { expandPath } from '../../utils/helpers';
 import { validateApiName } from './validation-service';
-import { mutateUnifiedConfig, isUnifiedMode } from '../../config/unified-config-loader';
+
 import { ensureWebSearchMcpOrThrow } from '../../utils/websearch-manager';
 import { ensureImageAnalysisMcpOrThrow } from '../../utils/image-analysis';
 import type { TargetType } from '../../targets/target-adapter';
@@ -31,6 +31,12 @@ import {
   resolveCliproxyBridgeMetadata,
   resolveCliproxyBridgeProfile,
 } from './cliproxy-profile-bridge';
+import {
+  getCcsDir,
+  isUnifiedMode,
+  loadConfigSafe,
+  mutateConfig,
+} from '../../config/config-loader-facade';
 
 /** Check if URL is an OpenRouter endpoint */
 function isOpenRouterUrl(baseUrl: string): boolean {
@@ -232,7 +238,7 @@ function createApiProfileUnified(
     throw error;
   }
 
-  mutateUnifiedConfig((config) => {
+  mutateConfig((config) => {
     config.profiles[name] = {
       type: 'api',
       settings: `~/.ccs/${settingsFile}`,
@@ -343,7 +349,7 @@ export function updateApiProfileTarget(
 ): UpdateApiProfileTargetResult {
   try {
     if (isUnifiedMode()) {
-      mutateUnifiedConfig((config) => {
+      mutateConfig((config) => {
         if (!config.profiles[name]) {
           throw new Error(`API profile not found: ${name}`);
         }
@@ -392,7 +398,7 @@ export function updateApiProfileTarget(
 
 /** Remove API profile from unified config */
 function removeApiProfileUnified(name: string): void {
-  mutateUnifiedConfig((config) => {
+  mutateConfig((config) => {
     const profile = config.profiles[name];
 
     if (!profile) {

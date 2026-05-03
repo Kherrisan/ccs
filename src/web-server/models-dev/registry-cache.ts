@@ -1,7 +1,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { getCcsDir } from '../../utils/config-manager';
+
 import type { ModelsDevCacheData, ModelsDevProvider, ModelsDevRegistry } from './types';
+import { getCcsDir } from '../../config/config-loader-facade';
 
 export const MODELS_DEV_API_URL = 'https://models.dev/api.json';
 

@@ -1,5 +1,5 @@
 import { detectShell, formatExportLine } from './env-command';
-import { getSettingsPath, loadSettings } from '../utils/config-manager';
+import { getSettingsPath } from '../utils/config-manager';
 import { expandPath } from '../utils/helpers';
 import { fail, info, ok } from '../utils/ui';
 import {
@@ -10,6 +10,7 @@ import {
   startOpenAICompatProxy,
   stopOpenAICompatProxy,
 } from '../proxy';
+import { loadSettings } from '../config/config-loader-facade';
 
 function parseOptionValue(args: string[], key: string): string | undefined {
   const exactIndex = args.findIndex((arg) => arg === key);

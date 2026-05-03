@@ -176,6 +176,32 @@ describe('installCliproxyVersion', () => {
     expect(calls.ensureBinary).toBe(1);
   });
 
+  it('waits for the port that was actually stopped before continuing install', async () => {
+    let waitedPort: number | undefined;
+
+    const binaryManager = await import(
+      `../../binary-manager?binary-manager-stopped-port=${Date.now()}`
+    );
+
+    await binaryManager.installCliproxyVersion('6.7.1', false, 'plus', {
+      createManager: () => ({
+        isBinaryInstalled: () => false,
+        deleteBinary: () => undefined,
+        ensureBinary: async () => '/tmp/ccs-bin/plus/cliproxy',
+      }),
+      stopProxyFn: async () => ({ stopped: true, port: 8317 }),
+      waitForPortFreeFn: async (port: number) => {
+        waitedPort = port;
+        return true;
+      },
+      formatInfo: (message: string) => message,
+      formatWarn: (message: string) => message,
+      getInstalledVersion: () => '6.6.80',
+    });
+
+    expect(waitedPort).toBe(8317);
+  });
+
   it('fails fast when runtime startup forbids installing a missing binary', async () => {
     const binaryManager = await import(`../../binary-manager?binary-manager-runtime=${Date.now()}`);
 

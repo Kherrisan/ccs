@@ -6,14 +6,18 @@
  */
 
 import * as fs from 'fs';
-import { loadConfigSafe } from '../../utils/config-manager';
-import { loadOrCreateUnifiedConfig, isUnifiedMode } from '../../config/unified-config-loader';
+
 import { expandPath } from '../../utils/helpers';
 import type { TargetType } from '../../targets/target-adapter';
 import { isPersistedTargetType } from '../../targets/target-metadata';
 import type { Settings } from '../../types/config';
 import type { ApiProfileInfo, CliproxyVariantInfo, ApiListResult } from './profile-types';
 import { resolveCliproxyBridgeMetadata } from './cliproxy-profile-bridge';
+import {
+  isUnifiedMode,
+  loadConfigSafe,
+  loadOrCreateUnifiedConfig,
+} from '../../config/config-loader-facade';
 
 function sanitizeTarget(target: unknown): TargetType {
   if (isPersistedTargetType(target)) {

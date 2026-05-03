@@ -1,4 +1,5 @@
 import { installCliproxyVersion, resolveLocalBackend } from '../../cliproxy/binary-manager';
+import { resolveLifecyclePort } from '../../cliproxy/config/port-manager';
 import { ensureCliproxyService, type ServiceStartResult } from '../../cliproxy/service-manager';
 import { getProxyStatus as getProxyProcessStatus } from '../../cliproxy/session-tracker';
 import { isCliproxyRunning } from '../../cliproxy/services/stats-fetcher';
@@ -24,10 +25,10 @@ interface InstallDashboardCliproxyVersionDeps {
 }
 
 const defaultDeps: InstallDashboardCliproxyVersionDeps = {
-  getProxyStatus: getProxyProcessStatus,
-  isCliproxyRunning,
+  getProxyStatus: () => getProxyProcessStatus(resolveLifecyclePort()),
+  isCliproxyRunning: () => isCliproxyRunning(resolveLifecyclePort()),
   installCliproxyVersion,
-  ensureCliproxyService: () => ensureCliproxyService(),
+  ensureCliproxyService: () => ensureCliproxyService(resolveLifecyclePort()),
 };
 
 export interface DashboardCliproxyInstallResult {

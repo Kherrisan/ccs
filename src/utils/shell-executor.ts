@@ -8,8 +8,9 @@ import { spawn, spawnSync, ChildProcess, type SpawnOptions } from 'child_process
 import { ErrorManager } from './error-manager';
 import { getWebSearchHookEnv } from './websearch-manager';
 import { wireChildProcessSignals } from './signal-forwarder';
-import { loadOrCreateUnifiedConfig } from '../config/unified-config-loader';
+
 import SharedManager from '../management/shared-manager';
+import { loadOrCreateUnifiedConfig } from '../config/config-loader-facade';
 
 /**
  * Strip ANTHROPIC_* env vars from an environment object.

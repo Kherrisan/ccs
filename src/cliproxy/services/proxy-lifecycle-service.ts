@@ -10,7 +10,7 @@ import {
   getProxyStatus as getProxyStatusSession,
 } from '../session-tracker';
 import { ensureCliproxyService } from '../service-manager';
-import { CLIPROXY_DEFAULT_PORT } from '../config/config-generator';
+import { resolveLifecyclePort } from '../config/port-manager';
 
 /** Proxy status result */
 export interface ProxyStatusResult {
@@ -24,6 +24,7 @@ export interface ProxyStatusResult {
 /** Stop proxy result */
 export interface StopProxyResult {
   stopped: boolean;
+  port?: number;
   pid?: number;
   sessionCount?: number;
   error?: string;
@@ -41,14 +42,14 @@ export interface StartProxyResult {
 /**
  * Get current proxy status
  */
-export function getProxyStatus(port?: number): ProxyStatusResult {
+export function getProxyStatus(port: number = resolveLifecyclePort()): ProxyStatusResult {
   return getProxyStatusSession(port);
 }
 
 /**
  * Stop the running CLIProxy instance
  */
-export async function stopProxy(port?: number): Promise<StopProxyResult> {
+export async function stopProxy(port: number = resolveLifecyclePort()): Promise<StopProxyResult> {
   return stopProxySession(port);
 }
 
@@ -56,7 +57,7 @@ export async function stopProxy(port?: number): Promise<StopProxyResult> {
  * Start CLIProxy service (or reuse existing running instance)
  */
 export async function startProxy(
-  port: number = CLIPROXY_DEFAULT_PORT,
+  port: number = resolveLifecyclePort(),
   verbose: boolean = false
 ): Promise<StartProxyResult> {
   return ensureCliproxyService(port, verbose);
@@ -66,7 +67,7 @@ export async function startProxy(
  * Check if proxy is currently running
  */
 export function isProxyRunning(): boolean {
-  const status = getProxyStatusSession();
+  const status = getProxyStatusSession(resolveLifecyclePort());
   return status.running;
 }
 
@@ -74,6 +75,6 @@ export function isProxyRunning(): boolean {
  * Get active session count
  */
 export function getActiveSessionCount(): number {
-  const status = getProxyStatusSession();
+  const status = getProxyStatusSession(resolveLifecyclePort());
   return status.sessionCount ?? 0;
 }

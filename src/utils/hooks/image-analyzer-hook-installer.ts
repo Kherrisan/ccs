@@ -12,9 +12,10 @@ import * as path from 'path';
 import { info, warn } from '../ui';
 import { getImageAnalyzerHookPath } from './image-analyzer-hook-configuration';
 import { getCcsHooksDir } from '../config-manager';
-import { getImageAnalysisConfig } from '../../config/unified-config-loader';
+
 import { removeMigrationMarker } from './image-analyzer-profile-hook-injector';
 import { installImageAnalysisPrompts } from '../image-analysis/hook-installer';
+import { getImageAnalysisConfig } from '../../config/config-loader-facade';
 
 // Re-export from hook-configuration for backward compatibility
 export {

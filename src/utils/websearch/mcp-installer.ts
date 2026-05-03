@@ -4,13 +4,14 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { getWebSearchConfig } from '../../config/unified-config-loader';
+
 import { getCcsDir } from '../config-manager';
 import { getClaudeUserConfigPath } from '../claude-config-path';
 import { info, warn } from '../ui';
 import { InstanceManager } from '../../management/instance-manager';
 import { installWebSearchHook } from './hook-installer';
 import { appendWebSearchTrace } from './trace';
+import { getWebSearchConfig } from '../../config/config-loader-facade';
 
 const WEBSEARCH_MCP_SERVER = 'ccs-websearch-server.cjs';
 const WEBSEARCH_MCP_SERVER_NAME = 'ccs-websearch';

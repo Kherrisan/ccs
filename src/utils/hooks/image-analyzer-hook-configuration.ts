@@ -7,8 +7,9 @@
  */
 
 import * as path from 'path';
-import { getImageAnalysisConfig } from '../../config/unified-config-loader';
+
 import { getCcsHooksDir } from '../config-manager';
+import { getImageAnalysisConfig } from '../../config/config-loader-facade';
 
 // Hook file name
 const IMAGE_ANALYZER_HOOK = 'image-analyzer-transformer.cjs';

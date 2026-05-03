@@ -63,10 +63,20 @@ export function normalizeProtocol(protocol: string | undefined): 'http' | 'https
 
 /**
  * Resolve the local CLIProxy lifecycle port from unified config.
- * Falls back to default port when unset/invalid.
+ * Falls back to default port when unset, invalid, or unreadable.
  */
 export function resolveLifecyclePort(
-  config: Pick<UnifiedConfig, 'cliproxy_server'> = loadOrCreateUnifiedConfig()
+  config?: Pick<UnifiedConfig, 'cliproxy_server'>,
+  loadConfig: () => Pick<UnifiedConfig, 'cliproxy_server'> = loadOrCreateUnifiedConfig
 ): number {
-  return validatePort(config.cliproxy_server?.local?.port ?? CLIPROXY_DEFAULT_PORT);
+  if (config) {
+    return validatePort(config.cliproxy_server?.local?.port ?? CLIPROXY_DEFAULT_PORT);
+  }
+
+  try {
+    const loadedConfig = loadConfig();
+    return validatePort(loadedConfig.cliproxy_server?.local?.port ?? CLIPROXY_DEFAULT_PORT);
+  } catch {
+    return CLIPROXY_DEFAULT_PORT;
+  }
 }

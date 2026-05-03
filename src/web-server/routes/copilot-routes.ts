@@ -23,8 +23,9 @@ import {
   type CopilotNormalizationWarning,
 } from '../../copilot/copilot-model-normalizer';
 import { DEFAULT_COPILOT_CONFIG, type CopilotConfig } from '../../config/unified-config-types';
-import { loadOrCreateUnifiedConfig, mutateUnifiedConfig } from '../../config/unified-config-loader';
+
 import copilotSettingsRoutes from './copilot-settings-routes';
+import { loadOrCreateUnifiedConfig, mutateConfig } from '../../config/config-loader-facade';
 
 const router = Router();
 
@@ -211,7 +212,7 @@ router.put('/config', (req: Request, res: Response): void => {
     let nextCopilotConfig: CopilotConfig = { ...DEFAULT_COPILOT_CONFIG };
     let warnings: CopilotNormalizationWarning[] = [];
 
-    mutateUnifiedConfig((config) => {
+    mutateConfig((config) => {
       const currentConfig = config.copilot ?? DEFAULT_COPILOT_CONFIG;
       const result = normalizeCopilotConfigWithWarnings({
         enabled:
