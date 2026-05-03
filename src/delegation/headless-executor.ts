@@ -43,7 +43,7 @@ import {
 } from '../utils/hooks/image-analyzer-profile-hook-injector';
 import { resolveCliproxyBridgeMetadata } from '../api/services';
 import { ensureCliproxyService } from '../cliproxy';
-import { CLIPROXY_DEFAULT_PORT } from '../cliproxy/config/port-manager';
+import { resolveLifecyclePort } from '../cliproxy/config/port-manager';
 import {
   buildOpenAICompatProxyEnv,
   resolveOpenAICompatProfileConfig,
@@ -212,7 +212,7 @@ export class HeadlessExecutor {
       imageAnalysisProvider &&
       imageAnalysisStatus.proxyReadiness === 'stopped'
     ) {
-      const ensureServiceResult = await ensureCliproxyService(CLIPROXY_DEFAULT_PORT, false);
+      const ensureServiceResult = await ensureCliproxyService(resolveLifecyclePort(), false);
       if (!ensureServiceResult.started) {
         console.error(
           warn(
