@@ -10,41 +10,24 @@
  * 6. Claude CLI execution with cleanup handlers
  */
 
-import { spawn, ChildProcess } from 'child_process';
+import { ChildProcess } from 'child_process';
 import * as fs from 'fs';
-import * as os from 'os';
 import { fail, info, warn } from '../../utils/ui';
-import { escapeShellArg, getWindowsEscapedCommandShell } from '../../utils/shell-executor';
 import {
   generateConfig,
   getProviderConfig,
-  getProviderSettingsPath,
   CLIPROXY_DEFAULT_PORT,
 } from '../config/config-generator';
-import { configureProviderModel, getCurrentModel } from '../config/model-config';
+import { configureProviderModel } from '../config/model-config';
 import { supportsModelConfig } from '../model-catalog';
 import { CLIProxyProvider, ExecutorConfig } from '../types';
-import {
-  isModelBroken,
-  getModelIssueUrl,
-  findModel,
-  getSuggestedReplacementModel,
-} from '../model-catalog';
 import { CodexReasoningProxy } from '../ai-providers/codex-reasoning-proxy';
 import { ToolSanitizationProxy } from '../proxy/tool-sanitization-proxy';
-import {
-  ensureWebSearchMcpOrThrow,
-  displayWebSearchStatus,
-  appendThirdPartyWebSearchToolArgs,
-  createWebSearchTraceContext,
-} from '../../utils/websearch-manager';
+import { ensureWebSearchMcpOrThrow, displayWebSearchStatus } from '../../utils/websearch-manager';
 import {
   ensureImageAnalysisMcpOrThrow,
   syncImageAnalysisMcpToConfigDir,
-  appendThirdPartyImageAnalysisToolArgs,
 } from '../../utils/image-analysis';
-import { getDefaultAccount } from '../accounts/account-manager';
-import { appendBrowserToolArgs } from '../../utils/browser';
 import { loadOrCreateUnifiedConfig, getThinkingConfig } from '../../config/unified-config-loader';
 import { HttpsTunnelProxy } from '../proxy/https-tunnel-proxy';
 import { resolveProfileContinuityInheritance } from '../../auth/profile-continuity-inheritance';
@@ -61,7 +44,7 @@ import {
   logEnvironment,
   resolveCliproxyImageAnalysisEnv,
 } from './env-resolver';
-import { checkOrJoinProxy, registerProxySession, setupCleanupHandlers } from './session-bridge';
+import { checkOrJoinProxy, registerProxySession } from './session-bridge';
 import { getWebSearchHookEnv } from '../../utils/websearch-manager';
 import {
   handleLogout,
@@ -82,6 +65,8 @@ import { shouldStartHttpsTunnel } from './https-tunnel-policy';
 import { filterCcsFlags, parseExecutorFlags, validateFlagCombinations } from './arg-parser';
 import { resolveExecutorProxy } from './proxy-resolver';
 import { buildProxyChain } from './proxy-chain-builder';
+import { warnBrokenModels } from './model-warnings';
+import { launchClaude } from './claude-launcher';
 
 /** Local alias so internal call sites need no change */
 const resolveRuntimeQuotaMonitorProviders = _resolveRuntimeQuotaMonitorProviders;
@@ -276,51 +261,7 @@ export async function execClaudeWithCLIProxy(
   }
 
   // 5. Check for broken models (multi-tier for composite)
-  if (compositeProviders.length > 0 && cfg.compositeTiers) {
-    // Check all tier models in composite variant
-    const tiers: Array<'opus' | 'sonnet' | 'haiku'> = ['opus', 'sonnet', 'haiku'];
-    for (const tier of tiers) {
-      const tierConfig = cfg.compositeTiers[tier];
-      if (tierConfig && isModelBroken(tierConfig.provider, tierConfig.model)) {
-        const modelEntry = findModel(tierConfig.provider, tierConfig.model);
-        const issueUrl = getModelIssueUrl(tierConfig.provider, tierConfig.model);
-        console.error('');
-        console.error(
-          warn(
-            `${tier} tier: ${modelEntry?.name || tierConfig.model} has known issues with Claude Code`
-          )
-        );
-        console.error('    Tool calls will fail. Consider changing the model in config.yaml.');
-        if (issueUrl) {
-          console.error(`    Tracking: ${issueUrl}`);
-        }
-        console.error('');
-      }
-    }
-  } else {
-    const currentModel = getCurrentModel(provider, cfg.customSettingsPath);
-    if (currentModel && isModelBroken(provider, currentModel)) {
-      const modelEntry = findModel(provider, currentModel);
-      const issueUrl = getModelIssueUrl(provider, currentModel);
-      const replacementModel = getSuggestedReplacementModel(provider, currentModel);
-      console.error('');
-      console.error(warn(`${modelEntry?.name || currentModel} has known issues with Claude Code`));
-      if (replacementModel) {
-        console.error(`    Tool calls will fail. Use "${replacementModel}" instead.`);
-      } else {
-        console.error('    Tool calls will fail. Consider changing the model in config.yaml.');
-      }
-      if (issueUrl) {
-        console.error(`    Tracking: ${issueUrl}`);
-      }
-      if (skipLocalAuth) {
-        console.error('    Note: Model may be overridden by remote proxy configuration.');
-      } else {
-        console.error(`    Run "ccs ${provider} --config" to change model.`);
-      }
-      console.error('');
-    }
-  }
+  warnBrokenModels({ provider, cfg, compositeProviders, skipLocalAuth });
 
   // 6. Ensure user settings file exists
   ensureProviderSettingsFile(provider);
@@ -571,77 +512,25 @@ export async function execClaudeWithCLIProxy(
     console.error(`[i] Thinking: ${thinkingLabel} (${sourceLabel})`);
   }
 
-  // 12. Filter CCS-specific flags before passing to Claude CLI
+  // 12. Filter CCS flags, spawn Claude CLI, start quota monitor, wire cleanup
   const claudeArgs = filterCcsFlags(argsWithoutBrowserFlags);
-
-  const isWindows = process.platform === 'win32';
-  const needsShell = isWindows && /\.(cmd|bat|ps1)$/i.test(claudeCli);
-
-  const settingsPath = cfg.customSettingsPath
-    ? cfg.customSettingsPath.replace(/^~/, os.homedir())
-    : getProviderSettingsPath(provider);
-
-  let claude: ChildProcess;
-  const imageAnalysisArgs = imageAnalysisMcpReady
-    ? appendThirdPartyImageAnalysisToolArgs(claudeArgs)
-    : claudeArgs;
-  const browserArgs = browserRuntimeEnv
-    ? appendBrowserToolArgs(imageAnalysisArgs)
-    : imageAnalysisArgs;
-  const launchArgs = [
-    '--settings',
-    settingsPath,
-    ...appendThirdPartyWebSearchToolArgs(browserArgs),
-  ];
-  const traceEnv = createWebSearchTraceContext({
-    launcher: 'cliproxy.executor',
-    args: launchArgs,
-    profile: cfg.profileName || provider,
-    profileType: 'cliproxy',
-    settingsPath,
-    claudeConfigDir: inheritedClaudeConfigDir,
-  });
-  const tracedEnv = { ...env, ...traceEnv };
-  if (needsShell) {
-    const cmdString = [claudeCli, ...launchArgs].map(escapeShellArg).join(' ');
-    claude = spawn(cmdString, {
-      stdio: 'inherit',
-      windowsHide: true,
-      shell: getWindowsEscapedCommandShell(),
-      env: tracedEnv,
-    });
-  } else {
-    claude = spawn(claudeCli, launchArgs, {
-      stdio: 'inherit',
-      windowsHide: true,
-      env: tracedEnv,
-    });
-  }
-
-  // 12b. Start runtime quota monitor (adaptive polling during session)
-  if (!skipLocalAuth) {
-    const { startQuotaMonitor } = await import('../quota/quota-manager');
-    for (const monitorProvider of resolveRuntimeQuotaMonitorProviders(
-      provider,
-      compositeProviders
-    )) {
-      const monitorAccount = getDefaultAccount(monitorProvider);
-      if (monitorAccount) {
-        startQuotaMonitor(monitorProvider, monitorAccount.id);
-      }
-    }
-  }
-
-  // 13. Setup cleanup handlers
-  setupCleanupHandlers(
-    claude,
+  await launchClaude({
+    claudeCli,
+    claudeArgs,
+    env,
+    cfg,
+    provider,
+    compositeProviders,
+    skipLocalAuth,
     sessionId,
-    cfg.port,
+    imageAnalysisMcpReady,
+    browserRuntimeEnv,
+    inheritedClaudeConfigDir,
     codexReasoningProxy,
     toolSanitizationProxy,
     httpsTunnel,
-    verbose
-  );
+    verbose,
+  });
 }
 
 // Re-export utility functions for backwards compatibility
