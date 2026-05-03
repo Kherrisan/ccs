@@ -3,13 +3,14 @@
  *
  * Loads and saves the unified YAML configuration.
  * Provides fallback to legacy JSON format for backward compatibility.
+ *
+ * Phase 1-3 refactor (issue #1164): io-locks, normalizers, and yaml-serializer
+ * have been extracted to src/config/loader/. This file re-exports everything
+ * needed by callers so existing import sites continue to work unchanged.
  */
 
 import * as fs from 'fs';
-import * as path from 'path';
-import * as crypto from 'crypto';
 import * as yaml from 'js-yaml';
-import { getCcsDir } from '../utils/config-manager';
 import {
   isUnifiedConfig,
   createEmptyUnifiedConfig,
@@ -24,7 +25,6 @@ import {
   DEFAULT_THINKING_CONFIG,
   DEFAULT_OFFICIAL_CHANNELS_CONFIG,
   DEFAULT_DASHBOARD_AUTH_CONFIG,
-  DEFAULT_BROWSER_CONFIG,
   DEFAULT_IMAGE_ANALYSIS_CONFIG,
   DEFAULT_LOGGING_CONFIG,
 } from './unified-config-types';
@@ -34,219 +34,72 @@ import type {
   GlobalEnvConfig,
   ThinkingConfig,
   OfficialChannelsConfig,
-  OfficialChannelId,
   DashboardAuthConfig,
   BrowserConfig,
-  BrowserEvalMode,
-  BrowserToolPolicy,
   ImageAnalysisConfig,
   LoggingConfig,
   CursorConfig,
-  ContinuityConfig,
 } from './unified-config-types';
-import { validateCompositeTiers } from '../cliproxy/config/composite-validator';
 import { isUnifiedConfigEnabled } from './feature-flags';
-import {
-  isOfficialChannelId,
-  normalizeOfficialChannelIds,
-  resolveLegacyDiscordSelection,
-} from '../channels/official-channels-runtime';
-import { getRecommendedBrowserUserDataDir } from '../utils/browser/browser-settings';
+import { normalizeOfficialChannelIds } from '../channels/official-channels-runtime';
 import { canonicalizeImageAnalysisConfig } from '../utils/hooks/image-analysis-backend-resolver';
 import { normalizeSearxngBaseUrl } from '../utils/websearch/types';
 
-const CONFIG_YAML = 'config.yaml';
-const CONFIG_JSON = 'config.json';
-const CONFIG_LOCK = 'config.yaml.lock';
-const LOCK_STALE_MS = 5000; // Lock is stale after 5 seconds
-const GO_DURATION_SEGMENT = String.raw`(?:\d+(?:\.\d+)?(?:ns|us|µs|μs|ms|s|m|h))`;
-const GO_DURATION_PATTERN = new RegExp(`^${GO_DURATION_SEGMENT}+$`);
+// Phase 1: io-locks
+export {
+  CONFIG_YAML,
+  CONFIG_JSON,
+  CONFIG_LOCK,
+  LOCK_STALE_MS,
+  GO_DURATION_SEGMENT,
+  GO_DURATION_PATTERN,
+  getConfigYamlPath,
+  getConfigJsonPath,
+  acquireLock,
+  releaseLock,
+  hasUnifiedConfig,
+  hasLegacyConfig,
+  sleepSync,
+  withConfigWriteLock,
+} from './loader/io-locks';
+import {
+  getConfigYamlPath,
+  hasUnifiedConfig,
+  hasLegacyConfig,
+  withConfigWriteLock,
+  loadUnifiedConfigWithLockHeld,
+  writeUnifiedConfigWithLockHeld,
+} from './loader/io-locks';
 
-function normalizeBrowserDevtoolsPort(value: number | undefined): number {
-  if (!Number.isFinite(value)) {
-    return DEFAULT_BROWSER_CONFIG.claude.devtools_port;
-  }
+// Phase 2: normalizers
+export {
+  normalizeBrowserDevtoolsPort,
+  normalizeBrowserPolicy,
+  normalizeBrowserEvalMode,
+  canonicalizeBrowserConfig,
+  normalizeSessionAffinityTtl,
+  hasPositiveDuration,
+  validateCompositeVariants,
+  normalizeContinuityInheritanceMap,
+  normalizeContinuityConfig,
+  normalizeOfficialChannelsConfig,
+} from './loader/normalizers';
+import type { LegacyDiscordChannelsConfig } from './loader/normalizers';
+import {
+  canonicalizeBrowserConfig,
+  validateCompositeVariants,
+  normalizeContinuityConfig,
+  normalizeOfficialChannelsConfig,
+  normalizeSessionAffinityTtl,
+} from './loader/normalizers';
 
-  const port = Math.floor(value as number);
-  if (port < 1 || port > 65535) {
-    return DEFAULT_BROWSER_CONFIG.claude.devtools_port;
-  }
+// Phase 3: yaml-serializer
+export { generateYamlHeader, generateYamlWithComments } from './loader/yaml-serializer';
+import { generateYamlHeader, generateYamlWithComments } from './loader/yaml-serializer';
 
-  return port;
-}
-
-function normalizeBrowserPolicy(value: string | undefined): BrowserToolPolicy {
-  return value === 'auto' || value === 'manual' ? value : DEFAULT_BROWSER_CONFIG.claude.policy;
-}
-
-function normalizeBrowserEvalMode(value: string | undefined): BrowserEvalMode {
-  if (value === 'disabled' || value === 'readonly' || value === 'readwrite') {
-    return value;
-  }
-
-  return DEFAULT_BROWSER_CONFIG.claude.eval_mode ?? 'readonly';
-}
-
-function canonicalizeBrowserConfig(
-  config?: BrowserConfig,
-  fallback: BrowserConfig = DEFAULT_BROWSER_CONFIG
-): BrowserConfig {
-  const claudeUserDataDir =
-    config?.claude?.user_data_dir === undefined
-      ? fallback.claude.user_data_dir || getRecommendedBrowserUserDataDir()
-      : config.claude.user_data_dir.trim() || getRecommendedBrowserUserDataDir();
-
-  return {
-    claude: {
-      enabled: config?.claude?.enabled ?? fallback.claude.enabled,
-      policy: normalizeBrowserPolicy(config?.claude?.policy ?? fallback.claude.policy),
-      user_data_dir: claudeUserDataDir,
-      devtools_port: normalizeBrowserDevtoolsPort(
-        config?.claude?.devtools_port ?? fallback.claude.devtools_port
-      ),
-      eval_mode: normalizeBrowserEvalMode(config?.claude?.eval_mode ?? fallback.claude.eval_mode),
-    },
-    codex: {
-      enabled: config?.codex?.enabled ?? fallback.codex.enabled,
-      policy: normalizeBrowserPolicy(config?.codex?.policy ?? fallback.codex.policy),
-      eval_mode: normalizeBrowserEvalMode(config?.codex?.eval_mode ?? fallback.codex.eval_mode),
-    },
-  };
-}
-
-function normalizeSessionAffinityTtl(value: unknown, fallback: string): string {
-  if (typeof value !== 'string') {
-    return fallback;
-  }
-
-  const trimmed = value.trim();
-  if (!trimmed || !GO_DURATION_PATTERN.test(trimmed) || !hasPositiveDuration(trimmed)) {
-    return fallback;
-  }
-
-  return trimmed;
-}
-
-function hasPositiveDuration(value: string): boolean {
-  const segments = value.match(new RegExp(GO_DURATION_SEGMENT, 'g'));
-  if (!segments) {
-    return false;
-  }
-
-  return segments.some((segment) => {
-    const numeric = parseFloat(segment);
-    return Number.isFinite(numeric) && numeric > 0;
-  });
-}
-
-/**
- * Get path to unified config.yaml
- */
-export function getConfigYamlPath(): string {
-  return path.join(getCcsDir(), CONFIG_YAML);
-}
-
-/**
- * Get path to legacy config.json
- */
-export function getConfigJsonPath(): string {
-  return path.join(getCcsDir(), CONFIG_JSON);
-}
-
-/**
- * Get path to config lockfile
- */
-function getLockFilePath(): string {
-  return path.join(getCcsDir(), CONFIG_LOCK);
-}
-
-/**
- * Acquire lockfile for config write operations.
- * Returns a lock token if acquired, null if already locked by another process.
- * Cleans up stale locks (older than LOCK_STALE_MS).
- */
-
-function acquireLock(): string | null {
-  const lockPath = getLockFilePath();
-  const lockDir = path.dirname(lockPath);
-  const lockToken = crypto.randomUUID();
-  const lockData = `${process.pid}\n${Date.now()}\n${lockToken}`;
-
-  try {
-    if (!fs.existsSync(lockDir)) {
-      fs.mkdirSync(lockDir, { recursive: true, mode: 0o700 });
-    }
-
-    // Check if lock exists
-    if (fs.existsSync(lockPath)) {
-      const content = fs.readFileSync(lockPath, 'utf8');
-      const [pidStr, timestampStr] = content.trim().split('\n');
-      const pid = Number.parseInt(pidStr, 10);
-      const timestamp = Number.parseInt(timestampStr, 10);
-      const hasLiveOwner = Number.isInteger(pid) && pid > 0 && processExists(pid);
-      const isStale = !Number.isFinite(timestamp) || Date.now() - timestamp > LOCK_STALE_MS;
-
-      if (hasLiveOwner) {
-        return null;
-      }
-
-      if (isStale || !hasLiveOwner) {
-        fs.unlinkSync(lockPath);
-      }
-    }
-
-    // Acquire lock
-    fs.writeFileSync(lockPath, lockData, { flag: 'wx', mode: 0o600 });
-    return lockToken;
-  } catch (error) {
-    // EEXIST means another process acquired the lock between our check and write
-    if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
-      return null;
-    }
-    return null;
-  }
-}
-
-/**
- * Release lockfile after config write operation.
- */
-function releaseLock(lockToken: string): void {
-  const lockPath = getLockFilePath();
-  try {
-    if (fs.existsSync(lockPath)) {
-      const content = fs.readFileSync(lockPath, 'utf8');
-      const fileToken = content.trim().split('\n')[2];
-      if (fileToken === lockToken) {
-        fs.unlinkSync(lockPath);
-      }
-    }
-  } catch {
-    // Ignore cleanup errors
-  }
-}
-
-function processExists(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Check if unified config.yaml exists
- */
-export function hasUnifiedConfig(): boolean {
-  return fs.existsSync(getConfigYamlPath());
-}
-
-/**
- * Check if legacy config.json exists
- */
-export function hasLegacyConfig(): boolean {
-  return fs.existsSync(getConfigJsonPath());
-}
+// ---------------------------------------------------------------------------
+// getConfigFormat (depends on hasUnifiedConfig, hasLegacyConfig, isUnifiedConfigEnabled)
+// ---------------------------------------------------------------------------
 
 /**
  * Determine which config format is active.
@@ -261,164 +114,9 @@ export function getConfigFormat(): 'yaml' | 'json' | 'none' {
   return 'none';
 }
 
-/**
- * Load unified config from YAML file.
- * Returns null if file doesn't exist.
- * Auto-upgrades config if version is outdated (regenerates comments).
- */
-export function loadUnifiedConfig(): UnifiedConfig | null {
-  const yamlPath = getConfigYamlPath();
-
-  // If file doesn't exist, return null
-  if (!fs.existsSync(yamlPath)) {
-    return null;
-  }
-
-  try {
-    const content = fs.readFileSync(yamlPath, 'utf8');
-    const parsed = yaml.load(content);
-
-    if (!isUnifiedConfig(parsed)) {
-      throw new Error(`Invalid config format in ${yamlPath}`);
-    }
-
-    // Auto-upgrade if version is outdated (regenerates YAML with new comments and fields)
-    if ((parsed.version ?? 1) < UNIFIED_CONFIG_VERSION) {
-      // Merge with defaults to add new fields (e.g., model for websearch providers)
-      const upgraded = mergeWithDefaults(parsed);
-      upgraded.version = UNIFIED_CONFIG_VERSION;
-      try {
-        saveUnifiedConfig(upgraded);
-        if (process.env.CCS_DEBUG) {
-          console.error(`[i] Config upgraded to v${UNIFIED_CONFIG_VERSION}`);
-        }
-        return upgraded;
-      } catch (saveError) {
-        console.error('[!] Config upgrade failed to save:', (saveError as Error).message);
-        // Continue using the upgraded version in-memory even if save fails
-      }
-    }
-
-    return parsed;
-  } catch (err) {
-    // U3: Provide better context for YAML syntax errors
-    if (err instanceof yaml.YAMLException) {
-      const mark = err.mark;
-      console.error(`[X] YAML syntax error in ${yamlPath}:`);
-      console.error(
-        `    Line ${(mark?.line ?? 0) + 1}, Column ${(mark?.column ?? 0) + 1}: ${err.reason || 'Invalid syntax'}`
-      );
-      if (mark?.snippet) {
-        console.error(`    ${mark.snippet}`);
-      }
-      console.error(
-        `    Tip: Check for missing colons, incorrect indentation, or unquoted special characters.`
-      );
-    } else {
-      const error = err instanceof Error ? err.message : 'Unknown error';
-      console.error(`[X] Failed to load config: ${error}`);
-    }
-    throw err;
-  }
-}
-
-/**
- * Validate composite variant provider strings.
- * Warns about invalid providers in composite variant configurations.
- */
-function validateCompositeVariants(config: UnifiedConfig): void {
-  const variants = config.cliproxy?.variants;
-  if (!variants) return;
-
-  for (const [name, variant] of Object.entries(variants)) {
-    if ('type' in variant && variant.type === 'composite') {
-      const error = validateCompositeTiers(variant.tiers, {
-        defaultTier: variant.default_tier,
-        requireAllTiers: true,
-      });
-      if (error) {
-        console.warn(`[!] Variant '${name}': invalid composite config (${error})`);
-      }
-    }
-  }
-}
-
-/**
- * Normalize continuity inheritance mapping payload.
- * Keeps only non-empty string keys and values.
- */
-function normalizeContinuityInheritanceMap(value: unknown): Record<string, string> | undefined {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    return undefined;
-  }
-
-  const normalized: Record<string, string> = {};
-  for (const [profileName, accountName] of Object.entries(value as Record<string, unknown>)) {
-    const normalizedProfile = profileName.trim();
-    const normalizedAccount = typeof accountName === 'string' ? accountName.trim() : '';
-
-    if (!normalizedProfile || !normalizedAccount) {
-      continue;
-    }
-
-    normalized[normalizedProfile] = normalizedAccount;
-  }
-
-  return Object.keys(normalized).length > 0 ? normalized : undefined;
-}
-
-/**
- * Normalize continuity section.
- * Supports legacy root key: continuity_inherit_from_account.
- */
-function normalizeContinuityConfig(partial: Partial<UnifiedConfig>): ContinuityConfig | undefined {
-  const legacyMap = normalizeContinuityInheritanceMap(
-    (partial as Partial<UnifiedConfig> & { continuity_inherit_from_account?: unknown })
-      .continuity_inherit_from_account
-  );
-  const continuityMap = normalizeContinuityInheritanceMap(partial.continuity?.inherit_from_account);
-
-  if (!legacyMap && !continuityMap) {
-    return undefined;
-  }
-
-  return {
-    inherit_from_account: {
-      ...(legacyMap ?? {}),
-      ...(continuityMap ?? {}),
-    },
-  };
-}
-
-interface LegacyDiscordChannelsConfig {
-  enabled?: boolean;
-  unattended?: boolean;
-}
-
-function normalizeOfficialChannelsConfig(
-  partial: Partial<UnifiedConfig> & { discord_channels?: LegacyDiscordChannelsConfig }
-): OfficialChannelsConfig {
-  const hasCanonicalChannelsSection = partial.channels !== undefined;
-  const hasExplicitSelectedField =
-    hasCanonicalChannelsSection &&
-    Object.prototype.hasOwnProperty.call(partial.channels, 'selected');
-  const rawSelected =
-    hasExplicitSelectedField && Array.isArray(partial.channels?.selected)
-      ? partial.channels.selected.filter((value): value is OfficialChannelId =>
-          isOfficialChannelId(value)
-        )
-      : [];
-
-  return {
-    selected: hasCanonicalChannelsSection
-      ? normalizeOfficialChannelIds(rawSelected)
-      : resolveLegacyDiscordSelection(partial.discord_channels?.enabled),
-    unattended:
-      partial.channels?.unattended ??
-      partial.discord_channels?.unattended ??
-      DEFAULT_OFFICIAL_CHANNELS_CONFIG.unattended,
-  };
-}
+// ---------------------------------------------------------------------------
+// mergeWithDefaults (Phase 4 territory — kept here until then)
+// ---------------------------------------------------------------------------
 
 /**
  * Merge partial config with defaults.
@@ -704,6 +402,71 @@ function mergeWithDefaults(partial: Partial<UnifiedConfig>): UnifiedConfig {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Public API — load / save / mutate
+// ---------------------------------------------------------------------------
+
+/**
+ * Load unified config from YAML file.
+ * Returns null if file doesn't exist.
+ * Auto-upgrades config if version is outdated (regenerates comments).
+ */
+export function loadUnifiedConfig(): UnifiedConfig | null {
+  const yamlPath = getConfigYamlPath();
+
+  // If file doesn't exist, return null
+  if (!fs.existsSync(yamlPath)) {
+    return null;
+  }
+
+  try {
+    const content = fs.readFileSync(yamlPath, 'utf8');
+    const parsed = yaml.load(content);
+
+    if (!isUnifiedConfig(parsed)) {
+      throw new Error(`Invalid config format in ${yamlPath}`);
+    }
+
+    // Auto-upgrade if version is outdated (regenerates YAML with new comments and fields)
+    if ((parsed.version ?? 1) < UNIFIED_CONFIG_VERSION) {
+      // Merge with defaults to add new fields (e.g., model for websearch providers)
+      const upgraded = mergeWithDefaults(parsed);
+      upgraded.version = UNIFIED_CONFIG_VERSION;
+      try {
+        saveUnifiedConfig(upgraded);
+        if (process.env.CCS_DEBUG) {
+          console.error(`[i] Config upgraded to v${UNIFIED_CONFIG_VERSION}`);
+        }
+        return upgraded;
+      } catch (saveError) {
+        console.error('[!] Config upgrade failed to save:', (saveError as Error).message);
+        // Continue using the upgraded version in-memory even if save fails
+      }
+    }
+
+    return parsed;
+  } catch (err) {
+    // U3: Provide better context for YAML syntax errors
+    if (err instanceof yaml.YAMLException) {
+      const mark = err.mark;
+      console.error(`[X] YAML syntax error in ${yamlPath}:`);
+      console.error(
+        `    Line ${(mark?.line ?? 0) + 1}, Column ${(mark?.column ?? 0) + 1}: ${err.reason || 'Invalid syntax'}`
+      );
+      if (mark?.snippet) {
+        console.error(`    ${mark.snippet}`);
+      }
+      console.error(
+        `    Tip: Check for missing colons, incorrect indentation, or unquoted special characters.`
+      );
+    } else {
+      const error = err instanceof Error ? err.message : 'Unknown error';
+      console.error(`[X] Failed to load config: ${error}`);
+    }
+    throw err;
+  }
+}
+
 /**
  * Load config, preferring YAML if available, falling back to creating empty config.
  * Merges with defaults to ensure all sections exist.
@@ -724,461 +487,13 @@ export function loadOrCreateUnifiedConfig(): UnifiedConfig {
 }
 
 /**
- * Generate YAML header with helpful comments.
- */
-function generateYamlHeader(): string {
-  return `# CCS Unified Configuration
-# Docs: https://github.com/kaitranntt/ccs
-`;
-}
-
-/**
- * Generate YAML content with section comments for better readability.
- */
-function generateYamlWithComments(config: UnifiedConfig): string {
-  const lines: string[] = [];
-
-  // Version
-  lines.push(`version: ${config.version}`);
-  if (config.setup_completed !== undefined) {
-    lines.push(`setup_completed: ${config.setup_completed}`);
-  }
-  lines.push('');
-
-  // Default
-  if (config.default) {
-    lines.push(`# Default profile used when running 'ccs' without arguments`);
-    lines.push(`default: "${config.default}"`);
-    lines.push('');
-  }
-
-  // Accounts section
-  lines.push('# ----------------------------------------------------------------------------');
-  lines.push('# Accounts: Isolated Claude instances (each with separate auth/sessions)');
-  lines.push('# Manage with: ccs auth add <name>, ccs auth list, ccs auth remove <name>');
-  lines.push('# ----------------------------------------------------------------------------');
-  lines.push(
-    yaml.dump({ accounts: config.accounts }, { indent: 2, lineWidth: -1, quotingType: '"' }).trim()
-  );
-  lines.push('');
-
-  // Profiles section
-  lines.push('# ----------------------------------------------------------------------------');
-  lines.push('# Profiles: API-based providers (GLM, Kimi, custom endpoints)');
-  lines.push('# Each profile points to a *.settings.json file containing env vars.');
-  lines.push('# Edit the settings file directly to customize (ANTHROPIC_MAX_TOKENS, etc.)');
-  lines.push('# ----------------------------------------------------------------------------');
-  lines.push(
-    yaml.dump({ profiles: config.profiles }, { indent: 2, lineWidth: -1, quotingType: '"' }).trim()
-  );
-  lines.push('');
-
-  // CLIProxy section
-  lines.push('# ----------------------------------------------------------------------------');
-  lines.push('# CLIProxy: OAuth-based providers (gemini, codex, agy, qwen, iflow)');
-  lines.push('# Each variant can reference a *.settings.json file for custom env vars.');
-  lines.push('# Edit the settings file directly to customize model or other settings.');
-  lines.push('# ----------------------------------------------------------------------------');
-  lines.push(
-    yaml.dump({ cliproxy: config.cliproxy }, { indent: 2, lineWidth: -1, quotingType: '"' }).trim()
-  );
-  lines.push('');
-
-  if (config.proxy?.routing) {
-    lines.push('# ----------------------------------------------------------------------------');
-    lines.push('# Proxy Routing: OpenAI-compatible local proxy model selection rules');
-    lines.push('# Use profile:model selectors to force a target profile and upstream model.');
-    lines.push('# ----------------------------------------------------------------------------');
-    lines.push(
-      yaml.dump({ proxy: config.proxy }, { indent: 2, lineWidth: -1, quotingType: '"' }).trim()
-    );
-    lines.push('');
-  }
-
-  if (config.logging) {
-    lines.push('# ----------------------------------------------------------------------------');
-    lines.push('# Logging: CCS-owned structured runtime logs');
-    lines.push('# Current file: ~/.ccs/logs/current.jsonl');
-    lines.push('# Archives rotate automatically and are pruned by retain_days.');
-    lines.push('# This is separate from cliproxy.logging, which controls CLIProxy runtime files.');
-    lines.push('# ----------------------------------------------------------------------------');
-    lines.push(
-      yaml.dump({ logging: config.logging }, { indent: 2, lineWidth: -1, quotingType: '"' }).trim()
-    );
-    lines.push('');
-  }
-
-  // CLIProxy Server section (remote proxy configuration) - placed right after cliproxy
-  if (config.cliproxy_server) {
-    lines.push('# ----------------------------------------------------------------------------');
-    lines.push('# CLIProxy Server: Remote proxy connection settings');
-    lines.push('# Configure via Dashboard (`ccs config`) > Proxy tab.');
-    lines.push('#');
-    lines.push('# remote: Connect to a remote CLIProxyAPI instance');
-    lines.push('# fallback: Use local proxy if remote is unreachable');
-    lines.push('# local: Local proxy settings (port, auto-start)');
-    lines.push('# ----------------------------------------------------------------------------');
-    lines.push(
-      yaml
-        .dump(
-          { cliproxy_server: config.cliproxy_server },
-          { indent: 2, lineWidth: -1, quotingType: '"' }
-        )
-        .trim()
-    );
-    lines.push('');
-  }
-
-  // Preferences section
-  lines.push('# ----------------------------------------------------------------------------');
-  lines.push('# Preferences: User settings');
-  lines.push('# ----------------------------------------------------------------------------');
-  lines.push(
-    yaml
-      .dump({ preferences: config.preferences }, { indent: 2, lineWidth: -1, quotingType: '"' })
-      .trim()
-  );
-  lines.push('');
-
-  // WebSearch section
-  if (config.websearch) {
-    lines.push('# ----------------------------------------------------------------------------');
-    lines.push('# WebSearch: real search backends for third-party profiles');
-    lines.push('# Dashboard (`ccs config`) is the source of truth for provider selection.');
-    lines.push('#');
-    lines.push('# Third-party providers (gemini, codex, agy, etc.) do not have access to');
-    lines.push("# Anthropic's WebSearch tool. CCS intercepts that tool and runs local search.");
-    lines.push('#');
-    lines.push(
-      '# Priority: Exa -> Tavily -> Brave -> DuckDuckGo -> optional legacy AI CLI fallbacks'
-    );
-    lines.push('#');
-    lines.push('# Exa requires EXA_API_KEY in your environment.');
-    lines.push('# Tavily requires TAVILY_API_KEY in your environment.');
-    lines.push('# Brave requires BRAVE_API_KEY in your environment.');
-    lines.push('# DuckDuckGo works with zero extra setup and is enabled by default.');
-    lines.push('#');
-    lines.push('# Legacy LLM fallbacks remain optional if you still want them:');
-    lines.push('#   gemini: npm i -g @google/gemini-cli');
-    lines.push('#   opencode: curl -fsSL https://opencode.ai/install | bash');
-    lines.push('#   grok: npm i -g @vibe-kit/grok-cli');
-    lines.push('# ----------------------------------------------------------------------------');
-    lines.push(
-      yaml
-        .dump({ websearch: config.websearch }, { indent: 2, lineWidth: -1, quotingType: '"' })
-        .trim()
-    );
-    lines.push('');
-  }
-
-  // Copilot section (GitHub Copilot proxy)
-  if (config.copilot) {
-    lines.push('# ----------------------------------------------------------------------------');
-    lines.push('# Copilot: GitHub Copilot API proxy (via copilot-api)');
-    lines.push('# Uses your existing GitHub Copilot subscription with Claude Code.');
-    lines.push('#');
-    lines.push('# !! DISCLAIMER - USE AT YOUR OWN RISK !!');
-    lines.push('# This uses an UNOFFICIAL reverse-engineered API.');
-    lines.push('# Excessive usage may trigger GitHub account restrictions.');
-    lines.push('# CCS provides NO WARRANTY and accepts NO RESPONSIBILITY for consequences.');
-    lines.push('#');
-    lines.push('# Setup: npx copilot-api auth (authenticate with GitHub)');
-    lines.push('# Usage: ccs copilot (switch to copilot profile)');
-    lines.push('#');
-    lines.push('# Models: claude-sonnet-4.5, claude-opus-4.5, gpt-5.1, gemini-2.5-pro');
-    lines.push('# Account types: individual, business, enterprise');
-    lines.push('# ----------------------------------------------------------------------------');
-    lines.push(
-      yaml.dump({ copilot: config.copilot }, { indent: 2, lineWidth: -1, quotingType: '"' }).trim()
-    );
-    lines.push('');
-  }
-
-  // Cursor section (Cursor IDE proxy daemon)
-  if (config.cursor) {
-    lines.push('# ----------------------------------------------------------------------------');
-    lines.push('# Cursor: Cursor IDE proxy daemon');
-    lines.push('# Enables Cursor IDE integration via local proxy daemon.');
-    lines.push('#');
-    lines.push('# enabled: Enable/disable Cursor integration (default: false)');
-    lines.push('# port: Port for cursor proxy daemon (default: 20129)');
-    lines.push('# auto_start: Auto-start daemon when CCS starts (default: false)');
-    lines.push('# ghost_mode: Disable telemetry for privacy (default: true)');
-    lines.push('# model: Default model ID (used for ANTHROPIC_MODEL)');
-    lines.push('# opus_model/sonnet_model/haiku_model: Optional tier model mapping');
-    lines.push('# ----------------------------------------------------------------------------');
-    lines.push(
-      yaml.dump({ cursor: config.cursor }, { indent: 2, lineWidth: -1, quotingType: '"' }).trim()
-    );
-    lines.push('');
-  }
-
-  // Global env section
-  if (config.global_env) {
-    lines.push('# ----------------------------------------------------------------------------');
-    lines.push(
-      '# Global Environment Variables: Injected into all non-Claude subscription profiles'
-    );
-    lines.push('# These env vars disable telemetry/reporting for third-party providers.');
-    lines.push('# Configure via Dashboard (`ccs config`) > Global Env tab.');
-    lines.push('#');
-    lines.push('# Default variables:');
-    lines.push('#   DISABLE_BUG_COMMAND: Disables /bug command (not supported by proxy)');
-    lines.push('#   DISABLE_ERROR_REPORTING: Disables error reporting to Anthropic');
-    lines.push('#   DISABLE_TELEMETRY: Disables usage telemetry');
-    lines.push('# ----------------------------------------------------------------------------');
-    lines.push(
-      yaml
-        .dump({ global_env: config.global_env }, { indent: 2, lineWidth: -1, quotingType: '"' })
-        .trim()
-    );
-    lines.push('');
-  }
-
-  // Continuity inheritance section
-  if (config.continuity?.inherit_from_account) {
-    lines.push('# ----------------------------------------------------------------------------');
-    lines.push('# Continuity Inheritance: Reuse account continuity artifacts across profiles');
-    lines.push('# Map execution profile names to source account profiles (CLAUDE_CONFIG_DIR).');
-    lines.push('# Applies to Claude target only; credentials remain profile-specific.');
-    lines.push('# Example: continuity.inherit_from_account.glm: pro');
-    lines.push('# ----------------------------------------------------------------------------');
-    lines.push(
-      yaml
-        .dump({ continuity: config.continuity }, { indent: 2, lineWidth: -1, quotingType: '"' })
-        .trim()
-    );
-    lines.push('');
-  }
-
-  // Thinking section (extended thinking/reasoning configuration)
-  if (config.thinking) {
-    lines.push('# ----------------------------------------------------------------------------');
-    lines.push('# Thinking: Extended thinking/reasoning budget configuration');
-    lines.push('# Controls reasoning depth for supported providers (agy, gemini, codex).');
-    lines.push('#');
-    lines.push(
-      '# Modes: auto (use tier_defaults), off (disable), manual (--thinking/--effort flags)'
-    );
-    lines.push(
-      '# Levels: minimal (512), low (1K), medium (8K), high (24K), xhigh (32K), max (adaptive ceiling), auto'
-    );
-    lines.push('# Override: Set global override value (number or level name)');
-    lines.push('# Provider overrides: Per-provider tier defaults');
-    lines.push('# ----------------------------------------------------------------------------');
-    lines.push(
-      yaml
-        .dump({ thinking: config.thinking }, { indent: 2, lineWidth: -1, quotingType: '"' })
-        .trim()
-    );
-    lines.push('');
-  }
-
-  // Official Channels section
-  if (config.channels) {
-    lines.push('# ----------------------------------------------------------------------------');
-    lines.push('# Official Channels: Runtime auto-enable for Anthropic official channel plugins');
-    lines.push('# Supported channels: telegram, discord, imessage');
-    lines.push('# Runtime-only: CCS injects --channels at launch for compatible Claude sessions.');
-    lines.push('# Bot tokens live in Claude channel env files, not in config.yaml.');
-    lines.push('# Use selected: [telegram, discord, imessage] to choose channels.');
-    lines.push(
-      '# unattended adds --dangerously-skip-permissions only when channel auto-enable is active.'
-    );
-    lines.push('# Compatible sessions: native Claude default/account profiles only.');
-    lines.push('# Configure via: ccs config channels or the Settings > Channels dashboard tab.');
-    lines.push('# ----------------------------------------------------------------------------');
-    lines.push(
-      yaml
-        .dump({ channels: config.channels }, { indent: 2, lineWidth: -1, quotingType: '"' })
-        .trim()
-    );
-    lines.push('');
-  }
-
-  // Dashboard auth section (only if configured)
-  if (config.dashboard_auth?.enabled) {
-    lines.push('# ----------------------------------------------------------------------------');
-    lines.push('# Dashboard Auth: Optional login protection for CCS dashboard');
-    lines.push('# Generate password hash: npx bcrypt-cli hash "your-password"');
-    lines.push(
-      '# ENV override: CCS_DASHBOARD_AUTH_ENABLED, CCS_DASHBOARD_USERNAME, CCS_DASHBOARD_PASSWORD_HASH'
-    );
-    lines.push('# ----------------------------------------------------------------------------');
-    lines.push(
-      yaml
-        .dump(
-          { dashboard_auth: config.dashboard_auth },
-          { indent: 2, lineWidth: -1, quotingType: '"' }
-        )
-        .trim()
-    );
-    lines.push('');
-  }
-
-  // Browser automation section
-  if (config.browser) {
-    lines.push('# ----------------------------------------------------------------------------');
-    lines.push('# Browser Automation: Claude browser attach and Codex browser tooling');
-    lines.push('# Claude attach reuses a running Chrome/Chromium session with remote debugging.');
-    lines.push('# Codex tooling controls whether CCS injects Playwright MCP overrides.');
-    lines.push('#');
-    lines.push('# claude.user_data_dir should point at the Chrome user-data directory for the');
-    lines.push('# dedicated attach session. claude.devtools_port is the expected debugging port.');
-    lines.push('# Configure via: Settings > Browser or `ccs browser ...`.');
-    lines.push('# ----------------------------------------------------------------------------');
-    lines.push(
-      yaml.dump({ browser: config.browser }, { indent: 2, lineWidth: -1, quotingType: '"' }).trim()
-    );
-    lines.push('');
-  }
-
-  // Image analysis section
-  if (config.image_analysis) {
-    lines.push('# ----------------------------------------------------------------------------');
-    lines.push('# Image Analysis: Vision-based analysis for images and PDFs');
-    lines.push('# Routes Read tool requests for images/PDFs through CLIProxy vision API.');
-    lines.push('#');
-    lines.push('# When enabled: Image files trigger vision analysis instead of raw file read');
-    lines.push('# Provider models: Vision model used for each CLIProxy provider');
-    lines.push('# Timeout: Maximum seconds to wait for analysis (10-600)');
-    lines.push('#');
-    lines.push('# Supported formats: .jpg, .jpeg, .png, .gif, .webp, .heic, .bmp, .tiff, .pdf');
-    lines.push('# Configure via: ccs config image-analysis');
-    lines.push('# ----------------------------------------------------------------------------');
-    lines.push(
-      yaml
-        .dump(
-          { image_analysis: config.image_analysis },
-          { indent: 2, lineWidth: -1, quotingType: '"' }
-        )
-        .trim()
-    );
-    lines.push('');
-  }
-
-  return lines.join('\n');
-}
-
-/**
- * Sync sleep helper for lock retry loops.
- * Uses Atomics.wait when available to avoid CPU-intensive busy-wait.
- */
-function sleepSync(ms: number): void {
-  try {
-    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
-  } catch {
-    const end = Date.now() + ms;
-    while (Date.now() < end) {
-      /* busy-wait */
-    }
-  }
-}
-
-/**
- * Execute a callback while holding the config lock.
- */
-function withConfigWriteLock<T>(callback: () => T): T {
-  // Acquire lock (retry for up to 1 second)
-  const maxRetries = 10;
-  const retryDelayMs = 100;
-  let lockToken: string | null = null;
-  for (let i = 0; i < maxRetries; i++) {
-    const acquiredToken = acquireLock();
-    if (acquiredToken) {
-      lockToken = acquiredToken;
-      break;
-    }
-    sleepSync(retryDelayMs);
-  }
-
-  if (!lockToken) {
-    throw new Error('Config file is locked by another process. Wait a moment and try again.');
-  }
-
-  try {
-    return callback();
-  } finally {
-    // Always release lock
-    releaseLock(lockToken);
-  }
-}
-
-/**
- * Load unified config directly from disk while lock is already held.
- * Falls back to empty config when file doesn't exist.
- */
-function loadUnifiedConfigWithLockHeld(): UnifiedConfig {
-  const yamlPath = getConfigYamlPath();
-  if (!fs.existsSync(yamlPath)) {
-    return createEmptyUnifiedConfig();
-  }
-
-  const content = fs.readFileSync(yamlPath, 'utf8');
-  const parsed = yaml.load(content);
-
-  if (!isUnifiedConfig(parsed)) {
-    throw new Error(`Invalid config format in ${yamlPath}`);
-  }
-
-  const merged = mergeWithDefaults(parsed);
-  validateCompositeVariants(merged);
-  return merged;
-}
-
-/**
- * Write unified config to disk while lock is already held.
- */
-function writeUnifiedConfigWithLockHeld(config: UnifiedConfig): void {
-  const yamlPath = getConfigYamlPath();
-  const dir = path.dirname(yamlPath);
-
-  // Ensure directory exists
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-  }
-
-  // Ensure version is set
-  config.version = UNIFIED_CONFIG_VERSION;
-
-  // Generate YAML with section comments
-  const yamlContent = generateYamlWithComments(config);
-  const content = generateYamlHeader() + yamlContent;
-
-  // Atomic write: write to temp file, then rename
-  const tempPath = `${yamlPath}.tmp.${process.pid}`;
-
-  try {
-    fs.writeFileSync(tempPath, content, { mode: 0o600 });
-    fs.renameSync(tempPath, yamlPath);
-  } catch (error) {
-    // Clean up temp file on error
-    if (fs.existsSync(tempPath)) {
-      try {
-        fs.unlinkSync(tempPath);
-      } catch {
-        // Ignore cleanup errors
-      }
-    }
-    // Classify filesystem errors
-    const err = error as NodeJS.ErrnoException;
-    if (err.code === 'ENOSPC') {
-      throw new Error('Disk full - cannot save config. Free up space and try again.');
-    } else if (err.code === 'EROFS' || err.code === 'EACCES') {
-      throw new Error(`Cannot write config - check file permissions: ${err.message}`);
-    }
-    throw error;
-  }
-}
-
-/**
  * Save unified config to YAML file.
  * Uses atomic write (temp file + rename) to prevent corruption.
  * Uses lockfile to prevent concurrent writes.
  */
 export function saveUnifiedConfig(config: UnifiedConfig): void {
   withConfigWriteLock(() => {
-    writeUnifiedConfigWithLockHeld(config);
+    writeUnifiedConfigWithLockHeld(config, generateYamlHeader, generateYamlWithComments);
   });
 }
 
@@ -1188,7 +503,7 @@ export function saveUnifiedConfig(config: UnifiedConfig): void {
  */
 export function mutateUnifiedConfig(mutator: (config: UnifiedConfig) => void): UnifiedConfig {
   return withConfigWriteLock(() => {
-    const current = loadUnifiedConfigWithLockHeld();
+    const current = loadUnifiedConfigWithLockHeld(mergeWithDefaults, validateCompositeVariants);
     const previousBrowser = current.browser
       ? canonicalizeBrowserConfig(current.browser)
       : undefined;
@@ -1196,7 +511,7 @@ export function mutateUnifiedConfig(mutator: (config: UnifiedConfig) => void): U
     if (current.browser) {
       current.browser = canonicalizeBrowserConfig(current.browser, previousBrowser);
     }
-    writeUnifiedConfigWithLockHeld(current);
+    writeUnifiedConfigWithLockHeld(current, generateYamlHeader, generateYamlWithComments);
     return current;
   });
 }
@@ -1210,6 +525,10 @@ export function updateUnifiedConfig(updates: Partial<UnifiedConfig>): UnifiedCon
     Object.assign(config, updates);
   });
 }
+
+// ---------------------------------------------------------------------------
+// Public API — getters / derived helpers
+// ---------------------------------------------------------------------------
 
 /**
  * Check if unified config mode is active.
