@@ -13,9 +13,7 @@
 import { spawn, ChildProcess } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
-import * as path from 'path';
 import { fail, info, warn } from '../../utils/ui';
-import { getCcsDir } from '../../utils/config-manager';
 import { escapeShellArg, getWindowsEscapedCommandShell } from '../../utils/shell-executor';
 import {
   generateConfig,
@@ -79,11 +77,11 @@ import {
 import {
   buildThinkingStartupStatus,
   resolveRuntimeThinkingOverride,
-  shouldDisableCodexReasoning,
 } from './thinking-override-resolver';
 import { shouldStartHttpsTunnel } from './https-tunnel-policy';
 import { filterCcsFlags, parseExecutorFlags, validateFlagCombinations } from './arg-parser';
 import { resolveExecutorProxy } from './proxy-resolver';
+import { buildProxyChain } from './proxy-chain-builder';
 
 /** Local alias so internal call sites need no change */
 const resolveRuntimeQuotaMonitorProviders = _resolveRuntimeQuotaMonitorProviders;
@@ -365,7 +363,7 @@ export async function execClaudeWithCLIProxy(
     }
   }
 
-  // 8. Setup HTTPS tunnel if needed
+  // 8. Setup HTTPS tunnel if needed (tunnelPort used by imageAnalysisProxyTarget below)
   let httpsTunnel: HttpsTunnelProxy | null = null;
   let tunnelPort: number | null = null;
 
@@ -435,9 +433,11 @@ export async function execClaudeWithCLIProxy(
     ? 'ImageAnalysis MCP provisioning failed. This session will use compatibility fallback when available.'
     : imageAnalysisResolution.warning;
 
-  // 9. Setup tool sanitization proxy
+  // 9. Resolve config dir + browser runtime (needed before proxy chain)
   let toolSanitizationProxy: ToolSanitizationProxy | null = null;
   let toolSanitizationPort: number | null = null;
+  let codexReasoningProxy: CodexReasoningProxy | null = null;
+  let codexReasoningPort: number | null = null;
   let inheritedClaudeConfigDir = cfg.claudeConfigDir;
 
   if (!inheritedClaudeConfigDir && cfg.profileName) {
@@ -488,74 +488,19 @@ export async function execClaudeWithCLIProxy(
     imageAnalysisEnv,
   });
 
-  if (initialEnvVars.ANTHROPIC_BASE_URL) {
-    try {
-      toolSanitizationProxy = new ToolSanitizationProxy({
-        upstreamBaseUrl: initialEnvVars.ANTHROPIC_BASE_URL,
-        verbose,
-        warnOnSanitize: true,
-        allowSelfSigned: useRemoteProxy ? (proxyConfig.allowSelfSigned ?? false) : false,
-      });
-      toolSanitizationPort = await toolSanitizationProxy.start();
-      log(`Tool sanitization proxy active on port ${toolSanitizationPort}`);
-    } catch (error) {
-      const err = error as Error;
-      toolSanitizationProxy = null;
-      toolSanitizationPort = null;
-      if (verbose) {
-        console.error(warn(`Tool sanitization proxy disabled: ${err.message}`));
-      }
-    }
-  }
-
-  const postSanitizationBaseUrl = toolSanitizationPort
-    ? `http://127.0.0.1:${toolSanitizationPort}`
-    : initialEnvVars.ANTHROPIC_BASE_URL;
-
-  // 10. Setup Codex reasoning proxy (single-provider Codex only)
-  let codexReasoningProxy: CodexReasoningProxy | null = null;
-  let codexReasoningPort: number | null = null;
-
-  // Composite variants require root model-routed endpoints, never provider-pinned codex endpoints.
-  if (provider === 'codex' && !cfg.isComposite) {
-    if (!postSanitizationBaseUrl) {
-      log('ANTHROPIC_BASE_URL not set for Codex, reasoning proxy disabled');
-    } else {
-      try {
-        const traceEnabled =
-          process.env.CCS_CODEX_REASONING_TRACE === '1' ||
-          process.env.CCS_CODEX_REASONING_TRACE === 'true';
-        const stripPathPrefix = useRemoteProxy ? '/api/provider/codex' : undefined;
-        const codexThinkingOff = shouldDisableCodexReasoning(thinkingCfg, thinkingOverride);
-        codexReasoningProxy = new CodexReasoningProxy({
-          upstreamBaseUrl: postSanitizationBaseUrl,
-          verbose,
-          defaultEffort: 'medium',
-          disableEffort: codexThinkingOff,
-          traceFilePath: traceEnabled ? path.join(getCcsDir(), 'codex-reasoning-proxy.log') : '',
-          allowSelfSigned: useRemoteProxy ? (proxyConfig.allowSelfSigned ?? false) : false,
-          modelMap: {
-            defaultModel: initialEnvVars.ANTHROPIC_MODEL,
-            opusModel: initialEnvVars.ANTHROPIC_DEFAULT_OPUS_MODEL,
-            sonnetModel: initialEnvVars.ANTHROPIC_DEFAULT_SONNET_MODEL,
-            haikuModel: initialEnvVars.ANTHROPIC_DEFAULT_HAIKU_MODEL,
-          },
-          stripPathPrefix,
-        });
-        codexReasoningPort = await codexReasoningProxy.start();
-        log(
-          `Codex reasoning proxy active: http://127.0.0.1:${codexReasoningPort}/api/provider/codex`
-        );
-      } catch (error) {
-        const err = error as Error;
-        codexReasoningProxy = null;
-        codexReasoningPort = null;
-        if (verbose) {
-          console.error(warn(`Codex reasoning proxy disabled: ${err.message}`));
-        }
-      }
-    }
-  }
+  // 9b. Build env-dependent proxy chain (tool-sanitization + codex-reasoning)
+  ({ toolSanitizationProxy, toolSanitizationPort, codexReasoningProxy, codexReasoningPort } =
+    await buildProxyChain({
+      provider,
+      useRemoteProxy,
+      proxyConfig,
+      cfg,
+      initialEnvVars,
+      thinkingOverride,
+      thinkingCfg,
+      verbose,
+      log,
+    }));
 
   // 11. Build final environment with all proxy chains
   const env = buildClaudeEnvironment({
