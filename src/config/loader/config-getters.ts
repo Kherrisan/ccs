@@ -32,7 +32,7 @@ import type {
 } from '../unified-config-types';
 import { canonicalizeBrowserConfig } from './normalizers';
 import { canonicalizeImageAnalysisConfig } from '../../utils/hooks/image-analysis-backend-resolver';
-import { normalizeOfficialChannelIds } from '../../channels/official-channels-runtime';
+import { normalizeOfficialChannelIds } from '../../channels/official-channels-ids';
 import { normalizeSearxngBaseUrl } from '../../utils/websearch/types';
 
 // ---------------------------------------------------------------------------

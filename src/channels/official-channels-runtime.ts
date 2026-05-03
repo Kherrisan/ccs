@@ -64,7 +64,20 @@ export const OFFICIAL_CHANNELS: Record<OfficialChannelId, OfficialChannelDefinit
   },
 };
 
-export const OFFICIAL_CHANNEL_IDS = Object.keys(OFFICIAL_CHANNELS) as OfficialChannelId[];
+// Re-export from leaf module so config-loader can use these without pulling
+// in this file's claude-detector / shell-executor dep chain.
+import {
+  OFFICIAL_CHANNEL_IDS,
+  isOfficialChannelId,
+  normalizeOfficialChannelIds,
+  resolveLegacyDiscordSelection,
+} from './official-channels-ids';
+export {
+  OFFICIAL_CHANNEL_IDS,
+  isOfficialChannelId,
+  normalizeOfficialChannelIds,
+  resolveLegacyDiscordSelection,
+};
 export const MINIMUM_OFFICIAL_CHANNELS_CLAUDE_VERSION = '2.1.80';
 
 export interface OfficialChannelsVersionSummary {
@@ -161,26 +174,6 @@ export function isDiscordChannelsSessionSupported(
   profileType: ProfileType
 ): boolean {
   return target === 'claude' && (profileType === 'default' || profileType === 'account');
-}
-
-export function isOfficialChannelId(value: string): value is OfficialChannelId {
-  return value in OFFICIAL_CHANNELS;
-}
-
-export function normalizeOfficialChannelIds(values: readonly string[]): OfficialChannelId[] {
-  const seen = new Set<OfficialChannelId>();
-  const normalized: OfficialChannelId[] = [];
-
-  for (const channelId of OFFICIAL_CHANNEL_IDS) {
-    if (!values.includes(channelId) || seen.has(channelId)) {
-      continue;
-    }
-
-    seen.add(channelId);
-    normalized.push(channelId);
-  }
-
-  return normalized;
 }
 
 export function hasExplicitChannelsFlag(args: string[]): boolean {
@@ -755,10 +748,6 @@ export function isOfficialChannelSelectionValid(selection: string): boolean {
   return (
     parsed.length > 0 && parsed.every((value) => value === 'all' || isOfficialChannelId(value))
   );
-}
-
-export function resolveLegacyDiscordSelection(enabled: boolean | undefined): OfficialChannelId[] {
-  return enabled ? ['discord'] : [];
 }
 
 export function getOfficialChannelsSupportedProfiles(): string[] {
