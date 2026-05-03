@@ -36,7 +36,7 @@ import { isAuthenticated } from '../auth/auth-handler';
 import { CLIProxyProvider, CLIProxyBackend, PLUS_ONLY_PROVIDERS, ExecutorConfig } from '../types';
 import { configureProviderModel, getCurrentModel } from '../config/model-config';
 import { reconcileCodexModelForActivePlan } from '../ai-providers/codex-plan-compatibility';
-import { resolveProxyConfig, PROXY_CLI_FLAGS } from '../proxy/proxy-config-resolver';
+import { resolveProxyConfig } from '../proxy/proxy-config-resolver';
 import {
   supportsModelConfig,
   isModelBroken,
@@ -83,14 +83,6 @@ import {
   getThinkingConfig,
 } from '../../config/unified-config-loader';
 import { HttpsTunnelProxy } from '../proxy/https-tunnel-proxy';
-import {
-  isKiroAuthMethod,
-  isKiroIDCFlow,
-  KiroAuthMethod,
-  KiroIDCFlow,
-  normalizeKiroAuthMethod,
-  normalizeKiroIDCFlow,
-} from '../auth/auth-types';
 import { resolveProfileContinuityInheritance } from '../../auth/profile-continuity-inheritance';
 
 // Import modular components
@@ -108,7 +100,6 @@ import {
 } from './retry-handler';
 import { MANAGED_QUOTA_PROVIDERS, type ManagedQuotaProvider } from '../quota/quota-manager';
 import { checkOrJoinProxy, registerProxySession, setupCleanupHandlers } from './session-bridge';
-import { parseThinkingOverride } from './thinking-arg-parser';
 import {
   warnCrossProviderDuplicates,
   warnOAuthBanRisk,
@@ -118,7 +109,6 @@ import {
 } from '../accounts/account-safety';
 import {
   ensureCliAntigravityResponsibility,
-  hasAntigravityRiskAcceptanceFlag,
   ANTIGRAVITY_ACCEPT_RISK_FLAGS,
 } from '../auth/antigravity-responsibility';
 import { getWebSearchHookEnv } from '../../utils/websearch-manager';
@@ -128,6 +118,7 @@ import {
   shouldDisableCodexReasoning,
 } from './thinking-override-resolver';
 import { shouldStartHttpsTunnel } from './https-tunnel-policy';
+import { filterCcsFlags, parseExecutorFlags, validateFlagCombinations } from './arg-parser';
 
 function resolveRuntimeQuotaMonitorProviders(
   provider: CLIProxyProvider,
@@ -156,41 +147,9 @@ const DEFAULT_CONFIG: ExecutorConfig = {
   pollInterval: 100,
 };
 
-export function readOptionValue(
-  args: string[],
-  flag: string
-): { present: boolean; value?: string; missingValue: boolean } {
-  const inlinePrefix = `${flag}=`;
-  const inlineArg = args.find((arg) => arg.startsWith(inlinePrefix));
-  if (inlineArg !== undefined) {
-    const value = inlineArg.slice(inlinePrefix.length).trim();
-    return {
-      present: true,
-      value: value.length > 0 ? value : undefined,
-      missingValue: value.length === 0,
-    };
-  }
-
-  const index = args.indexOf(flag);
-  if (index === -1) {
-    return { present: false, missingValue: false };
-  }
-
-  const next = args[index + 1];
-  if (!next || next.startsWith('-')) {
-    return { present: true, missingValue: true };
-  }
-
-  return { present: true, value: next.trim(), missingValue: false };
-}
-
-export function hasGitLabTokenLoginFlag(args: string[]): boolean {
-  return args.includes('--gitlab-token-login') || args.includes('--token-login');
-}
-
-function getGitLabTokenLoginFlagName(args: string[]): '--gitlab-token-login' | '--token-login' {
-  return args.includes('--gitlab-token-login') ? '--gitlab-token-login' : '--token-login';
-}
+// readOptionValue, hasGitLabTokenLoginFlag, CCS_FLAGS, filterCcsFlags are
+// re-exported from ./arg-parser via the export block at the bottom of this file
+// for backwards compatibility with external callers.
 
 /**
  * Execute Claude CLI with CLIProxy (main entry point)
@@ -408,198 +367,41 @@ export async function execClaudeWithCLIProxy(
     }
   }
 
-  // 2. Handle special flags (simplified flag parsing - full implementation continues below)
-  const forceAuth = argsWithoutProxy.includes('--auth');
-  const pasteCallback = argsWithoutProxy.includes('--paste-callback');
-  const portForward = argsWithoutProxy.includes('--port-forward');
-  const forceHeadless = argsWithoutProxy.includes('--headless');
+  // 2. Parse all CCS executor flags (extracted to arg-parser.ts)
+  const parsedFlags = parseExecutorFlags(argsWithoutProxy, {
+    provider,
+    compositeProviders,
+    unifiedConfig,
+  });
+  if (process.exitCode === 1) return;
 
-  if (pasteCallback && portForward) {
-    console.error(fail('Cannot use --paste-callback with --port-forward'));
-    console.error('    --paste-callback: Manually paste OAuth redirect URL');
-    console.error('    --port-forward: Use SSH port forwarding for callback');
-    process.exit(1);
-  }
+  // Validate cross-flag combinations (exits with code 1 on violation)
+  validateFlagCombinations(parsedFlags, { provider, compositeProviders }, argsWithoutProxy);
+  if (process.exitCode === 1) return;
 
-  const forceLogout = argsWithoutProxy.includes('--logout');
-  const forceConfig = argsWithoutProxy.includes('--config');
-  const addAccount = argsWithoutProxy.includes('--add');
-  const showAccounts = argsWithoutProxy.includes('--accounts');
-  const forceImport = argsWithoutProxy.includes('--import');
-  const gitlabTokenLogin = hasGitLabTokenLoginFlag(argsWithoutProxy);
-  const acceptAgyRisk = hasAntigravityRiskAcceptanceFlag(argsWithoutProxy);
-
-  const incognitoFlag = argsWithoutProxy.includes('--incognito');
-  const noIncognitoFlag = argsWithoutProxy.includes('--no-incognito');
-  const kiroNoIncognitoConfig =
-    provider === 'kiro' ? (unifiedConfig.cliproxy?.kiro_no_incognito ?? true) : false;
-  const noIncognito = incognitoFlag ? false : noIncognitoFlag || kiroNoIncognitoConfig;
-
-  // Parse --use flag
-  let useAccount: string | undefined;
-  const useIdx = argsWithoutProxy.indexOf('--use');
-  if (
-    useIdx !== -1 &&
-    argsWithoutProxy[useIdx + 1] &&
-    !argsWithoutProxy[useIdx + 1].startsWith('-')
-  ) {
-    useAccount = argsWithoutProxy[useIdx + 1];
-  }
-
-  // Parse --nickname flag
-  let setNickname: string | undefined;
-  const nicknameIdx = argsWithoutProxy.indexOf('--nickname');
-  if (
-    nicknameIdx !== -1 &&
-    argsWithoutProxy[nicknameIdx + 1] &&
-    !argsWithoutProxy[nicknameIdx + 1].startsWith('-')
-  ) {
-    setNickname = argsWithoutProxy[nicknameIdx + 1];
-  }
-
-  // Parse --kiro-auth-method flag
-  let kiroAuthMethod: KiroAuthMethod | undefined;
-  const kiroMethodValue = readOptionValue(argsWithoutProxy, '--kiro-auth-method');
-  if (kiroMethodValue.present) {
-    const rawMethod = kiroMethodValue.value;
-    if (kiroMethodValue.missingValue || !rawMethod) {
-      console.error(fail('--kiro-auth-method requires a value'));
-      console.error('    Supported values: aws, aws-authcode, google, github, idc');
-      process.exitCode = 1;
-      return;
-    }
-    const normalized = rawMethod.trim().toLowerCase();
-    if (!isKiroAuthMethod(normalized)) {
-      console.error(fail(`Invalid --kiro-auth-method value: ${rawMethod}`));
-      console.error('    Supported values: aws, aws-authcode, google, github, idc');
-      process.exitCode = 1;
-      return;
-    }
-    kiroAuthMethod = normalizeKiroAuthMethod(normalized);
-  }
-
-  let kiroIDCStartUrl: string | undefined;
-  const kiroIDCStartUrlValue = readOptionValue(argsWithoutProxy, '--kiro-idc-start-url');
-  if (kiroIDCStartUrlValue.present && kiroIDCStartUrlValue.value) {
-    kiroIDCStartUrl = kiroIDCStartUrlValue.value;
-  } else if (kiroIDCStartUrlValue.present) {
-    console.error(fail('--kiro-idc-start-url requires a value'));
-    process.exitCode = 1;
-    return;
-  }
-
-  let kiroIDCRegion: string | undefined;
-  const kiroIDCRegionValue = readOptionValue(argsWithoutProxy, '--kiro-idc-region');
-  if (kiroIDCRegionValue.present && kiroIDCRegionValue.value) {
-    kiroIDCRegion = kiroIDCRegionValue.value;
-  } else if (kiroIDCRegionValue.present) {
-    console.error(fail('--kiro-idc-region requires a value'));
-    process.exitCode = 1;
-    return;
-  }
-
-  let kiroIDCFlow: KiroIDCFlow | undefined;
-  const kiroIDCFlowValue = readOptionValue(argsWithoutProxy, '--kiro-idc-flow');
-  if (kiroIDCFlowValue.present) {
-    const rawFlow = kiroIDCFlowValue.value;
-    if (kiroIDCFlowValue.missingValue || !rawFlow) {
-      console.error(fail('--kiro-idc-flow requires a value'));
-      console.error('    Supported values: authcode, device');
-      process.exitCode = 1;
-      return;
-    }
-    const normalized = rawFlow.trim().toLowerCase();
-    if (!isKiroIDCFlow(normalized)) {
-      console.error(fail(`Invalid --kiro-idc-flow value: ${rawFlow}`));
-      console.error('    Supported values: authcode, device');
-      process.exitCode = 1;
-      return;
-    }
-    kiroIDCFlow = normalizeKiroIDCFlow(normalized);
-  }
-
-  let gitlabBaseUrl: string | undefined;
-  const gitlabBaseUrlValue = readOptionValue(argsWithoutProxy, '--gitlab-url');
-  if (gitlabBaseUrlValue.present && gitlabBaseUrlValue.value) {
-    gitlabBaseUrl = gitlabBaseUrlValue.value.trim();
-  } else if (gitlabBaseUrlValue.present) {
-    console.error(fail('--gitlab-url requires a value'));
-    process.exitCode = 1;
-    return;
-  }
-
-  if (kiroAuthMethod && provider !== 'kiro' && !compositeProviders.includes('kiro')) {
-    console.error(fail('--kiro-auth-method is only valid for ccs kiro'));
-    process.exitCode = 1;
-    return;
-  }
-
-  if (
-    (kiroIDCStartUrl || kiroIDCRegion || kiroIDCFlow) &&
-    provider !== 'kiro' &&
-    !compositeProviders.includes('kiro')
-  ) {
-    console.error(
-      fail(
-        '--kiro-idc-start-url, --kiro-idc-region, and --kiro-idc-flow are only valid for ccs kiro'
-      )
-    );
-    process.exitCode = 1;
-    return;
-  }
-
-  if (!kiroAuthMethod && (kiroIDCStartUrl || kiroIDCRegion || kiroIDCFlow)) {
-    kiroAuthMethod = 'idc';
-  }
-
-  if (kiroAuthMethod === 'idc' && !kiroIDCStartUrl) {
-    console.error(fail('Kiro IDC login requires --kiro-idc-start-url'));
-    console.error(
-      '    Example: ccs kiro --auth --kiro-auth-method idc --kiro-idc-start-url https://d-xxx.awsapps.com/start'
-    );
-    process.exitCode = 1;
-    return;
-  }
-
-  if (
-    kiroAuthMethod &&
-    kiroAuthMethod !== 'idc' &&
-    (kiroIDCStartUrl || kiroIDCRegion || kiroIDCFlow)
-  ) {
-    console.error(
-      fail(
-        '--kiro-idc-start-url, --kiro-idc-region, and --kiro-idc-flow require --kiro-auth-method idc'
-      )
-    );
-    process.exitCode = 1;
-    return;
-  }
-
-  if ((gitlabTokenLogin || gitlabBaseUrl) && provider !== 'gitlab') {
-    const flagName = gitlabTokenLogin
-      ? getGitLabTokenLoginFlagName(argsWithoutProxy)
-      : '--gitlab-url';
-    console.error(fail(`${flagName} is only valid for ccs gitlab`));
-    process.exitCode = 1;
-    return;
-  }
-
-  // Parse --thinking / --effort flags (aliases; first occurrence wins)
-  const thinkingParse = parseThinkingOverride(argsWithoutProxy);
-  if (thinkingParse.error) {
-    const { flag } = thinkingParse.error;
-    console.error(fail(`${flag} requires a value`));
-
-    if (provider === 'codex') {
-      console.error('    Codex examples: --effort xhigh, --effort high, --effort medium');
-      console.error('    Alias: --thinking xhigh (same behavior)');
-    } else {
-      console.error('    Examples: --thinking low, --thinking 8192, --thinking off');
-      console.error('    Levels: minimal, low, medium, high, xhigh, max, auto');
-    }
-
-    process.exit(1);
-  }
+  const {
+    forceAuth,
+    pasteCallback,
+    portForward,
+    forceHeadless,
+    forceLogout,
+    forceConfig,
+    addAccount,
+    showAccounts,
+    forceImport,
+    gitlabTokenLogin,
+    acceptAgyRisk,
+    noIncognito,
+    useAccount,
+    setNickname,
+    kiroAuthMethod,
+    kiroIDCStartUrl,
+    kiroIDCRegion,
+    kiroIDCFlow,
+    gitlabBaseUrl,
+    extendedContextOverride,
+    thinkingParse,
+  } = parsedFlags;
 
   const { thinkingOverride, thinkingSource } = resolveRuntimeThinkingOverride(
     thinkingParse.value,
@@ -620,24 +422,6 @@ export async function execClaudeWithCLIProxy(
       )
     );
   }
-
-  // Parse --1m / --no-1m flags for extended context (1M token window)
-  let extendedContextOverride: boolean | undefined;
-  const has1mFlag =
-    argsWithoutProxy.includes('--1m') || argsWithoutProxy.some((arg) => arg.startsWith('--1m='));
-  const hasNo1mFlag =
-    argsWithoutProxy.includes('--no-1m') ||
-    argsWithoutProxy.some((arg) => arg.startsWith('--no-1m='));
-
-  if (has1mFlag && hasNo1mFlag) {
-    console.error(fail('Cannot use both --1m and --no-1m flags'));
-    process.exit(1);
-  } else if (has1mFlag) {
-    extendedContextOverride = true;
-  } else if (hasNo1mFlag) {
-    extendedContextOverride = false;
-  }
-  // undefined = auto behavior (Gemini: on, others: off)
 
   // Handle --accounts
   if (showAccounts) {
@@ -1298,55 +1082,7 @@ export async function execClaudeWithCLIProxy(
   }
 
   // 12. Filter CCS-specific flags before passing to Claude CLI
-  const ccsFlags = [
-    '--auth',
-    '--paste-callback',
-    '--port-forward',
-    '--headless',
-    '--logout',
-    '--config',
-    '--add',
-    '--accounts',
-    '--use',
-    '--nickname',
-    '--kiro-auth-method',
-    '--kiro-idc-start-url',
-    '--kiro-idc-region',
-    '--kiro-idc-flow',
-    '--thinking',
-    '--effort',
-    '--1m',
-    '--no-1m',
-    '--incognito',
-    '--no-incognito',
-    '--import',
-    '--accept-agr-risk',
-    '--accept-antigravity-risk',
-    '--settings',
-    ...PROXY_CLI_FLAGS,
-  ];
-  const claudeArgs = argsWithoutBrowserFlags.filter((arg, idx) => {
-    if (ccsFlags.includes(arg)) return false;
-    if (arg.startsWith('--kiro-auth-method=')) return false;
-    if (arg.startsWith('--kiro-idc-start-url=')) return false;
-    if (arg.startsWith('--kiro-idc-region=')) return false;
-    if (arg.startsWith('--kiro-idc-flow=')) return false;
-    if (arg.startsWith('--thinking=')) return false;
-    if (arg.startsWith('--effort=')) return false;
-    if (arg.startsWith('--1m=') || arg.startsWith('--no-1m=')) return false;
-    if (
-      argsWithoutBrowserFlags[idx - 1] === '--use' ||
-      argsWithoutBrowserFlags[idx - 1] === '--nickname' ||
-      argsWithoutBrowserFlags[idx - 1] === '--kiro-auth-method' ||
-      argsWithoutBrowserFlags[idx - 1] === '--kiro-idc-start-url' ||
-      argsWithoutBrowserFlags[idx - 1] === '--kiro-idc-region' ||
-      argsWithoutBrowserFlags[idx - 1] === '--kiro-idc-flow' ||
-      argsWithoutBrowserFlags[idx - 1] === '--thinking' ||
-      argsWithoutBrowserFlags[idx - 1] === '--effort'
-    )
-      return false;
-    return true;
-  });
+  const claudeArgs = filterCcsFlags(argsWithoutBrowserFlags);
 
   const isWindows = process.platform === 'win32';
   const needsShell = isWindows && /\.(cmd|bat|ps1)$/i.test(claudeCli);
@@ -1420,6 +1156,10 @@ export async function execClaudeWithCLIProxy(
 
 // Re-export utility functions for backwards compatibility
 export { isPortAvailable, findAvailablePort } from './lifecycle-manager';
+
+// Re-export arg-parser helpers (previously inlined here; external callers can
+// import from index or directly from ./arg-parser)
+export { readOptionValue, hasGitLabTokenLoginFlag, CCS_FLAGS, filterCcsFlags } from './arg-parser';
 
 export const __testExports = {
   resolveRuntimeQuotaMonitorProviders,
