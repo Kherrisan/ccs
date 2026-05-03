@@ -3,13 +3,152 @@
  *
  * Extracted from src/ccs.ts (lines 129-244, 246-296, 371-392).
  * Pure functions — no side effects except console.error and process.exit.
+ *
+ * Also contains bootstrapAndParseEarlyCli() — the Phase A bootstrap extracted
+ * from main() (lines 128-232 of the original). Handles: adapter registration,
+ * UI init, --config-dir flag, cloud-sync warnings, completion short-circuit,
+ * normalizeLegacyCursorArgs, resolveBrowserLaunchFlagResolution, codex passthrough.
  */
 
-import { fail, warn } from '../utils/ui';
+import * as fs from 'fs';
+import { fail, warn, info } from '../utils/ui';
 import { LEGACY_CURSOR_PROFILE_NAME } from '../cursor/constants';
 import { resolveTargetType, stripTargetFlag } from '../targets/target-resolver';
 import { resolveDroidReasoningRuntime } from '../targets/droid-reasoning-runtime';
 import type { ProfileDetectionResult } from '../auth/profile-detector';
+import { setGlobalConfigDir, detectCloudSyncPath } from '../utils/config-manager';
+import { resolveBrowserLaunchFlagResolution } from '../utils/browser';
+import type { BrowserLaunchOverride } from '../utils/browser';
+
+// ========== Bootstrap Result ==========
+
+/**
+ * Result of the early CLI bootstrap pass.
+ * All fields are consumed by main() to decide how to continue.
+ */
+export interface DispatcherBootstrap {
+  /** Normalized/mutated args after pre-parse (--config-dir stripped, browser flags stripped, legacy cursor normalized) */
+  args: string[];
+  isCompletionCommand: boolean;
+  browserLaunchOverride: BrowserLaunchOverride | undefined;
+  /** true when the caller should return immediately (completion handled, codex passthrough triggered, process.exit called) */
+  exitNow: boolean;
+}
+
+/**
+ * Phase A bootstrap: runs everything that must happen before config loading and profile detection.
+ *
+ * Side-effects preserved from original main():
+ * - Dynamic import of initUI
+ * - setGlobalConfigDir (--config-dir flag)
+ * - Cloud-sync warnings
+ * - Completion short-circuit via tryHandleRootCommand
+ * - Codex native passthrough via execNativeCodexFlagCommand
+ *
+ * Adapter registration (registerTarget calls) stays in main() because it is
+ * singleton wiring with no dependency on the parsed args.
+ */
+export async function bootstrapAndParseEarlyCli(rawArgs: string[]): Promise<DispatcherBootstrap> {
+  let args = rawArgs;
+  const isCompletionCommand = args[0] === '__complete';
+
+  // Initialize UI colors early to ensure consistent colored output
+  // Must happen before any status messages (ok, info, fail, etc.)
+  if (!isCompletionCommand && process.stdout.isTTY && !process.env['CI']) {
+    const { initUI } = await import('../utils/ui');
+    await initUI();
+  }
+
+  // Parse --config-dir flag (must happen before any config loading)
+  const configDirIdx = args.findIndex((a) => a === '--config-dir' || a.startsWith('--config-dir='));
+  if (configDirIdx !== -1) {
+    const arg = args[configDirIdx];
+    let configDirValue: string | undefined;
+    let spliceCount = 1;
+
+    if (arg.startsWith('--config-dir=')) {
+      configDirValue = arg.split('=').slice(1).join('=');
+    } else {
+      configDirValue = args[configDirIdx + 1];
+      spliceCount = 2;
+    }
+
+    if (!configDirValue || configDirValue.startsWith('-')) {
+      console.error(fail('--config-dir requires a path argument'));
+      process.exit(1);
+    }
+
+    try {
+      const stat = fs.statSync(configDirValue);
+      if (!stat.isDirectory()) {
+        console.error(fail(`Not a directory: ${configDirValue}`));
+        process.exit(1);
+      }
+    } catch {
+      console.error(fail(`Config directory not found: ${configDirValue}`));
+      console.error(info('Create the directory first, then copy your config files into it.'));
+      process.exit(1);
+    }
+
+    setGlobalConfigDir(configDirValue);
+
+    // Security warning: cloud sync paths expose OAuth tokens
+    const cloudService = detectCloudSyncPath(configDirValue);
+    if (!isCompletionCommand && cloudService) {
+      console.error(warn(`CCS directory is under ${cloudService}.`));
+      console.error('    OAuth tokens in cliproxy/auth/ will be synced to cloud.');
+      console.error('    Consider: CCS_DIR=/path/outside/cloud ccs ...');
+    }
+
+    // Remove consumed args so they don't leak to Claude CLI
+    // Clone the array before splicing so the original rawArgs is unaffected
+    args = [...args];
+    args.splice(configDirIdx, spliceCount);
+  } else if (process.env.CCS_DIR) {
+    // Also warn for CCS_DIR env var pointing to cloud sync
+    const cloudService = detectCloudSyncPath(process.env.CCS_DIR);
+    if (!isCompletionCommand && cloudService) {
+      console.error(warn(`CCS directory is under ${cloudService}.`));
+      console.error('    OAuth tokens in cliproxy/auth/ will be synced to cloud.');
+      console.error('    Consider: CCS_DIR=/path/outside/cloud ccs ...');
+    }
+  } else if (process.env.CCS_HOME) {
+    // Also warn for CCS_HOME env var pointing to cloud sync
+    const cloudService = detectCloudSyncPath(process.env.CCS_HOME);
+    if (!isCompletionCommand && cloudService) {
+      console.error(warn(`CCS directory is under ${cloudService}.`));
+      console.error('    OAuth tokens in cliproxy/auth/ will be synced to cloud.');
+      console.error('    Consider: CCS_DIR=/path/outside/cloud ccs ...');
+    }
+  }
+
+  if (isCompletionCommand) {
+    const { tryHandleRootCommand } = await import('../commands/root-command-router');
+    await tryHandleRootCommand(args);
+    return { args, isCompletionCommand, browserLaunchOverride: undefined, exitNow: true };
+  }
+
+  args = normalizeLegacyCursorArgs(args);
+  let browserLaunchOverride: BrowserLaunchOverride | undefined;
+  try {
+    const browserLaunchFlags = resolveBrowserLaunchFlagResolution(args);
+    browserLaunchOverride = browserLaunchFlags.override;
+    args = browserLaunchFlags.argsWithoutFlags;
+  } catch (error) {
+    console.error(fail((error as Error).message));
+    process.exit(1);
+    // process.exit never returns but TypeScript needs the unreachable return
+    return { args, isCompletionCommand, browserLaunchOverride: undefined, exitNow: true };
+  }
+
+  if (shouldPassthroughNativeCodexFlagCommand(args)) {
+    const { execNativeCodexFlagCommand } = await import('./target-executor');
+    execNativeCodexFlagCommand(args);
+    return { args, isCompletionCommand, browserLaunchOverride: undefined, exitNow: true };
+  }
+
+  return { args, isCompletionCommand, browserLaunchOverride, exitNow: false };
+}
 
 // ========== Interfaces ==========
 

@@ -1,13 +1,7 @@
 import './utils/fetch-proxy-setup';
 
-import * as fs from 'fs';
 import { detectClaudeCli } from './utils/claude-detector';
-import {
-  getSettingsPath,
-  loadSettings,
-  setGlobalConfigDir,
-  detectCloudSyncPath,
-} from './utils/config-manager';
+import { getSettingsPath, loadSettings } from './utils/config-manager';
 import { expandPath } from './utils/helpers';
 import {
   validateGlmKey,
@@ -42,7 +36,6 @@ import {
   getBlockedBrowserOverrideWarning,
   getEffectiveClaudeBrowserAttachConfig,
   resolveBrowserExposure,
-  resolveBrowserLaunchFlagResolution,
   resolveOptionalBrowserAttachRuntime,
   syncBrowserMcpToConfigDir,
 } from './utils/browser';
@@ -60,13 +53,8 @@ import {
   resolveImageAnalysisRuntimeStatus,
 } from './utils/hooks';
 import { fail, info, warn } from './utils/ui';
-import { isCopilotSubcommandToken } from './copilot/constants';
-import { isCursorSubcommandToken, LEGACY_CURSOR_PROFILE_NAME } from './cursor/constants';
-import { isCLIProxyProvider } from './cliproxy/provider-capabilities';
-
 // Import centralized error handling
 import { handleError, runCleanup } from './errors';
-import { tryHandleRootCommand } from './commands/root-command-router';
 
 // Import extracted utility functions
 import { execClaude, stripAnthropicRoutingEnv, stripBrowserEnv } from './utils/shell-executor';
@@ -75,7 +63,6 @@ import { createOpenAICompatLaunchSettings } from './utils/openai-compat-launch-s
 import { maybeWarnAboutResumeLaneMismatch } from './auth/resume-lane-warning';
 import { createLogger, runWithRequestId } from './services/logging';
 import type { ProfileDetectionResult } from './auth/profile-detector';
-import type { BrowserLaunchOverride } from './utils/browser';
 
 // Import target adapter system
 import {
@@ -99,126 +86,40 @@ import {
   startOpenAICompatProxy,
 } from './proxy';
 
-// Version and Update check utilities
-import { isCacheStale } from './utils/update-checker';
-// Note: npm is now the only supported installation method
-
 // Import extracted dispatcher modules
 import {
   detectProfile,
-  normalizeLegacyCursorArgs,
-  printCursorLegacySubcommandDeprecation,
   resolveRuntimeReasoningFlags,
   normalizeCodexRuntimeReasoningOverride,
   exitWithRuntimeReasoningFlagError,
   normalizeNativeClaudeEffortArgs,
   shouldNormalizeNativeClaudeEffort,
-  shouldPassthroughNativeCodexFlagCommand,
+  bootstrapAndParseEarlyCli,
 } from './dispatcher/cli-argument-parser';
 import {
   resolveCodexRuntimeConfigOverrides,
-  refreshUpdateCache,
-  showCachedUpdateNotification,
   resolveNativeClaudeLaunchArgs,
 } from './dispatcher/environment-builder';
-import { type ProfileError, execNativeCodexFlagCommand } from './dispatcher/target-executor';
+import { type ProfileError } from './dispatcher/target-executor';
+import { runPreDispatchHandlers } from './dispatcher/pre-dispatch';
 
 // ========== Main Execution ==========
 
 async function main(): Promise<void> {
-  // Register target adapters
+  // Register target adapters (singleton wiring — stays in main)
   registerTarget(new ClaudeAdapter());
   registerTarget(new DroidAdapter());
   registerTarget(new CodexAdapter());
   const cliLogger = createLogger('cli');
 
-  let args = process.argv.slice(2);
-  const isCompletionCommand = args[0] === '__complete';
-
-  // Initialize UI colors early to ensure consistent colored output
-  // Must happen before any status messages (ok, info, fail, etc.)
-  if (!isCompletionCommand && process.stdout.isTTY && !process.env['CI']) {
-    const { initUI } = await import('./utils/ui');
-    await initUI();
-  }
-
-  // Parse --config-dir flag (must happen before any config loading)
-  const configDirIdx = args.findIndex((a) => a === '--config-dir' || a.startsWith('--config-dir='));
-  if (configDirIdx !== -1) {
-    const arg = args[configDirIdx];
-    let configDirValue: string | undefined;
-    let spliceCount = 1;
-
-    if (arg.startsWith('--config-dir=')) {
-      configDirValue = arg.split('=').slice(1).join('=');
-    } else {
-      configDirValue = args[configDirIdx + 1];
-      spliceCount = 2;
-    }
-
-    if (!configDirValue || configDirValue.startsWith('-')) {
-      console.error(fail('--config-dir requires a path argument'));
-      process.exit(1);
-    }
-
-    try {
-      const stat = fs.statSync(configDirValue);
-      if (!stat.isDirectory()) {
-        console.error(fail(`Not a directory: ${configDirValue}`));
-        process.exit(1);
-      }
-    } catch {
-      console.error(fail(`Config directory not found: ${configDirValue}`));
-      console.error(info('Create the directory first, then copy your config files into it.'));
-      process.exit(1);
-    }
-
-    setGlobalConfigDir(configDirValue);
-
-    // Security warning: cloud sync paths expose OAuth tokens
-    const cloudService = detectCloudSyncPath(configDirValue);
-    if (!isCompletionCommand && cloudService) {
-      console.error(warn(`CCS directory is under ${cloudService}.`));
-      console.error('    OAuth tokens in cliproxy/auth/ will be synced to cloud.');
-      console.error('    Consider: CCS_DIR=/path/outside/cloud ccs ...');
-    }
-
-    // Remove consumed args so they don't leak to Claude CLI
-    args.splice(configDirIdx, spliceCount);
-  } else if (process.env.CCS_DIR) {
-    // Also warn for CCS_DIR env var pointing to cloud sync
-    const cloudService = detectCloudSyncPath(process.env.CCS_DIR);
-    if (!isCompletionCommand && cloudService) {
-      console.error(warn(`CCS directory is under ${cloudService}.`));
-      console.error('    OAuth tokens in cliproxy/auth/ will be synced to cloud.');
-      console.error('    Consider: CCS_DIR=/path/outside/cloud ccs ...');
-    }
-  } else if (process.env.CCS_HOME) {
-    // Also warn for CCS_HOME env var pointing to cloud sync
-    const cloudService = detectCloudSyncPath(process.env.CCS_HOME);
-    if (!isCompletionCommand && cloudService) {
-      console.error(warn(`CCS directory is under ${cloudService}.`));
-      console.error('    OAuth tokens in cliproxy/auth/ will be synced to cloud.');
-      console.error('    Consider: CCS_DIR=/path/outside/cloud ccs ...');
-    }
-  }
-
-  if (isCompletionCommand) {
-    await tryHandleRootCommand(args);
+  // Phase A: bootstrap + early arg pre-parse
+  const bootstrap = await bootstrapAndParseEarlyCli(process.argv.slice(2));
+  if (bootstrap.exitNow) {
     return;
   }
 
-  args = normalizeLegacyCursorArgs(args);
-  let browserLaunchOverride: BrowserLaunchOverride | undefined;
-  try {
-    const browserLaunchFlags = resolveBrowserLaunchFlagResolution(args);
-    browserLaunchOverride = browserLaunchFlags.override;
-    args = browserLaunchFlags.argsWithoutFlags;
-  } catch (error) {
-    console.error(fail((error as Error).message));
-    process.exit(1);
-    return;
-  }
+  const args = bootstrap.args;
+  const browserLaunchOverride = bootstrap.browserLaunchOverride;
 
   cliLogger.info('command.start', 'CLI invocation started', {
     command: args[0] || 'default',
@@ -226,124 +127,10 @@ async function main(): Promise<void> {
     flags: args.filter((arg) => arg.startsWith('-')).slice(0, 20),
   });
 
-  if (shouldPassthroughNativeCodexFlagCommand(args)) {
-    execNativeCodexFlagCommand(args);
+  // Phase B: pre-dispatch side-effects (update check, migrate, recovery, root commands, routing)
+  const preDispatchConsumed = await runPreDispatchHandlers({ args, cliLogger });
+  if (preDispatchConsumed) {
     return;
-  }
-
-  const firstArg = args[0];
-
-  // Trigger update check early for ALL commands except version/help/update
-  // Only if TTY and not CI to avoid noise in automated environments
-  const skipUpdateCheck = [
-    'version',
-    '--version',
-    '-v',
-    'help',
-    '--help',
-    '-h',
-    'update',
-    '--update',
-  ];
-  if (process.stdout.isTTY && !process.env['CI'] && !skipUpdateCheck.includes(firstArg)) {
-    // 1. Show cached update notification (async for proper UI)
-    await showCachedUpdateNotification();
-
-    // 2. Refresh cache in background if stale (non-blocking)
-    if (isCacheStale()) {
-      refreshUpdateCache();
-    }
-  }
-
-  // Auto-migrate to unified config format (silent if already migrated)
-  // Skip if user is explicitly running migrate command
-  if (firstArg !== 'migrate') {
-    const { autoMigrate } = await import('./config/migration-manager');
-    await autoMigrate();
-  }
-
-  // Auto-recovery for missing configuration (BEFORE any early-exit commands)
-  // This ensures ALL commands benefit from auto-recovery, not just profile-switching flow
-  // Recovery is safe to run early - it only creates missing files with safe defaults
-  // Wrapped in try-catch to prevent blocking --version/--help on permission errors
-  try {
-    const RecoveryManagerModule = await import('./management/recovery-manager');
-    const RecoveryManager = RecoveryManagerModule.default;
-    const recovery = new RecoveryManager();
-    const recovered = recovery.recoverAll();
-
-    if (recovered) {
-      recovery.showRecoveryHints();
-    }
-  } catch (err) {
-    cliLogger.warn('recovery.failed', 'Auto-recovery failed during CLI startup', {
-      message: (err as Error).message,
-    });
-    // Recovery is best-effort - don't block basic CLI functionality
-    console.warn('[!] Recovery failed:', (err as Error).message);
-  }
-
-  if (await tryHandleRootCommand(args)) {
-    return;
-  }
-
-  if (
-    typeof firstArg === 'string' &&
-    isCLIProxyProvider(firstArg) &&
-    args.length > 1 &&
-    (args.includes('--help') || args.includes('-h'))
-  ) {
-    const { showProviderShortcutHelp } = await import('./commands/help-command');
-    await showProviderShortcutHelp(firstArg);
-    return;
-  }
-
-  // Special case: copilot command (GitHub Copilot integration)
-  // Route known subcommands to command handler, keep all other args as profile passthrough.
-  if (firstArg === 'copilot' && args.length > 1) {
-    const copilotToken = args[1];
-    const shouldRouteToCopilotCommand = isCopilotSubcommandToken(copilotToken);
-
-    if (shouldRouteToCopilotCommand) {
-      const { handleCopilotCommand } = await import('./commands/copilot-command');
-      const exitCode = await handleCopilotCommand(args.slice(1));
-      process.exit(exitCode);
-    }
-  }
-
-  // Special case: explicit legacy Cursor bridge namespace.
-  if (firstArg === LEGACY_CURSOR_PROFILE_NAME && args.length > 1) {
-    const { handleCursorCommand } = await import('./commands/cursor-command');
-    const cursorToken = args[1];
-
-    if (isCursorSubcommandToken(cursorToken)) {
-      const exitCode = await handleCursorCommand(args.slice(1));
-      process.exit(exitCode);
-    }
-  }
-
-  // Compatibility shim: old `ccs cursor <subcommand>` still forwards to the legacy bridge
-  // for one migration window, but bare/positional `ccs cursor` now belongs to CLIProxy.
-  if (firstArg === 'cursor' && args.length > 1) {
-    const { handleCursorCommand } = await import('./commands/cursor-command');
-    const cursorToken = args[1];
-
-    if (isCursorSubcommandToken(cursorToken) && cursorToken !== '--help' && cursorToken !== '-h') {
-      printCursorLegacySubcommandDeprecation(cursorToken);
-      const exitCode = await handleCursorCommand(args.slice(1));
-      process.exit(exitCode);
-    }
-  }
-
-  // First-time install: offer setup wizard for interactive users
-  // Check independently of recovery status (user may have empty config.yaml)
-  // Skip if headless, CI, or non-TTY environment
-  const { isFirstTimeInstall } = await import('./commands/setup-command');
-  if (process.stdout.isTTY && !process.env['CI'] && isFirstTimeInstall()) {
-    console.log('');
-    console.log(info('First-time install detected. Run `ccs setup` for guided configuration.'));
-    console.log('    Or use `ccs config` for the web dashboard.');
-    console.log('');
   }
 
   // Use ProfileDetector to determine profile type
