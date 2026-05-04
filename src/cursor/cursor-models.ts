@@ -23,6 +23,8 @@ export { DEFAULT_CURSOR_MODEL, DEFAULT_CURSOR_MODELS, detectProvider, formatMode
 
 const CURSOR_MODELS_API_ENDPOINT = 'https://api2.cursor.sh/v1/models';
 const CURSOR_MODELS_CACHE_TTL_MS = 5 * 60 * 1000;
+const CURSOR_MODELS_MAX_BODY_SIZE = 1024 * 1024; // 1MB limit
+const CURSOR_DAEMON_MODELS_TIMEOUT_MS = 5000;
 
 let liveModelsCache: {
   models: CursorModel[];
@@ -79,6 +81,14 @@ function parseApiModelsResponse(payload: unknown): CursorModel[] | null {
 
   const models = normalizeModelRecords(records);
   return models.length > 0 ? models : null;
+}
+
+function parseContentLength(value: string | string[] | undefined): number | null {
+  const rawValue = Array.isArray(value) ? value[0] : value;
+  if (!rawValue) return null;
+
+  const parsed = Number.parseInt(rawValue, 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
 }
 
 function getCachedLiveModels(nowMs: number = Date.now()): CursorModel[] | null {
@@ -195,24 +205,39 @@ export async function fetchModelsFromDaemon(port: number): Promise<CursorModel[]
         port,
         path: '/v1/models',
         method: 'GET',
-        timeout: 5000,
+        timeout: CURSOR_DAEMON_MODELS_TIMEOUT_MS,
       },
       (res) => {
-        const MAX_BODY_SIZE = 1024 * 1024; // 1MB limit
+        const contentLength = parseContentLength(res.headers['content-length']);
+        if (contentLength !== null && contentLength > CURSOR_MODELS_MAX_BODY_SIZE) {
+          debugLog(
+            'Cursor daemon /v1/models content-length exceeded 1MB; falling back to defaults'
+          );
+          res.destroy();
+          req.destroy();
+          safeResolve(DEFAULT_CURSOR_MODELS);
+          return;
+        }
+
         let data = '';
+        let bodySize = 0;
 
         res.on('data', (chunk) => {
-          data += chunk;
-          if (data.length > MAX_BODY_SIZE) {
+          if (resolved) return;
+          bodySize += typeof chunk === 'string' ? Buffer.byteLength(chunk) : chunk.length;
+          if (bodySize > CURSOR_MODELS_MAX_BODY_SIZE) {
             debugLog('Cursor daemon /v1/models body exceeded 1MB; falling back to defaults');
             res.destroy();
             req.destroy();
             safeResolve(DEFAULT_CURSOR_MODELS);
             return;
           }
+
+          data += chunk;
         });
 
         res.on('end', () => {
+          if (resolved) return;
           try {
             const response = JSON.parse(data) as { data?: Array<{ id?: unknown }> };
             if (Array.isArray(response.data)) {

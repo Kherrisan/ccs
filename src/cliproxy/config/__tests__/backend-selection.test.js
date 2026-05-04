@@ -9,6 +9,21 @@ describe('Backend Selection', () => {
   const platformDetector = require('../../../../dist/cliproxy/binary/platform-detector');
   const types = require('../../../../dist/cliproxy/types');
 
+  function withMockedProcessPlatform(platform, arch, callback) {
+    const originalPlatform = Object.getOwnPropertyDescriptor(process, 'platform');
+    const originalArch = Object.getOwnPropertyDescriptor(process, 'arch');
+
+    Object.defineProperty(process, 'platform', { value: platform, configurable: true });
+    Object.defineProperty(process, 'arch', { value: arch, configurable: true });
+
+    try {
+      callback();
+    } finally {
+      Object.defineProperty(process, 'platform', originalPlatform);
+      Object.defineProperty(process, 'arch', originalArch);
+    }
+  }
+
   describe('BACKEND_CONFIG', () => {
     it('has correct configuration for original backend', () => {
       const config = platformDetector.BACKEND_CONFIG.original;
@@ -34,6 +49,24 @@ describe('Backend Selection', () => {
   });
 
   describe('detectPlatform', () => {
+    it('maps Node arm64 to CLIProxy aarch64 release assets', () => {
+      assert.strictEqual(platformDetector.mapNodeArchToReleaseArch('arm64'), 'aarch64');
+      assert.strictEqual(platformDetector.mapNodeArchToReleaseArch('x64'), 'amd64');
+    });
+
+    it('keeps public ARM64 arch compatibility while using aarch64 release assets', () => {
+      withMockedProcessPlatform('darwin', 'arm64', () => {
+        const info = platformDetector.detectPlatform('6.10.4', 'original');
+
+        assert.strictEqual(info.arch, 'arm64');
+        assert.strictEqual(info.binaryName, 'CLIProxyAPI_6.10.4_darwin_aarch64.tar.gz');
+        assert.strictEqual(
+          platformDetector.getDownloadUrl('6.10.4', 'original'),
+          'https://github.com/router-for-me/CLIProxyAPI/releases/download/v6.10.4/CLIProxyAPI_6.10.4_darwin_aarch64.tar.gz'
+        );
+      });
+    });
+
     it('generates correct binary name for original backend', () => {
       const info = platformDetector.detectPlatform('6.6.51', 'original');
       assert(info.binaryName.startsWith('CLIProxyAPI_6.6.51_'));
