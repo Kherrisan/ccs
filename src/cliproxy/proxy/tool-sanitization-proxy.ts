@@ -25,8 +25,9 @@ import {
   stripCodexEffortSuffix,
 } from '../ai-providers/model-id-normalizer';
 import { getModelMaxLevel } from '../model-catalog';
-import { getCcsDir } from '../../utils/config-manager';
+
 import { createLogger } from '../../services/logging';
+import { getCcsDir } from '../../config/config-loader-facade';
 
 export interface ToolSanitizationProxyConfig {
   /** Upstream CLIProxy URL */

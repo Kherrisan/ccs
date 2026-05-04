@@ -11,10 +11,11 @@ import * as path from 'path';
 import * as http from 'http';
 import { CopilotDaemonStatus } from './types';
 import { CopilotConfig, DEFAULT_COPILOT_CONFIG } from '../config/unified-config-types';
-import { loadOrCreateUnifiedConfig } from '../config/unified-config-loader';
+
 import { getCopilotDir, getCopilotApiBinPath } from './copilot-package-manager';
 import { verifyProcessOwnership } from '../cursor/daemon-process-ownership';
 import { createLogger } from '../services/logging';
+import { loadOrCreateUnifiedConfig } from '../config/config-loader-facade';
 
 const logger = createLogger('copilot:daemon');
 

@@ -14,7 +14,7 @@ import * as path from 'path';
 import { warn, info } from '../../utils/ui';
 import { CLIProxyProvider } from '../types';
 import { loadAccountsRegistry, pauseAccount, resumeAccount } from './registry';
-import { getCcsDir } from '../../utils/config-manager';
+import { getCcsDir } from '../../config/config-loader-facade';
 
 const ISSUE_509_URL = 'https://github.com/kaitranntt/ccs/issues/509';
 
@@ -690,7 +690,7 @@ export async function handleQuotaExhaustion(
   // Dynamic imports to avoid circular dependencies
   const { applyCooldown, findHealthyAccount } = await import('../quota/quota-manager');
   const { setDefaultAccount, touchAccount } = await import('./account-manager');
-  const { loadOrCreateUnifiedConfig } = await import('../../config/unified-config-loader');
+  const { loadOrCreateUnifiedConfig } = await import('../../config/config-loader-facade');
   const config = loadOrCreateUnifiedConfig();
   const threshold = config.quota_management?.auto?.exhaustion_threshold ?? 5;
 

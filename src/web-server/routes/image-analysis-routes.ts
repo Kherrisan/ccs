@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import * as fs from 'fs';
-import { getImageAnalysisConfig, mutateUnifiedConfig } from '../../config/unified-config-loader';
+
 import {
   CLIPROXY_PROVIDER_IDS,
   getProviderDisplayName,
@@ -10,7 +10,7 @@ import type { CLIProxyProvider } from '../../cliproxy/types';
 import { listApiProfiles, resolveCliproxyBridgeMetadata } from '../../api/services';
 import { requireLocalAccessWhenAuthDisabled } from '../middleware/auth-middleware';
 import { expandPath } from '../../utils/helpers';
-import { loadSettings } from '../../utils/config-manager';
+
 import type { Settings } from '../../types/config';
 import { extractProviderFromPathname } from '../../cliproxy/ai-providers/model-id-normalizer';
 import {
@@ -23,6 +23,11 @@ import {
   hasImageAnalysisMcpReady,
   repairImageAnalysisRuntimeState,
 } from '../../utils/image-analysis';
+import {
+  getImageAnalysisConfig,
+  loadSettings,
+  mutateConfig,
+} from '../../config/config-loader-facade';
 
 const router = Router();
 const IMAGE_ANALYSIS_LOCAL_ACCESS_ERROR =
@@ -448,7 +453,7 @@ router.put('/', async (req: Request, res: Response): Promise<void> => {
       nextProfileBackends[trimmedProfileName] = normalizedBackend;
     }
 
-    mutateUnifiedConfig((config) => {
+    mutateConfig((config) => {
       config.image_analysis = {
         enabled: body.enabled ?? currentConfig.enabled,
         timeout: body.timeout ?? currentConfig.timeout,

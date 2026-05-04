@@ -5,16 +5,17 @@
  * based on unified config. Used by stats-fetcher, auth-routes, and UI.
  */
 
-import { loadOrCreateUnifiedConfig } from '../../config/unified-config-loader';
 import type { CliproxyServerConfig } from '../../config/unified-config-types';
 import {
   CLIPROXY_DEFAULT_PORT,
   getRemoteDefaultPort,
   normalizeProtocol,
+  validatePort,
   validateRemotePort,
 } from '../config/port-manager';
 import { getProxyEnvVars } from './proxy-config-resolver';
 import { getEffectiveManagementSecret } from '../auth/auth-token-manager';
+import { loadOrCreateUnifiedConfig } from '../../config/config-loader-facade';
 
 /** Resolved proxy target for making requests */
 export interface ProxyTarget {
@@ -69,7 +70,7 @@ export function getProxyTarget(): ProxyTarget {
     };
   }
 
-  const localPort = config?.local?.port ?? CLIPROXY_DEFAULT_PORT;
+  const localPort = validatePort(config?.local?.port ?? CLIPROXY_DEFAULT_PORT);
 
   return {
     host: '127.0.0.1',

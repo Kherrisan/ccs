@@ -76,7 +76,19 @@ export function inferDroidProviderFromBaseUrl(
     return 'openai';
   }
 
-  if (host.includes('anthropic.com') || pathname.includes('/anthropic')) {
+  if (
+    pathname.includes('/compatible-mode') ||
+    pathname.includes('/openai') ||
+    pathname.includes('/chat/completions')
+  ) {
+    return 'generic-chat-completion-api';
+  }
+
+  if (
+    host.includes('anthropic.com') ||
+    pathname.includes('/anthropic') ||
+    host.includes('ollama.com')
+  ) {
     return 'anthropic';
   }
 
@@ -87,11 +99,7 @@ export function inferDroidProviderFromBaseUrl(
     host.includes('api.fireworks.ai') ||
     host.includes('inference.baseten.co') ||
     host.includes('dashscope') ||
-    host.includes('huggingface.co') ||
-    host.includes('ollama.com') ||
-    pathname.includes('/compatible-mode') ||
-    pathname.includes('/openai') ||
-    pathname.includes('/chat/completions')
+    host.includes('huggingface.co')
   ) {
     return 'generic-chat-completion-api';
   }

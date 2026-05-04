@@ -8,16 +8,23 @@
  */
 
 import { Router, Request, Response } from 'express';
-import { loadOrCreateUnifiedConfig, mutateUnifiedConfig } from '../../config/unified-config-loader';
+
 import { testConnection } from '../../cliproxy/services/remote-proxy-client';
 import { isProxyRunning } from '../../cliproxy/services/proxy-lifecycle-service';
 import { DEFAULT_BACKEND } from '../../cliproxy/binary/platform-detector';
+import { validatePort } from '../../cliproxy/config/port-manager';
 import {
   DEFAULT_CLIPROXY_SERVER_CONFIG,
   CliproxyServerConfig,
 } from '../../config/unified-config-types';
 import { CLIPROXY_PROVIDER_IDS } from '../../cliproxy/provider-capabilities';
+import {
+  configNeedsRegeneration,
+  getManagementPanelRepository,
+  regenerateConfig,
+} from '../../cliproxy/config/generator';
 import { requireLocalAccessWhenAuthDisabled } from '../middleware/auth-middleware';
+import { loadOrCreateUnifiedConfig, mutateConfig } from '../../config/config-loader-facade';
 
 const router = Router();
 
@@ -52,9 +59,39 @@ router.get('/', async (_req: Request, res: Response) => {
 router.put('/', (req: Request, res: Response) => {
   try {
     const updates = req.body as Partial<CliproxyServerConfig>;
+    const currentConfig = loadOrCreateUnifiedConfig();
+    const currentLocalPort = validatePort(
+      currentConfig.cliproxy_server?.local?.port ?? DEFAULT_CLIPROXY_SERVER_CONFIG.local.port
+    );
+    const requestedLocalPort = updates.local?.port;
+
+    if (
+      requestedLocalPort !== undefined &&
+      (!Number.isInteger(requestedLocalPort) ||
+        requestedLocalPort < 1 ||
+        requestedLocalPort > 65535)
+    ) {
+      res.status(400).json({
+        error: 'Invalid local port. Must be an integer between 1 and 65535.',
+      });
+      return;
+    }
+
+    const nextLocalPort =
+      requestedLocalPort === undefined ? currentLocalPort : validatePort(requestedLocalPort);
+
+    if (nextLocalPort !== currentLocalPort && isProxyRunning()) {
+      res.status(409).json({
+        error:
+          'Proxy is running on the current local port. Stop CLIProxy before changing local.port.',
+        proxyRunning: true,
+        currentLocalPort,
+      });
+      return;
+    }
 
     // Atomic read-modify-write — avoids race between load and save
-    const updated = mutateUnifiedConfig((config) => {
+    const updated = mutateConfig((config) => {
       config.cliproxy_server = {
         remote: {
           ...DEFAULT_CLIPROXY_SERVER_CONFIG.remote,
@@ -83,12 +120,15 @@ router.put('/', (req: Request, res: Response) => {
 
 /**
  * GET /api/cliproxy-server/backend - Get CLIProxy backend setting
- * @returns {{ backend: 'original' | 'plus' }} Current backend configuration
+ * @returns {{ backend: 'original' | 'plus', managementPanelRepository: string }} Current backend configuration
  */
 router.get('/backend', async (_req: Request, res: Response) => {
   try {
     const config = await loadOrCreateUnifiedConfig();
-    res.json({ backend: config.cliproxy?.backend ?? DEFAULT_BACKEND });
+    res.json({
+      backend: config.cliproxy?.backend ?? DEFAULT_BACKEND,
+      managementPanelRepository: getManagementPanelRepository(),
+    });
   } catch (error) {
     console.error('[cliproxy-server-routes] Failed to load backend config:', error);
     res.status(500).json({ error: 'Failed to load backend config' });
@@ -100,7 +140,7 @@ router.get('/backend', async (_req: Request, res: Response) => {
  * @param {Object} req.body - Request body
  * @param {'original' | 'plus'} req.body.backend - Backend to switch to
  * @param {boolean} [req.body.force=false] - Force change even if proxy is running
- * @returns {{ backend: 'original' | 'plus' }} Updated backend configuration
+ * @returns {{ backend: 'original' | 'plus', managementPanelRepository: string }} Updated backend configuration
  * @throws {400} Invalid backend value
  * @throws {409} Proxy is running (unless force=true)
  */
@@ -115,6 +155,8 @@ router.put('/backend', (req: Request, res: Response) => {
     // Pre-flight read: check running state before acquiring write lock
     const currentConfig = loadOrCreateUnifiedConfig();
     const currentBackend = currentConfig.cliproxy?.backend ?? DEFAULT_BACKEND;
+    const localPort =
+      currentConfig.cliproxy_server?.local?.port ?? DEFAULT_CLIPROXY_SERVER_CONFIG.local.port;
     if (currentBackend !== backend && isProxyRunning() && !force) {
       res.status(409).json({
         error: 'Proxy is running. Stop proxy first or use force=true to change backend.',
@@ -125,7 +167,7 @@ router.put('/backend', (req: Request, res: Response) => {
     }
 
     // Atomic write — avoids race between load and save
-    mutateUnifiedConfig((config) => {
+    mutateConfig((config) => {
       if (!config.cliproxy) {
         config.cliproxy = {
           backend,
@@ -138,7 +180,11 @@ router.put('/backend', (req: Request, res: Response) => {
       }
     });
 
-    res.json({ backend });
+    if (configNeedsRegeneration(localPort)) {
+      regenerateConfig(localPort);
+    }
+
+    res.json({ backend, managementPanelRepository: getManagementPanelRepository() });
   } catch (error) {
     console.error('[cliproxy-server-routes] Failed to save backend config:', error);
     res.status(500).json({ error: 'Failed to save backend config' });

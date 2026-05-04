@@ -7,7 +7,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { CLIProxyProvider, ProviderModelMapping } from '../types';
 import { getModelMappingFromConfig, getEnvVarsFromConfig } from '../config/base-config-loader';
-import { getGlobalEnvConfig } from '../../config/unified-config-loader';
+
 import { getEffectiveApiKey } from '../auth/auth-token-manager';
 import { expandPath } from '../../utils/helpers';
 import { warn } from '../../utils/ui';
@@ -31,6 +31,7 @@ import {
   normalizeIFlowLegacyModelAliases,
   normalizeModelIdForProvider,
 } from '../ai-providers/model-id-normalizer';
+import { getGlobalEnvConfig } from '../../config/config-loader-facade';
 
 /** Settings file structure for user overrides */
 interface ProviderSettings {

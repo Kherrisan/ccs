@@ -5,12 +5,13 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as lockfile from 'proper-lockfile';
-import { getImageAnalysisConfig } from '../../config/unified-config-loader';
+
 import { getCcsDir } from '../config-manager';
 import { getClaudeUserConfigPath } from '../claude-config-path';
 import { info, warn } from '../ui';
 import { InstanceManager } from '../../management/instance-manager';
 import { installImageAnalysisPrompts } from './hook-installer';
+import { getImageAnalysisConfig } from '../../config/config-loader-facade';
 
 const IMAGE_ANALYSIS_MCP_SERVER = 'ccs-image-analysis-server.cjs';
 const IMAGE_ANALYSIS_MCP_RUNTIME = 'image-analysis-runtime.cjs';

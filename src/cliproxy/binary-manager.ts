@@ -8,7 +8,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { info, warn } from '../utils/ui';
-import { getBinDir, CLIPROXY_DEFAULT_PORT } from './config/config-generator';
+import { getBinDir } from './config/config-generator';
+import { resolveLifecyclePort } from './config/port-manager';
 import { BinaryInfo, BinaryManagerConfig } from './types';
 import {
   BACKEND_CONFIG,
@@ -18,7 +19,7 @@ import {
 } from './binary/platform-detector';
 import { stopProxy } from './services/proxy-lifecycle-service';
 import { waitForPortFree } from '../utils/port-utils';
-import { loadOrCreateUnifiedConfig } from '../config/unified-config-loader';
+
 import {
   UpdateCheckResult,
   checkForUpdates,
@@ -39,6 +40,7 @@ import {
 
 import type { CLIProxyBackend } from './types';
 import { getVersionListCachePath } from './binary/version-cache';
+import { loadOrCreateUnifiedConfig } from '../config/config-loader-facade';
 
 export const CLIPROXY_DELETED_PLUS_REPO = 'router-for-me/CLIProxyAPIPlus';
 export const CLIPROXY_PLUS_FALLBACK_TRACKING_URL = 'https://github.com/kaitranntt/ccs/issues/1062';
@@ -339,8 +341,9 @@ export async function installCliproxyVersion(
   if (verbose) console.log(formatInfo('Stopping running CLIProxy before update...'));
   const result = await stopProxyFn();
   if (result.stopped) {
+    const stoppedPort = result.port ?? resolveLifecyclePort();
     // Wait for port to be fully released
-    const portFree = await waitForPortFreeFn(CLIPROXY_DEFAULT_PORT, 5000);
+    const portFree = await waitForPortFreeFn(stoppedPort, 5000);
     if (!portFree && verbose) {
       console.log(formatWarn('Port did not free up in time, proceeding anyway...'));
     }

@@ -10,143 +10,66 @@
  * 6. Claude CLI execution with cleanup handlers
  */
 
-import { spawn, ChildProcess } from 'child_process';
+import { ChildProcess } from 'child_process';
 import * as fs from 'fs';
-import * as os from 'os';
-import * as path from 'path';
-import { ProgressIndicator } from '../../utils/progress-indicator';
-import { ok, fail, info, warn } from '../../utils/ui';
-import { getCcsDir } from '../../utils/config-manager';
-import { escapeShellArg, getWindowsEscapedCommandShell } from '../../utils/shell-executor';
-import {
-  ensureCLIProxyBinary,
-  getConfiguredBackend,
-  getPlusBackendUnavailableMessage,
-} from '../binary-manager';
+import { fail, info, warn } from '../../utils/ui';
 import {
   generateConfig,
   getProviderConfig,
-  ensureProviderSettings,
-  getProviderSettingsPath,
   CLIPROXY_DEFAULT_PORT,
-  validatePort,
 } from '../config/config-generator';
-import { checkRemoteProxy } from '../services/remote-proxy-client';
-import { isAuthenticated } from '../auth/auth-handler';
-import { CLIProxyProvider, CLIProxyBackend, PLUS_ONLY_PROVIDERS, ExecutorConfig } from '../types';
-import { configureProviderModel, getCurrentModel } from '../config/model-config';
-import { reconcileCodexModelForActivePlan } from '../ai-providers/codex-plan-compatibility';
-import { resolveProxyConfig, PROXY_CLI_FLAGS } from '../proxy/proxy-config-resolver';
-import {
-  supportsModelConfig,
-  isModelBroken,
-  getModelIssueUrl,
-  findModel,
-  getSuggestedReplacementModel,
-} from '../model-catalog';
+import { configureProviderModel } from '../config/model-config';
+import { supportsModelConfig } from '../model-catalog';
+import { CLIProxyProvider, ExecutorConfig } from '../types';
 import { CodexReasoningProxy } from '../ai-providers/codex-reasoning-proxy';
 import { ToolSanitizationProxy } from '../proxy/tool-sanitization-proxy';
-import {
-  findAccountByQuery,
-  getProviderAccounts,
-  setDefaultAccount,
-  touchAccount,
-  renameAccount,
-  getDefaultAccount,
-} from '../accounts/account-manager';
-import { formatAccountDisplayName } from '../accounts/email-account-identity';
-import {
-  ensureWebSearchMcpOrThrow,
-  displayWebSearchStatus,
-  appendThirdPartyWebSearchToolArgs,
-  createWebSearchTraceContext,
-} from '../../utils/websearch-manager';
+import { ensureWebSearchMcpOrThrow, displayWebSearchStatus } from '../../utils/websearch-manager';
 import {
   ensureImageAnalysisMcpOrThrow,
   syncImageAnalysisMcpToConfigDir,
-  appendThirdPartyImageAnalysisToolArgs,
 } from '../../utils/image-analysis';
-import {
-  appendBrowserToolArgs,
-  type BrowserLaunchOverride,
-  ensureBrowserMcpOrThrow,
-  getBlockedBrowserOverrideWarning,
-  getEffectiveClaudeBrowserAttachConfig,
-  resolveBrowserExposure,
-  resolveBrowserLaunchFlagResolution,
-  resolveOptionalBrowserAttachRuntime,
-  syncBrowserMcpToConfigDir,
-} from '../../utils/browser';
-import {
-  getBrowserConfig,
-  loadOrCreateUnifiedConfig,
-  getThinkingConfig,
-} from '../../config/unified-config-loader';
+import { loadOrCreateUnifiedConfig, getThinkingConfig } from '../../config/config-loader-facade';
 import { HttpsTunnelProxy } from '../proxy/https-tunnel-proxy';
-import {
-  isKiroAuthMethod,
-  isKiroIDCFlow,
-  KiroAuthMethod,
-  KiroIDCFlow,
-  normalizeKiroAuthMethod,
-  normalizeKiroIDCFlow,
-} from '../auth/auth-types';
 import { resolveProfileContinuityInheritance } from '../../auth/profile-continuity-inheritance';
 
 // Import modular components
+import { resolveBrowserLaunchFlags, resolveBrowserRuntime } from './browser-launch-setup';
+import {
+  resolveRuntimeQuotaMonitorProviders as _resolveRuntimeQuotaMonitorProviders,
+  resolveAccounts,
+} from './account-resolution';
 import { waitForProxyReadyWithSpinner, spawnProxy } from './lifecycle-manager';
 import {
   buildClaudeEnvironment,
   logEnvironment,
   resolveCliproxyImageAnalysisEnv,
 } from './env-resolver';
-import {
-  isNetworkError,
-  handleNetworkError,
-  handleTokenExpiration,
-  handleQuotaCheck,
-} from './retry-handler';
-import { MANAGED_QUOTA_PROVIDERS, type ManagedQuotaProvider } from '../quota/quota-manager';
-import { checkOrJoinProxy, registerProxySession, setupCleanupHandlers } from './session-bridge';
-import { parseThinkingOverride } from './thinking-arg-parser';
-import {
-  warnCrossProviderDuplicates,
-  warnOAuthBanRisk,
-  cleanupStaleAutoPauses,
-  enforceProviderIsolation,
-  restoreAutoPausedAccounts,
-} from '../accounts/account-safety';
-import {
-  ensureCliAntigravityResponsibility,
-  hasAntigravityRiskAcceptanceFlag,
-  ANTIGRAVITY_ACCEPT_RISK_FLAGS,
-} from '../auth/antigravity-responsibility';
+import { checkOrJoinProxy, registerProxySession } from './session-bridge';
 import { getWebSearchHookEnv } from '../../utils/websearch-manager';
+import {
+  handleLogout,
+  handleImport,
+  resolveSkipLocalAuth,
+  runAntigravityGate,
+  ensureProviderAuthentication,
+  runPreflightQuotaCheck,
+  runAccountSafetyGuards,
+  ensureModelConfiguration,
+  ensureProviderSettingsFile,
+} from './auth-coordinator';
 import {
   buildThinkingStartupStatus,
   resolveRuntimeThinkingOverride,
-  shouldDisableCodexReasoning,
 } from './thinking-override-resolver';
 import { shouldStartHttpsTunnel } from './https-tunnel-policy';
+import { filterCcsFlags, parseExecutorFlags, validateFlagCombinations } from './arg-parser';
+import { resolveExecutorProxy } from './proxy-resolver';
+import { buildProxyChain } from './proxy-chain-builder';
+import { warnBrokenModels } from './model-warnings';
+import { launchClaude } from './claude-launcher';
 
-function resolveRuntimeQuotaMonitorProviders(
-  provider: CLIProxyProvider,
-  compositeProviders: CLIProxyProvider[]
-): ManagedQuotaProvider[] {
-  const candidates = compositeProviders.length > 0 ? compositeProviders : [provider];
-  const resolved: ManagedQuotaProvider[] = [];
-
-  for (const candidate of candidates) {
-    if (
-      MANAGED_QUOTA_PROVIDERS.includes(candidate as ManagedQuotaProvider) &&
-      !resolved.includes(candidate as ManagedQuotaProvider)
-    ) {
-      resolved.push(candidate as ManagedQuotaProvider);
-    }
-  }
-
-  return resolved;
-}
+/** Local alias so internal call sites need no change */
+const resolveRuntimeQuotaMonitorProviders = _resolveRuntimeQuotaMonitorProviders;
 
 /** Default executor configuration */
 const DEFAULT_CONFIG: ExecutorConfig = {
@@ -156,41 +79,9 @@ const DEFAULT_CONFIG: ExecutorConfig = {
   pollInterval: 100,
 };
 
-export function readOptionValue(
-  args: string[],
-  flag: string
-): { present: boolean; value?: string; missingValue: boolean } {
-  const inlinePrefix = `${flag}=`;
-  const inlineArg = args.find((arg) => arg.startsWith(inlinePrefix));
-  if (inlineArg !== undefined) {
-    const value = inlineArg.slice(inlinePrefix.length).trim();
-    return {
-      present: true,
-      value: value.length > 0 ? value : undefined,
-      missingValue: value.length === 0,
-    };
-  }
-
-  const index = args.indexOf(flag);
-  if (index === -1) {
-    return { present: false, missingValue: false };
-  }
-
-  const next = args[index + 1];
-  if (!next || next.startsWith('-')) {
-    return { present: true, missingValue: true };
-  }
-
-  return { present: true, value: next.trim(), missingValue: false };
-}
-
-export function hasGitLabTokenLoginFlag(args: string[]): boolean {
-  return args.includes('--gitlab-token-login') || args.includes('--token-login');
-}
-
-function getGitLabTokenLoginFlagName(args: string[]): '--gitlab-token-login' | '--token-login' {
-  return args.includes('--gitlab-token-login') ? '--gitlab-token-login' : '--token-login';
-}
+// readOptionValue, hasGitLabTokenLoginFlag, CCS_FLAGS, filterCcsFlags are
+// re-exported from ./arg-parser via the export block at the bottom of this file
+// for backwards compatibility with external callers.
 
 /**
  * Execute Claude CLI with CLIProxy (main entry point)
@@ -238,368 +129,50 @@ export async function execClaudeWithCLIProxy(
   // Collect all providers to validate (default + composite tiers)
   const allProviders = [provider, ...compositeProviders];
 
-  const cliproxyServerConfig = unifiedConfig.cliproxy_server;
-  const { config: proxyConfig, remainingArgs: argsWithoutProxy } = resolveProxyConfig(args, {
-    remote: cliproxyServerConfig?.remote
-      ? {
-          enabled: cliproxyServerConfig.remote.enabled,
-          host: cliproxyServerConfig.remote.host,
-          port: cliproxyServerConfig.remote.port,
-          protocol: cliproxyServerConfig.remote.protocol,
-          auth_token: cliproxyServerConfig.remote.auth_token,
-          management_key: cliproxyServerConfig.remote.management_key,
-          timeout: cliproxyServerConfig.remote.timeout,
-        }
-      : undefined,
-    local: cliproxyServerConfig?.local
-      ? {
-          port: cliproxyServerConfig.local.port,
-          auto_start: cliproxyServerConfig.local.auto_start,
-        }
-      : undefined,
-  });
-  let browserLaunchOverride: BrowserLaunchOverride | undefined;
-  let argsWithoutBrowserFlags = argsWithoutProxy;
-  try {
-    const browserLaunchFlags = resolveBrowserLaunchFlagResolution(argsWithoutProxy);
-    browserLaunchOverride = browserLaunchFlags.override;
-    argsWithoutBrowserFlags = browserLaunchFlags.argsWithoutFlags;
-  } catch (error) {
-    console.error(fail((error as Error).message));
-    process.exit(1);
-    return;
-  }
-  const browserConfig = getBrowserConfig();
-  const browserAttachConfig = getEffectiveClaudeBrowserAttachConfig(browserConfig);
-  const claudeBrowserExposure = resolveBrowserExposure(
-    {
-      enabled: browserAttachConfig.enabled,
-      policy: browserConfig.claude.policy,
-    },
-    browserLaunchOverride
-  );
-  const blockedBrowserOverrideWarning = getBlockedBrowserOverrideWarning(
-    'Claude Browser Attach',
-    claudeBrowserExposure
-  );
-  if (blockedBrowserOverrideWarning) {
-    console.error(warn(blockedBrowserOverrideWarning));
-  }
+  const { proxyConfig, useRemoteProxy, localBackend, binaryPath, argsWithoutProxy } =
+    await resolveExecutorProxy(args, {
+      unifiedConfig,
+      allProviders,
+      verbose,
+      cfg,
+      log,
+    });
 
-  // Port resolution and validation
-  if (cfg.port && cfg.port !== CLIPROXY_DEFAULT_PORT) {
-    if (proxyConfig.port !== CLIPROXY_DEFAULT_PORT) {
-      cfg.port = proxyConfig.port;
-    }
-  } else if (proxyConfig.port !== CLIPROXY_DEFAULT_PORT) {
-    cfg.port = proxyConfig.port;
-  }
-  cfg.port = validatePort(cfg.port);
-
-  log(`Proxy mode: ${proxyConfig.mode}`);
-  if (proxyConfig.mode === 'remote') {
-    log(`Remote host: ${proxyConfig.host}:${proxyConfig.port} (${proxyConfig.protocol})`);
-  }
+  const { browserLaunchOverride, argsWithoutBrowserFlags } =
+    resolveBrowserLaunchFlags(argsWithoutProxy);
 
   // Setup first-class CCS WebSearch runtime
   ensureWebSearchMcpOrThrow();
   const imageAnalysisMcpReady = ensureImageAnalysisMcpOrThrow();
-  const browserAttachRuntime =
-    browserAttachConfig.enabled && claudeBrowserExposure.exposeForLaunch
-      ? await resolveOptionalBrowserAttachRuntime(browserAttachConfig)
-      : undefined;
-  const browserRuntimeEnv = browserAttachRuntime?.runtimeEnv;
-  if (browserAttachRuntime?.warning) {
-    process.stderr.write(`${warn(browserAttachRuntime.warning)}\n`);
-  }
-  if (browserRuntimeEnv) {
-    ensureBrowserMcpOrThrow();
-  }
   displayWebSearchStatus();
 
   const providerConfig = getProviderConfig(provider);
   log(`Provider: ${providerConfig.displayName}`);
-  warnOAuthBanRisk(provider);
-
-  // Check remote proxy if configured
-  let useRemoteProxy = false;
-  let localBackend: CLIProxyBackend = 'original';
-  if (proxyConfig.mode === 'remote' && proxyConfig.host) {
-    const status = await checkRemoteProxy({
-      host: proxyConfig.host,
-      port: proxyConfig.port,
-      protocol: proxyConfig.protocol,
-      authToken: proxyConfig.authToken,
-      timeout: proxyConfig.timeout ?? 2000,
-      allowSelfSigned: proxyConfig.allowSelfSigned ?? false,
-    });
-
-    if (status.reachable) {
-      useRemoteProxy = true;
-      console.log(
-        ok(
-          `Connected to remote proxy at ${proxyConfig.host}:${proxyConfig.port} (${status.latencyMs}ms)`
-        )
-      );
-    } else {
-      console.error(warn(`Remote proxy unreachable: ${status.error}`));
-
-      if (proxyConfig.remoteOnly) {
-        throw new Error('Remote proxy unreachable and --remote-only specified');
-      }
-
-      if (proxyConfig.fallbackEnabled) {
-        if (proxyConfig.autoStartLocal) {
-          console.log(info('Falling back to local proxy...'));
-        } else {
-          if (process.stdin.isTTY) {
-            const readline = await import('readline');
-            const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-            const answer = await new Promise<string>((resolve) => {
-              rl.question('Start local proxy instead? [Y/n] ', resolve);
-            });
-            rl.close();
-            if (answer.toLowerCase() === 'n') {
-              throw new Error('Remote proxy unreachable and user declined fallback');
-            }
-          }
-          console.log(info('Starting local proxy...'));
-        }
-      } else {
-        throw new Error('Remote proxy unreachable and fallback disabled');
-      }
-    }
-  }
-
-  if (!useRemoteProxy) {
-    localBackend = getConfiguredBackend({ notifyOnPlus: true });
-
-    for (const p of allProviders) {
-      if (localBackend === 'original' && PLUS_ONLY_PROVIDERS.includes(p as CLIProxyProvider)) {
-        console.error('');
-        console.error(fail(getPlusBackendUnavailableMessage(p)));
-        console.error('');
-        throw new Error(`Provider ${p} requires local CLIProxy Plus backend`);
-      }
-    }
-  }
 
   // Variables for local proxy mode
-  let binaryPath: string | undefined;
   let sessionId: string | undefined;
 
-  // 1. Ensure binary exists (downloads if needed) - SKIP for remote mode
-  if (!useRemoteProxy) {
-    const spinner = new ProgressIndicator('Preparing CLIProxy');
-    spinner.start();
+  // 2. Parse all CCS executor flags (extracted to arg-parser.ts)
+  const parsedFlags = parseExecutorFlags(argsWithoutProxy, {
+    provider,
+    compositeProviders,
+    unifiedConfig,
+  });
+  if (process.exitCode === 1) return;
 
-    try {
-      binaryPath = await ensureCLIProxyBinary(verbose, { skipAutoUpdate: true });
-      spinner.succeed('CLIProxy binary ready');
-    } catch (error) {
-      spinner.fail('Failed to prepare CLIProxy');
-      const err = error as Error;
+  // Validate cross-flag combinations (exits with code 1 on violation)
+  validateFlagCombinations(parsedFlags, { provider, compositeProviders }, argsWithoutProxy);
+  if (process.exitCode === 1) return;
 
-      if (isNetworkError(err)) {
-        handleNetworkError(err);
-      }
-
-      throw error;
-    }
-  }
-
-  // 2. Handle special flags (simplified flag parsing - full implementation continues below)
-  const forceAuth = argsWithoutProxy.includes('--auth');
-  const pasteCallback = argsWithoutProxy.includes('--paste-callback');
-  const portForward = argsWithoutProxy.includes('--port-forward');
-  const forceHeadless = argsWithoutProxy.includes('--headless');
-
-  if (pasteCallback && portForward) {
-    console.error(fail('Cannot use --paste-callback with --port-forward'));
-    console.error('    --paste-callback: Manually paste OAuth redirect URL');
-    console.error('    --port-forward: Use SSH port forwarding for callback');
-    process.exit(1);
-  }
-
-  const forceLogout = argsWithoutProxy.includes('--logout');
-  const forceConfig = argsWithoutProxy.includes('--config');
-  const addAccount = argsWithoutProxy.includes('--add');
-  const showAccounts = argsWithoutProxy.includes('--accounts');
-  const forceImport = argsWithoutProxy.includes('--import');
-  const gitlabTokenLogin = hasGitLabTokenLoginFlag(argsWithoutProxy);
-  const acceptAgyRisk = hasAntigravityRiskAcceptanceFlag(argsWithoutProxy);
-
-  const incognitoFlag = argsWithoutProxy.includes('--incognito');
-  const noIncognitoFlag = argsWithoutProxy.includes('--no-incognito');
-  const kiroNoIncognitoConfig =
-    provider === 'kiro' ? (unifiedConfig.cliproxy?.kiro_no_incognito ?? true) : false;
-  const noIncognito = incognitoFlag ? false : noIncognitoFlag || kiroNoIncognitoConfig;
-
-  // Parse --use flag
-  let useAccount: string | undefined;
-  const useIdx = argsWithoutProxy.indexOf('--use');
-  if (
-    useIdx !== -1 &&
-    argsWithoutProxy[useIdx + 1] &&
-    !argsWithoutProxy[useIdx + 1].startsWith('-')
-  ) {
-    useAccount = argsWithoutProxy[useIdx + 1];
-  }
-
-  // Parse --nickname flag
-  let setNickname: string | undefined;
-  const nicknameIdx = argsWithoutProxy.indexOf('--nickname');
-  if (
-    nicknameIdx !== -1 &&
-    argsWithoutProxy[nicknameIdx + 1] &&
-    !argsWithoutProxy[nicknameIdx + 1].startsWith('-')
-  ) {
-    setNickname = argsWithoutProxy[nicknameIdx + 1];
-  }
-
-  // Parse --kiro-auth-method flag
-  let kiroAuthMethod: KiroAuthMethod | undefined;
-  const kiroMethodValue = readOptionValue(argsWithoutProxy, '--kiro-auth-method');
-  if (kiroMethodValue.present) {
-    const rawMethod = kiroMethodValue.value;
-    if (kiroMethodValue.missingValue || !rawMethod) {
-      console.error(fail('--kiro-auth-method requires a value'));
-      console.error('    Supported values: aws, aws-authcode, google, github, idc');
-      process.exitCode = 1;
-      return;
-    }
-    const normalized = rawMethod.trim().toLowerCase();
-    if (!isKiroAuthMethod(normalized)) {
-      console.error(fail(`Invalid --kiro-auth-method value: ${rawMethod}`));
-      console.error('    Supported values: aws, aws-authcode, google, github, idc');
-      process.exitCode = 1;
-      return;
-    }
-    kiroAuthMethod = normalizeKiroAuthMethod(normalized);
-  }
-
-  let kiroIDCStartUrl: string | undefined;
-  const kiroIDCStartUrlValue = readOptionValue(argsWithoutProxy, '--kiro-idc-start-url');
-  if (kiroIDCStartUrlValue.present && kiroIDCStartUrlValue.value) {
-    kiroIDCStartUrl = kiroIDCStartUrlValue.value;
-  } else if (kiroIDCStartUrlValue.present) {
-    console.error(fail('--kiro-idc-start-url requires a value'));
-    process.exitCode = 1;
-    return;
-  }
-
-  let kiroIDCRegion: string | undefined;
-  const kiroIDCRegionValue = readOptionValue(argsWithoutProxy, '--kiro-idc-region');
-  if (kiroIDCRegionValue.present && kiroIDCRegionValue.value) {
-    kiroIDCRegion = kiroIDCRegionValue.value;
-  } else if (kiroIDCRegionValue.present) {
-    console.error(fail('--kiro-idc-region requires a value'));
-    process.exitCode = 1;
-    return;
-  }
-
-  let kiroIDCFlow: KiroIDCFlow | undefined;
-  const kiroIDCFlowValue = readOptionValue(argsWithoutProxy, '--kiro-idc-flow');
-  if (kiroIDCFlowValue.present) {
-    const rawFlow = kiroIDCFlowValue.value;
-    if (kiroIDCFlowValue.missingValue || !rawFlow) {
-      console.error(fail('--kiro-idc-flow requires a value'));
-      console.error('    Supported values: authcode, device');
-      process.exitCode = 1;
-      return;
-    }
-    const normalized = rawFlow.trim().toLowerCase();
-    if (!isKiroIDCFlow(normalized)) {
-      console.error(fail(`Invalid --kiro-idc-flow value: ${rawFlow}`));
-      console.error('    Supported values: authcode, device');
-      process.exitCode = 1;
-      return;
-    }
-    kiroIDCFlow = normalizeKiroIDCFlow(normalized);
-  }
-
-  let gitlabBaseUrl: string | undefined;
-  const gitlabBaseUrlValue = readOptionValue(argsWithoutProxy, '--gitlab-url');
-  if (gitlabBaseUrlValue.present && gitlabBaseUrlValue.value) {
-    gitlabBaseUrl = gitlabBaseUrlValue.value.trim();
-  } else if (gitlabBaseUrlValue.present) {
-    console.error(fail('--gitlab-url requires a value'));
-    process.exitCode = 1;
-    return;
-  }
-
-  if (kiroAuthMethod && provider !== 'kiro' && !compositeProviders.includes('kiro')) {
-    console.error(fail('--kiro-auth-method is only valid for ccs kiro'));
-    process.exitCode = 1;
-    return;
-  }
-
-  if (
-    (kiroIDCStartUrl || kiroIDCRegion || kiroIDCFlow) &&
-    provider !== 'kiro' &&
-    !compositeProviders.includes('kiro')
-  ) {
-    console.error(
-      fail(
-        '--kiro-idc-start-url, --kiro-idc-region, and --kiro-idc-flow are only valid for ccs kiro'
-      )
-    );
-    process.exitCode = 1;
-    return;
-  }
-
-  if (!kiroAuthMethod && (kiroIDCStartUrl || kiroIDCRegion || kiroIDCFlow)) {
-    kiroAuthMethod = 'idc';
-  }
-
-  if (kiroAuthMethod === 'idc' && !kiroIDCStartUrl) {
-    console.error(fail('Kiro IDC login requires --kiro-idc-start-url'));
-    console.error(
-      '    Example: ccs kiro --auth --kiro-auth-method idc --kiro-idc-start-url https://d-xxx.awsapps.com/start'
-    );
-    process.exitCode = 1;
-    return;
-  }
-
-  if (
-    kiroAuthMethod &&
-    kiroAuthMethod !== 'idc' &&
-    (kiroIDCStartUrl || kiroIDCRegion || kiroIDCFlow)
-  ) {
-    console.error(
-      fail(
-        '--kiro-idc-start-url, --kiro-idc-region, and --kiro-idc-flow require --kiro-auth-method idc'
-      )
-    );
-    process.exitCode = 1;
-    return;
-  }
-
-  if ((gitlabTokenLogin || gitlabBaseUrl) && provider !== 'gitlab') {
-    const flagName = gitlabTokenLogin
-      ? getGitLabTokenLoginFlagName(argsWithoutProxy)
-      : '--gitlab-url';
-    console.error(fail(`${flagName} is only valid for ccs gitlab`));
-    process.exitCode = 1;
-    return;
-  }
-
-  // Parse --thinking / --effort flags (aliases; first occurrence wins)
-  const thinkingParse = parseThinkingOverride(argsWithoutProxy);
-  if (thinkingParse.error) {
-    const { flag } = thinkingParse.error;
-    console.error(fail(`${flag} requires a value`));
-
-    if (provider === 'codex') {
-      console.error('    Codex examples: --effort xhigh, --effort high, --effort medium');
-      console.error('    Alias: --thinking xhigh (same behavior)');
-    } else {
-      console.error('    Examples: --thinking low, --thinking 8192, --thinking off');
-      console.error('    Levels: minimal, low, medium, high, xhigh, max, auto');
-    }
-
-    process.exit(1);
-  }
+  const {
+    forceConfig,
+    addAccount,
+    showAccounts,
+    useAccount,
+    setNickname,
+    extendedContextOverride,
+    thinkingParse,
+  } = parsedFlags;
 
   const { thinkingOverride, thinkingSource } = resolveRuntimeThinkingOverride(
     thinkingParse.value,
@@ -621,88 +194,8 @@ export async function execClaudeWithCLIProxy(
     );
   }
 
-  // Parse --1m / --no-1m flags for extended context (1M token window)
-  let extendedContextOverride: boolean | undefined;
-  const has1mFlag =
-    argsWithoutProxy.includes('--1m') || argsWithoutProxy.some((arg) => arg.startsWith('--1m='));
-  const hasNo1mFlag =
-    argsWithoutProxy.includes('--no-1m') ||
-    argsWithoutProxy.some((arg) => arg.startsWith('--no-1m='));
-
-  if (has1mFlag && hasNo1mFlag) {
-    console.error(fail('Cannot use both --1m and --no-1m flags'));
-    process.exit(1);
-  } else if (has1mFlag) {
-    extendedContextOverride = true;
-  } else if (hasNo1mFlag) {
-    extendedContextOverride = false;
-  }
-  // undefined = auto behavior (Gemini: on, others: off)
-
-  // Handle --accounts
-  if (showAccounts) {
-    const accounts = getProviderAccounts(provider);
-    if (accounts.length === 0) {
-      console.log(info(`No accounts registered for ${providerConfig.displayName}`));
-      console.log(`    Run "ccs ${provider} --auth" to add an account`);
-    } else {
-      console.log(`\n${providerConfig.displayName} Accounts:\n`);
-      for (const acct of accounts) {
-        const defaultMark = acct.isDefault ? ' (default)' : '';
-        const nickname = acct.nickname ? `[${acct.nickname}]` : '';
-        console.log(`  ${nickname.padEnd(12)} ${formatAccountDisplayName(acct)}${defaultMark}`);
-      }
-      console.log(`\n  Use "ccs ${provider} --use <nickname-or-id>" to switch accounts`);
-    }
-    process.exit(0);
-  }
-
-  // Handle --use
-  if (useAccount) {
-    const account = findAccountByQuery(provider, useAccount);
-    if (!account) {
-      console.error(fail(`Account not found: "${useAccount}"`));
-      const accounts = getProviderAccounts(provider);
-      if (accounts.length > 0) {
-        console.error(`    Available accounts:`);
-        for (const acct of accounts) {
-          const displayName = formatAccountDisplayName(acct);
-          const label = acct.nickname ? `${acct.nickname} (${displayName})` : displayName;
-          console.error(`      - ${label}`);
-        }
-      }
-      process.exit(1);
-    }
-    setDefaultAccount(provider, account.id);
-    touchAccount(provider, account.id);
-    const switchedLabel = account.nickname
-      ? `${account.nickname} (${formatAccountDisplayName(account)})`
-      : formatAccountDisplayName(account);
-    console.log(ok(`Switched to account: ${switchedLabel}`));
-  }
-
-  // Handle --nickname (rename account)
-  if (setNickname && !addAccount) {
-    const defaultAccount = getDefaultAccount(provider);
-    if (!defaultAccount) {
-      console.error(fail(`No account found for ${providerConfig.displayName}`));
-      console.error(`    Run "ccs ${provider} --auth" to add an account first`);
-      process.exit(1);
-    }
-    try {
-      const success = renameAccount(provider, defaultAccount.id, setNickname);
-      if (success) {
-        console.log(ok(`Renamed account to: ${setNickname}`));
-      } else {
-        console.error(fail('Failed to rename account'));
-        process.exit(1);
-      }
-    } catch (err) {
-      console.error(fail(err instanceof Error ? err.message : 'Failed to rename account'));
-      process.exit(1);
-    }
-    process.exit(0);
-  }
+  // Handle --accounts / --use / --nickname (warnOAuthBanRisk emitted inside)
+  await resolveAccounts({ provider, showAccounts, useAccount, setNickname, addAccount });
 
   // Handle --config
   if (forceConfig && supportsModelConfig(provider)) {
@@ -720,280 +213,58 @@ export async function execClaudeWithCLIProxy(
     }
   }
 
-  // Handle --logout
-  if (forceLogout) {
-    const { clearAuth } = await import('../auth/auth-handler');
-    if (clearAuth(provider)) {
-      console.log(ok(`Logged out from ${providerConfig.displayName}`));
-    } else {
-      console.log(info(`No authentication found for ${providerConfig.displayName}`));
-    }
-    process.exit(0);
-  }
+  // Build auth coordination context (used for logout/import/antigravity/oauth)
+  const authCtx = {
+    provider,
+    compositeProviders,
+    parsedFlags,
+    cfg,
+    unifiedConfig,
+    verbose,
+    log,
+  };
 
-  // Handle --import (Kiro only)
-  if (forceImport) {
-    if (provider !== 'kiro') {
-      console.error(fail('--import is only available for Kiro'));
-      console.error(`    Run "ccs ${provider} --auth" to authenticate`);
-      process.exit(1);
-    }
-    if (forceAuth) {
-      console.error(fail('Cannot use --import with --auth'));
-      console.error('    --import: Import existing token from Kiro IDE');
-      console.error('    --auth: Trigger new OAuth flow in browser');
-      process.exit(1);
-    }
-    if (forceLogout) {
-      console.error(fail('Cannot use --import with --logout'));
-      process.exit(1);
-    }
-    const { triggerOAuth } = await import('../auth/auth-handler');
-    const authSuccess = await triggerOAuth(provider, {
-      verbose,
-      import: true,
-      ...(kiroAuthMethod ? { kiroMethod: kiroAuthMethod } : {}),
-      ...(kiroIDCStartUrl ? { kiroIDCStartUrl } : {}),
-      ...(kiroIDCRegion ? { kiroIDCRegion } : {}),
-      ...(kiroIDCFlow ? { kiroIDCFlow } : {}),
-      ...(setNickname ? { nickname: setNickname } : {}),
-    });
-    if (!authSuccess) {
-      console.error(fail('Failed to import Kiro token from IDE'));
-      console.error('    Make sure you are logged into Kiro IDE first');
-      process.exit(1);
-    }
-    process.exit(0);
-  }
+  // Handle --logout (early exit)
+  await handleLogout(authCtx);
+
+  // Handle --import (early exit, Kiro only)
+  await handleImport(authCtx);
 
   // 3. Ensure OAuth completed (if provider requires it)
   const remoteAuthToken = proxyConfig.authToken?.trim();
-  const skipLocalAuth = useRemoteProxy && !!remoteAuthToken;
+  const skipLocalAuth = resolveSkipLocalAuth(remoteAuthToken, useRemoteProxy);
   if (skipLocalAuth) {
     log(`Using remote proxy authentication (skipping local OAuth)`);
   }
 
-  if (provider === 'agy' && forceAuth && skipLocalAuth) {
-    const acknowledged = await ensureCliAntigravityResponsibility({
-      context: 'oauth',
-      acceptedByFlag: acceptAgyRisk,
-    });
-    if (!acknowledged) {
-      throw new Error(
-        `Antigravity auth blocked. Re-run after completing confirmation or pass ${ANTIGRAVITY_ACCEPT_RISK_FLAGS[0]}.`
-      );
-    }
-    console.error(info('Remote proxy mode is active; local OAuth flow is skipped in --auth mode.'));
-    return;
-  }
-
-  if (provider === 'agy' && !forceAuth) {
-    const requiresAuthNow = providerConfig.requiresOAuth && !isAuthenticated(provider);
-    if (skipLocalAuth || !requiresAuthNow) {
-      const acknowledged = await ensureCliAntigravityResponsibility({
-        context: 'run',
-        acceptedByFlag: acceptAgyRisk,
-      });
-      if (!acknowledged) {
-        console.error(
-          fail(
-            `Antigravity session blocked. Re-run after completing confirmation or pass ${ANTIGRAVITY_ACCEPT_RISK_FLAGS[0]}.`
-          )
-        );
-        process.exit(1);
-      }
-    }
-  }
+  // Antigravity gate (runs before OAuth check)
+  const { earlyReturn: agyEarlyReturn } = await runAntigravityGate(authCtx, skipLocalAuth);
+  if (agyEarlyReturn) return;
 
   if (providerConfig.requiresOAuth && !skipLocalAuth) {
-    log(`Checking authentication for ${provider}`);
-
-    // Multi-provider auth check for composite variants
-    if (compositeProviders.length > 0) {
-      // Handle forceAuth for composite providers
-      if (forceAuth) {
-        const { triggerOAuth } = await import('../auth/auth-handler');
-        const failures: string[] = [];
-        for (const p of compositeProviders) {
-          const authSuccess = await triggerOAuth(p, {
-            verbose,
-            add: addAccount,
-            ...(acceptAgyRisk ? { acceptAgyRisk: true } : {}),
-            ...(kiroAuthMethod && p === 'kiro' ? { kiroMethod: kiroAuthMethod } : {}),
-            ...(kiroIDCStartUrl && p === 'kiro' ? { kiroIDCStartUrl } : {}),
-            ...(kiroIDCRegion && p === 'kiro' ? { kiroIDCRegion } : {}),
-            ...(kiroIDCFlow && p === 'kiro' ? { kiroIDCFlow } : {}),
-            ...(gitlabTokenLogin && p === 'gitlab' ? { gitlabAuthMode: 'pat' as const } : {}),
-            ...(gitlabBaseUrl && p === 'gitlab' ? { gitlabBaseUrl } : {}),
-            ...(forceHeadless ? { headless: true } : {}),
-            ...(setNickname ? { nickname: setNickname } : {}),
-            ...(noIncognito ? { noIncognito: true } : {}),
-            ...(pasteCallback ? { pasteCallback: true } : {}),
-            ...(portForward ? { portForward: true } : {}),
-          });
-          if (!authSuccess) {
-            failures.push(p);
-          }
-        }
-        if (failures.length > 0) {
-          const succeeded = compositeProviders.filter((p) => !failures.includes(p));
-          console.error(fail(`Auth failed for: ${failures.join(', ')}`));
-          if (succeeded.length > 0) {
-            console.error(info(`Succeeded: ${succeeded.join(', ')}`));
-          }
-          process.exit(1);
-        }
-        process.exit(0);
-      }
-
-      // Check for unauthenticated providers
-      const unauthenticatedProviders: string[] = [];
-      for (const p of compositeProviders) {
-        if (!isAuthenticated(p)) {
-          unauthenticatedProviders.push(p);
-        }
-      }
-      if (unauthenticatedProviders.length > 0) {
-        console.error(fail('Composite variant requires authentication for multiple providers:'));
-        for (const p of unauthenticatedProviders) {
-          console.error(`    - ${p} (run "ccs ${p} --auth")`);
-        }
-        process.exit(1);
-      }
-    } else if (forceAuth || !isAuthenticated(provider)) {
-      const { triggerOAuth } = await import('../auth/auth-handler');
-      const authSuccess = await triggerOAuth(provider, {
-        verbose,
-        add: addAccount,
-        ...(acceptAgyRisk ? { acceptAgyRisk: true } : {}),
-        ...(kiroAuthMethod ? { kiroMethod: kiroAuthMethod } : {}),
-        ...(kiroIDCStartUrl ? { kiroIDCStartUrl } : {}),
-        ...(kiroIDCRegion ? { kiroIDCRegion } : {}),
-        ...(kiroIDCFlow ? { kiroIDCFlow } : {}),
-        ...(gitlabTokenLogin ? { gitlabAuthMode: 'pat' as const } : {}),
-        ...(gitlabBaseUrl ? { gitlabBaseUrl } : {}),
-        ...(forceHeadless ? { headless: true } : {}),
-        ...(setNickname ? { nickname: setNickname } : {}),
-        ...(noIncognito ? { noIncognito: true } : {}),
-        ...(pasteCallback ? { pasteCallback: true } : {}),
-        ...(portForward ? { portForward: true } : {}),
-      });
-      if (!authSuccess) {
-        throw new Error(`Authentication required for ${providerConfig.displayName}`);
-      }
-      if (forceAuth) {
-        process.exit(0);
-      }
-    } else {
-      log(`${provider} already authenticated`);
-    }
-
-    // 3a. Proactive token refresh (multi-provider for composite)
-    if (compositeProviders.length > 0) {
-      for (const p of compositeProviders) {
-        await handleTokenExpiration(p, verbose);
-      }
-    } else {
-      await handleTokenExpiration(provider, verbose);
-    }
-
-    // 3a-1. Update lastUsedAt
-    const usedAccount = getDefaultAccount(provider);
-    if (usedAccount) {
-      touchAccount(provider, usedAccount.id);
-    }
+    await ensureProviderAuthentication(authCtx);
   }
 
   // 3b. Preflight quota check (providers with quota-based rotation)
   if (!skipLocalAuth) {
-    // Multi-tier quota check for composite variants (check if any tier uses a managed provider)
-    if (compositeProviders.length > 0) {
-      for (const managedProvider of MANAGED_QUOTA_PROVIDERS) {
-        if (compositeProviders.includes(managedProvider)) {
-          await handleQuotaCheck(managedProvider);
-        }
-      }
-    } else {
-      await handleQuotaCheck(provider);
-    }
+    await runPreflightQuotaCheck(provider, compositeProviders);
   }
 
   // 3c. Account safety: enforce cross-provider isolation
   if (!skipLocalAuth) {
-    cleanupStaleAutoPauses();
-    const isolated = enforceProviderIsolation(provider);
-    if (isolated === 0) {
-      // No enforcement — still warn about duplicates for awareness
-      warnCrossProviderDuplicates(provider);
-    } else {
-      // 'exit' handlers must be synchronous — restoreAutoPausedAccounts uses sync fs APIs
-      process.on('exit', () => {
-        restoreAutoPausedAccounts(provider);
-      });
-    }
+    runAccountSafetyGuards(provider, compositeProviders);
   }
 
-  // 4. First-run model configuration
-  if (!cfg.isComposite && supportsModelConfig(provider) && !skipLocalAuth) {
-    await configureProviderModel(provider, false, cfg.customSettingsPath);
+  // 4. First-run model configuration + codex plan reconcile
+  if (!skipLocalAuth) {
+    await ensureModelConfiguration(provider, cfg, verbose);
   }
 
   // 5. Check for broken models (multi-tier for composite)
-  if (compositeProviders.length > 0 && cfg.compositeTiers) {
-    // Check all tier models in composite variant
-    const tiers: Array<'opus' | 'sonnet' | 'haiku'> = ['opus', 'sonnet', 'haiku'];
-    for (const tier of tiers) {
-      const tierConfig = cfg.compositeTiers[tier];
-      if (tierConfig && isModelBroken(tierConfig.provider, tierConfig.model)) {
-        const modelEntry = findModel(tierConfig.provider, tierConfig.model);
-        const issueUrl = getModelIssueUrl(tierConfig.provider, tierConfig.model);
-        console.error('');
-        console.error(
-          warn(
-            `${tier} tier: ${modelEntry?.name || tierConfig.model} has known issues with Claude Code`
-          )
-        );
-        console.error('    Tool calls will fail. Consider changing the model in config.yaml.');
-        if (issueUrl) {
-          console.error(`    Tracking: ${issueUrl}`);
-        }
-        console.error('');
-      }
-    }
-  } else {
-    const currentModel = getCurrentModel(provider, cfg.customSettingsPath);
-    if (currentModel && isModelBroken(provider, currentModel)) {
-      const modelEntry = findModel(provider, currentModel);
-      const issueUrl = getModelIssueUrl(provider, currentModel);
-      const replacementModel = getSuggestedReplacementModel(provider, currentModel);
-      console.error('');
-      console.error(warn(`${modelEntry?.name || currentModel} has known issues with Claude Code`));
-      if (replacementModel) {
-        console.error(`    Tool calls will fail. Use "${replacementModel}" instead.`);
-      } else {
-        console.error('    Tool calls will fail. Consider changing the model in config.yaml.');
-      }
-      if (issueUrl) {
-        console.error(`    Tracking: ${issueUrl}`);
-      }
-      if (skipLocalAuth) {
-        console.error('    Note: Model may be overridden by remote proxy configuration.');
-      } else {
-        console.error(`    Run "ccs ${provider} --config" to change model.`);
-      }
-      console.error('');
-    }
-  }
+  warnBrokenModels({ provider, cfg, compositeProviders, skipLocalAuth });
 
   // 6. Ensure user settings file exists
-  ensureProviderSettings(provider);
-
-  if (provider === 'codex' && !cfg.isComposite && !skipLocalAuth) {
-    await reconcileCodexModelForActivePlan({
-      currentModel: getCurrentModel(provider, cfg.customSettingsPath),
-      verbose,
-    });
-  }
+  ensureProviderSettingsFile(provider);
 
   // Local proxy mode: generate config, spawn/join proxy, track session
   let proxy: ChildProcess | null = null;
@@ -1033,7 +304,7 @@ export async function execClaudeWithCLIProxy(
     }
   }
 
-  // 8. Setup HTTPS tunnel if needed
+  // 8. Setup HTTPS tunnel if needed (tunnelPort used by imageAnalysisProxyTarget below)
   let httpsTunnel: HttpsTunnelProxy | null = null;
   let tunnelPort: number | null = null;
 
@@ -1103,9 +374,11 @@ export async function execClaudeWithCLIProxy(
     ? 'ImageAnalysis MCP provisioning failed. This session will use compatibility fallback when available.'
     : imageAnalysisResolution.warning;
 
-  // 9. Setup tool sanitization proxy
+  // 9. Resolve config dir + browser runtime (needed before proxy chain)
   let toolSanitizationProxy: ToolSanitizationProxy | null = null;
   let toolSanitizationPort: number | null = null;
+  let codexReasoningProxy: CodexReasoningProxy | null = null;
+  let codexReasoningPort: number | null = null;
   let inheritedClaudeConfigDir = cfg.claudeConfigDir;
 
   if (!inheritedClaudeConfigDir && cfg.profileName) {
@@ -1123,15 +396,12 @@ export async function execClaudeWithCLIProxy(
   }
 
   syncImageAnalysisMcpToConfigDir(inheritedClaudeConfigDir);
-  if (
-    browserRuntimeEnv &&
-    inheritedClaudeConfigDir &&
-    !syncBrowserMcpToConfigDir(inheritedClaudeConfigDir)
-  ) {
-    throw new Error(
-      'Browser MCP is enabled, but CCS could not sync the browser MCP config into the inherited Claude instance.'
-    );
-  }
+
+  // Resolve browser attach runtime and sync browser MCP (needs inheritedClaudeConfigDir)
+  const { browserRuntimeEnv } = await resolveBrowserRuntime(
+    browserLaunchOverride,
+    inheritedClaudeConfigDir
+  );
 
   // Build initial env vars to get ANTHROPIC_BASE_URL
   const initialEnvVars = buildClaudeEnvironment({
@@ -1159,74 +429,19 @@ export async function execClaudeWithCLIProxy(
     imageAnalysisEnv,
   });
 
-  if (initialEnvVars.ANTHROPIC_BASE_URL) {
-    try {
-      toolSanitizationProxy = new ToolSanitizationProxy({
-        upstreamBaseUrl: initialEnvVars.ANTHROPIC_BASE_URL,
-        verbose,
-        warnOnSanitize: true,
-        allowSelfSigned: useRemoteProxy ? (proxyConfig.allowSelfSigned ?? false) : false,
-      });
-      toolSanitizationPort = await toolSanitizationProxy.start();
-      log(`Tool sanitization proxy active on port ${toolSanitizationPort}`);
-    } catch (error) {
-      const err = error as Error;
-      toolSanitizationProxy = null;
-      toolSanitizationPort = null;
-      if (verbose) {
-        console.error(warn(`Tool sanitization proxy disabled: ${err.message}`));
-      }
-    }
-  }
-
-  const postSanitizationBaseUrl = toolSanitizationPort
-    ? `http://127.0.0.1:${toolSanitizationPort}`
-    : initialEnvVars.ANTHROPIC_BASE_URL;
-
-  // 10. Setup Codex reasoning proxy (single-provider Codex only)
-  let codexReasoningProxy: CodexReasoningProxy | null = null;
-  let codexReasoningPort: number | null = null;
-
-  // Composite variants require root model-routed endpoints, never provider-pinned codex endpoints.
-  if (provider === 'codex' && !cfg.isComposite) {
-    if (!postSanitizationBaseUrl) {
-      log('ANTHROPIC_BASE_URL not set for Codex, reasoning proxy disabled');
-    } else {
-      try {
-        const traceEnabled =
-          process.env.CCS_CODEX_REASONING_TRACE === '1' ||
-          process.env.CCS_CODEX_REASONING_TRACE === 'true';
-        const stripPathPrefix = useRemoteProxy ? '/api/provider/codex' : undefined;
-        const codexThinkingOff = shouldDisableCodexReasoning(thinkingCfg, thinkingOverride);
-        codexReasoningProxy = new CodexReasoningProxy({
-          upstreamBaseUrl: postSanitizationBaseUrl,
-          verbose,
-          defaultEffort: 'medium',
-          disableEffort: codexThinkingOff,
-          traceFilePath: traceEnabled ? path.join(getCcsDir(), 'codex-reasoning-proxy.log') : '',
-          allowSelfSigned: useRemoteProxy ? (proxyConfig.allowSelfSigned ?? false) : false,
-          modelMap: {
-            defaultModel: initialEnvVars.ANTHROPIC_MODEL,
-            opusModel: initialEnvVars.ANTHROPIC_DEFAULT_OPUS_MODEL,
-            sonnetModel: initialEnvVars.ANTHROPIC_DEFAULT_SONNET_MODEL,
-            haikuModel: initialEnvVars.ANTHROPIC_DEFAULT_HAIKU_MODEL,
-          },
-          stripPathPrefix,
-        });
-        codexReasoningPort = await codexReasoningProxy.start();
-        log(
-          `Codex reasoning proxy active: http://127.0.0.1:${codexReasoningPort}/api/provider/codex`
-        );
-      } catch (error) {
-        const err = error as Error;
-        codexReasoningProxy = null;
-        codexReasoningPort = null;
-        if (verbose) {
-          console.error(warn(`Codex reasoning proxy disabled: ${err.message}`));
-        }
-      }
-    }
-  }
+  // 9b. Build env-dependent proxy chain (tool-sanitization + codex-reasoning)
+  ({ toolSanitizationProxy, toolSanitizationPort, codexReasoningProxy, codexReasoningPort } =
+    await buildProxyChain({
+      provider,
+      useRemoteProxy,
+      proxyConfig,
+      cfg,
+      initialEnvVars,
+      thinkingOverride,
+      thinkingCfg,
+      verbose,
+      log,
+    }));
 
   // 11. Build final environment with all proxy chains
   const env = buildClaudeEnvironment({
@@ -1297,129 +512,36 @@ export async function execClaudeWithCLIProxy(
     console.error(`[i] Thinking: ${thinkingLabel} (${sourceLabel})`);
   }
 
-  // 12. Filter CCS-specific flags before passing to Claude CLI
-  const ccsFlags = [
-    '--auth',
-    '--paste-callback',
-    '--port-forward',
-    '--headless',
-    '--logout',
-    '--config',
-    '--add',
-    '--accounts',
-    '--use',
-    '--nickname',
-    '--kiro-auth-method',
-    '--kiro-idc-start-url',
-    '--kiro-idc-region',
-    '--kiro-idc-flow',
-    '--thinking',
-    '--effort',
-    '--1m',
-    '--no-1m',
-    '--incognito',
-    '--no-incognito',
-    '--import',
-    '--accept-agr-risk',
-    '--accept-antigravity-risk',
-    '--settings',
-    ...PROXY_CLI_FLAGS,
-  ];
-  const claudeArgs = argsWithoutBrowserFlags.filter((arg, idx) => {
-    if (ccsFlags.includes(arg)) return false;
-    if (arg.startsWith('--kiro-auth-method=')) return false;
-    if (arg.startsWith('--kiro-idc-start-url=')) return false;
-    if (arg.startsWith('--kiro-idc-region=')) return false;
-    if (arg.startsWith('--kiro-idc-flow=')) return false;
-    if (arg.startsWith('--thinking=')) return false;
-    if (arg.startsWith('--effort=')) return false;
-    if (arg.startsWith('--1m=') || arg.startsWith('--no-1m=')) return false;
-    if (
-      argsWithoutBrowserFlags[idx - 1] === '--use' ||
-      argsWithoutBrowserFlags[idx - 1] === '--nickname' ||
-      argsWithoutBrowserFlags[idx - 1] === '--kiro-auth-method' ||
-      argsWithoutBrowserFlags[idx - 1] === '--kiro-idc-start-url' ||
-      argsWithoutBrowserFlags[idx - 1] === '--kiro-idc-region' ||
-      argsWithoutBrowserFlags[idx - 1] === '--kiro-idc-flow' ||
-      argsWithoutBrowserFlags[idx - 1] === '--thinking' ||
-      argsWithoutBrowserFlags[idx - 1] === '--effort'
-    )
-      return false;
-    return true;
-  });
-
-  const isWindows = process.platform === 'win32';
-  const needsShell = isWindows && /\.(cmd|bat|ps1)$/i.test(claudeCli);
-
-  const settingsPath = cfg.customSettingsPath
-    ? cfg.customSettingsPath.replace(/^~/, os.homedir())
-    : getProviderSettingsPath(provider);
-
-  let claude: ChildProcess;
-  const imageAnalysisArgs = imageAnalysisMcpReady
-    ? appendThirdPartyImageAnalysisToolArgs(claudeArgs)
-    : claudeArgs;
-  const browserArgs = browserRuntimeEnv
-    ? appendBrowserToolArgs(imageAnalysisArgs)
-    : imageAnalysisArgs;
-  const launchArgs = [
-    '--settings',
-    settingsPath,
-    ...appendThirdPartyWebSearchToolArgs(browserArgs),
-  ];
-  const traceEnv = createWebSearchTraceContext({
-    launcher: 'cliproxy.executor',
-    args: launchArgs,
-    profile: cfg.profileName || provider,
-    profileType: 'cliproxy',
-    settingsPath,
-    claudeConfigDir: inheritedClaudeConfigDir,
-  });
-  const tracedEnv = { ...env, ...traceEnv };
-  if (needsShell) {
-    const cmdString = [claudeCli, ...launchArgs].map(escapeShellArg).join(' ');
-    claude = spawn(cmdString, {
-      stdio: 'inherit',
-      windowsHide: true,
-      shell: getWindowsEscapedCommandShell(),
-      env: tracedEnv,
-    });
-  } else {
-    claude = spawn(claudeCli, launchArgs, {
-      stdio: 'inherit',
-      windowsHide: true,
-      env: tracedEnv,
-    });
-  }
-
-  // 12b. Start runtime quota monitor (adaptive polling during session)
-  if (!skipLocalAuth) {
-    const { startQuotaMonitor } = await import('../quota/quota-manager');
-    for (const monitorProvider of resolveRuntimeQuotaMonitorProviders(
-      provider,
-      compositeProviders
-    )) {
-      const monitorAccount = getDefaultAccount(monitorProvider);
-      if (monitorAccount) {
-        startQuotaMonitor(monitorProvider, monitorAccount.id);
-      }
-    }
-  }
-
-  // 13. Setup cleanup handlers
-  setupCleanupHandlers(
-    claude,
+  // 12. Filter CCS flags, spawn Claude CLI, start quota monitor, wire cleanup
+  const claudeArgs = filterCcsFlags(argsWithoutBrowserFlags);
+  await launchClaude({
+    claudeCli,
+    claudeArgs,
+    env,
+    cfg,
+    provider,
+    compositeProviders,
+    skipLocalAuth,
     sessionId,
-    cfg.port,
+    imageAnalysisMcpReady,
+    browserRuntimeEnv,
+    inheritedClaudeConfigDir,
     codexReasoningProxy,
     toolSanitizationProxy,
     httpsTunnel,
-    verbose
-  );
+    verbose,
+  });
 }
 
 // Re-export utility functions for backwards compatibility
 export { isPortAvailable, findAvailablePort } from './lifecycle-manager';
+
+// Re-export arg-parser helpers (previously inlined here; external callers can
+// import from index or directly from ./arg-parser)
+export { readOptionValue, hasGitLabTokenLoginFlag, CCS_FLAGS, filterCcsFlags } from './arg-parser';
+
+// Re-export account-resolution helpers for backwards compat with __testExports consumers
+export { resolveRuntimeQuotaMonitorProviders as _resolveRuntimeQuotaMonitorProviders } from './account-resolution';
 
 export const __testExports = {
   resolveRuntimeQuotaMonitorProviders,

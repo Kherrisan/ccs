@@ -5,11 +5,12 @@
  */
 
 import { Router, Request, Response } from 'express';
-import { loadConfigSafe } from '../utils/config-manager';
+
 import { runHealthChecks } from './health-service';
 import { getAllAuthStatus, initializeAccounts } from '../cliproxy/auth/auth-handler';
 import { getVersion } from '../utils/version';
 import ProfileRegistry from '../auth/profile-registry';
+import { loadConfigSafe } from '../config/config-loader-facade';
 
 export const overviewRoutes = Router();
 

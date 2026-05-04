@@ -6,9 +6,9 @@
  * @module utils/websearch/hook-env
  */
 
-import { getWebSearchConfig } from '../../config/unified-config-loader';
 import { normalizeSearxngBaseUrl } from './types';
 import { resolveAllowedWebSearchTraceFile } from './trace';
+import { getWebSearchConfig } from '../../config/config-loader-facade';
 
 /**
  * Get environment variables for WebSearch hook configuration.

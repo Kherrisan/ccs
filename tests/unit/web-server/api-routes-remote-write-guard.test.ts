@@ -6,6 +6,8 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { apiRoutes } from '../../../src/web-server/routes';
+import { mutateConfig, loadOrCreateUnifiedConfig } from '../../../src/config/config-loader-facade';
+import { registerSession, deleteSessionLockForPort } from '../../../src/cliproxy/session-tracker';
 import {
   authMiddleware,
   createSessionMiddleware,
@@ -123,6 +125,54 @@ describe('api-routes remote write guard', () => {
     expect(await response.json()).toEqual({
       error: 'Remote dashboard writes require localhost access when dashboard auth is disabled.',
     });
+  });
+
+  it('rejects invalid local ports at the cliproxy-server API boundary', async () => {
+    forcedRemoteAddress = '127.0.0.1';
+
+    const response = await fetch(`${baseUrl}/api/cliproxy-server`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        local: { port: 70000 },
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: 'Invalid local port. Must be an integer between 1 and 65535.',
+    });
+  });
+
+  it('rejects local port changes while the current local proxy session is still running', async () => {
+    forcedRemoteAddress = '127.0.0.1';
+    mutateConfig((config) => {
+      if (!config.cliproxy_server) {
+        throw new Error('cliproxy_server defaults were not initialized');
+      }
+      config.cliproxy_server.local.port = 8317;
+    });
+    registerSession(8317, process.pid);
+
+    try {
+      const response = await fetch(`${baseUrl}/api/cliproxy-server`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          local: { port: 9000 },
+        }),
+      });
+
+      expect(response.status).toBe(409);
+      expect(await response.json()).toEqual({
+        error: 'Proxy is running on the current local port. Stop CLIProxy before changing local.port.',
+        proxyRunning: true,
+        currentLocalPort: 8317,
+      });
+      expect(loadOrCreateUnifiedConfig().cliproxy_server?.local?.port).toBe(8317);
+    } finally {
+      deleteSessionLockForPort(8317);
+    }
   });
 
   it('blocks remote PATCH requests when dashboard auth is disabled', async () => {

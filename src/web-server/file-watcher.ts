@@ -7,7 +7,7 @@
 
 import chokidar, { FSWatcher } from 'chokidar';
 import * as path from 'path';
-import { getCcsDir } from '../utils/config-manager';
+import { getCcsDir } from '../config/config-loader-facade';
 
 export interface FileChangeEvent {
   type: 'config-changed' | 'settings-changed' | 'profiles-changed' | 'proxy-status-changed';

@@ -6,7 +6,7 @@ import { ResultFormatter } from './result-formatter';
 import { DelegationValidator } from '../utils/delegation-validator';
 import { SettingsParser } from './settings-parser';
 import { fail, warn } from '../utils/ui';
-import { getCcsDir } from '../utils/config-manager';
+import { getCcsDir } from '../config/config-loader-facade';
 
 const PROFILE_FLAGS_WITH_VALUE = new Set(['-p', '--prompt', '--effort']);
 

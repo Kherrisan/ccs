@@ -9,8 +9,7 @@
 
 import http from 'http';
 import { Request, Response, Router } from 'express';
-import { CLIPROXY_DEFAULT_PORT, validatePort } from '../../cliproxy/config/port-manager';
-import { loadOrCreateUnifiedConfig } from '../../config/unified-config-loader';
+import { resolveLifecyclePort } from '../../cliproxy/config/port-manager';
 import { requireLocalAccessWhenAuthDisabled } from '../middleware/auth-middleware';
 
 export interface CliproxyLocalProxyDeps {
@@ -21,15 +20,6 @@ export interface CliproxyLocalProxyDeps {
 
 /** Proxy request timeout in milliseconds (30 seconds) */
 const PROXY_TIMEOUT_MS = 30_000;
-
-function resolveLocalCliproxyPort(): number {
-  try {
-    const config = loadOrCreateUnifiedConfig();
-    return validatePort(config.cliproxy_server?.local?.port ?? CLIPROXY_DEFAULT_PORT);
-  } catch {
-    return CLIPROXY_DEFAULT_PORT;
-  }
-}
 
 function isJsonContentType(contentType: string | string[] | undefined): boolean {
   const values = Array.isArray(contentType) ? contentType : [contentType];
@@ -82,7 +72,7 @@ export function createCliproxyLocalProxyRouter(deps: CliproxyLocalProxyDeps = {}
         'CLIProxy local proxy requires localhost access when dashboard auth is disabled.'
       ));
   const createRequest = deps.request ?? http.request;
-  const resolveTargetPort = deps.resolveTargetPort ?? resolveLocalCliproxyPort;
+  const resolveTargetPort = deps.resolveTargetPort ?? resolveLifecyclePort;
 
   router.use((req: Request, res: Response, next) => {
     if (enforceAccess(req, res)) {

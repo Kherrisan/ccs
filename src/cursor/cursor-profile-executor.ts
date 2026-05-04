@@ -1,9 +1,9 @@
 import { spawn } from 'child_process';
 
 import type { CursorConfig } from '../config/unified-config-types';
-import { getGlobalEnvConfig } from '../config/unified-config-loader';
+
 import { ensureCliproxyService } from '../cliproxy';
-import { CLIPROXY_DEFAULT_PORT } from '../cliproxy/config/port-manager';
+import { resolveLifecyclePort } from '../cliproxy/config/port-manager';
 import { fail, info, ok } from '../utils/ui';
 import {
   appendThirdPartyWebSearchToolArgs,
@@ -15,10 +15,18 @@ import { getImageAnalysisHookEnv, resolveImageAnalysisRuntimeStatus } from '../u
 import { stripClaudeCodeEnv } from '../utils/shell-executor';
 import { checkAuthStatus } from './cursor-auth';
 import { isDaemonRunning, startDaemon } from './cursor-daemon';
+import { getGlobalEnvConfig } from '../config/config-loader-facade';
 
 interface CursorImageAnalysisResolution {
   env: Record<string, string>;
   warning: string | null;
+}
+
+interface CursorImageAnalysisDeps {
+  getImageAnalysisHookEnv?: typeof getImageAnalysisHookEnv;
+  resolveImageAnalysisRuntimeStatus?: typeof resolveImageAnalysisRuntimeStatus;
+  ensureCliproxyService?: typeof ensureCliproxyService;
+  resolveLifecyclePort?: typeof resolveLifecyclePort;
 }
 
 export function generateCursorEnv(
@@ -44,9 +52,16 @@ export function generateCursorEnv(
 }
 
 export async function resolveCursorImageAnalysisEnv(
-  verbose = false
+  verbose = false,
+  deps: CursorImageAnalysisDeps = {}
 ): Promise<CursorImageAnalysisResolution> {
-  const env = getImageAnalysisHookEnv({
+  const getImageAnalysisHookEnvFn = deps.getImageAnalysisHookEnv ?? getImageAnalysisHookEnv;
+  const resolveImageAnalysisRuntimeStatusFn =
+    deps.resolveImageAnalysisRuntimeStatus ?? resolveImageAnalysisRuntimeStatus;
+  const ensureCliproxyServiceFn = deps.ensureCliproxyService ?? ensureCliproxyService;
+  const resolveLifecyclePortFn = deps.resolveLifecyclePort ?? resolveLifecyclePort;
+
+  const env = getImageAnalysisHookEnvFn({
     profileName: 'cursor',
     profileType: 'cursor',
   });
@@ -55,7 +70,7 @@ export async function resolveCursorImageAnalysisEnv(
     return { env, warning: null };
   }
 
-  const status = await resolveImageAnalysisRuntimeStatus({
+  const status = await resolveImageAnalysisRuntimeStatusFn({
     profileName: 'cursor',
     profileType: 'cursor',
   });
@@ -72,7 +87,7 @@ export async function resolveCursorImageAnalysisEnv(
   }
 
   if (status.proxyReadiness === 'stopped') {
-    const ensureServiceResult = await ensureCliproxyService(CLIPROXY_DEFAULT_PORT, verbose);
+    const ensureServiceResult = await ensureCliproxyServiceFn(resolveLifecyclePortFn(), verbose);
     if (!ensureServiceResult.started) {
       return {
         env: {

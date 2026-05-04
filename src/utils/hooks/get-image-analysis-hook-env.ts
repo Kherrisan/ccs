@@ -7,7 +7,6 @@
  * @module utils/hooks/image-analysis-hook-env
  */
 
-import { getImageAnalysisConfig } from '../../config/unified-config-loader';
 import { resolveCliproxyBridgeProfile } from '../../api/services/cliproxy-profile-bridge';
 import { getEffectiveApiKey } from '../../cliproxy/auth/auth-token-manager';
 import { mapExternalProviderName } from '../../cliproxy/provider-capabilities';
@@ -21,6 +20,7 @@ import {
   resolveImageAnalysisStatus,
   type ImageAnalysisResolutionContext,
 } from './image-analysis-backend-resolver';
+import { getImageAnalysisConfig } from '../../config/config-loader-facade';
 
 /**
  * Serialize provider_models map to env var format: provider:model,provider:model

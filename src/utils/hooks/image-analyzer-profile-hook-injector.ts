@@ -21,12 +21,13 @@ import {
   isCcsImageAnalyzerHook,
   removeCcsImageAnalyzerHooks,
 } from './image-analyzer-hook-utils';
-import { getImageAnalysisConfig } from '../../config/unified-config-loader';
+
 import { getCcsDir } from '../config-manager';
 import {
   resolveImageAnalysisStatus,
   type ImageAnalysisResolutionContext,
 } from './image-analysis-backend-resolver';
+import { getImageAnalysisConfig } from '../../config/config-loader-facade';
 
 // Valid profile name pattern (alphanumeric, dot, dash, underscore only)
 const VALID_PROFILE_NAME = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
