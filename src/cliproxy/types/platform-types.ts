@@ -6,7 +6,7 @@
 export type SupportedOS = 'darwin' | 'linux' | 'windows';
 
 /** Supported CPU architectures */
-export type SupportedArch = 'amd64' | 'arm64';
+export type SupportedArch = 'amd64' | 'aarch64';
 
 /** Archive extension based on platform */
 export type ArchiveExtension = 'tar.gz' | 'zip';

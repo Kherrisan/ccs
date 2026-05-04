@@ -2,7 +2,7 @@
  * Platform Detector for CLIProxyAPI Binary Downloads
  *
  * Detects OS and architecture to determine correct binary asset.
- * Supports 6 platforms: darwin/linux/windows x amd64/arm64
+ * Supports 6 platforms: darwin/linux/windows x amd64/aarch64
  */
 
 import {
@@ -75,7 +75,7 @@ const OS_MAP: Record<string, SupportedOS | undefined> = {
 
 const ARCH_MAP: Record<string, SupportedArch | undefined> = {
   x64: 'amd64',
-  arm64: 'arm64',
+  arm64: 'aarch64',
 };
 
 /**
@@ -103,7 +103,7 @@ export function detectPlatform(
 
   if (!arch) {
     throw new Error(
-      `Unsupported CPU architecture: ${nodeArch}\n` + `Supported: x64 (amd64), arm64`
+      `Unsupported CPU architecture: ${nodeArch}\n` + `Supported: x64 (amd64), arm64 (aarch64)`
     );
   }
 
@@ -195,7 +195,7 @@ export function isPlatformSupported(): boolean {
 
 /**
  * Get human-readable platform description
- * @returns Description string (e.g., "macOS arm64")
+ * @returns Description string (e.g., "macOS aarch64")
  */
 export function getPlatformDescription(): string {
   try {
