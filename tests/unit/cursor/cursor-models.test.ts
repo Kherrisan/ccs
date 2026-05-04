@@ -170,7 +170,7 @@ describe('fetchModelsFromDaemon', () => {
   it(
     'falls back to defaults when daemon response exceeds max body size',
     async () => {
-      const oversizedPayload = 'x'.repeat(1024 * 1024 + 1024);
+      const oversizedPayload = Buffer.alloc(1024 * 1024 + 1024, 'x');
       const server = http.createServer((_req, res) => {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(oversizedPayload);
@@ -187,11 +187,37 @@ describe('fetchModelsFromDaemon', () => {
         expect(models).toEqual(DEFAULT_CURSOR_MODELS);
       } finally {
         server.closeAllConnections?.();
+        server.closeIdleConnections?.();
         await new Promise<void>((resolve) => server.close(() => resolve()));
       }
     },
     30000
   );
+
+  it('falls back to defaults when daemon advertises an oversized response', async () => {
+    const server = http.createServer((_req, res) => {
+      res.writeHead(200, {
+        'Content-Type': 'application/json',
+        'Content-Length': String(1024 * 1024 + 1),
+      });
+      res.flushHeaders();
+    });
+
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    if (!address || typeof address === 'string') {
+      throw new Error('Unable to resolve test server port');
+    }
+
+    try {
+      const models = await fetchModelsFromDaemon(address.port);
+      expect(models).toEqual(DEFAULT_CURSOR_MODELS);
+    } finally {
+      server.closeAllConnections?.();
+      server.closeIdleConnections?.();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
 });
 
 describe('fetchModelsFromCursorApi', () => {
