@@ -1,3 +1,41 @@
+## [7.77.0](https://github.com/kaitranntt/ccs/compare/v7.76.0...v7.77.0) (2026-05-04)
+
+### Features
+
+* **cliproxy:** route plus dashboard to maintained fork ([#1173](https://github.com/kaitranntt/ccs/issues/1173)) ([923683b](https://github.com/kaitranntt/ccs/commit/923683bf303984959f8d5308bfd4c4294651d257))
+* support ollama cloud anthropic compatible api ([#1175](https://github.com/kaitranntt/ccs/issues/1175)) ([4e2def6](https://github.com/kaitranntt/ccs/commit/4e2def6769ec71da2063588f867adaea7600df96))
+
+### Bug Fixes
+
+* **analytics:** cache native Codex usage scans ([11b12f1](https://github.com/kaitranntt/ccs/commit/11b12f146d65c32ef6b837b3daddc453d8bca11e))
+* **cliproxy:** harden custom local port handling ([3862411](https://github.com/kaitranntt/ccs/commit/3862411bb7ac61fb52a13e53db95ae3b99d49c4b))
+* **cliproxy:** refresh upstream model and quota surfaces ([#1158](https://github.com/kaitranntt/ccs/issues/1158)) ([50b0ffb](https://github.com/kaitranntt/ccs/commit/50b0ffba759b7de6fac525e31e5d02bde20b54f3))
+* **cliproxy:** respect configured local port instead of hardcoding 8317 ([509bd5d](https://github.com/kaitranntt/ccs/commit/509bd5dbef008e1e0b5cf129744887cee99b9726))
+* **config/loader:** break runtime cycle from normalizers to channels-runtime ([b6a49ee](https://github.com/kaitranntt/ccs/commit/b6a49eeab702906f8fb5e81d5022f1348fe4cd17)), closes [#1168](https://github.com/kaitranntt/ccs/issues/1168) [#1135](https://github.com/kaitranntt/ccs/issues/1135)
+
+### Code Refactoring
+
+* **cliproxy/executor:** extract arg-parser from index.ts ([19d2495](https://github.com/kaitranntt/ccs/commit/19d24954be62410b84f0a81f86f05716d5419da5)), closes [#1162](https://github.com/kaitranntt/ccs/issues/1162)
+* **cliproxy/executor:** extract auth-coordinator from index.ts ([8b7e7f4](https://github.com/kaitranntt/ccs/commit/8b7e7f4847eec98b39cd1bac883cf4dd5aa30a2d)), closes [#1162](https://github.com/kaitranntt/ccs/issues/1162)
+* **cliproxy/executor:** extract browser-setup and account-resolution ([bc48613](https://github.com/kaitranntt/ccs/commit/bc48613bbd06e8ca17d4b8acff466690d152f8ba)), closes [#1162](https://github.com/kaitranntt/ccs/issues/1162)
+* **cliproxy/executor:** extract concerns from index.ts ([#1166](https://github.com/kaitranntt/ccs/issues/1166)) ([f7b8540](https://github.com/kaitranntt/ccs/commit/f7b854047e03cb3838fdd0dc4b1f4dc650e1c172)), closes [#1162](https://github.com/kaitranntt/ccs/issues/1162)
+* **cliproxy/executor:** extract model-warnings + claude-launcher and polish orchestrator ([09268e7](https://github.com/kaitranntt/ccs/commit/09268e7e3307aea1508505692f83a2131e15f8a9)), closes [#1162](https://github.com/kaitranntt/ccs/issues/1162)
+* **cliproxy/executor:** extract proxy-chain-builder from index.ts ([8b39d8a](https://github.com/kaitranntt/ccs/commit/8b39d8a25f3af8e6829b0164932e6a30c71ea20f)), closes [#1162](https://github.com/kaitranntt/ccs/issues/1162)
+* **cliproxy/executor:** extract proxy-resolver from index.ts ([968681f](https://github.com/kaitranntt/ccs/commit/968681f261f6d0f00168347f4bdc203a151ef542)), closes [#1162](https://github.com/kaitranntt/ccs/issues/1162)
+* **config/loader:** extract defaults-merger, config-getters, polish orchestrator ([f3e79fd](https://github.com/kaitranntt/ccs/commit/f3e79fd4e8c4986eea90fd37ffefac861e8e1598)), closes [#1164](https://github.com/kaitranntt/ccs/issues/1164)
+* **config/loader:** extract io-locks, normalizers, yaml-serializer ([315ae19](https://github.com/kaitranntt/ccs/commit/315ae19387e90b55385fe631ca0b3187c8eeacc9)), closes [#1164](https://github.com/kaitranntt/ccs/issues/1164)
+* **config/loader:** split unified-config-loader.ts ([#1168](https://github.com/kaitranntt/ccs/issues/1168)) ([2408987](https://github.com/kaitranntt/ccs/commit/240898785942194227b471486f4f05c88114478f)), closes [#1164](https://github.com/kaitranntt/ccs/issues/1164)
+* **config:** adopt config-loader-facade across codebase ([#1169](https://github.com/kaitranntt/ccs/issues/1169)) ([df8efc9](https://github.com/kaitranntt/ccs/commit/df8efc985eb9b500b46baabf99a42c7e9aa71b6e)), closes [#1161](https://github.com/kaitranntt/ccs/issues/1161)
+* **config:** adopt config-loader-facade across the codebase ([4f6e617](https://github.com/kaitranntt/ccs/commit/4f6e61739c13323484bcb036980e2553e6bb31bd)), closes [#1161](https://github.com/kaitranntt/ccs/issues/1161)
+* **dispatcher:** extract bootstrap and pre-dispatch handlers from ccs.ts ([0cf4ad7](https://github.com/kaitranntt/ccs/commit/0cf4ad7b48b644c30d29dbce7fdfd78400320df4)), closes [#1165](https://github.com/kaitranntt/ccs/issues/1165)
+* **dispatcher:** extract concerns from ccs.ts ([#1167](https://github.com/kaitranntt/ccs/issues/1167)) ([33de23c](https://github.com/kaitranntt/ccs/commit/33de23c6471b016bd669701bb3512ea900c14a7d)), closes [#1165](https://github.com/kaitranntt/ccs/issues/1165)
+* **dispatcher:** extract per-profile flows from ccs.ts ([0910a75](https://github.com/kaitranntt/ccs/commit/0910a75850c149f29493d4a5db0c09486a8ac443)), closes [#1165](https://github.com/kaitranntt/ccs/issues/1165)
+* **dispatcher:** extract profile and target detection from ccs.ts ([a807de6](https://github.com/kaitranntt/ccs/commit/a807de6f4cc3d328349075699b5fb27efd3e6e80)), closes [#1165](https://github.com/kaitranntt/ccs/issues/1165)
+* **dispatcher:** scaffold src/dispatcher/ and extract pure helpers from ccs.ts ([f759cfe](https://github.com/kaitranntt/ccs/commit/f759cfeaaaef26591060a2746319cc5156287da8)), closes [#1165](https://github.com/kaitranntt/ccs/issues/1165)
+* merge facade adoption from [#1169](https://github.com/kaitranntt/ccs/issues/1169) into ccs.ts dispatcher ([70b5dc2](https://github.com/kaitranntt/ccs/commit/70b5dc247f38af45b0cb622ed63dc3a05ae68ce1))
+* merge facade adoption from [#1169](https://github.com/kaitranntt/ccs/issues/1169) into executor extraction ([05e1c35](https://github.com/kaitranntt/ccs/commit/05e1c352033afc1c141b60a64d88b6782124b621))
+* structural maintainability batch ([#1171](https://github.com/kaitranntt/ccs/issues/1171)) ([b4d55d0](https://github.com/kaitranntt/ccs/commit/b4d55d0fda712f550510b3fc71bfc76b8f9fec40)), closes [#1135](https://github.com/kaitranntt/ccs/issues/1135)
+
 ## [7.76.0](https://github.com/kaitranntt/ccs/compare/v7.75.0...v7.76.0) (2026-05-01)
 
 ### Features
