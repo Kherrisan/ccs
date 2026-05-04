@@ -35,6 +35,7 @@ describe('types.ts backward compatibility', () => {
   it('exports all platform types', () => {
     const os: SupportedOS = 'darwin';
     const arch: SupportedArch = 'aarch64';
+    const nodeArch: SupportedArch = 'arm64';
     const ext: ArchiveExtension = 'tar.gz';
     const info: PlatformInfo = {
       os,
@@ -44,6 +45,7 @@ describe('types.ts backward compatibility', () => {
     };
     expect(info.os).toBe('darwin');
     expect(info.arch).toBe('aarch64');
+    expect(nodeArch).toBe('arm64');
   });
 
   it('exports all binary types', () => {

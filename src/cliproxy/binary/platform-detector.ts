@@ -78,6 +78,10 @@ const ARCH_MAP: Record<string, SupportedArch | undefined> = {
   arm64: 'aarch64',
 };
 
+export function mapNodeArchToReleaseArch(nodeArch: string): SupportedArch | undefined {
+  return ARCH_MAP[nodeArch];
+}
+
 /**
  * Detect current platform and return binary info
  * @param version Optional version for binaryName (defaults to backend fallback)
@@ -92,7 +96,7 @@ export function detectPlatform(
   const nodeArch = process.arch;
 
   const os = OS_MAP[nodePlatform];
-  const arch = ARCH_MAP[nodeArch];
+  const arch = mapNodeArchToReleaseArch(nodeArch);
 
   if (!os) {
     throw new Error(
@@ -195,14 +199,15 @@ export function isPlatformSupported(): boolean {
 
 /**
  * Get human-readable platform description
- * @returns Description string (e.g., "macOS aarch64")
+ * @returns Description string (e.g., "macOS ARM64")
  */
 export function getPlatformDescription(): string {
   try {
     const platform = detectPlatform();
     const osName =
       platform.os === 'darwin' ? 'macOS' : platform.os === 'linux' ? 'Linux' : 'Windows';
-    return `${osName} ${platform.arch}`;
+    const archName = platform.arch === 'aarch64' ? 'ARM64' : platform.arch;
+    return `${osName} ${archName}`;
   } catch {
     return `${process.platform} ${process.arch} (unsupported)`;
   }
