@@ -1,3 +1,17 @@
+## [7.77.1](https://github.com/kaitranntt/ccs/compare/v7.77.0...v7.77.1) (2026-05-04)
+
+### Bug Fixes
+
+* harden cursor daemon model fallback ([5f05dea](https://github.com/kaitranntt/ccs/commit/5f05dea5acac9b07aa55b6d66215419cb26320e7))
+* preserve arm64 compatibility for CLIProxy assets ([2274cef](https://github.com/kaitranntt/ccs/commit/2274cef6588b01e818b60e042481d31dc2f83dd1))
+* preserve CLIProxy platform arch compatibility ([9a687fc](https://github.com/kaitranntt/ccs/commit/9a687fc03cf704a11e804780185ba24153766fd5))
+* use aarch64 for CLIProxy arm assets ([190e820](https://github.com/kaitranntt/ccs/commit/190e820f99b100420f987c6669c2d89c0ce51d30))
+* use aarch64 for CLIProxy arm assets ([70bf080](https://github.com/kaitranntt/ccs/commit/70bf0806f33bcf33e74dbe7a10b258879dc9f104))
+
+### Styles
+
+* apply prettier formatting ([4acc81c](https://github.com/kaitranntt/ccs/commit/4acc81c08221dbdff79319998ab1e290645ebb45))
+
 ## [7.77.0](https://github.com/kaitranntt/ccs/compare/v7.76.0...v7.77.0) (2026-05-04)
 
 ### Features
