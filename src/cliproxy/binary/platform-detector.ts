@@ -2,7 +2,7 @@
  * Platform Detector for CLIProxyAPI Binary Downloads
  *
  * Detects OS and architecture to determine correct binary asset.
- * Supports 6 platforms: darwin/linux/windows x amd64/aarch64
+ * Supports 6 platforms: darwin/linux/windows x amd64/arm64
  */
 
 import {
@@ -64,9 +64,7 @@ export const CLIPROXY_FAULTY_RANGE = { min: '6.6.81-0', max: '6.6.88-0' };
 /** @deprecated Use CLIPROXY_FALLBACK_VERSION instead */
 export const CLIPROXY_VERSION = CLIPROXY_FALLBACK_VERSION;
 
-/**
- * Platform mapping from Node.js values to CLIProxyAPI naming
- */
+/** Platform mapping from Node.js values to CCS public architecture labels. */
 const OS_MAP: Record<string, SupportedOS | undefined> = {
   darwin: 'darwin',
   linux: 'linux',
@@ -75,11 +73,19 @@ const OS_MAP: Record<string, SupportedOS | undefined> = {
 
 const ARCH_MAP: Record<string, SupportedArch | undefined> = {
   x64: 'amd64',
+  arm64: 'arm64',
+};
+
+/** CLIProxy release assets use aarch64 while Node.js reports arm64. */
+const RELEASE_ARCH_MAP: Record<SupportedArch, SupportedArch> = {
+  amd64: 'amd64',
   arm64: 'aarch64',
+  aarch64: 'aarch64',
 };
 
 export function mapNodeArchToReleaseArch(nodeArch: string): SupportedArch | undefined {
-  return ARCH_MAP[nodeArch];
+  const arch = ARCH_MAP[nodeArch];
+  return arch ? RELEASE_ARCH_MAP[arch] : undefined;
 }
 
 /**
@@ -96,7 +102,8 @@ export function detectPlatform(
   const nodeArch = process.arch;
 
   const os = OS_MAP[nodePlatform];
-  const arch = mapNodeArchToReleaseArch(nodeArch);
+  const arch = ARCH_MAP[nodeArch];
+  const releaseArch = mapNodeArchToReleaseArch(nodeArch);
 
   if (!os) {
     throw new Error(
@@ -105,7 +112,7 @@ export function detectPlatform(
     );
   }
 
-  if (!arch) {
+  if (!arch || !releaseArch) {
     throw new Error(
       `Unsupported CPU architecture: ${nodeArch}\n` + `Supported: x64 (amd64), arm64 (aarch64)`
     );
@@ -114,7 +121,7 @@ export function detectPlatform(
   const config = BACKEND_CONFIG[backend];
   const ver = version || config.fallbackVersion;
   const extension: ArchiveExtension = os === 'windows' ? 'zip' : 'tar.gz';
-  const binaryName = `${config.binaryPrefix}_${ver}_${os}_${arch}.${extension}`;
+  const binaryName = `${config.binaryPrefix}_${ver}_${os}_${releaseArch}.${extension}`;
 
   return {
     os,
@@ -206,7 +213,8 @@ export function getPlatformDescription(): string {
     const platform = detectPlatform();
     const osName =
       platform.os === 'darwin' ? 'macOS' : platform.os === 'linux' ? 'Linux' : 'Windows';
-    const archName = platform.arch === 'aarch64' ? 'ARM64' : platform.arch;
+    const archName =
+      platform.arch === 'arm64' || platform.arch === 'aarch64' ? 'ARM64' : platform.arch;
     return `${osName} ${archName}`;
   } catch {
     return `${process.platform} ${process.arch} (unsupported)`;
