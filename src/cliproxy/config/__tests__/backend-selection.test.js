@@ -34,6 +34,11 @@ describe('Backend Selection', () => {
   });
 
   describe('detectPlatform', () => {
+    it('maps Node arm64 to CLIProxy aarch64 release assets', () => {
+      assert.strictEqual(platformDetector.mapNodeArchToReleaseArch('arm64'), 'aarch64');
+      assert.strictEqual(platformDetector.mapNodeArchToReleaseArch('x64'), 'amd64');
+    });
+
     it('generates correct binary name for original backend', () => {
       const info = platformDetector.detectPlatform('6.6.51', 'original');
       assert(info.binaryName.startsWith('CLIProxyAPI_6.6.51_'));

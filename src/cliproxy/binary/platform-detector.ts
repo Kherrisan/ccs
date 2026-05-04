@@ -2,7 +2,7 @@
  * Platform Detector for CLIProxyAPI Binary Downloads
  *
  * Detects OS and architecture to determine correct binary asset.
- * Supports 6 platforms: darwin/linux/windows x amd64/arm64
+ * Supports 6 platforms: darwin/linux/windows x amd64/aarch64
  */
 
 import {
@@ -75,8 +75,12 @@ const OS_MAP: Record<string, SupportedOS | undefined> = {
 
 const ARCH_MAP: Record<string, SupportedArch | undefined> = {
   x64: 'amd64',
-  arm64: 'arm64',
+  arm64: 'aarch64',
 };
+
+export function mapNodeArchToReleaseArch(nodeArch: string): SupportedArch | undefined {
+  return ARCH_MAP[nodeArch];
+}
 
 /**
  * Detect current platform and return binary info
@@ -92,7 +96,7 @@ export function detectPlatform(
   const nodeArch = process.arch;
 
   const os = OS_MAP[nodePlatform];
-  const arch = ARCH_MAP[nodeArch];
+  const arch = mapNodeArchToReleaseArch(nodeArch);
 
   if (!os) {
     throw new Error(
@@ -103,7 +107,7 @@ export function detectPlatform(
 
   if (!arch) {
     throw new Error(
-      `Unsupported CPU architecture: ${nodeArch}\n` + `Supported: x64 (amd64), arm64`
+      `Unsupported CPU architecture: ${nodeArch}\n` + `Supported: x64 (amd64), arm64 (aarch64)`
     );
   }
 
@@ -195,14 +199,15 @@ export function isPlatformSupported(): boolean {
 
 /**
  * Get human-readable platform description
- * @returns Description string (e.g., "macOS arm64")
+ * @returns Description string (e.g., "macOS ARM64")
  */
 export function getPlatformDescription(): string {
   try {
     const platform = detectPlatform();
     const osName =
       platform.os === 'darwin' ? 'macOS' : platform.os === 'linux' ? 'Linux' : 'Windows';
-    return `${osName} ${platform.arch}`;
+    const archName = platform.arch === 'aarch64' ? 'ARM64' : platform.arch;
+    return `${osName} ${archName}`;
   } catch {
     return `${process.platform} ${process.arch} (unsupported)`;
   }
