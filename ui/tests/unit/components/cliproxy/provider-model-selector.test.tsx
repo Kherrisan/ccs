@@ -70,6 +70,24 @@ describe('FlexibleModelSelector', () => {
     expect(screen.queryByText(/All Models \(/i)).not.toBeInTheDocument();
   });
 
+  it('surfaces Claude Opus 4.7 in the curated Claude picker', async () => {
+    render(
+      <FlexibleModelSelector
+        label="Primary model"
+        value={undefined}
+        onChange={vi.fn()}
+        catalog={MODEL_CATALOGS.claude}
+        allModels={[]}
+      />
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: /select model/i }));
+
+    expect(screen.getByRole('option', { name: /claude-opus-4-7/i })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /claude-opus-4-6/i })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /claude-sonnet-4-6/i })).toBeInTheDocument();
+  });
+
   it('preserves a filtered legacy value under the current-value fallback group', async () => {
     render(
       <FlexibleModelSelector
