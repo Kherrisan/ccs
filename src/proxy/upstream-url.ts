@@ -9,12 +9,22 @@ function ensureSupportedProtocol(parsed: URL): void {
   }
 }
 
+function isOpenRouterHost(hostname: string): boolean {
+  const normalized = hostname.toLowerCase();
+  return normalized === 'openrouter.ai' || normalized.endsWith('.openrouter.ai');
+}
+
 function buildResolvedUrl(baseUrl: string, suffix: string): string {
   const parsed = new URL(baseUrl);
   ensureSupportedProtocol(parsed);
 
   const pathname = normalizePathname(parsed.pathname);
   if (pathname.endsWith(suffix)) {
+    return parsed.toString();
+  }
+
+  if (isOpenRouterHost(parsed.hostname) && pathname.endsWith('/api')) {
+    parsed.pathname = `${pathname}/v1${suffix}`;
     return parsed.toString();
   }
 

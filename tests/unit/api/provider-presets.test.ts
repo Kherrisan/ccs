@@ -92,6 +92,11 @@ describe('provider-presets', () => {
     expect(isValidPresetId('hf')).toBe(true);
   });
 
+  it('uses OpenRouter v1 as the OpenAI-compatible API root', () => {
+    const preset = getPresetById('openrouter');
+    expect(preset?.baseUrl).toBe('https://openrouter.ai/api/v1');
+  });
+
   it('keeps Anthropic direct last in the recommended preset order and reuses the Claude logo', () => {
     const recommendedPresetIds = PROVIDER_PRESETS.filter(
       (preset) => preset.category === 'recommended'

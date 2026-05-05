@@ -49,7 +49,7 @@ export interface ProviderPresetDefinition {
   icon?: string;
 }
 
-export const OPENROUTER_BASE_URL = 'https://openrouter.ai/api';
+export const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
 
 /**
  * Legacy aliases mapped to canonical preset IDs.
