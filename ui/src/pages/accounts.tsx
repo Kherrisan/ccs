@@ -7,6 +7,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AlertTriangle, ArrowRight, Plus, Users, Zap } from 'lucide-react';
 import { AccountsTable } from '@/components/account/accounts-table';
+import { AccountRouteGuideCard } from '@/components/account/account-route-guide-card';
 import { ContinuityOverview } from '@/components/account/continuity-overview';
 import { CreateAuthProfileDialog } from '@/components/account/create-auth-profile-dialog';
 import { CopyButton } from '@/components/ui/copy-button';
@@ -151,10 +152,11 @@ export function AccountsPage() {
                 <CardContent className="space-y-2">
                   <div className="rounded-md border bg-background px-2 py-2 font-mono text-[11px] flex items-start gap-2">
                     <span className="flex-1 break-all">
-                      ccs auth create work --context-group sprint-a --deeper-continuity
+                      ccs auth create work --share-context --context-group sprint-a
+                      --deeper-continuity
                     </span>
                     <CopyButton
-                      value="ccs auth create work --context-group sprint-a --deeper-continuity"
+                      value="ccs auth create work --share-context --context-group sprint-a --deeper-continuity"
                       size="icon"
                     />
                   </div>
@@ -203,6 +205,13 @@ export function AccountsPage() {
               legacyTargetCount={legacyTargetCount}
               cliproxyCount={cliproxyCount}
               plainCcsLane={plainCcsLane}
+            />
+
+            <AccountRouteGuideCard
+              totalAccounts={authAccounts.length}
+              isolatedCount={isolatedCount}
+              sharedPeerGroups={sharedPeerGroups}
+              deeperReadyGroups={deeperReadyGroups}
             />
 
             <Card className="flex flex-col">
@@ -281,6 +290,13 @@ export function AccountsPage() {
           legacyTargetCount={legacyTargetCount}
           cliproxyCount={cliproxyCount}
           plainCcsLane={plainCcsLane}
+        />
+
+        <AccountRouteGuideCard
+          totalAccounts={authAccounts.length}
+          isolatedCount={isolatedCount}
+          sharedPeerGroups={sharedPeerGroups}
+          deeperReadyGroups={deeperReadyGroups}
         />
 
         <Card>
