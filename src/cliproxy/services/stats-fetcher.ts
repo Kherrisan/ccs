@@ -13,6 +13,22 @@ import {
   buildManagementHeaders,
 } from '../proxy/proxy-target-resolver';
 import { buildCliproxyStatsFromUsageResponse } from './stats-transformer';
+import { buildUsageResponseFromCliproxyMainLog } from './oauth-usage-log-transformer';
+import {
+  buildUsageResponseFromApiKeyUsage,
+  buildUsageResponseFromQueueRecords,
+  hasUsageDetails,
+  hasUsageTotals,
+  mergeUsageResponseWithMissingDetails,
+  mergeUsageResponses,
+} from './usage-compatibility-transformer';
+
+interface ManagementJsonResult<T> {
+  ok: boolean;
+  status: number;
+  data: T | null;
+  cacheKey: string;
+}
 
 /** Per-account usage statistics */
 export interface AccountUsageStats {
@@ -65,6 +81,7 @@ export interface CliproxyRequestDetail {
   timestamp: string;
   source: string;
   auth_index: string | number;
+  request_id?: string;
   tokens: {
     input_tokens: number;
     output_tokens: number;
@@ -112,6 +129,11 @@ export interface CliproxyManagementAuthFile {
   name?: string;
 }
 
+const cachedUsageQueueResponses = new Map<string, CliproxyUsageApiResponse>();
+const USAGE_QUEUE_BATCH_SIZE = 1000;
+const USAGE_QUEUE_MAX_BATCHES = 100;
+const USAGE_QUEUE_DRAIN_TIMEOUT_MS = 30_000;
+
 /**
  * Fetch usage statistics from CLIProxyAPI management API
  * @param port CLIProxyAPI port (default: 8317)
@@ -142,15 +164,159 @@ export async function fetchCliproxyStats(port?: number): Promise<CliproxyStats |
 export async function fetchCliproxyUsageRaw(
   port?: number
 ): Promise<CliproxyUsageApiResponse | null> {
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
+  let localLogUsage: CliproxyUsageApiResponse | null | undefined;
+  const getLocalLogUsage = (): CliproxyUsageApiResponse | null => {
+    if (localLogUsage !== undefined) {
+      return localLogUsage;
+    }
 
+    localLogUsage = getProxyTarget().isRemote ? null : buildUsageResponseFromCliproxyMainLog();
+    return localLogUsage;
+  };
+
+  const mergeLocalLogUsage = (response: CliproxyUsageApiResponse): CliproxyUsageApiResponse =>
+    mergeUsageResponseWithMissingDetails(response, getLocalLogUsage());
+  const mergeAggregateWithDetails = (
+    aggregate: CliproxyUsageApiResponse,
+    details: CliproxyUsageApiResponse
+  ): CliproxyUsageApiResponse =>
+    mergeUsageResponseWithMissingDetails(aggregate, details, { appendExtraDetails: false });
+
+  let legacyAggregateUsage: CliproxyUsageApiResponse | null = null;
+  const legacyUsage = await fetchManagementJson<CliproxyUsageApiResponse>(
+    '/v0/management/usage',
+    port
+  );
+  if (legacyUsage?.ok && legacyUsage.data) {
+    if (hasUsageDetails(legacyUsage.data)) {
+      return mergeLocalLogUsage(legacyUsage.data);
+    }
+    legacyAggregateUsage = legacyUsage.data;
+  }
+
+  let cachedUsageQueueResponse: CliproxyUsageApiResponse | undefined;
+  const usageQueue = await fetchUsageQueueRecords(port);
+  if (usageQueue?.cacheKey) {
+    cachedUsageQueueResponse = cachedUsageQueueResponses.get(usageQueue.cacheKey);
+  }
+
+  if (usageQueue && Array.isArray(usageQueue.data)) {
+    const queueResponse = buildUsageResponseFromQueueRecords(usageQueue.data);
+    if (hasUsageDetails(queueResponse)) {
+      const mergedUsageQueueResponse = cachedUsageQueueResponse
+        ? mergeUsageResponses(cachedUsageQueueResponse, queueResponse)
+        : queueResponse;
+      cachedUsageQueueResponses.set(usageQueue.cacheKey, mergedUsageQueueResponse);
+      cachedUsageQueueResponse = mergedUsageQueueResponse;
+      if (usageQueue.ok) {
+        const response = legacyAggregateUsage
+          ? mergeAggregateWithDetails(legacyAggregateUsage, mergedUsageQueueResponse)
+          : mergedUsageQueueResponse;
+        return mergeLocalLogUsage(response);
+      }
+    }
+  }
+
+  if (legacyAggregateUsage) {
+    const response = cachedUsageQueueResponse
+      ? mergeAggregateWithDetails(legacyAggregateUsage, cachedUsageQueueResponse)
+      : legacyAggregateUsage;
+    return mergeLocalLogUsage(response);
+  }
+
+  const apiKeyUsage = await fetchManagementJson<unknown>('/v0/management/api-key-usage', port);
+  if (apiKeyUsage?.ok && apiKeyUsage.data) {
+    const apiKeyResponseWithCachedDetails = cachedUsageQueueResponse
+      ? mergeAggregateWithDetails(
+          buildUsageResponseFromApiKeyUsage(apiKeyUsage.data),
+          cachedUsageQueueResponse
+        )
+      : buildUsageResponseFromApiKeyUsage(apiKeyUsage.data);
+    const apiKeyResponse = mergeLocalLogUsage(apiKeyResponseWithCachedDetails);
+    if (hasUsageTotals(apiKeyResponse)) {
+      return apiKeyResponse;
+    }
+  }
+
+  if (cachedUsageQueueResponse) {
+    return mergeLocalLogUsage(cachedUsageQueueResponse);
+  }
+
+  const logUsage = getLocalLogUsage();
+  if (logUsage && hasUsageDetails(logUsage)) {
+    return logUsage;
+  }
+
+  if (usageQueue?.ok) {
+    return buildUsageResponseFromQueueRecords([]);
+  }
+
+  return null;
+}
+
+async function fetchUsageQueueRecords(
+  port?: number
+): Promise<ManagementJsonResult<unknown[]> | null> {
+  const records: unknown[] = [];
+  const seenFullBatchSignatures = new Set<string>();
+  let cacheKey = '';
+  let status = 0;
+  const drainStartedAt = Date.now();
+
+  for (let batchCount = 0; batchCount < USAGE_QUEUE_MAX_BATCHES; batchCount++) {
+    const result = await fetchManagementJson<unknown[]>(
+      `/v0/management/usage-queue?count=${USAGE_QUEUE_BATCH_SIZE}`,
+      port
+    );
+    if (!result) {
+      return records.length > 0 ? { ok: false, status, data: records, cacheKey } : null;
+    }
+
+    cacheKey ||= result.cacheKey;
+    status = result.status;
+    if (!result.ok || !Array.isArray(result.data)) {
+      return records.length > 0 ? { ok: false, status, data: records, cacheKey } : result;
+    }
+
+    if (result.data.length === USAGE_QUEUE_BATCH_SIZE) {
+      const batchSignature = createUsageQueueBatchSignature(result.data);
+      if (seenFullBatchSignatures.has(batchSignature)) {
+        return { ok: false, status, data: records, cacheKey };
+      }
+      seenFullBatchSignatures.add(batchSignature);
+    }
+
+    records.push(...result.data);
+    if (result.data.length < USAGE_QUEUE_BATCH_SIZE) {
+      return { ok: true, status, data: records, cacheKey };
+    }
+
+    if (Date.now() - drainStartedAt >= USAGE_QUEUE_DRAIN_TIMEOUT_MS) {
+      return { ok: false, status, data: records, cacheKey };
+    }
+  }
+
+  return { ok: false, status, data: records, cacheKey };
+}
+
+function createUsageQueueBatchSignature(records: unknown[]): string {
+  return JSON.stringify(records);
+}
+
+async function fetchManagementJson<T>(
+  endpointPath: string,
+  port?: number,
+  timeoutMs = 5000
+): Promise<ManagementJsonResult<T> | null> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
     const target = getProxyTarget();
     if (port !== undefined && !target.isRemote) {
       target.port = port;
     }
-    const url = buildProxyUrl(target, '/v0/management/usage');
+    const url = buildProxyUrl(target, endpointPath);
 
     const headers = target.isRemote
       ? buildManagementHeaders(target)
@@ -161,50 +327,45 @@ export async function fetchCliproxyUsageRaw(
       headers,
     });
 
-    clearTimeout(timeoutId);
-
     if (!response.ok) {
-      return null;
+      return { ok: false, status: response.status, data: null, cacheKey: url };
     }
 
-    return (await response.json()) as CliproxyUsageApiResponse;
+    return {
+      ok: true,
+      status: response.status,
+      data: (await response.json()) as T,
+      cacheKey: url,
+    };
   } catch {
     return null;
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 
 async function fetchCliproxyAuthFiles(port?: number): Promise<CliproxyManagementAuthFile[] | null> {
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
-
-    const target = getProxyTarget();
-    if (port !== undefined && !target.isRemote) {
-      target.port = port;
-    }
-    const url = buildProxyUrl(target, '/v0/management/auth-files');
-
-    const headers = target.isRemote
-      ? buildManagementHeaders(target)
-      : { Accept: 'application/json', Authorization: `Bearer ${getEffectiveManagementSecret()}` };
-
-    const response = await fetch(url, {
-      signal: controller.signal,
-      headers,
-    });
-
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
+    const result = await fetchManagementJson<{ files?: CliproxyManagementAuthFile[] }>(
+      '/v0/management/auth-files',
+      port
+    );
+    if (!result?.ok || !result.data) {
       return null;
     }
 
-    const data = (await response.json()) as { files?: CliproxyManagementAuthFile[] };
+    const data = result.data;
     return Array.isArray(data.files) ? data.files : null;
   } catch {
     return null;
   }
 }
+
+export const __testExports = {
+  clearCachedUsageQueueResponse(): void {
+    cachedUsageQueueResponses.clear();
+  },
+};
 
 /** OpenAI-compatible model object from /v1/models endpoint */
 export interface CliproxyModel {

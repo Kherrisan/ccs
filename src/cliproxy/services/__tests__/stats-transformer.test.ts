@@ -334,4 +334,211 @@ describe('buildCliproxyStatsFromUsageResponse', () => {
       failureCount: 1,
     });
   });
+
+  it('normalizes OAuth auth filenames before building account stats keys', () => {
+    const usage: CliproxyUsageApiResponse = {
+      usage: {
+        total_requests: 1,
+        apis: {
+          codex: {
+            total_requests: 1,
+            models: {
+              'gpt-5.5': {
+                total_requests: 1,
+                details: [
+                  createDetail({
+                    source: 'provider=codex auth_file=codex-user@example.com-pro.json',
+                    auth_index: 'codex-user@example.com-pro.json',
+                  }),
+                ],
+              },
+            },
+          },
+        },
+      },
+    };
+
+    const stats = buildCliproxyStatsFromUsageResponse(usage);
+
+    expect(stats.accountStats['codex:user@example.com']).toMatchObject({
+      provider: 'codex',
+      source: 'user@example.com',
+      successCount: 1,
+      failureCount: 0,
+    });
+  });
+
+  it('normalizes OAuth-prefixed auth filename sources before building account stats keys', () => {
+    const usage: CliproxyUsageApiResponse = {
+      usage: {
+        total_requests: 2,
+        apis: {
+          codex: {
+            total_requests: 2,
+            models: {
+              'gpt-5.5': {
+                total_requests: 2,
+                details: [
+                  createDetail({
+                    source: 'oauth|codex-user@example.com-pro.json',
+                    auth_index: 'oauth|codex-user@example.com-pro.json',
+                  }),
+                  createDetail({
+                    source: 'provider=codex auth_file=oauth|codex-user@example.com-pro.json',
+                    auth_index: 'oauth|codex-user@example.com-pro.json',
+                    timestamp: '2025-03-26T10:01:00.000Z',
+                  }),
+                ],
+              },
+            },
+          },
+        },
+      },
+    };
+
+    const stats = buildCliproxyStatsFromUsageResponse(usage);
+
+    expect(stats.accountStats['codex:user@example.com']).toMatchObject({
+      provider: 'codex',
+      source: 'user@example.com',
+      successCount: 2,
+      failureCount: 0,
+    });
+    expect(stats.accountStats['codex:oauth|codex-user@example.com']).toBeUndefined();
+  });
+
+  it('uses detail-derived success and failure counts when aggregate counters are stale', () => {
+    const usage: CliproxyUsageApiResponse = {
+      failed_requests: 0,
+      usage: {
+        total_requests: 2,
+        success_count: 0,
+        failure_count: 0,
+        apis: {
+          codex: {
+            total_requests: 2,
+            models: {
+              'gpt-5.5': {
+                total_requests: 2,
+                details: [
+                  createDetail({
+                    source: 'provider=codex auth_file=codex-user@example.com-pro.json',
+                    auth_index: 'codex-user@example.com-pro.json',
+                  }),
+                  createDetail({
+                    source: 'provider=codex auth_file=codex-user@example.com-pro.json',
+                    auth_index: 'codex-user@example.com-pro.json',
+                    timestamp: '2025-03-26T10:01:00.000Z',
+                    failed: true,
+                  }),
+                ],
+              },
+            },
+          },
+        },
+      },
+    };
+
+    const stats = buildCliproxyStatsFromUsageResponse(usage);
+
+    expect(stats.successCount).toBe(1);
+    expect(stats.failureCount).toBe(1);
+    expect(stats.quotaExceededCount).toBe(1);
+    expect(stats.accountStats['codex:user@example.com']).toMatchObject({
+      successCount: 1,
+      failureCount: 1,
+    });
+  });
+
+  it('uses detail-derived totals and latest timestamps when aggregate request counts are stale', () => {
+    const usage: CliproxyUsageApiResponse = {
+      failed_requests: 0,
+      usage: {
+        total_requests: 0,
+        success_count: 0,
+        failure_count: 0,
+        apis: {
+          codex: {
+            total_requests: 0,
+            models: {
+              'gpt-5.5': {
+                total_requests: 0,
+                details: [
+                  createDetail({
+                    timestamp: '2025-03-26T10:02:00.000Z',
+                    source: 'provider=codex auth_file=codex-user@example.com-pro.json',
+                    auth_index: 'codex-user@example.com-pro.json',
+                    failed: true,
+                  }),
+                  createDetail({
+                    timestamp: '2025-03-26T10:01:00.000Z',
+                    source: 'provider=codex auth_file=codex-user@example.com-pro.json',
+                    auth_index: 'codex-user@example.com-pro.json',
+                  }),
+                ],
+              },
+            },
+          },
+        },
+      },
+    };
+
+    const stats = buildCliproxyStatsFromUsageResponse(usage);
+
+    expect(stats.totalRequests).toBe(2);
+    expect(stats.requestsByModel['gpt-5.5']).toBe(2);
+    expect(stats.requestsByProvider.codex).toBe(2);
+    expect(stats.successCount).toBe(1);
+    expect(stats.failureCount).toBe(1);
+    expect(stats.accountStats['codex:user@example.com']).toMatchObject({
+      successCount: 1,
+      failureCount: 1,
+      lastUsedAt: '2025-03-26T10:02:00.000Z',
+    });
+  });
+
+  it('does not strip plan-like suffixes from raw account identifiers', () => {
+    const usage: CliproxyUsageApiResponse = {
+      usage: {
+        total_requests: 2,
+        apis: {
+          codex: {
+            total_requests: 2,
+            models: {
+              'gpt-5.5': {
+                total_requests: 2,
+                details: [
+                  createDetail({
+                    source: 'provider=codex auth_file=codex-user-free@example.com.json',
+                    auth_index: 'codex-user-free@example.com.json',
+                  }),
+                  createDetail({
+                    source: 'codex-user@example.com-pro',
+                    auth_index: 'codex-user@example.com-pro',
+                    timestamp: '2025-03-26T10:01:00.000Z',
+                  }),
+                ],
+              },
+            },
+          },
+        },
+      },
+    };
+
+    const stats = buildCliproxyStatsFromUsageResponse(usage);
+
+    expect(stats.accountStats['codex:user-free@example.com']).toMatchObject({
+      provider: 'codex',
+      source: 'user-free@example.com',
+      successCount: 1,
+      failureCount: 0,
+    });
+    expect(stats.accountStats['codex:user@example.com-pro']).toMatchObject({
+      provider: 'codex',
+      source: 'user@example.com-pro',
+      successCount: 1,
+      failureCount: 0,
+    });
+    expect(stats.accountStats['codex:user@example.com']).toBeUndefined();
+  });
 });
