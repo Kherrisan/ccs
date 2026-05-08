@@ -10,6 +10,7 @@ import {
   resolveRuntimePlainCcsResumeLane,
 } from '../resume-lane-diagnostics';
 import { isAccountContextMetadata, resolveAccountContextPolicy } from '../account-context';
+import { isProfileLocalSharedResourceMode } from '../shared-resource-policy';
 import { CommandContext, parseArgs } from './types';
 
 interface BackupManifest {
@@ -69,7 +70,7 @@ export async function handleBackup(ctx: CommandContext, args: string[]): Promise
         isAccountContextMetadata(profile) ? profile : undefined
       );
       sourceConfigDir = await ctx.instanceMgr.ensureInstance(profileName, contextPolicy, {
-        bare: profile.bare === true,
+        bare: isProfileLocalSharedResourceMode(profile),
       });
       artifactNames = getContinuityArtifactNames('account');
     }

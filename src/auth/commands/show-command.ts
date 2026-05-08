@@ -10,6 +10,7 @@ import { initUI, header, color, fail, table } from '../../utils/ui';
 import { resolveAccountContextPolicy, formatAccountContextPolicy } from '../account-context';
 import { describeSettingsSync, summarizeAccountHistory } from '../account-profile-diagnostics';
 import { resolveConfiguredPlainCcsResumeLane } from '../resume-lane-diagnostics';
+import { resolveSharedResourcePolicy } from '../shared-resource-policy';
 import { exitWithError } from '../../errors';
 import { ExitCode } from '../../errors/exit-codes';
 import { CommandContext, ProfileOutput, parseArgs } from './types';
@@ -45,7 +46,8 @@ export async function handleShow(ctx: CommandContext, args: string[]): Promise<v
     const isDefault = profileName === defaultProfile;
     const instancePath = ctx.instanceMgr.getInstancePath(profileName);
     const contextPolicy = resolveAccountContextPolicy(profile);
-    const settingsSync = describeSettingsSync(instancePath, { bare: profile.bare === true });
+    const resourcePolicy = resolveSharedResourcePolicy(profile);
+    const settingsSync = describeSettingsSync(instancePath, { bare: resourcePolicy.profileLocal });
     const historySummary = summarizeAccountHistory(instancePath, contextPolicy);
     const plainCcsLane = await resolveConfiguredPlainCcsResumeLane().catch(() => null);
     const plainCcsUsesThisAccount =
@@ -74,6 +76,8 @@ export async function handleShow(ctx: CommandContext, args: string[]): Promise<v
         context_mode: contextPolicy.mode,
         context_group: contextPolicy.group || null,
         continuity_mode: contextPolicy.mode === 'shared' ? contextPolicy.continuityMode : null,
+        shared_resource_mode: resourcePolicy.mode,
+        shared_resource_inferred: resourcePolicy.inferred,
         instance_path: instancePath,
         session_count: sessionCount,
         settings_sync: {
@@ -94,7 +98,7 @@ export async function handleShow(ctx: CommandContext, args: string[]): Promise<v
               },
             }
           : {}),
-        ...(profile.bare ? { bare: true } : {}),
+        ...(resourcePolicy.profileLocal ? { bare: true } : {}),
       };
       console.log(JSON.stringify(output, null, 2));
       return;
@@ -112,6 +116,7 @@ export async function handleShow(ctx: CommandContext, args: string[]): Promise<v
       ['Created', new Date(profile.created).toLocaleString()],
       ['Last Used', profile.last_used ? new Date(profile.last_used).toLocaleString() : 'Never'],
       ['Context', formatAccountContextPolicy(contextPolicy)],
+      ['Resources', resourcePolicy.mode],
       ['Credentials', 'isolated per account'],
       ['Settings', settingsSync.description],
       ['History', formatHistorySummary(historySummary)],
@@ -125,7 +130,7 @@ export async function handleShow(ctx: CommandContext, args: string[]): Promise<v
             ],
           ]
         : []),
-      ...(profile.bare ? [['Bare', 'yes (no shared symlinks)']] : []),
+      ...(resourcePolicy.profileLocal ? [['Bare', 'yes (no shared symlinks)']] : []),
       ['Sessions', `${sessionCount}`],
     ];
 

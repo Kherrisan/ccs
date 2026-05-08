@@ -23,6 +23,7 @@ export interface AuthCommandArgs {
   contextGroup?: string;
   deeperContinuity?: boolean;
   bare?: boolean;
+  mode?: string;
   unknownFlags?: string[];
 }
 
@@ -38,6 +39,8 @@ export interface ProfileOutput {
   context_mode?: 'isolated' | 'shared';
   context_group?: string | null;
   continuity_mode?: 'standard' | 'deeper' | null;
+  shared_resource_mode?: 'shared' | 'profile-local';
+  shared_resource_inferred?: boolean;
   instance_path?: string;
   session_count?: number;
   settings_sync?: {
@@ -86,6 +89,7 @@ export interface CommandContext {
 export function parseArgs(args: string[]): AuthCommandArgs {
   let profileName: string | undefined;
   let contextGroup: string | undefined;
+  let mode: string | undefined;
   const unknownFlags = new Set<string>();
   const knownBooleanFlags = new Set([
     '--force',
@@ -97,7 +101,7 @@ export function parseArgs(args: string[]): AuthCommandArgs {
     '--deeper-continuity',
     '--bare',
   ]);
-  const knownValueFlags = new Set(['--context-group']);
+  const knownValueFlags = new Set(['--context-group', '--mode']);
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -114,8 +118,25 @@ export function parseArgs(args: string[]): AuthCommandArgs {
       continue;
     }
 
+    if (arg === '--mode') {
+      const next = args[i + 1];
+      if (!next || next.startsWith('-')) {
+        mode = '';
+        continue;
+      }
+
+      mode = next;
+      i++;
+      continue;
+    }
+
     if (arg.startsWith('--context-group=')) {
       contextGroup = arg.slice('--context-group='.length);
+      continue;
+    }
+
+    if (arg.startsWith('--mode=')) {
+      mode = arg.slice('--mode='.length);
       continue;
     }
 
@@ -149,6 +170,7 @@ export function parseArgs(args: string[]): AuthCommandArgs {
     shareContext: args.includes('--share-context'),
     deeperContinuity: args.includes('--deeper-continuity'),
     bare: args.includes('--bare'),
+    mode,
     contextGroup,
     unknownFlags: [...unknownFlags],
   };

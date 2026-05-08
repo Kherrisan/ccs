@@ -45,13 +45,14 @@ export async function handleSyncCommand(): Promise<void> {
   const { InstanceManager } = await import('../management/instance-manager');
   const instanceMgr = new InstanceManager();
   const ProfileRegistry = (await import('../auth/profile-registry')).default;
+  const { isProfileLocalSharedResourceMode } = await import('../auth/shared-resource-policy');
   const registry = new ProfileRegistry();
   const allProfiles = registry.getAllProfilesMerged();
   let mcpSynced = 0;
 
   for (const [name, profile] of Object.entries(allProfiles)) {
-    if (profile.bare) {
-      continue; // Skip bare profiles
+    if (isProfileLocalSharedResourceMode(profile)) {
+      continue; // Skip profile-local shared-resource profiles
     }
 
     if (!instanceMgr.hasInstance(name)) {

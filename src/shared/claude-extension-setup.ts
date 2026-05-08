@@ -2,6 +2,7 @@ import { loadSettingsFromFile, type ProfileType } from '../auth/profile-detector
 import ProfileDetector from '../auth/profile-detector';
 import { resolveProfileContinuityInheritance } from '../auth/profile-continuity-inheritance';
 import { resolveAccountContextPolicy, isAccountContextMetadata } from '../auth/account-context';
+import { isProfileLocalSharedResourceMode } from '../auth/shared-resource-policy';
 import type { ProfileDetectionResult } from '../auth/profile-detector';
 import {
   getEffectiveEnvVars,
@@ -158,8 +159,12 @@ async function resolveExtensionEnv(
     const policy = resolveAccountContextPolicy(
       isAccountContextMetadata(result.profile) ? result.profile : undefined
     );
+    const sharedResourceMetadata =
+      typeof result.profile === 'object' && result.profile !== null
+        ? (result.profile as { shared_resource_mode?: unknown; bare?: unknown })
+        : undefined;
     const instancePath = await instanceManager.ensureInstance(result.name, policy, {
-      bare: result.profile?.bare === true,
+      bare: isProfileLocalSharedResourceMode(sharedResourceMetadata),
     });
     notes.push('Account profiles authenticate through the isolated Claude config directory.');
     return {

@@ -12,6 +12,7 @@ import {
   loadOrCreateUnifiedConfig,
   mutateConfig,
 } from '../config/config-loader-facade';
+import { normalizeSharedResourceMetadata, type SharedResourceMode } from './shared-resource-policy';
 
 const logger = createLogger('auth:profile-registry');
 
@@ -50,6 +51,7 @@ interface CreateMetadata {
   context_mode?: 'isolated' | 'shared';
   context_group?: string;
   continuity_mode?: 'standard' | 'deeper';
+  shared_resource_mode?: SharedResourceMode;
   bare?: boolean;
 }
 
@@ -90,7 +92,7 @@ export class ProfileRegistry {
       normalized.continuity_mode = normalized.continuity_mode === 'deeper' ? 'deeper' : 'standard';
     }
 
-    return normalized;
+    return normalizeSharedResourceMetadata(normalized);
   }
 
   private normalizeUnifiedAccountConfig(account: AccountConfig): AccountConfig {
@@ -110,7 +112,7 @@ export class ProfileRegistry {
       normalized.continuity_mode = normalized.continuity_mode === 'deeper' ? 'deeper' : 'standard';
     }
 
-    return normalized;
+    return normalizeSharedResourceMetadata(normalized);
   }
 
   /**
@@ -179,6 +181,7 @@ export class ProfileRegistry {
       context_mode: metadata.context_mode,
       context_group: metadata.context_group,
       continuity_mode: metadata.continuity_mode,
+      shared_resource_mode: metadata.shared_resource_mode,
       bare: metadata.bare,
     });
 
@@ -335,6 +338,7 @@ export class ProfileRegistry {
         context_mode: metadata.context_mode,
         context_group: metadata.context_group,
         continuity_mode: metadata.continuity_mode,
+        shared_resource_mode: metadata.shared_resource_mode,
         bare: metadata.bare,
       });
     });
@@ -462,6 +466,7 @@ export class ProfileRegistry {
         context_mode: account.context_mode,
         context_group: account.context_group,
         continuity_mode: account.continuity_mode,
+        shared_resource_mode: account.shared_resource_mode,
         bare: account.bare,
       };
     }

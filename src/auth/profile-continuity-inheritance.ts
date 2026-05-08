@@ -4,6 +4,7 @@ import { warn } from '../utils/ui';
 import InstanceManager from '../management/instance-manager';
 import ProfileRegistry from './profile-registry';
 import { isAccountContextMetadata, resolveAccountContextPolicy } from './account-context';
+import { isProfileLocalSharedResourceMode } from './shared-resource-policy';
 import type { ProfileType } from '../types/profile';
 import { getProfileLookupCandidates, resolveAliasToCanonical } from '../utils/profile-compat';
 import {
@@ -155,7 +156,7 @@ export async function resolveProfileContinuityInheritance(
     );
     const instanceMgr = new InstanceManager();
     const instancePath = await instanceMgr.ensureInstance(sourceAccount, contextPolicy, {
-      bare: mappedProfile.bare === true,
+      bare: isProfileLocalSharedResourceMode(mappedProfile),
     });
 
     return {

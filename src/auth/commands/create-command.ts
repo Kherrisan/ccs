@@ -21,6 +21,10 @@ import {
   isValidAccountProfileName,
   resolveAccountContextPolicy,
 } from '../account-context';
+import {
+  isProfileLocalSharedResourceMode,
+  sharedResourceModeToMetadata,
+} from '../shared-resource-policy';
 import { exitWithError } from '../../errors';
 import { ExitCode } from '../../errors/exit-codes';
 import { CommandContext, parseArgs } from './types';
@@ -36,11 +40,20 @@ function sanitizeProfileNameForInstance(name: string): string {
  */
 export async function handleCreate(ctx: CommandContext, args: string[]): Promise<void> {
   await initUI();
-  const { profileName, force, shareContext, contextGroup, deeperContinuity, bare, unknownFlags } =
-    parseArgs(args);
+  const {
+    profileName,
+    force,
+    shareContext,
+    contextGroup,
+    deeperContinuity,
+    bare,
+    mode,
+    unknownFlags,
+  } = parseArgs(args);
 
-  if (unknownFlags && unknownFlags.length > 0) {
-    const unknownList = unknownFlags.map((flag) => `"${flag}"`).join(', ');
+  const unsupportedOptions = [...(unknownFlags ?? []), ...(mode !== undefined ? ['--mode'] : [])];
+  if (unsupportedOptions.length > 0) {
+    const unknownList = unsupportedOptions.map((flag) => `"${flag}"`).join(', ');
     console.log(fail(`Unknown option(s): ${unknownList}`));
     console.log('');
     console.log(
@@ -117,8 +130,10 @@ export async function handleCreate(ctx: CommandContext, args: string[]): Promise
     ? ctx.registry.getAllAccountsUnified()[profileName]
     : undefined;
   const previousBare =
-    previousLegacyProfile?.bare === true || previousUnifiedProfile?.bare === true;
+    isProfileLocalSharedResourceMode(previousLegacyProfile) ||
+    isProfileLocalSharedResourceMode(previousUnifiedProfile);
   const effectiveBare = bare === true || (profileExistedBeforeCreate && previousBare);
+  const resourceMetadata = effectiveBare ? sharedResourceModeToMetadata('profile-local') : {};
   const previousContextPolicy =
     profileExistedBeforeCreate && (previousUnifiedProfile || previousLegacyProfile)
       ? resolveAccountContextPolicy(previousUnifiedProfile || previousLegacyProfile)
@@ -200,13 +215,13 @@ export async function handleCreate(ctx: CommandContext, args: string[]): Promise
         ctx.registry.updateAccountUnified(profileName, {
           context_mode: contextMetadata.context_mode,
           context_group: contextMetadata.context_group,
-          ...(effectiveBare ? { bare: true } : {}),
+          ...resourceMetadata,
         });
         ctx.registry.touchAccountUnified(profileName);
       } else {
         ctx.registry.createAccountUnified(profileName, {
           ...contextMetadata,
-          ...(effectiveBare ? { bare: true } : {}),
+          ...resourceMetadata,
         });
       }
     } else {
@@ -216,14 +231,14 @@ export async function handleCreate(ctx: CommandContext, args: string[]): Promise
           type: 'account',
           context_mode: contextMetadata.context_mode,
           context_group: contextMetadata.context_group,
-          ...(effectiveBare ? { bare: true } : {}),
+          ...resourceMetadata,
         });
       } else {
         ctx.registry.createProfile(profileName, {
           type: 'account',
           context_mode: contextMetadata.context_mode,
           context_group: contextMetadata.context_group,
-          ...(effectiveBare ? { bare: true } : {}),
+          ...resourceMetadata,
         });
       }
     }
@@ -282,7 +297,7 @@ export async function handleCreate(ctx: CommandContext, args: string[]): Promise
               `Type:     account\n` +
               `Context:  ${formatAccountContextPolicy(contextPolicy)}\n` +
               `Tokens:   isolated per account\n` +
-              `Settings: ${effectiveBare ? 'profile-local (bare)' : 'shared with ~/.claude/settings.json'}` +
+              `Resources: ${effectiveBare ? 'profile-local (bare)' : 'shared with ~/.claude'}` +
               (effectiveBare ? '\nMode:     bare (no shared symlinks)' : ''),
             'Profile Created'
           )

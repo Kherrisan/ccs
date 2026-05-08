@@ -26,7 +26,7 @@ ccs personal
 
 This keeps usage and credentials isolated. Each account owns its own Claude config directory, login state, and `.anthropic` credentials.
 
-Basic Claude settings are shared for non-bare account profiles:
+Shared Resources are separate from History Sync. By default, non-bare account profiles inherit Claude-local resources from native Claude:
 
 ```text
 ~/.ccs/instances/<account>/settings.json
@@ -34,7 +34,17 @@ Basic Claude settings are shared for non-bare account profiles:
   -> ~/.claude/settings.json
 ```
 
-This is for ordinary Claude Code settings, hooks, commands, skills, agents, and plugins. It is not token sharing. `ccs auth show <account>` reports the current `Settings`, `History`, and `Plain ccs` lanes so users can see whether settings and resume history are aligned.
+This covers ordinary Claude Code `settings.json`, commands, skills, agents, and plugins. It is not token sharing. `ccs auth show <account>` reports `Resources`, `Settings`, `History`, and `Plain ccs` lanes so users can see whether shared resources and resume history are aligned.
+
+For existing accounts, change Shared Resources from the CLI:
+
+```bash
+ccs auth resources work --mode profile-local
+ccs auth resources work --mode shared
+```
+
+- `shared`: link plugins, commands, skills, agents, and `settings.json` from the shared Claude resource layout.
+- `profile-local`: detach those shared resources for the account. This is the existing `--bare` behavior exposed as an existing-account setting.
 
 Only opt in to shared history when both accounts should see the same local continuity:
 
@@ -42,7 +52,7 @@ Only opt in to shared history when both accounts should see the same local conti
 ccs auth create work2 --share-context --context-group daily --deeper-continuity
 ```
 
-For existing accounts, use Dashboard -> Accounts -> Sync on both accounts, set both to `shared`, and use the same `History Sync Group`. Use `deeper` only when users expect stronger local handoff beyond project context.
+For existing History Sync, use Dashboard -> Accounts -> Sync on both accounts, set both to `shared`, and use the same `History Sync Group`. Use `deeper` only when users expect stronger local handoff beyond project context. History Sync does not control plugins or `settings.json`; use `ccs auth resources` for that.
 
 ## Why This Is Safe Enough
 
@@ -147,10 +157,19 @@ ccs auth create backup2 --share-context --context-group sprint-a --deeper-contin
 
 ### Existing account
 
+History Sync:
+
 - Open `ccs config`
 - Go to `Accounts`
 - Click the pencil icon (`Edit History Sync`)
 - Choose `isolated` or `shared`, set group, and (optionally) choose deeper continuity
+
+Shared Resources:
+
+```bash
+ccs auth resources work --mode profile-local
+ccs auth resources work --mode shared
+```
 
 No account recreation required for this workflow.
 
@@ -172,6 +191,7 @@ ccs auth backup default
 - Shared context is local filesystem sharing. It does not bypass remote provider permission models.
 - Session continuity still depends on what the upstream tool/provider stores and allows.
 - Context sharing should only be enabled for accounts you intentionally trust to share workspace history.
+- Dashboard controls for existing-account Shared Resources are tracked separately; CLI/API support is the source of truth until that UI lands.
 
 ## Alternative: CLIProxy Claude Pool
 

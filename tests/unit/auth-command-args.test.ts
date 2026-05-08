@@ -63,6 +63,20 @@ describe('auth command args parsing', () => {
     expect(parsed.contextGroup).toBe('sprint-a');
   });
 
+  it('parses shared resource mode value for resources command', () => {
+    const parsed = parseArgs(['work', '--mode', 'profile-local']);
+
+    expect(parsed.profileName).toBe('work');
+    expect(parsed.mode).toBe('profile-local');
+  });
+
+  it('parses inline shared resource mode value', () => {
+    const parsed = parseArgs(['work', '--mode=shared']);
+
+    expect(parsed.profileName).toBe('work');
+    expect(parsed.mode).toBe('shared');
+  });
+
   it('tracks unknown flags and keeps positional profile intact', () => {
     const parsed = parseArgs(['--foo', 'bar', 'work']);
 

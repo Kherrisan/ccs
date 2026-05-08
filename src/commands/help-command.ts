@@ -54,6 +54,7 @@ async function showProfilesHelp(writeLine: HelpWriter): Promise<void> {
     'Profile Types',
     [
       { name: 'ccs auth create <name>', summary: 'Concurrent Claude account profile' },
+      { name: 'ccs auth resources <name>', summary: 'Shared resources for an account profile' },
       { name: 'ccs api create', summary: 'API-backed settings profile' },
       { name: 'ccs cliproxy create <name>', summary: 'Named CLIProxy variant profile' },
       { name: 'ccs env <profile>', summary: 'Export an existing profile for other tools' },

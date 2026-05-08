@@ -31,7 +31,7 @@ describe('sync command MCP sync behavior', () => {
     mock.restore();
   });
 
-  it('syncs MCP servers only to non-bare profiles', async () => {
+  it('syncs MCP servers only to shared-resource profiles', async () => {
     spyOn(ClaudeDirInstaller.prototype, 'install').mockReturnValue(true);
     spyOn(ClaudeDirInstaller.prototype, 'cleanupDeprecated').mockReturnValue({
       success: true,
@@ -42,6 +42,8 @@ describe('sync command MCP sync behavior', () => {
     spyOn(ProfileRegistry.prototype, 'getAllProfilesMerged').mockReturnValue({
       work: profile(),
       sandbox: profile({ bare: true }),
+      local: profile({ shared_resource_mode: 'profile-local' }),
+      restored: profile({ bare: true, shared_resource_mode: 'shared' }),
       personal: profile(),
     });
     spyOn(InstanceManager.prototype, 'hasInstance').mockReturnValue(true);
@@ -55,8 +57,16 @@ describe('sync command MCP sync behavior', () => {
 
     await expect(handleSyncCommand()).rejects.toThrow('process.exit(0)');
 
-    expect(getInstancePathSpy.mock.calls.map((call) => call[0])).toEqual(['work', 'personal']);
-    expect(syncMcpSpy.mock.calls.map((call) => call[0])).toEqual(['/tmp/work', '/tmp/personal']);
+    expect(getInstancePathSpy.mock.calls.map((call) => call[0])).toEqual([
+      'work',
+      'restored',
+      'personal',
+    ]);
+    expect(syncMcpSpy.mock.calls.map((call) => call[0])).toEqual([
+      '/tmp/work',
+      '/tmp/restored',
+      '/tmp/personal',
+    ]);
   });
 
   it('skips MCP sync when all profiles are bare', async () => {
@@ -69,7 +79,7 @@ describe('sync command MCP sync behavior', () => {
     spyOn(SharedManager.prototype, 'ensureSharedDirectories').mockImplementation(() => {});
     spyOn(ProfileRegistry.prototype, 'getAllProfilesMerged').mockReturnValue({
       sandbox: profile({ bare: true }),
-      experiment: profile({ bare: true }),
+      experiment: profile({ shared_resource_mode: 'profile-local' }),
     });
     spyOn(InstanceManager.prototype, 'hasInstance').mockReturnValue(true);
 

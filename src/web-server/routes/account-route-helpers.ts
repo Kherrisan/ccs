@@ -10,6 +10,9 @@ export interface MergedAccountEntry {
   continuity_mode?: 'standard' | 'deeper';
   context_inferred?: boolean;
   continuity_inferred?: boolean;
+  shared_resource_mode?: 'shared' | 'profile-local';
+  shared_resource_inferred?: boolean;
+  bare?: boolean;
   provider?: string;
   displayName?: string;
 }

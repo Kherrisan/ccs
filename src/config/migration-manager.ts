@@ -22,6 +22,7 @@ import { createEmptyUnifiedConfig } from './unified-config-types';
 import { CLIPROXY_PROVIDER_IDS } from '../cliproxy/provider-capabilities';
 import { saveUnifiedConfig, hasUnifiedConfig, loadUnifiedConfig } from './unified-config-loader';
 import { isValidContextGroupName, normalizeContextGroupName } from '../auth/account-context';
+import { isSharedResourceMode, resolveSharedResourcePolicy } from '../auth/shared-resource-policy';
 import { infoBox, warn } from '../utils/ui';
 
 const BACKUP_DIR_PREFIX = 'backup-v1-';
@@ -222,6 +223,16 @@ export async function migrate(dryRun = false): Promise<MigrationResult> {
           context_group: contextMode === 'shared' ? contextGroup : undefined,
           continuity_mode: contextMode === 'shared' ? continuityMode : undefined,
         };
+        const resourcePolicy = resolveSharedResourcePolicy({
+          shared_resource_mode: metadata.shared_resource_mode,
+          bare: metadata.bare,
+        });
+        if (resourcePolicy.mode === 'profile-local') {
+          account.shared_resource_mode = 'profile-local';
+          account.bare = true;
+        } else if (isSharedResourceMode(metadata.shared_resource_mode)) {
+          account.shared_resource_mode = 'shared';
+        }
         unifiedConfig.accounts[name] = account;
       }
       migratedFiles.push('profiles.json → config.yaml.accounts');
