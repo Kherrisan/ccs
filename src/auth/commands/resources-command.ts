@@ -46,6 +46,13 @@ export async function handleResources(ctx: CommandContext, args: string[]): Prom
 
   const currentPolicy = resolveSharedResourcePolicy(currentProfile);
 
+  if (mode === '') {
+    exitWithError(
+      'Missing value for --mode: expected shared|profile-local',
+      ExitCode.PROFILE_ERROR
+    );
+  }
+
   if (mode !== undefined && !isSharedResourceMode(mode)) {
     exitWithError(
       'Invalid shared resource mode: expected shared|profile-local',
@@ -53,7 +60,7 @@ export async function handleResources(ctx: CommandContext, args: string[]): Prom
     );
   }
 
-  if (!mode) {
+  if (mode === undefined) {
     if (json) {
       console.log(
         JSON.stringify(
@@ -92,7 +99,8 @@ export async function handleResources(ctx: CommandContext, args: string[]): Prom
     : undefined;
   const previousLegacy = existsLegacy ? ctx.registry.getProfile(profileName) : undefined;
   const contextPolicy = resolveAccountContextPolicy(currentProfile);
-  const metadata = sharedResourceModeToMetadata(mode);
+  const selectedMode: SharedResourceMode = mode;
+  const metadata = sharedResourceModeToMetadata(selectedMode);
 
   try {
     if (existsUnified) {
@@ -103,7 +111,7 @@ export async function handleResources(ctx: CommandContext, args: string[]): Prom
     }
 
     await ctx.instanceMgr.ensureInstance(profileName, contextPolicy, {
-      bare: mode === 'profile-local',
+      bare: selectedMode === 'profile-local',
     });
   } catch (error) {
     if (existsUnified && previousUnified) {
@@ -128,9 +136,9 @@ export async function handleResources(ctx: CommandContext, args: string[]): Prom
       JSON.stringify(
         {
           name: profileName,
-          shared_resource_mode: mode,
+          shared_resource_mode: selectedMode,
           shared_resource_inferred: false,
-          bare: mode === 'profile-local' ? true : undefined,
+          bare: selectedMode === 'profile-local' ? true : undefined,
         },
         null,
         2
@@ -139,8 +147,8 @@ export async function handleResources(ctx: CommandContext, args: string[]): Prom
     return;
   }
 
-  console.log(ok(`Shared resources for "${profileName}" set to ${formatMode(mode)}`));
+  console.log(ok(`Shared resources for "${profileName}" set to ${formatMode(selectedMode)}`));
   console.log('');
-  console.log(modeDescription(mode));
+  console.log(modeDescription(selectedMode));
   console.log('');
 }

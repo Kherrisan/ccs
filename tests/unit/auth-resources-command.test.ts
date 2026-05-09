@@ -172,6 +172,43 @@ describe('auth resources command', () => {
     expect(account.bare).toBeUndefined();
   });
 
+  it('rejects resources --mode without a value instead of showing current mode', async () => {
+    const ccsDir = path.join(tempRoot, '.ccs');
+    fs.mkdirSync(ccsDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(ccsDir, 'config.yaml'),
+      [
+        'version: 8',
+        'accounts:',
+        '  work:',
+        '    created: "2026-02-01T00:00:00.000Z"',
+        '    last_used: null',
+        'profiles: {}',
+        'cliproxy:',
+        '  oauth_accounts: {}',
+        '  providers: {}',
+        '  variants: {}',
+      ].join('\n'),
+      'utf8'
+    );
+
+    const registry = new ProfileRegistry();
+    const instanceMgr = new InstanceManager();
+
+    const output = await expectProfileExit(() =>
+      handleResources(
+        {
+          registry,
+          instanceMgr,
+          version: 'test',
+        },
+        ['work', '--mode']
+      )
+    );
+
+    expect(output).toContain('Missing value for --mode: expected shared|profile-local');
+  });
+
   it('rejects --mode on auth create instead of silently ignoring it', async () => {
     const registry = new ProfileRegistry();
     const instanceMgr = new InstanceManager();

@@ -77,6 +77,13 @@ describe('auth command args parsing', () => {
     expect(parsed.mode).toBe('shared');
   });
 
+  it('flags missing shared resource mode value as empty string', () => {
+    const parsed = parseArgs(['work', '--mode'], { allowMode: true });
+
+    expect(parsed.profileName).toBe('work');
+    expect(parsed.mode).toBe('');
+  });
+
   it('treats shared resource mode as unknown unless the command opts in', () => {
     const parsed = parseArgs(['work', '--mode', 'shared']);
 
