@@ -69,6 +69,7 @@ accounts:
   work:
     created: "2026-02-24T00:00:00.000Z"
     last_used: null
+    shared_resource_mode: "shared"
     context_mode: "shared"
     context_group: "team-alpha"
     continuity_mode: "deeper"
@@ -76,6 +77,7 @@ accounts:
 
 Rules:
 
+- `shared_resource_mode` controls commands, skills, agents, plugins, and `settings.json` (`shared` or `profile-local`)
 - `context_mode` must be `isolated` or `shared`
 - `context_group` is required when `context_mode=shared`
 - `continuity_mode` is valid only when `context_mode=shared` (`standard` or `deeper`)

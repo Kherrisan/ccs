@@ -285,11 +285,65 @@ describe('web-server shared-routes', () => {
     expect(payload.contentPath).toBe(fs.realpathSync(path.join(skillTargetDir, 'SKILL.md')));
   });
 
-  it('returns factual directory content for a shared plugin directory without markdown', async () => {
+  it('hides plugin infrastructure directories when no plugins are installed', async () => {
     const pluginsDir = path.join(ccsDir, 'shared', 'plugins');
     const cacheDir = path.join(pluginsDir, 'cache');
     fs.mkdirSync(path.join(cacheDir, 'payloads'), { recursive: true });
     fs.writeFileSync(path.join(cacheDir, 'plugin-index.json'), '{}');
+    fs.writeFileSync(
+      path.join(pluginsDir, 'installed_plugins.json'),
+      JSON.stringify({ version: 2, plugins: {} }, null, 2)
+    );
+
+    const listPayload = await getJson<{
+      items: Array<{ name: string; type: string; description: string; path: string }>;
+    }>(baseUrl, '/api/shared/plugins');
+
+    expect(listPayload.items).toEqual([]);
+
+    const contentResponse = await fetch(
+      `${baseUrl}/api/shared/content?type=plugins&path=${encodeURIComponent(cacheDir)}`
+    );
+
+    expect(contentResponse.status).toBe(404);
+    const contentPayload = (await contentResponse.json()) as { error: string };
+    expect(contentPayload.error).toBe('Shared content not found');
+  });
+
+  it('lists installed plugins from the shared plugin registry', async () => {
+    const pluginsDir = path.join(ccsDir, 'shared', 'plugins');
+    fs.mkdirSync(pluginsDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(pluginsDir, 'installed_plugins.json'),
+      JSON.stringify(
+        {
+          version: 2,
+          plugins: {
+            'discord@claude-plugins-official': [
+              {
+                installPath: path.join(pluginsDir, 'cache', 'discord'),
+                enabled: true,
+              },
+            ],
+          },
+        },
+        null,
+        2
+      )
+    );
+    fs.writeFileSync(
+      path.join(pluginsDir, 'known_marketplaces.json'),
+      JSON.stringify(
+        {
+          'claude-plugins-official': {
+            source: { type: 'github', repo: 'anthropics/claude-plugins' },
+            installLocation: path.join(pluginsDir, 'marketplaces', 'claude-plugins-official'),
+          },
+        },
+        null,
+        2
+      )
+    );
 
     const listPayload = await getJson<{
       items: Array<{ name: string; type: string; description: string; path: string }>;
@@ -297,23 +351,41 @@ describe('web-server shared-routes', () => {
 
     expect(listPayload.items).toEqual([
       {
-        name: 'cache',
+        name: 'discord@claude-plugins-official',
         type: 'plugin',
-        description: 'Directory with 2 items: payloads/, plugin-index.json',
-        path: cacheDir,
+        description: 'Installed from claude-plugins-official; 1 record in shared registry',
+        path: 'plugin-registry:discord%40claude-plugins-official',
       },
     ]);
 
     const contentPayload = await getJson<{ content: string; contentPath: string }>(
       baseUrl,
-      `/api/shared/content?type=plugins&path=${encodeURIComponent(cacheDir)}`
+      `/api/shared/content?type=plugins&path=${encodeURIComponent(listPayload.items[0].path)}`
     );
 
-    expect(contentPayload.content).toContain('# Plugin directory: cache');
-    expect(contentPayload.content).toContain('plugin-index.json');
-    expect(contentPayload.content).toContain('payloads/');
-    expect(contentPayload.content).not.toContain('Shared plugin payload cache');
-    expect(contentPayload.contentPath).toBe(fs.realpathSync(cacheDir));
+    expect(contentPayload.content).toContain('# discord@claude-plugins-official');
+    expect(contentPayload.content).toContain('## Marketplace Registry Entry');
+    expect(contentPayload.content).toContain('## Plugin Registry Entry');
+    expect(contentPayload.contentPath).toBe(
+      fs.realpathSync(path.join(pluginsDir, 'installed_plugins.json'))
+    );
+  });
+
+  it('rejects plugin registry prototype keys as plugin names', async () => {
+    const pluginsDir = path.join(ccsDir, 'shared', 'plugins');
+    fs.mkdirSync(pluginsDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(pluginsDir, 'installed_plugins.json'),
+      JSON.stringify({ version: 2, plugins: {} }, null, 2)
+    );
+
+    const response = await fetch(
+      `${baseUrl}/api/shared/content?type=plugins&path=${encodeURIComponent('plugin-registry:toString')}`
+    );
+
+    expect(response.status).toBe(404);
+    const payload = (await response.json()) as { error: string };
+    expect(payload.error).toBe('Shared content not found');
   });
 
   it('returns real shared settings content when settings.json is present', async () => {
@@ -347,6 +419,36 @@ describe('web-server shared-routes', () => {
     expect(contentPayload.contentPath).toBe(fs.realpathSync(settingsPath));
   });
 
+  it('returns shared settings content when settings.json links to the Claude config file', async () => {
+    const claudeDir = path.join(tempHome, '.claude');
+    process.env.CLAUDE_CONFIG_DIR = claudeDir;
+    fs.mkdirSync(claudeDir, { recursive: true });
+
+    const claudeSettingsPath = path.join(claudeDir, 'settings.json');
+    fs.writeFileSync(
+      claudeSettingsPath,
+      JSON.stringify({ hooks: { PreToolUse: [] }, env: { ANTHROPIC_MODEL: 'claude-opus-4-1' } })
+    );
+
+    const sharedSettingsPath = path.join(ccsDir, 'shared', 'settings.json');
+    createFileSymlink(claudeSettingsPath, sharedSettingsPath);
+
+    const summaryPayload = await getJson<{ settings: boolean; total: number }>(
+      baseUrl,
+      '/api/shared/summary'
+    );
+    expect(summaryPayload.settings).toBe(true);
+    expect(summaryPayload.total).toBe(1);
+
+    const contentPayload = await getJson<{ content: string; contentPath: string }>(
+      baseUrl,
+      `/api/shared/content?type=settings&path=${encodeURIComponent('settings.json')}`
+    );
+
+    expect(contentPayload.content).toContain('"ANTHROPIC_MODEL": "claude-opus-4-1"');
+    expect(contentPayload.contentPath).toBe(fs.realpathSync(claudeSettingsPath));
+  });
+
   it('rejects shared settings content when settings.json resolves outside the shared directory', async () => {
     const settingsPath = path.join(ccsDir, 'shared', 'settings.json');
     const outsideSettingsPath = path.join(tempHome, 'outside-settings.json');
@@ -362,9 +464,27 @@ describe('web-server shared-routes', () => {
     expect(payload.error).toBe('Shared content not found');
   });
 
+  it('rejects shared settings symlinks to non-settings files inside the Claude config directory', async () => {
+    const claudeDir = path.join(tempHome, '.claude');
+    process.env.CLAUDE_CONFIG_DIR = claudeDir;
+    fs.mkdirSync(claudeDir, { recursive: true });
+
+    const otherClaudeFile = path.join(claudeDir, 'credentials.json');
+    fs.writeFileSync(otherClaudeFile, '{"SECRET":"do-not-read"}');
+    createFileSymlink(otherClaudeFile, path.join(ccsDir, 'shared', 'settings.json'));
+
+    const response = await fetch(
+      `${baseUrl}/api/shared/content?type=settings&path=${encodeURIComponent('settings.json')}`
+    );
+
+    expect(response.status).toBe(404);
+    const payload = (await response.json()) as { error: string };
+    expect(payload.error).toBe('Shared content not found');
+  });
+
   it('returns README content for a shared plugin directory when available', async () => {
     const pluginsDir = path.join(ccsDir, 'shared', 'plugins');
-    const pluginDir = path.join(pluginsDir, 'marketplaces');
+    const pluginDir = path.join(pluginsDir, 'legacy-plugin');
     fs.mkdirSync(pluginDir, { recursive: true });
     fs.writeFileSync(path.join(pluginDir, 'README.md'), '# Plugin Marketplace\n\nShared docs');
 

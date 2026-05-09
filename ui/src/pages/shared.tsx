@@ -8,7 +8,12 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { CodeEditor } from '@/components/shared/code-editor';
 import { useAccounts } from '@/hooks/use-accounts';
-import { useSharedItemContent, useSharedItems, useSharedSummary } from '@/hooks/use-shared';
+import {
+  type SharedSummary,
+  useSharedItemContent,
+  useSharedItems,
+  useSharedSummary,
+} from '@/hooks/use-shared';
 import { cn } from '@/lib/utils';
 import '@/lib/i18n';
 import { useTranslation } from 'react-i18next';
@@ -30,6 +35,7 @@ type TabType = 'commands' | 'skills' | 'agents' | 'plugins' | 'settings';
 export function SharedPage() {
   const { t } = useTranslation();
   const [tab, setTab] = useState<TabType>('commands');
+  const [hasUserSelectedTab, setHasUserSelectedTab] = useState(false);
   const tabLabels: Record<TabType, string> = {
     commands: t('sharedPage.commands'),
     skills: t('sharedPage.skills'),
@@ -47,8 +53,10 @@ export function SharedPage() {
     error: summaryError,
     refetch: refetchSummary,
   } = useSharedSummary();
+
   const { data: accountsView } = useAccounts();
-  const { data: items, isLoading, isFetching, isError, error, refetch } = useSharedItems(tab);
+  const activeTab = summary && !hasUserSelectedTab ? getPreferredInitialTab(summary) : tab;
+  const { data: items, isLoading, isFetching, isError, error, refetch } = useSharedItems(activeTab);
   const allItems = items?.items ?? [];
   const normalizedQuery = query.trim().toLowerCase();
   const activeQuery = query.trim();
@@ -79,14 +87,14 @@ export function SharedPage() {
   }, [filteredItems, selectedItemPath]);
 
   const contentPath =
-    tab === 'settings' && summary?.settings ? 'settings.json' : (selectedItem?.path ?? null);
+    activeTab === 'settings' && summary?.settings ? 'settings.json' : (selectedItem?.path ?? null);
   const {
     data: selectedItemContent,
     isLoading: isContentLoading,
     isError: isContentError,
     error: contentError,
     refetch: refetchContent,
-  } = useSharedItemContent(tab, contentPath);
+  } = useSharedItemContent(activeTab, contentPath);
 
   const tabs: { id: TabType; label: string; icon: typeof FileText; count: number | string }[] = [
     { id: 'commands', label: tabLabels.commands, icon: FileText, count: summary?.commands ?? 0 },
@@ -102,9 +110,19 @@ export function SharedPage() {
   ];
   const totalSharedItems = summary?.total ?? 0;
   const settingsCount = summary?.settings ? 1 : 0;
-  const currentItemCount = tab === 'settings' ? settingsCount : allItems.length;
-  const currentVisibleCount = tab === 'settings' ? settingsCount : filteredItems.length;
-  const showListStatus = tab === 'settings' || (!isLoading && !isError);
+  const currentItemCount = activeTab === 'settings' ? settingsCount : allItems.length;
+  const currentVisibleCount = activeTab === 'settings' ? settingsCount : filteredItems.length;
+  const showListStatus = activeTab === 'settings' || (!isLoading && !isError);
+  const detailModeLabel =
+    activeTab === 'plugins'
+      ? t('sharedPage.registryDetail')
+      : activeTab === 'settings'
+        ? t('sharedPage.maskedSettingsDetail')
+        : t('sharedPage.markdownDetail');
+  const emptyStateMessage =
+    activeTab === 'plugins'
+      ? t('sharedPage.noPluginsFound')
+      : t('sharedPage.noSharedFound', { tab: activeTab });
 
   const hasNoItems = !isLoading && !isError && allItems.length === 0;
   const hasNoMatches = !isLoading && !isError && allItems.length > 0 && filteredItems.length === 0;
@@ -123,7 +141,7 @@ export function SharedPage() {
   );
   const itemsErrorMessage = getSharedErrorMessage(
     error,
-    `Unable to fetch shared ${tab}. Please try again.`
+    `Unable to fetch shared ${activeTab}. Please try again.`
   );
   const contentErrorMessage = getSharedErrorMessage(
     contentError,
@@ -141,8 +159,9 @@ export function SharedPage() {
             </div>
 
             <Tabs
-              value={tab}
+              value={activeTab}
               onValueChange={(nextTab) => {
+                setHasUserSelectedTab(true);
                 setTab(nextTab as TabType);
                 setQuery('');
                 setSelectedItemPath(null);
@@ -163,12 +182,12 @@ export function SharedPage() {
           <div className="flex flex-col gap-2 lg:items-end">
             <div className="grid w-full gap-2 sm:w-auto sm:min-w-[340px] sm:grid-cols-3">
               <HeaderMetricCard label={t('sharedPage.totalShared')} value={totalSharedItems} />
-              <HeaderMetricCard label={tabLabels[tab]} value={currentItemCount} />
+              <HeaderMetricCard label={tabLabels[activeTab]} value={currentItemCount} />
               <HeaderMetricCard label={t('sharedPage.visible')} value={currentVisibleCount} />
             </div>
 
             <div className="flex items-center gap-2 text-xs">
-              <Badge variant="secondary">{t('sharedPage.markdownDetail')}</Badge>
+              <Badge variant="secondary">{detailModeLabel}</Badge>
               {activeQuery ? (
                 <Badge variant="outline">
                   {t('sharedPage.filterPrefix')} {activeQuery}
@@ -228,7 +247,7 @@ export function SharedPage() {
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2 min-w-0">
                     <FolderOpen className="w-4 h-4 text-primary shrink-0" />
-                    <h2 className="font-semibold truncate">{tabLabels[tab]}</h2>
+                    <h2 className="font-semibold truncate">{tabLabels[activeTab]}</h2>
                   </div>
                   {showListStatus && (
                     <Badge variant="outline" className="text-[10px] h-5">
@@ -242,8 +261,8 @@ export function SharedPage() {
                   <Input
                     value={query}
                     onChange={(event) => setQuery(event.target.value)}
-                    placeholder={t('sharedPage.filterPlaceholder', { tab })}
-                    aria-label={t('sharedPage.filterPlaceholder', { tab })}
+                    placeholder={t('sharedPage.filterPlaceholder', { tab: activeTab })}
+                    aria-label={t('sharedPage.filterPlaceholder', { tab: activeTab })}
                     className="pl-8 h-9"
                   />
                 </div>
@@ -253,7 +272,7 @@ export function SharedPage() {
                     {t('sharedPage.showing', {
                       visible: currentVisibleCount,
                       total: currentItemCount,
-                      tab,
+                      tab: activeTab,
                     })}
                     {activeQuery ? t('sharedPage.showingQuery', { query: activeQuery }) : ''}
                     {isFetching ? t('sharedPage.refreshing') : ''}
@@ -262,7 +281,7 @@ export function SharedPage() {
               </div>
 
               <ScrollArea className="max-h-[360px] lg:max-h-none lg:flex-1 lg:min-h-0">
-                {tab === 'settings' ? (
+                {activeTab === 'settings' ? (
                   <div className="p-2 space-y-1">
                     <button
                       type="button"
@@ -291,7 +310,7 @@ export function SharedPage() {
                   </div>
                 ) : isLoading ? (
                   <div className="p-4 text-sm text-muted-foreground">
-                    {t('sharedPage.loadingShared', { tab })}
+                    {t('sharedPage.loadingShared', { tab: activeTab })}
                   </div>
                 ) : isError ? (
                   <div className="p-4 text-center">
@@ -299,7 +318,7 @@ export function SharedPage() {
                       <AlertCircle className="w-10 h-10 mx-auto text-destructive/50" />
                       <div>
                         <p className="text-sm font-medium">
-                          {t('sharedPage.failedLoadShared', { tab })}
+                          {t('sharedPage.failedLoadShared', { tab: activeTab })}
                         </p>
                         <p className="text-xs text-muted-foreground mt-1">{itemsErrorMessage}</p>
                       </div>
@@ -316,12 +335,12 @@ export function SharedPage() {
                     </div>
                   </div>
                 ) : hasNoItems ? (
-                  <div className="p-4 text-sm text-muted-foreground">
-                    {t('sharedPage.noSharedFound', { tab })}
+                  <div className="p-4 text-sm text-muted-foreground leading-relaxed">
+                    {emptyStateMessage}
                   </div>
                 ) : hasNoMatches ? (
                   <div className="p-4 text-sm text-muted-foreground">
-                    {t('sharedPage.noMatch', { tab, query: activeQuery })}
+                    {t('sharedPage.noMatch', { tab: activeTab, query: activeQuery })}
                   </div>
                 ) : (
                   <div className="p-2 space-y-1">
@@ -342,7 +361,7 @@ export function SharedPage() {
                           {item.description}
                         </p>
                         <p className="text-[11px] text-muted-foreground/90 mt-2 font-mono truncate">
-                          {item.path}
+                          {formatSharedItemPath(item.path)}
                         </p>
                       </button>
                     ))}
@@ -352,11 +371,11 @@ export function SharedPage() {
             </div>
 
             <div className="min-w-0 min-h-[360px] flex flex-col bg-muted/20 lg:min-h-0">
-              {!selectedItem && tab !== 'settings' ? (
+              {!selectedItem && activeTab !== 'settings' ? (
                 <div className="min-h-[320px] flex items-center justify-center p-6 text-center text-muted-foreground">
-                  {t('sharedPage.selectOne', { tab: tab.slice(0, -1) })}
+                  {t('sharedPage.selectOne', { tab: activeTab.slice(0, -1) })}
                 </div>
-              ) : tab === 'settings' ? (
+              ) : activeTab === 'settings' ? (
                 <>
                   <div className="px-4 py-3 border-b bg-background">
                     <div className="flex items-center gap-2">
@@ -454,7 +473,7 @@ export function SharedPage() {
                       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                         <MetadataField
                           label={t('sharedPage.pathLabel')}
-                          value={selectedItem.path}
+                          value={formatSharedItemPath(selectedItem.path)}
                           mono
                         />
                         {selectedItemContent?.contentPath &&
@@ -510,6 +529,26 @@ export function SharedPage() {
       </div>
     </div>
   );
+}
+
+function getPreferredInitialTab(summary: SharedSummary): TabType {
+  if (summary.commands > 0) {
+    return 'commands';
+  }
+  if (summary.skills > 0) {
+    return 'skills';
+  }
+  if (summary.agents > 0) {
+    return 'agents';
+  }
+  if (summary.plugins > 0) {
+    return 'plugins';
+  }
+  if (summary.settings) {
+    return 'settings';
+  }
+
+  return 'commands';
 }
 
 function ResourcePoliciesPanel({
@@ -602,6 +641,10 @@ function getSharedErrorMessage(error: unknown, fallbackMessage: string): string 
   }
 
   return error.message || fallbackMessage;
+}
+
+function formatSharedItemPath(itemPath: string): string {
+  return itemPath.startsWith('plugin-registry:') ? 'installed_plugins.json' : itemPath;
 }
 
 interface MarkdownBlockHeading {

@@ -142,7 +142,60 @@ describe('SharedPage', () => {
     expect(await screen.findByText('No commands match "no-match".')).toBeInTheDocument();
   });
 
-  it('loads plugin directory content and renders real settings content', async () => {
+  it('opens the first populated resource tab instead of an empty commands tab', async () => {
+    fetchMock.mockImplementation(async (input) => {
+      const url = requestUrl(input);
+      if (url.endsWith('/api/shared/summary')) {
+        return jsonResponse({
+          commands: 0,
+          skills: 1,
+          agents: 0,
+          plugins: 0,
+          settings: true,
+          total: 2,
+          symlinkStatus: { valid: true, message: 'Symlinks active' },
+        });
+      }
+      if (url.endsWith('/api/accounts')) {
+        return accountsResponse();
+      }
+      if (url.endsWith('/api/shared/commands')) {
+        return jsonResponse({ items: [] });
+      }
+      if (url.endsWith('/api/shared/skills')) {
+        return jsonResponse({
+          items: [
+            {
+              name: 'review-helper',
+              description: 'Review the latest PR changes.',
+              path: '/tmp/skills/review-helper/SKILL.md',
+              type: 'skill',
+            },
+          ],
+        });
+      }
+      if (url.includes('/api/shared/content?') && url.includes('type=skills')) {
+        return jsonResponse({
+          content: '# Skill Body\n\nReal shared skill instructions',
+          contentPath: '/tmp/skills/review-helper/SKILL.md',
+        });
+      }
+
+      return jsonResponse({ items: [] });
+    });
+
+    render(<SharedPage />);
+
+    expect(await screen.findByText('Showing 1 of 1 skills')).toBeInTheDocument();
+    expect(screen.getByText('Review the latest PR changes.')).toBeInTheDocument();
+    expect(await screen.findByText('Skill Body')).toBeInTheDocument();
+    expect(screen.queryByText('Select a command to view full content.')).not.toBeInTheDocument();
+
+    const requestedUrls = fetchMock.mock.calls.map(([input]) => requestUrl(input));
+    expect(requestedUrls.some((url) => url.endsWith('/api/shared/skills'))).toBe(true);
+  });
+
+  it('loads plugin registry content and renders real settings content', async () => {
     fetchMock.mockImplementation(async (input) => {
       const url = requestUrl(input);
       if (url.endsWith('/api/shared/summary')) {
@@ -166,9 +219,9 @@ describe('SharedPage', () => {
         return jsonResponse({
           items: [
             {
-              name: 'cache',
-              description: 'Directory with 2 items: payloads/, plugin-index.json',
-              path: '/tmp/plugins/cache',
+              name: 'discord@claude-plugins-official',
+              description: 'Installed from claude-plugins-official; 1 record in shared registry',
+              path: 'plugin-registry:discord%40claude-plugins-official',
               type: 'plugin',
             },
           ],
@@ -177,8 +230,8 @@ describe('SharedPage', () => {
       if (url.includes('/api/shared/content?') && url.includes('type=plugins')) {
         return jsonResponse({
           content:
-            '# Plugin directory: cache\n\n## Directory contents\n\n- payloads/\n- plugin-index.json',
-          contentPath: '/tmp/plugins/cache',
+            '# discord@claude-plugins-official\n\n## Plugin Registry Entry\n\n```json\n{"enabled":true}\n```',
+          contentPath: '/tmp/plugins/installed_plugins.json',
         });
       }
       if (url.includes('/api/shared/content?') && url.includes('type=settings')) {
@@ -194,12 +247,11 @@ describe('SharedPage', () => {
 
     render(<SharedPage />);
 
-    await userEvent.click(await screen.findByRole('tab', { name: /Plugins/ }));
-
+    expect(await screen.findByText('Showing 1 of 1 plugins')).toBeInTheDocument();
     expect(
-      await screen.findByText('Directory with 2 items: payloads/, plugin-index.json')
+      await screen.findByText('Installed from claude-plugins-official; 1 record in shared registry')
     ).toBeInTheDocument();
-    expect(await screen.findByText('plugin-index.json')).toBeInTheDocument();
+    expect(await screen.findByText('Plugin Registry Entry')).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('tab', { name: /Settings/ }));
 
@@ -249,6 +301,13 @@ describe('SharedPage', () => {
     expect(screen.getByText('1 shared')).toBeInTheDocument();
     expect(screen.getByText('1 profile-local')).toBeInTheDocument();
     expect(screen.getByText('sandbox')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('tab', { name: /Plugins/ }));
+    expect(
+      await screen.findByText(
+        'No shared plugins are installed. Plugin registry files and cache folders are hidden until an actual plugin is present.'
+      )
+    ).toBeInTheDocument();
   });
 
   it('shows offline guidance when network request fails', async () => {

@@ -99,7 +99,7 @@ Shared resource editing:
 - reconciles the account instance after metadata is updated
 - Dashboard -> Accounts exposes this as a separate Resources action so it is not confused with History Sync.
 - Dashboard -> Shared Resources shows the shared hub inventory for commands, skills, agents, plugins, and `settings.json`.
-- Plugin directories without README/PLUGIN docs render their actual directory inventory.
+- The Plugins tab is registry-oriented: installed plugin entries come from `installed_plugins.json`, while internal cache/data/marketplace folders stay hidden unless a real plugin entry exists.
 - Shared `settings.json` is read-only in the Shared Resources page and still edited through the settings surfaces that own those values.
 
 ## Commands
