@@ -934,8 +934,14 @@ export interface Account {
   continuity_mode?: 'standard' | 'deeper';
   context_inferred?: boolean;
   continuity_inferred?: boolean;
+  shared_resource_mode?: 'shared' | 'profile-local';
+  shared_resource_inferred?: boolean;
   provider?: string;
   displayName?: string;
+}
+
+export interface UpdateAccountSharedResources {
+  shared_resource_mode: 'shared' | 'profile-local';
 }
 
 export interface PlainCcsLane {
@@ -1456,6 +1462,11 @@ export const api = {
     delete: (name: string) => request(`/accounts/${name}`, { method: 'DELETE' }),
     updateContext: (name: string, data: UpdateAccountContext) =>
       request(`/accounts/${encodeURIComponent(name)}/context`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      }),
+    updateSharedResources: (name: string, data: UpdateAccountSharedResources) =>
+      request(`/accounts/${encodeURIComponent(name)}/shared-resources`, {
         method: 'PUT',
         body: JSON.stringify(data),
       }),

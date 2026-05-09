@@ -171,6 +171,13 @@ ccs auth resources work --mode profile-local
 ccs auth resources work --mode shared
 ```
 
+Dashboard:
+
+- Open `ccs config`
+- Go to `Accounts`
+- Use `Resources` to switch an existing account between `shared` and `profile-local`
+- Go to `Shared Resources` to inspect the shared commands, skills, agents, plugins, and `settings.json` hub
+
 No account recreation required for this workflow.
 
 ### Backup Before Changing Sync
@@ -191,7 +198,7 @@ ccs auth backup default
 - Shared context is local filesystem sharing. It does not bypass remote provider permission models.
 - Session continuity still depends on what the upstream tool/provider stores and allows.
 - Context sharing should only be enabled for accounts you intentionally trust to share workspace history.
-- Dashboard controls for existing-account Shared Resources are tracked separately; CLI/API support is the source of truth until that UI lands.
+- Shared Resources inspection is read-only in the dashboard. Editing individual files still belongs to the owning command, skill, plugin, or settings surface.
 
 ## Alternative: CLIProxy Claude Pool
 

@@ -97,6 +97,10 @@ Shared resource editing:
 - accepts only `shared` or `profile-local`
 - rejects CLIProxy OAuth account keys for this route
 - reconciles the account instance after metadata is updated
+- Dashboard -> Accounts exposes this as a separate Resources action so it is not confused with History Sync.
+- Dashboard -> Shared Resources shows the shared hub inventory for commands, skills, agents, plugins, and `settings.json`.
+- Plugin directories without README/PLUGIN docs render their actual directory inventory.
+- Shared `settings.json` is read-only in the Shared Resources page and still edited through the settings surfaces that own those values.
 
 ## Commands
 

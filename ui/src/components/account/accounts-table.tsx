@@ -25,9 +25,11 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Check, CheckCheck, Pencil, RotateCcw, Trash2 } from 'lucide-react';
+import { Box, Check, CheckCheck, Pencil, RotateCcw, Trash2 } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { useTranslation } from 'react-i18next';
 import { EditAccountContextDialog } from '@/components/account/edit-account-context-dialog';
+import { EditAccountSharedResourcesDialog } from '@/components/account/edit-account-shared-resources-dialog';
 import {
   useSetDefaultAccount,
   useDeleteAccount,
@@ -57,6 +59,7 @@ export function AccountsTable({
   const updateContextMutation = useUpdateAccountContext();
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [contextTarget, setContextTarget] = useState<AuthAccountRow | null>(null);
+  const [resourcesTarget, setResourcesTarget] = useState<AuthAccountRow | null>(null);
 
   const columns: ColumnDef<AuthAccountRow>[] = [
     {
@@ -165,6 +168,42 @@ export function AccountsTable({
       },
     },
     {
+      id: 'resources',
+      header: t('accountsTable.sharedResources'),
+      size: 150,
+      cell: ({ row }) => {
+        if (row.original.type === 'cliproxy') {
+          return <span className="text-muted-foreground/50">-</span>;
+        }
+
+        const mode = row.original.shared_resource_mode || 'shared';
+        const isInferred = row.original.shared_resource_inferred;
+
+        return (
+          <div className="flex flex-col items-start gap-1">
+            <Badge
+              variant={mode === 'shared' ? 'outline' : 'secondary'}
+              className={cn(
+                'font-mono text-[10px] uppercase px-1.5 py-0',
+                mode === 'shared'
+                  ? 'text-emerald-700 border-emerald-300/60 bg-emerald-50/50 dark:text-emerald-300 dark:border-emerald-900/40 dark:bg-emerald-900/20'
+                  : 'text-muted-foreground bg-muted/60 border-transparent shadow-none'
+              )}
+            >
+              {mode === 'shared'
+                ? t('accountsTable.resourcesShared')
+                : t('accountsTable.resourcesProfileLocal')}
+            </Badge>
+            {isInferred && (
+              <p className="text-[10px] text-amber-700/80 dark:text-amber-400/80 whitespace-nowrap">
+                {t('accountsTable.legacyReview')}
+              </p>
+            )}
+          </div>
+        );
+      },
+    },
+    {
       id: 'actions',
       header: t('accountsTable.actions'),
       size: 220,
@@ -191,6 +230,19 @@ export function AccountsTable({
               >
                 <Pencil className="w-3.5 h-3.5 mr-1" />
                 {t('accountsTable.sync')}
+              </Button>
+            )}
+            {!isCliproxy && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 px-2"
+                disabled={isPending}
+                onClick={() => setResourcesTarget(row.original)}
+                title={t('accountsTable.resourcesTitle')}
+              >
+                <Box className="w-3.5 h-3.5 mr-1" />
+                {t('accountsTable.sharedResources')}
               </Button>
             )}
             {!isCliproxy && hasLegacyInference && (
@@ -275,12 +327,13 @@ export function AccountsTable({
                   {headerGroup.headers.map((header) => {
                     const widthClass =
                       {
-                        name: 'w-[200px]',
-                        type: 'w-[100px]',
-                        created: 'w-[150px]',
-                        last_used: 'w-[150px]',
-                        context: 'w-[170px]',
-                        actions: 'w-[290px]',
+                        name: 'w-[180px]',
+                        type: 'w-[80px]',
+                        created: 'w-[120px]',
+                        last_used: 'w-[120px]',
+                        context: 'w-[150px]',
+                        resources: 'w-[120px]',
+                        actions: 'w-[320px]',
                       }[header.id] || 'w-auto';
 
                     return (
@@ -330,6 +383,13 @@ export function AccountsTable({
           groupSummaries={groupSummaries}
           plainCcsLane={plainCcsLane}
           onClose={() => setContextTarget(null)}
+        />
+      )}
+
+      {resourcesTarget && (
+        <EditAccountSharedResourcesDialog
+          account={resourcesTarget}
+          onClose={() => setResourcesTarget(null)}
         />
       )}
 

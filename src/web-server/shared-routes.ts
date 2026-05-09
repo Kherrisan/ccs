@@ -1,7 +1,7 @@
 /**
  * Shared Data Routes (Phase 07)
  *
- * API routes for commands, skills, agents from ~/.ccs/shared/
+ * API routes for commands, skills, agents, and plugins from ~/.ccs/shared/
  */
 
 import { Router, Request, Response } from 'express';
@@ -33,13 +33,14 @@ const MAX_MARKDOWN_FILE_BYTES = 1024 * 1024; // 1 MiB
 const MAX_CONTENT_FILE_BYTES = 2 * 1024 * 1024; // 2 MiB
 const SHARED_ITEMS_CACHE_TTL_MS = 1000;
 
-type SharedCollectionType = 'commands' | 'skills' | 'agents';
+type SharedCollectionType = 'commands' | 'skills' | 'agents' | 'plugins';
+type SharedContentType = SharedCollectionType | 'settings';
 
 interface SharedItem {
   name: string;
   description: string;
   path: string;
-  type: 'command' | 'skill' | 'agent';
+  type: 'command' | 'skill' | 'agent' | 'plugin';
 }
 
 interface SharedItemsCacheEntry {
@@ -75,13 +76,21 @@ sharedRoutes.get('/agents', (_req: Request, res: Response) => {
 });
 
 /**
- * GET /api/shared/content?type=commands|skills|agents&path=<item-path>
+ * GET /api/shared/plugins
+ */
+sharedRoutes.get('/plugins', (_req: Request, res: Response) => {
+  const items = getSharedItems('plugins');
+  res.json({ items });
+});
+
+/**
+ * GET /api/shared/content?type=commands|skills|agents|plugins|settings&path=<item-path>
  */
 sharedRoutes.get('/content', (req: Request, res: Response) => {
   const typeParam = req.query.type;
   const itemPathParam = req.query.path;
 
-  if (!isSharedCollectionType(typeParam)) {
+  if (!isSharedContentType(typeParam)) {
     res.status(400).json({ error: 'Invalid or missing type parameter' });
     return;
   }
@@ -91,14 +100,18 @@ sharedRoutes.get('/content', (req: Request, res: Response) => {
   }
 
   const ccsDir = getCcsDir();
-  const sharedDir = path.join(ccsDir, 'shared', typeParam);
+  const sharedDir =
+    typeParam === 'settings' ? path.join(ccsDir, 'shared') : path.join(ccsDir, 'shared', typeParam);
   if (!fs.existsSync(sharedDir)) {
     res.status(404).json({ error: 'Shared directory not found' });
     return;
   }
 
   const sharedDirRoot = safeRealPath(sharedDir) ?? path.resolve(sharedDir);
-  const allowedRoots = resolveAllowedRoots(typeParam, ccsDir, sharedDirRoot);
+  const allowedRoots =
+    typeParam === 'settings'
+      ? new Set<string>([sharedDirRoot])
+      : resolveAllowedRoots(typeParam, ccsDir, sharedDirRoot);
   const contentResult = getSharedItemContent(typeParam, itemPathParam, allowedRoots);
 
   if (!contentResult) {
@@ -116,18 +129,34 @@ sharedRoutes.get('/summary', (_req: Request, res: Response) => {
   const commands = getSharedItems('commands').length;
   const skills = getSharedItems('skills').length;
   const agents = getSharedItems('agents').length;
+  const plugins = getSharedItems('plugins').length;
+
+  const ccsDir = getCcsDir();
+  const settingsPath = path.join(ccsDir, 'shared', 'settings.json');
+  const sharedDirRoot = safeRealPath(path.join(ccsDir, 'shared'));
+  const resolvedSettingsPath = safeRealPath(settingsPath);
+  const hasSettings =
+    Boolean(sharedDirRoot) &&
+    Boolean(resolvedSettingsPath) &&
+    isPathWithin(resolvedSettingsPath as string, sharedDirRoot as string);
 
   res.json({
     commands,
     skills,
     agents,
-    total: commands + skills + agents,
+    plugins,
+    settings: hasSettings,
+    total: commands + skills + agents + plugins + (hasSettings ? 1 : 0),
     symlinkStatus: checkSymlinkStatus(),
   });
 });
 
 function isSharedCollectionType(value: unknown): value is SharedCollectionType {
-  return value === 'commands' || value === 'skills' || value === 'agents';
+  return value === 'commands' || value === 'skills' || value === 'agents' || value === 'plugins';
+}
+
+function isSharedContentType(value: unknown): value is SharedContentType {
+  return isSharedCollectionType(value) || value === 'settings';
 }
 
 function resolveAllowedRoots(
@@ -135,7 +164,7 @@ function resolveAllowedRoots(
   ccsDir: string,
   sharedDirRoot: string
 ): Set<string> {
-  if (type === 'commands') {
+  if (type === 'commands' || type === 'plugins') {
     return new Set<string>([sharedDirRoot]);
   }
 
@@ -250,13 +279,35 @@ function getCommandItems(sharedDir: string, allowedRoots: Set<string>): SharedIt
 }
 
 function getSkillOrAgentItem(
-  type: 'skills' | 'agents',
+  type: 'skills' | 'agents' | 'plugins',
   entry: fs.Dirent,
   entryPath: string,
   resolvedEntryPath: string,
   allowedRoots: Set<string>,
   stats: fs.Stats
 ): SharedItem | null {
+  if (type === 'plugins') {
+    if (!stats.isDirectory()) {
+      return null;
+    }
+
+    const description = readFirstMarkdownDescription(
+      [
+        path.join(resolvedEntryPath, 'README.md'),
+        path.join(resolvedEntryPath, 'readme.md'),
+        path.join(resolvedEntryPath, 'PLUGIN.md'),
+      ],
+      allowedRoots
+    );
+
+    return {
+      name: entry.name,
+      description: description ?? getDirectoryInventoryDescription(resolvedEntryPath, allowedRoots),
+      path: entryPath,
+      type: 'plugin',
+    };
+  }
+
   if (type === 'skills') {
     if (!stats.isDirectory()) {
       return null;
@@ -529,10 +580,14 @@ function resolveReadableMarkdownPath(
 }
 
 function getSharedItemContent(
-  type: SharedCollectionType,
+  type: SharedContentType,
   itemPath: string,
   allowedRoots: Set<string>
 ): { content: string; contentPath: string } | null {
+  if (type === 'settings') {
+    return getSharedSettingsContent(itemPath, allowedRoots);
+  }
+
   const resolvedItemPath = safeRealPath(itemPath);
   if (!resolvedItemPath || !isPathWithinAny(resolvedItemPath, allowedRoots)) {
     return null;
@@ -559,6 +614,26 @@ function getSharedItemContent(
       [path.join(resolvedItemPath, 'SKILL.md')],
       allowedRoots
     );
+  } else if (type === 'plugins') {
+    if (!itemStats.isDirectory()) {
+      return null;
+    }
+
+    markdownPath = resolveReadableMarkdownPath(
+      [
+        path.join(resolvedItemPath, 'README.md'),
+        path.join(resolvedItemPath, 'readme.md'),
+        path.join(resolvedItemPath, 'PLUGIN.md'),
+      ],
+      allowedRoots
+    );
+
+    if (!markdownPath) {
+      return {
+        content: renderPluginDirectoryContent(itemPath, resolvedItemPath, allowedRoots),
+        contentPath: resolvedItemPath,
+      };
+    }
   } else {
     if (itemStats.isDirectory()) {
       markdownPath = resolveReadableMarkdownPath(
@@ -594,6 +669,102 @@ function safeRealPath(targetPath: string): string | null {
     return fs.realpathSync(targetPath);
   } catch {
     return null;
+  }
+}
+
+function getSharedSettingsContent(
+  itemPath: string,
+  allowedRoots: Set<string>
+): { content: string; contentPath: string } | null {
+  if (path.basename(itemPath) !== 'settings.json') {
+    return null;
+  }
+
+  const sharedRoot = Array.from(allowedRoots)[0];
+  if (!sharedRoot) {
+    return null;
+  }
+
+  const settingsPath = path.join(sharedRoot, 'settings.json');
+  const resolvedSettingsPath = safeRealPath(settingsPath);
+  if (!resolvedSettingsPath || !isPathWithinAny(resolvedSettingsPath, allowedRoots)) {
+    return null;
+  }
+
+  let stats: fs.Stats;
+  try {
+    stats = fs.statSync(resolvedSettingsPath);
+  } catch {
+    return null;
+  }
+
+  if (!stats.isFile() || stats.size > MAX_CONTENT_FILE_BYTES) {
+    return null;
+  }
+
+  try {
+    const rawContent = fs.readFileSync(resolvedSettingsPath, 'utf8');
+    const parsed = JSON.parse(rawContent) as unknown;
+    return {
+      content: JSON.stringify(parsed, null, 2),
+      contentPath: resolvedSettingsPath,
+    };
+  } catch {
+    const content = readMarkdownContent(resolvedSettingsPath, allowedRoots);
+    return content
+      ? {
+          content,
+          contentPath: resolvedSettingsPath,
+        }
+      : null;
+  }
+}
+
+function getDirectoryInventoryDescription(
+  directoryPath: string,
+  allowedRoots: Set<string>
+): string {
+  const entries = listDirectoryEntryNames(directoryPath, allowedRoots);
+  if (entries.length === 0) {
+    return 'Empty directory';
+  }
+
+  return trimDescription(
+    `Directory with ${entries.length} ${entries.length === 1 ? 'item' : 'items'}: ${entries.join(', ')}`
+  );
+}
+
+function renderPluginDirectoryContent(
+  displayPath: string,
+  resolvedPath: string,
+  allowedRoots: Set<string>
+): string {
+  const name = path.basename(displayPath);
+  const lines = [`# Plugin directory: ${name}`, '', `Path: \`${displayPath}\``];
+
+  const entries = listDirectoryEntryNames(resolvedPath, allowedRoots);
+  if (entries.length > 0) {
+    lines.push('', '## Directory contents', '', ...entries.map((entry) => `- ${entry}`));
+  } else {
+    lines.push('', 'No files or folders found in this plugin directory.');
+  }
+
+  return lines.join('\n');
+}
+
+function listDirectoryEntryNames(directoryPath: string, allowedRoots: Set<string>): string[] {
+  if (!isPathWithinAny(directoryPath, allowedRoots)) {
+    return [];
+  }
+
+  try {
+    return fs
+      .readdirSync(directoryPath, { withFileTypes: true })
+      .slice(0, 50)
+      .map((entry) => `${entry.name}${entry.isDirectory() ? '/' : ''}`)
+      .sort((a, b) => a.localeCompare(b));
+  } catch {
+    return [];
   }
 }
 

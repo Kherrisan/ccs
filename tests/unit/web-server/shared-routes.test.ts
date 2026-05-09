@@ -285,6 +285,98 @@ describe('web-server shared-routes', () => {
     expect(payload.contentPath).toBe(fs.realpathSync(path.join(skillTargetDir, 'SKILL.md')));
   });
 
+  it('returns factual directory content for a shared plugin directory without markdown', async () => {
+    const pluginsDir = path.join(ccsDir, 'shared', 'plugins');
+    const cacheDir = path.join(pluginsDir, 'cache');
+    fs.mkdirSync(path.join(cacheDir, 'payloads'), { recursive: true });
+    fs.writeFileSync(path.join(cacheDir, 'plugin-index.json'), '{}');
+
+    const listPayload = await getJson<{
+      items: Array<{ name: string; type: string; description: string; path: string }>;
+    }>(baseUrl, '/api/shared/plugins');
+
+    expect(listPayload.items).toEqual([
+      {
+        name: 'cache',
+        type: 'plugin',
+        description: 'Directory with 2 items: payloads/, plugin-index.json',
+        path: cacheDir,
+      },
+    ]);
+
+    const contentPayload = await getJson<{ content: string; contentPath: string }>(
+      baseUrl,
+      `/api/shared/content?type=plugins&path=${encodeURIComponent(cacheDir)}`
+    );
+
+    expect(contentPayload.content).toContain('# Plugin directory: cache');
+    expect(contentPayload.content).toContain('plugin-index.json');
+    expect(contentPayload.content).toContain('payloads/');
+    expect(contentPayload.content).not.toContain('Shared plugin payload cache');
+    expect(contentPayload.contentPath).toBe(fs.realpathSync(cacheDir));
+  });
+
+  it('returns real shared settings content when settings.json is present', async () => {
+    const settingsPath = path.join(ccsDir, 'shared', 'settings.json');
+    fs.writeFileSync(
+      settingsPath,
+      JSON.stringify(
+        {
+          env: { ANTHROPIC_MODEL: 'claude-sonnet-4-5' },
+          permissions: { allow: ['Bash(git status)'] },
+        },
+        null,
+        2
+      )
+    );
+
+    const summaryPayload = await getJson<{ settings: boolean; total: number }>(
+      baseUrl,
+      '/api/shared/summary'
+    );
+    expect(summaryPayload.settings).toBe(true);
+    expect(summaryPayload.total).toBe(1);
+
+    const contentPayload = await getJson<{ content: string; contentPath: string }>(
+      baseUrl,
+      `/api/shared/content?type=settings&path=${encodeURIComponent('settings.json')}`
+    );
+
+    expect(contentPayload.content).toContain('"ANTHROPIC_MODEL": "claude-sonnet-4-5"');
+    expect(contentPayload.content).toContain('"allow"');
+    expect(contentPayload.contentPath).toBe(fs.realpathSync(settingsPath));
+  });
+
+  it('rejects shared settings content when settings.json resolves outside the shared directory', async () => {
+    const settingsPath = path.join(ccsDir, 'shared', 'settings.json');
+    const outsideSettingsPath = path.join(tempHome, 'outside-settings.json');
+    fs.writeFileSync(outsideSettingsPath, '{"env":{"SECRET":"do-not-read"}}');
+    createFileSymlink(outsideSettingsPath, settingsPath);
+
+    const response = await fetch(
+      `${baseUrl}/api/shared/content?type=settings&path=${encodeURIComponent('settings.json')}`
+    );
+
+    expect(response.status).toBe(404);
+    const payload = (await response.json()) as { error: string };
+    expect(payload.error).toBe('Shared content not found');
+  });
+
+  it('returns README content for a shared plugin directory when available', async () => {
+    const pluginsDir = path.join(ccsDir, 'shared', 'plugins');
+    const pluginDir = path.join(pluginsDir, 'marketplaces');
+    fs.mkdirSync(pluginDir, { recursive: true });
+    fs.writeFileSync(path.join(pluginDir, 'README.md'), '# Plugin Marketplace\n\nShared docs');
+
+    const payload = await getJson<{ content: string; contentPath: string }>(
+      baseUrl,
+      `/api/shared/content?type=plugins&path=${encodeURIComponent(pluginDir)}`
+    );
+
+    expect(payload.content).toContain('Shared docs');
+    expect(payload.contentPath).toBe(fs.realpathSync(path.join(pluginDir, 'README.md')));
+  });
+
   it('does not use markdown frontmatter fences as descriptions when frontmatter is malformed', async () => {
     const commandsDir = path.join(ccsDir, 'shared', 'commands');
     fs.mkdirSync(commandsDir, { recursive: true });
