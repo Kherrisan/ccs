@@ -10,14 +10,24 @@ import { resolveAccountContextPolicy, formatAccountContextPolicy } from '../acco
 import { resolveSharedResourcePolicy } from '../shared-resource-policy';
 import { exitWithError } from '../../errors';
 import { ExitCode } from '../../errors/exit-codes';
-import { CommandContext, ListOutput, parseArgs, formatRelativeTime } from './types';
+import {
+  CommandContext,
+  ListOutput,
+  parseArgs,
+  formatRelativeTime,
+  rejectUnsupportedAuthOptions,
+} from './types';
 
 /**
  * Handle the list command
  */
 export async function handleList(ctx: CommandContext, args: string[]): Promise<void> {
   await initUI();
-  const { verbose, json } = parseArgs(args);
+  const parsed = parseArgs(args);
+  const { verbose, json } = parsed;
+  rejectUnsupportedAuthOptions(parsed, {
+    usage: 'ccs auth list [--verbose] [--json]',
+  });
 
   try {
     // Get profiles from both legacy (profiles.json) and unified config (config.yaml)

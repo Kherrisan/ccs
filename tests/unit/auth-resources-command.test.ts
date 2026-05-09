@@ -6,6 +6,38 @@ import ProfileRegistry from '../../src/auth/profile-registry';
 import InstanceManager from '../../src/management/instance-manager';
 import { handleResources } from '../../src/auth/commands/resources-command';
 import { handleCreate } from '../../src/auth/commands/create-command';
+import { handleList } from '../../src/auth/commands/list-command';
+import { handleShow } from '../../src/auth/commands/show-command';
+import { handleBackup } from '../../src/auth/commands/backup-command';
+import { handleRemove } from '../../src/auth/commands/remove-command';
+import { handleDefault, handleResetDefault } from '../../src/auth/commands/default-command';
+
+async function expectProfileExit(action: () => Promise<void>): Promise<string> {
+  const originalExit = process.exit;
+  const originalLog = console.log;
+  const originalError = console.error;
+  const lines: string[] = [];
+
+  process.exit = ((code?: number) => {
+    throw new Error(`process.exit(${code ?? 0})`);
+  }) as typeof process.exit;
+  console.log = (...args: unknown[]) => {
+    lines.push(args.map(String).join(' '));
+  };
+  console.error = (...args: unknown[]) => {
+    lines.push(args.map(String).join(' '));
+  };
+
+  try {
+    await expect(action()).rejects.toThrow('process.exit(7)');
+  } finally {
+    process.exit = originalExit;
+    console.log = originalLog;
+    console.error = originalError;
+  }
+
+  return lines.join('\n');
+}
 
 describe('auth resources command', () => {
   let tempRoot = '';
@@ -143,38 +175,37 @@ describe('auth resources command', () => {
   it('rejects --mode on auth create instead of silently ignoring it', async () => {
     const registry = new ProfileRegistry();
     const instanceMgr = new InstanceManager();
-    const originalExit = process.exit;
-    const originalLog = console.log;
-    const originalError = console.error;
-    const lines: string[] = [];
 
-    process.exit = ((code?: number) => {
-      throw new Error(`process.exit(${code ?? 0})`);
-    }) as typeof process.exit;
-    console.log = (...args: unknown[]) => {
-      lines.push(args.map(String).join(' '));
-    };
-    console.error = (...args: unknown[]) => {
-      lines.push(args.map(String).join(' '));
-    };
+    const output = await expectProfileExit(() =>
+      handleCreate(
+        {
+          registry,
+          instanceMgr,
+          version: 'test',
+        },
+        ['work', '--mode', 'profile-local']
+      )
+    );
 
-    try {
-      await expect(
-        handleCreate(
-          {
-            registry,
-            instanceMgr,
-            version: 'test',
-          },
-          ['work', '--mode', 'profile-local']
-        )
-      ).rejects.toThrow('process.exit(7)');
-    } finally {
-      process.exit = originalExit;
-      console.log = originalLog;
-      console.error = originalError;
+    expect(output).toContain('Unknown option(s): "--mode"');
+  });
+
+  it('rejects --mode on non-resources auth commands instead of silently ignoring it', async () => {
+    const registry = new ProfileRegistry();
+    const instanceMgr = new InstanceManager();
+    const ctx = { registry, instanceMgr, version: 'test' };
+    const cases: Array<[string, () => Promise<void>]> = [
+      ['list', () => handleList(ctx, ['--mode', 'shared'])],
+      ['show', () => handleShow(ctx, ['work', '--mode=shared'])],
+      ['backup', () => handleBackup(ctx, ['work', '--mode', 'profile-local'])],
+      ['remove', () => handleRemove(ctx, ['work', '--mode', 'shared'])],
+      ['default', () => handleDefault(ctx, ['work', '--mode', 'shared'])],
+      ['reset-default', () => handleResetDefault(ctx, ['--mode', 'shared'])],
+    ];
+
+    for (const [commandName, action] of cases) {
+      const output = await expectProfileExit(action);
+      expect(`${commandName}\n${output}`).toContain('Unknown option(s): "--mode"');
     }
-
-    expect(lines.join('\n')).toContain('Unknown option(s): "--mode"');
   });
 });

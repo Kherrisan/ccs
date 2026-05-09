@@ -8,7 +8,7 @@ import {
 } from '../shared-resource-policy';
 import { exitWithError } from '../../errors';
 import { ExitCode } from '../../errors/exit-codes';
-import { CommandContext, parseArgs } from './types';
+import { CommandContext, parseArgs, rejectUnsupportedAuthOptions } from './types';
 
 function formatMode(mode: SharedResourceMode): string {
   return mode === 'profile-local' ? 'profile-local' : 'shared';
@@ -22,7 +22,12 @@ function modeDescription(mode: SharedResourceMode): string {
 
 export async function handleResources(ctx: CommandContext, args: string[]): Promise<void> {
   await initUI();
-  const { profileName, mode, json } = parseArgs(args);
+  const parsed = parseArgs(args, { allowMode: true });
+  const { profileName, mode, json } = parsed;
+  rejectUnsupportedAuthOptions(parsed, {
+    usage: 'ccs auth resources <profile> [--mode shared|profile-local] [--json]',
+    allowMode: true,
+  });
 
   if (!profileName) {
     console.log(fail('Profile name is required'));

@@ -13,7 +13,7 @@ import { resolveConfiguredPlainCcsResumeLane } from '../resume-lane-diagnostics'
 import { resolveSharedResourcePolicy } from '../shared-resource-policy';
 import { exitWithError } from '../../errors';
 import { ExitCode } from '../../errors/exit-codes';
-import { CommandContext, ProfileOutput, parseArgs } from './types';
+import { CommandContext, ProfileOutput, parseArgs, rejectUnsupportedAuthOptions } from './types';
 
 function formatHistorySummary(history: ReturnType<typeof summarizeAccountHistory>): string {
   const scope = history.projects_shared ? 'shared projects' : 'profile-local projects';
@@ -26,7 +26,11 @@ function formatHistorySummary(history: ReturnType<typeof summarizeAccountHistory
  */
 export async function handleShow(ctx: CommandContext, args: string[]): Promise<void> {
   await initUI();
-  const { profileName, json } = parseArgs(args);
+  const parsed = parseArgs(args);
+  const { profileName, json } = parsed;
+  rejectUnsupportedAuthOptions(parsed, {
+    usage: 'ccs auth show <profile> [--json]',
+  });
 
   if (!profileName) {
     console.log(fail('Profile name is required'));

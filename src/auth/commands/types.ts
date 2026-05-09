@@ -6,6 +6,9 @@
 
 import ProfileRegistry from '../profile-registry';
 import { InstanceManager } from '../../management/instance-manager';
+import { exitWithError } from '../../errors';
+import { ExitCode } from '../../errors/exit-codes';
+import { color, fail } from '../../utils/ui';
 
 // Re-export for backward compatibility
 export { formatRelativeTime } from '../../utils/time';
@@ -83,10 +86,36 @@ export interface CommandContext {
   version: string;
 }
 
+export function rejectUnsupportedAuthOptions(
+  parsed: Pick<AuthCommandArgs, 'mode' | 'unknownFlags'>,
+  options: { usage: string; allowMode?: boolean }
+): void {
+  const unsupportedOptions = [
+    ...(parsed.unknownFlags ?? []),
+    ...(!options.allowMode && parsed.mode !== undefined ? ['--mode'] : []),
+  ];
+
+  if (unsupportedOptions.length === 0) {
+    return;
+  }
+
+  const unknownList = unsupportedOptions.map((flag) => `"${flag}"`).join(', ');
+  console.log(fail(`Unknown option(s): ${unknownList}`));
+  console.log('');
+  console.log(`Usage: ${color(options.usage, 'command')}`);
+  console.log(`Help:  ${color('ccs auth --help', 'command')}`);
+  console.log('');
+  exitWithError(`Unknown option(s): ${unknownList}`, ExitCode.PROFILE_ERROR);
+}
+
+interface ParseArgsOptions {
+  allowMode?: boolean;
+}
+
 /**
  * Parse command arguments from raw args array
  */
-export function parseArgs(args: string[]): AuthCommandArgs {
+export function parseArgs(args: string[], options: ParseArgsOptions = {}): AuthCommandArgs {
   let profileName: string | undefined;
   let contextGroup: string | undefined;
   let mode: string | undefined;
@@ -101,7 +130,10 @@ export function parseArgs(args: string[]): AuthCommandArgs {
     '--deeper-continuity',
     '--bare',
   ]);
-  const knownValueFlags = new Set(['--context-group', '--mode']);
+  const knownValueFlags = new Set(['--context-group']);
+  if (options.allowMode) {
+    knownValueFlags.add('--mode');
+  }
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -118,7 +150,7 @@ export function parseArgs(args: string[]): AuthCommandArgs {
       continue;
     }
 
-    if (arg === '--mode') {
+    if (options.allowMode && arg === '--mode') {
       const next = args[i + 1];
       if (!next || next.startsWith('-')) {
         mode = '';
@@ -135,7 +167,7 @@ export function parseArgs(args: string[]): AuthCommandArgs {
       continue;
     }
 
-    if (arg.startsWith('--mode=')) {
+    if (options.allowMode && arg.startsWith('--mode=')) {
       mode = arg.slice('--mode='.length);
       continue;
     }

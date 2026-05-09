@@ -11,7 +11,7 @@ import {
 } from '../resume-lane-diagnostics';
 import { isAccountContextMetadata, resolveAccountContextPolicy } from '../account-context';
 import { isProfileLocalSharedResourceMode } from '../shared-resource-policy';
-import { CommandContext, parseArgs } from './types';
+import { CommandContext, parseArgs, rejectUnsupportedAuthOptions } from './types';
 
 interface BackupManifest {
   target: string;
@@ -37,7 +37,11 @@ function copyDirectoryIfPresent(sourcePath: string, targetPath: string): boolean
 
 export async function handleBackup(ctx: CommandContext, args: string[]): Promise<void> {
   await initUI();
-  const { profileName, json } = parseArgs(args);
+  const parsed = parseArgs(args);
+  const { profileName, json } = parsed;
+  rejectUnsupportedAuthOptions(parsed, {
+    usage: 'ccs auth backup <profile|default> [--json]',
+  });
 
   if (!profileName) {
     console.log(fail('Profile name is required'));

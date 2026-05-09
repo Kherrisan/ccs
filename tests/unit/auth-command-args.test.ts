@@ -64,17 +64,25 @@ describe('auth command args parsing', () => {
   });
 
   it('parses shared resource mode value for resources command', () => {
-    const parsed = parseArgs(['work', '--mode', 'profile-local']);
+    const parsed = parseArgs(['work', '--mode', 'profile-local'], { allowMode: true });
 
     expect(parsed.profileName).toBe('work');
     expect(parsed.mode).toBe('profile-local');
   });
 
   it('parses inline shared resource mode value', () => {
-    const parsed = parseArgs(['work', '--mode=shared']);
+    const parsed = parseArgs(['work', '--mode=shared'], { allowMode: true });
 
     expect(parsed.profileName).toBe('work');
     expect(parsed.mode).toBe('shared');
+  });
+
+  it('treats shared resource mode as unknown unless the command opts in', () => {
+    const parsed = parseArgs(['work', '--mode', 'shared']);
+
+    expect(parsed.profileName).toBe('work');
+    expect(parsed.mode).toBeUndefined();
+    expect(parsed.unknownFlags).toEqual(['--mode']);
   });
 
   it('tracks unknown flags and keeps positional profile intact', () => {

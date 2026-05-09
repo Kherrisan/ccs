@@ -242,8 +242,8 @@ class AuthCommands {
   /**
    * Reset default profile - delegates to default-command.ts
    */
-  async handleResetDefault(): Promise<void> {
-    return handleResetDefault(this.getContext());
+  async handleResetDefault(args: string[] = []): Promise<void> {
+    return handleResetDefault(this.getContext(), args);
   }
 
   /**
@@ -297,7 +297,7 @@ class AuthCommands {
         break;
 
       case 'reset-default':
-        await this.handleResetDefault();
+        await this.handleResetDefault(commandArgs);
         break;
 
       case 'current':

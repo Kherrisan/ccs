@@ -27,7 +27,7 @@ import {
 } from '../shared-resource-policy';
 import { exitWithError } from '../../errors';
 import { ExitCode } from '../../errors/exit-codes';
-import { CommandContext, parseArgs } from './types';
+import { CommandContext, parseArgs, rejectUnsupportedAuthOptions } from './types';
 import { stripAmbientProviderCredentials } from './create-command-env';
 import { isUnifiedMode } from '../../config/config-loader-facade';
 
@@ -40,29 +40,13 @@ function sanitizeProfileNameForInstance(name: string): string {
  */
 export async function handleCreate(ctx: CommandContext, args: string[]): Promise<void> {
   await initUI();
-  const {
-    profileName,
-    force,
-    shareContext,
-    contextGroup,
-    deeperContinuity,
-    bare,
-    mode,
-    unknownFlags,
-  } = parseArgs(args);
+  const parsed = parseArgs(args);
+  const { profileName, force, shareContext, contextGroup, deeperContinuity, bare } = parsed;
 
-  const unsupportedOptions = [...(unknownFlags ?? []), ...(mode !== undefined ? ['--mode'] : [])];
-  if (unsupportedOptions.length > 0) {
-    const unknownList = unsupportedOptions.map((flag) => `"${flag}"`).join(', ');
-    console.log(fail(`Unknown option(s): ${unknownList}`));
-    console.log('');
-    console.log(
-      `Usage: ${color('ccs auth create <profile> [--force] [--bare] [--share-context] [--context-group <name>] [--deeper-continuity]', 'command')}`
-    );
-    console.log(`Help:  ${color('ccs auth --help', 'command')}`);
-    console.log('');
-    exitWithError(`Unknown option(s): ${unknownList}`, ExitCode.PROFILE_ERROR);
-  }
+  rejectUnsupportedAuthOptions(parsed, {
+    usage:
+      'ccs auth create <profile> [--force] [--bare] [--share-context] [--context-group <name>] [--deeper-continuity]',
+  });
 
   if (!profileName) {
     console.log(fail('Profile name is required'));
