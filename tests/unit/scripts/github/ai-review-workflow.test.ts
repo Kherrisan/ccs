@@ -7,7 +7,7 @@ function resolvePath(relativePath: string) {
 }
 
 describe('PR-Agent review lane migration', () => {
-  test('keeps ai-review.yml as the PR-Agent workflow on the self-hosted cliproxy runner', () => {
+  test('keeps ai-review.yml as the PR-Agent workflow on a GitHub-hosted runner', () => {
     const workflowPath = resolvePath('../../../../.github/workflows/ai-review.yml');
     const prAgentConfigPath = resolvePath('../../../../.pr_agent.toml');
 
@@ -19,7 +19,14 @@ describe('PR-Agent review lane migration', () => {
     const appTokenUsages = workflow.match(/uses: actions\/create-github-app-token@v1/g) ?? [];
 
     expect(workflow).toContain('name: AI Code Review');
-    expect(workflow).toContain('runs-on: [self-hosted, cliproxy]');
+    // AI review jobs run on GitHub-hosted runners. Self-hosted runners that
+    // run inside a Docker container (myoung34/github-runner) cannot host
+    // qodo-ai/pr-agent because the action's docker run command uses a volume
+    // mount path (/tmp/runner/work/_temp/_github_workflow) that resolves on
+    // the host filesystem, not inside the runner container, leaving
+    // /github/workflow/event.json missing in the action.
+    expect(workflow).toContain('runs-on: ubuntu-latest');
+    expect(workflow).not.toContain('runs-on: [self-hosted, cliproxy]');
     expect(workflow).toContain('uses: qodo-ai/pr-agent');
     expect(appTokenUsages).toHaveLength(2);
     expect(workflow).toContain('OPENAI.API_BASE');
