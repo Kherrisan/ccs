@@ -1,3 +1,45 @@
+## [7.78.0](https://github.com/kaitranntt/ccs/compare/v7.77.1...v7.78.0) (2026-05-11)
+
+### Features
+
+* **auth:** add shared resource controls ([64e1d1f](https://github.com/kaitranntt/ccs/commit/64e1d1f815836802c1f2ed37758a9d4d104d9e14))
+* clarify account history sync route ([#1187](https://github.com/kaitranntt/ccs/issues/1187)) ([be9effc](https://github.com/kaitranntt/ccs/commit/be9effcce34a7545943d195b3a5ce5369083e98a))
+* **cliproxy:** add OAuth callback traceability across profiles ([641d492](https://github.com/kaitranntt/ccs/commit/641d492cd696fb8ff82c55bf8dc5495abf81e7c9)), closes [#1206](https://github.com/kaitranntt/ccs/issues/1206)
+* **dashboard:** add shared resource controls ([2a422b3](https://github.com/kaitranntt/ccs/commit/2a422b3bd32d989e03e8f20efc875b4bb6d35584))
+* deprecate GitHub Copilot compatibility surfaces ([#1196](https://github.com/kaitranntt/ccs/issues/1196)) ([19a50a8](https://github.com/kaitranntt/ccs/commit/19a50a8dd86ffcc602165701aa15981a53b822b8))
+* support Codex fast service-tier aliases ([74d7374](https://github.com/kaitranntt/ccs/commit/74d73748eef656902d857c8fae7b8e1af7ff5cb4))
+
+### Bug Fixes
+
+* **auth:** reject resource mode outside resources command ([bfe3225](https://github.com/kaitranntt/ccs/commit/bfe32257b6e354b5007e6607b786f9b56ce49743))
+* **auth:** require resource mode value ([3b55020](https://github.com/kaitranntt/ccs/commit/3b550205ddcc98d31a221427dd71f1c9bf3073c4))
+* **cliproxy/auth:** generalize Plus OAuth credential guards for gemini and agy ([4ba9df5](https://github.com/kaitranntt/ccs/commit/4ba9df54251baa60c13f146820f06076c585aa45)), closes [#1131](https://github.com/kaitranntt/ccs/issues/1131) [#1208](https://github.com/kaitranntt/ccs/issues/1208)
+* **cliproxy:** diagnose Gemini Plus OAuth credentials ([61390e5](https://github.com/kaitranntt/ccs/commit/61390e5691e91d67ce04b6813a68135b7d283790)), closes [#1131](https://github.com/kaitranntt/ccs/issues/1131)
+* count CLIProxy OAuth usage in dashboard stats ([#1190](https://github.com/kaitranntt/ccs/issues/1190)) ([ba18b68](https://github.com/kaitranntt/ccs/commit/ba18b68494a7b0563786d582d7e3d344238fbaf2))
+* **dashboard:** show real shared plugin registry state ([8b34060](https://github.com/kaitranntt/ccs/commit/8b340602947312335c368109455488e5ed51cca2))
+* **dispatcher:** re-inject anthropic auth env for anthropic-compatible api profiles ([#1181](https://github.com/kaitranntt/ccs/issues/1181)) ([d6b705e](https://github.com/kaitranntt/ccs/commit/d6b705e6a9e4215c45721f929f69a2680c1eb725)), closes [#1175](https://github.com/kaitranntt/ccs/issues/1175)
+* preserve native Claude passthrough args ([1b53762](https://github.com/kaitranntt/ccs/commit/1b5376239fbdd788de90717792297714e8d48ab9)), closes [#1189](https://github.com/kaitranntt/ccs/issues/1189)
+* route Cursor auth through browser polling ([8b681df](https://github.com/kaitranntt/ccs/commit/8b681df455ed1386818e5a3f919b7ac4f3f7b53b)), closes [#1194](https://github.com/kaitranntt/ccs/issues/1194)
+* route OpenRouter profiles through v1 API ([dc8bbd8](https://github.com/kaitranntt/ccs/commit/dc8bbd85e7937e34689d07e2224334eb3db7bce2))
+* **ui:** keep profile dialog actions visible on small screens ([#1204](https://github.com/kaitranntt/ccs/issues/1204)) ([35346a9](https://github.com/kaitranntt/ccs/commit/35346a981ff7c175cd8097bd3083d0bdd4d377f2))
+* **ui:** surface Claude Opus 4.7 in Claude picker ([58af9cd](https://github.com/kaitranntt/ccs/commit/58af9cd501f5add0c056ea7d62df32a3f8016435))
+* **ui:** surface Claude Opus 4.7 in Claude picker ([#1184](https://github.com/kaitranntt/ccs/issues/1184)) ([b05bb30](https://github.com/kaitranntt/ccs/commit/b05bb30d44d625f266e6b4ff7a2858c74202b02d))
+* **ui:** surface Plus OAuth credential diagnostics in Add Account dialog ([497bca8](https://github.com/kaitranntt/ccs/commit/497bca8684d77cd0242eddea6162b2986b976f80)), closes [#1208](https://github.com/kaitranntt/ccs/issues/1208)
+* **web-server:** gate Gemini/AGY dashboard OAuth on Plus credential availability ([31076df](https://github.com/kaitranntt/ccs/commit/31076dff3e494645e8177e19aed64961d073b206)), closes [#1131](https://github.com/kaitranntt/ccs/issues/1131) [#1208](https://github.com/kaitranntt/ccs/issues/1208)
+
+### Code Refactoring
+
+* **web-server:** modularize shared-routes and Windows-aware symlink status ([a983332](https://github.com/kaitranntt/ccs/commit/a983332016b8f0572cceb8575516ff37178c5c9b))
+
+### Tests
+
+* **ci:** make routing mock complete and websearch trace path env-robust ([9d0690e](https://github.com/kaitranntt/ccs/commit/9d0690e1a86291e93ac775c9ffd06f8e0a0dc974))
+
+### CI
+
+* **ai-review:** move PR-Agent jobs to ubuntu-latest ([c02c66d](https://github.com/kaitranntt/ccs/commit/c02c66dcd116715e7ea7557a0b539920acc24038))
+* trigger fresh CI run after claw runner recovery ([15e0e62](https://github.com/kaitranntt/ccs/commit/15e0e62bd884283f8076f137a3ee65a7ed321973))
+
 ## [7.77.1](https://github.com/kaitranntt/ccs/compare/v7.77.0...v7.77.1) (2026-05-04)
 
 ### Bug Fixes
