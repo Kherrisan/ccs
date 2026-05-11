@@ -70,6 +70,11 @@ import {
 import { createRouteErrorHelpers } from './route-helpers';
 import { requireLocalAccessWhenAuthDisabled } from '../middleware/auth-middleware';
 import { loadOrCreateUnifiedConfig } from '../../config/config-loader-facade';
+import {
+  getPlusOAuthCredentialError,
+  getPlusAuthUrlCredentialError,
+} from '../../cliproxy/auth/oauth-handler';
+import { getStoredConfiguredBackend } from '../../cliproxy/binary-manager';
 
 const router = Router();
 const MANUAL_AUTH_STATE_TTL_MS = 10 * 60 * 1000;
@@ -1042,6 +1047,24 @@ router.post('/:provider/start-url', async (req: Request, res: Response): Promise
     return;
   }
 
+  // Phase 3: Pre-fetch credential guard for Plus-backend OAuth providers (gemini, agy).
+  // Returns null for providers not in the table or when backend is not 'plus'.
+  const credentialError = getPlusOAuthCredentialError(
+    provider as CLIProxyProvider,
+    getStoredConfiguredBackend()
+  );
+  if (credentialError) {
+    console.error(
+      `[cliproxy-auth-routes] start-url credential guard fired for provider=${provider}: ${credentialError}`
+    );
+    res.status(400).json({
+      error: 'plus_oauth_credentials_missing',
+      provider,
+      message: credentialError,
+    });
+    return;
+  }
+
   try {
     const authUrlProvider =
       CLIPROXY_AUTH_URL_PROVIDER_MAP[provider as CLIProxyProvider] || provider;
@@ -1078,6 +1101,25 @@ router.post('/:provider/start-url', async (req: Request, res: Response): Promise
       method?: string;
     };
     const authUrl = data.url || data.auth_url;
+
+    // Phase 4: Post-fetch auth-URL guard — detect Plus emitting an OAuth URL with empty client_id.
+    // Only fires for table-listed providers (gemini, agy); returns null for all others.
+    if (authUrl) {
+      const authUrlError = getPlusAuthUrlCredentialError(provider as CLIProxyProvider, authUrl);
+      if (authUrlError) {
+        const redactedUrl = authUrl.split('?')[0];
+        console.error(
+          `[cliproxy-auth-routes] Plus emitted OAuth URL without client_id for provider=${provider} url=${redactedUrl}`
+        );
+        res.status(502).json({
+          error: 'plus_oauth_url_missing_client_id',
+          provider,
+          message: authUrlError,
+        });
+        return;
+      }
+    }
+
     const oauthState = data.state || parseAuthUrlState(authUrl);
 
     // Some upstream flows return state first and provide auth_url in subsequent status polling.

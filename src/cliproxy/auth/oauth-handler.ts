@@ -87,30 +87,122 @@ const GEMINI_PLUS_CLIENT_SECRET_ENV = 'CLIPROXY_GEMINI_OAUTH_CLIENT_SECRET';
 
 const logger = createLogger('cliproxy:auth:oauth');
 
-function buildGeminiPlusOAuthCredentialMessage(missing?: string[]): string {
+/**
+ * Table of providers that require Google OAuth client credentials when running
+ * against CLIProxy Plus. Keyed by CLIProxyProvider value.
+ *
+ * Used by the generalized helpers so the dashboard handler can guard any
+ * table-listed provider without duplicating env-var names.
+ */
+export const PLUS_OAUTH_ENV_BY_PROVIDER: Partial<
+  Record<CLIProxyProvider, { idEnv: string; secretEnv: string; displayName: string }>
+> = {
+  gemini: {
+    idEnv: GEMINI_PLUS_CLIENT_ID_ENV,
+    secretEnv: GEMINI_PLUS_CLIENT_SECRET_ENV,
+    displayName: 'Gemini',
+  },
+  agy: {
+    idEnv: 'CLIPROXY_ANTIGRAVITY_OAUTH_CLIENT_ID',
+    secretEnv: 'CLIPROXY_ANTIGRAVITY_OAUTH_CLIENT_SECRET',
+    displayName: 'Antigravity',
+  },
+};
+
+/**
+ * Build a human-readable error message for a provider whose Plus OAuth client
+ * credentials are missing.
+ *
+ * @param displayName - Human-readable provider name (e.g. "Gemini", "Antigravity")
+ * @param idEnv       - Name of the client-ID env var
+ * @param secretEnv   - Name of the client-secret env var
+ * @param missing     - Which of the two vars are absent (omit to suppress the "Missing:" prefix)
+ */
+function buildPlusOAuthCredentialMessage(
+  displayName: string,
+  idEnv: string,
+  secretEnv: string,
+  missing?: string[]
+): string {
   const missingText = missing?.length ? ` Missing: ${missing.join(', ')}.` : '';
   return (
-    'Gemini OAuth from CLIProxy Plus is missing Google OAuth client credentials.' +
+    `${displayName} OAuth from CLIProxy Plus is missing Google OAuth client credentials.` +
     missingText +
-    ` Set ${GEMINI_PLUS_CLIENT_ID_ENV} and ${GEMINI_PLUS_CLIENT_SECRET_ENV} before starting CLIProxy Plus,` +
-    ' or switch `cliproxy.backend` to `original` for Gemini.'
+    ` Set ${idEnv} and ${secretEnv} before starting CLIProxy Plus,` +
+    ` or switch \`cliproxy.backend\` to \`original\` for ${displayName}.`
   );
 }
+
+/**
+ * Generalized credential-missing guard for any provider in PLUS_OAUTH_ENV_BY_PROVIDER.
+ *
+ * Returns null when:
+ *   - provider is not in the table (not a Plus-credentialed provider)
+ *   - backend is not 'plus'
+ *   - both credential env vars are set and non-empty
+ *
+ * Returns an error string when Plus is active and one or both vars are missing.
+ */
+export function getPlusOAuthCredentialError(
+  provider: CLIProxyProvider,
+  backend: CLIProxyBackend,
+  env: NodeJS.ProcessEnv = process.env
+): string | null {
+  const entry = PLUS_OAUTH_ENV_BY_PROVIDER[provider];
+  if (!entry || backend !== 'plus') {
+    return null;
+  }
+
+  const missing = [entry.idEnv, entry.secretEnv].filter((name) => !env[name]?.trim());
+  return missing.length > 0
+    ? buildPlusOAuthCredentialMessage(entry.displayName, entry.idEnv, entry.secretEnv, missing)
+    : null;
+}
+
+/**
+ * Generalized auth-URL guard for any provider in PLUS_OAUTH_ENV_BY_PROVIDER.
+ *
+ * Returns null when:
+ *   - provider is not in the table
+ *   - authUrl cannot be parsed as a URL (ignore malformed upstream responses)
+ *   - client_id query param is present and non-empty
+ *
+ * Returns an error string when client_id is absent or empty.
+ */
+export function getPlusAuthUrlCredentialError(
+  provider: CLIProxyProvider,
+  authUrl: string
+): string | null {
+  const entry = PLUS_OAUTH_ENV_BY_PROVIDER[provider];
+  if (!entry) {
+    return null;
+  }
+
+  try {
+    const parsed = new URL(authUrl);
+    const clientId = parsed.searchParams.get('client_id')?.trim();
+    return clientId
+      ? null
+      : buildPlusOAuthCredentialMessage(entry.displayName, entry.idEnv, entry.secretEnv);
+  } catch {
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Gemini-specific aliases — kept for backward-compat with PR #1131's callers.
+// These lock the provider to 'gemini' and delegate to the generalized helpers.
+// ---------------------------------------------------------------------------
 
 export function getGeminiPlusOAuthCredentialError(
   provider: CLIProxyProvider,
   backend: CLIProxyBackend,
   env: NodeJS.ProcessEnv = process.env
 ): string | null {
-  if (provider !== 'gemini' || backend !== 'plus') {
+  if (provider !== 'gemini') {
     return null;
   }
-
-  const missing = [GEMINI_PLUS_CLIENT_ID_ENV, GEMINI_PLUS_CLIENT_SECRET_ENV].filter(
-    (name) => !env[name]?.trim()
-  );
-
-  return missing.length > 0 ? buildGeminiPlusOAuthCredentialMessage(missing) : null;
+  return getPlusOAuthCredentialError(provider, backend, env);
 }
 
 export function getGeminiAuthUrlCredentialError(
@@ -120,14 +212,7 @@ export function getGeminiAuthUrlCredentialError(
   if (provider !== 'gemini') {
     return null;
   }
-
-  try {
-    const parsed = new URL(authUrl);
-    const clientId = parsed.searchParams.get('client_id')?.trim();
-    return clientId ? null : buildGeminiPlusOAuthCredentialMessage();
-  } catch {
-    return null;
-  }
+  return getPlusAuthUrlCredentialError(provider, authUrl);
 }
 
 export async function requestPasteCallbackStart(
