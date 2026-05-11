@@ -42,6 +42,12 @@ import {
   unregisterAuthSession,
   authSessionEvents,
 } from '../auth/auth-session-manager';
+import { createOAuthTraceRecorder, OAuthTracePhase, type OAuthTraceRecorder } from './oauth-trace';
+import { redactString } from './oauth-trace/redactor';
+import { createFileSink } from './oauth-trace/sink-file';
+import { diagnoseFailure, formatErrorMessage } from './oauth-trace/diagnose-failure';
+import * as path from 'path';
+import { getCcsDir } from '../../utils/config-manager';
 
 /** Options for OAuth process execution */
 export interface OAuthProcessOptions {
@@ -575,7 +581,8 @@ async function handleTokenNotFound(
   nickname: string | undefined,
   expectedAccountId: string | undefined,
   verbose: boolean,
-  failureReason?: string
+  failureReason?: string,
+  trace?: OAuthTraceRecorder
 ): Promise<AccountInfo | null> {
   console.log('');
 
@@ -609,6 +616,22 @@ async function handleTokenNotFound(
     console.log('  1. Ensure you are logged into Kiro IDE');
     console.log('  2. Run: ccs kiro --import');
     return null;
+  }
+
+  // Branch-specific diagnosis when trace recorder is wired (Phase 7).
+  if (trace) {
+    const diagnosis = diagnoseFailure(trace.snapshot());
+    if (diagnosis.branchId !== 'UNKNOWN') {
+      console.log(fail('Authentication failed'));
+      const lines = formatErrorMessage(diagnosis, {
+        verbose,
+        platform: process.platform,
+        callbackPort,
+        provider,
+      });
+      for (const line of lines) console.log(line);
+      return null;
+    }
   }
 
   console.log(fail('Token not found after authentication'));
@@ -698,10 +721,22 @@ export function executeOAuthProcess(options: OAuthProcessOptions): Promise<Accou
     // H7: Mutable ref for stdin keepalive interval (set later, needed in cleanup)
     let stdinKeepalive: ReturnType<typeof setInterval> | null = null;
 
+    // Mutable ref so cleanup/handleCancel can flush trace even though `trace`
+    // is assigned after them. DEFERRED: per-event syscall throttling.
+    let traceRef: OAuthTraceRecorder | null = null;
+
     // H5: Signal handling - properly kill child process on SIGINT/SIGTERM
     // H8: Also clear stdinKeepalive interval to prevent memory leak
     const cleanup = () => {
       if (stdinKeepalive) clearInterval(stdinKeepalive);
+      if (traceRef) {
+        try {
+          traceRef.record(OAuthTracePhase.Cancelled, { reason: 'signal' });
+          void traceRef.flush();
+        } catch {
+          // never block shutdown on trace errors
+        }
+      }
       if (authProcess && authProcess.exitCode === null) {
         killWithEscalation(authProcess);
       }
@@ -724,6 +759,25 @@ export function executeOAuthProcess(options: OAuthProcessOptions): Promise<Accou
       cancelManualCallbackPrompt: null,
     };
 
+    // OAuth trace recorder — opt-in file sink via CCS_OAUTH_LOG_FILE=1
+    const fileSink =
+      process.env['CCS_OAUTH_LOG_FILE'] === '1'
+        ? createFileSink({ dir: path.join(getCcsDir(), 'logs') })
+        : undefined;
+    const trace = createOAuthTraceRecorder({
+      sessionId: state.sessionId,
+      provider,
+      verbose,
+      fileSink,
+    });
+    traceRef = trace; // wire late-binding ref for cleanup/handleCancel
+    trace.record(OAuthTracePhase.BinarySpawn, {
+      callbackPort,
+      headless,
+      manualCallback: !!options.manualCallback,
+      flowType,
+    });
+
     // Register session for cancellation support
     registerAuthSession(state.sessionId, provider);
     attachProcessToSession(state.sessionId, authProcess);
@@ -732,6 +786,14 @@ export function executeOAuthProcess(options: OAuthProcessOptions): Promise<Accou
     const handleCancel = (cancelledSessionId: string) => {
       if (cancelledSessionId === state.sessionId && authProcess && authProcess.exitCode === null) {
         log('Session cancelled externally');
+        if (traceRef) {
+          try {
+            traceRef.record(OAuthTracePhase.Cancelled, { reason: 'external' });
+            void traceRef.flush();
+          } catch {
+            // never block shutdown on trace errors
+          }
+        }
         killWithEscalation(authProcess);
       }
     };
@@ -754,13 +816,30 @@ export function executeOAuthProcess(options: OAuthProcessOptions): Promise<Accou
     }
 
     authProcess.stdout?.on('data', async (data: Buffer) => {
-      await handleStdout(data.toString(), state, options, authProcess, log);
+      const out = data.toString();
+      const wasUrlDisplayed = state.urlDisplayed;
+      const wasBrowserOpened = state.browserOpened;
+      await handleStdout(out, state, options, authProcess, log);
+      if (!wasUrlDisplayed && state.urlDisplayed) {
+        trace.record(OAuthTracePhase.AuthUrlDisplayed, {});
+      }
+      if (!wasBrowserOpened && state.browserOpened) {
+        trace.record(OAuthTracePhase.BrowserOpened, { port: callbackPort });
+        // CLIProxyAPI emits "Callback server listening" when bind succeeds; treat as
+        // best-available signal that the loopback path is reachable. This is a heuristic.
+        trace.record(OAuthTracePhase.CallbackObservedHeuristic, { port: callbackPort });
+      }
+      // Capture redacted snippet (cap at 200 chars; high-frequency lines accepted as data).
+      const snippet = redactString(out.trim().slice(0, 200));
+      if (snippet) trace.record(OAuthTracePhase.BinaryStdout, { snippet });
     });
 
     authProcess.stderr?.on('data', async (data: Buffer) => {
       const output = data.toString();
       state.stderrData += output;
       log(`stderr: ${output.trim()}`);
+      const snippet = redactString(output.trim().slice(0, 200));
+      if (snippet) trace.record(OAuthTracePhase.BinaryStderr, { snippet });
       if (headless && !state.urlDisplayed) {
         displayUrlFromStderr(output, state, oauthConfig);
       }
@@ -828,6 +907,8 @@ export function executeOAuthProcess(options: OAuthProcessOptions): Promise<Accou
       authSessionEvents.removeListener('session:cancelled', handleCancel);
       unregisterAuthSession(state.sessionId);
       cancelProjectSelection(state.sessionId);
+      trace.record(OAuthTracePhase.Timeout, { timeoutMs });
+      void trace.flush();
       killWithEscalation(authProcess);
       console.log('');
       console.log(fail(`OAuth timed out after ${timeoutMs / 60000} minutes`));
@@ -849,6 +930,10 @@ export function executeOAuthProcess(options: OAuthProcessOptions): Promise<Accou
       unregisterAuthSession(state.sessionId);
       cancelProjectSelection(state.sessionId);
       const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+      trace.record(OAuthTracePhase.BinaryExit, {
+        code,
+        stderrTail: redactString(state.stderrData.trim().split('\n').pop() ?? ''),
+      });
 
       if (code === 0) {
         const exitAnalysis = analyzeSuccessfulAuthExit({
@@ -861,6 +946,8 @@ export function executeOAuthProcess(options: OAuthProcessOptions): Promise<Accou
         });
 
         if (exitAnalysis.tokenSnapshot) {
+          trace.record(OAuthTracePhase.TokenFileAppeared, {});
+          await trace.flush();
           console.log('');
           console.log(ok(`Authentication successful (${elapsed}s)`));
 
@@ -881,6 +968,8 @@ export function executeOAuthProcess(options: OAuthProcessOptions): Promise<Accou
             });
           }
 
+          trace.record(OAuthTracePhase.TokenFileMissing, {});
+          await trace.flush();
           // Try auto-import for Kiro, show error for others
           const account = await handleTokenNotFound(
             provider,
@@ -889,7 +978,8 @@ export function executeOAuthProcess(options: OAuthProcessOptions): Promise<Accou
             nickname,
             expectedAccountId,
             verbose,
-            exitAnalysis.failureReason || undefined
+            exitAnalysis.failureReason || undefined,
+            trace
           );
           resolve(account);
         }
@@ -918,6 +1008,8 @@ export function executeOAuthProcess(options: OAuthProcessOptions): Promise<Accou
       authSessionEvents.removeListener('session:cancelled', handleCancel);
       unregisterAuthSession(state.sessionId);
       cancelProjectSelection(state.sessionId);
+      trace.record(OAuthTracePhase.Error, {}, error);
+      void trace.flush();
       console.log('');
       console.log(fail(`Failed to start auth process: ${error.message}`));
       resolve(null);

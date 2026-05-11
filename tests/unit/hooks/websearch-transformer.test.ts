@@ -618,7 +618,15 @@ global.fetch = async (url) => {
     const preloadPath = join(tempDir, 'mock-fetch.cjs');
     const ccsHome = join(tempDir, 'home');
     const fallbackTracePath = join(ccsHome, '.ccs', 'logs', 'websearch-trace.jsonl');
-    const disallowedTracePath = join(process.cwd(), '.tmp-websearch-trace-unsafe.jsonl');
+    // disallowedTracePath MUST NOT start with any safe prefix (tmpdir(),
+    // /var/log, or <CCS_HOME>/.ccs/logs). Anchoring under cwd or homedir
+    // is unsafe in CI/Bun-test environments where those paths can fall
+    // under /tmp (CI runner workspace) or under tmpdir (Bun's HOME
+    // isolation), which would falsely satisfy the tmpdir prefix. Use a
+    // root-anchored path outside every safe prefix so the hook MUST
+    // reject it. The hook writes via try/catch; a permission denial here
+    // also leaves the file absent.
+    const disallowedTracePath = '/etc/ccs-test-disallowed-websearch-trace-' + Date.now() + '.jsonl';
     const html = `
       <a class="result__a" href="/l/?uddg=https%3A%2F%2Fexample.com%2Farticle">Example title</a>
       <a class="result__snippet">Example snippet</a>

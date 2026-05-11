@@ -6,7 +6,14 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { useSharedItemContent, useSharedItems, useSharedSummary } from '@/hooks/use-shared';
+import { CodeEditor } from '@/components/shared/code-editor';
+import { useAccounts } from '@/hooks/use-accounts';
+import {
+  type SharedSummary,
+  useSharedItemContent,
+  useSharedItems,
+  useSharedSummary,
+} from '@/hooks/use-shared';
 import { cn } from '@/lib/utils';
 import '@/lib/i18n';
 import { useTranslation } from 'react-i18next';
@@ -14,6 +21,8 @@ import {
   AlertCircle,
   AlertTriangle,
   Bot,
+  Box,
+  FileJson,
   FileText,
   FolderOpen,
   RefreshCw,
@@ -21,15 +30,18 @@ import {
   Sparkles,
 } from 'lucide-react';
 
-type TabType = 'commands' | 'skills' | 'agents';
+type TabType = 'commands' | 'skills' | 'agents' | 'plugins' | 'settings';
 
 export function SharedPage() {
   const { t } = useTranslation();
   const [tab, setTab] = useState<TabType>('commands');
+  const [hasUserSelectedTab, setHasUserSelectedTab] = useState(false);
   const tabLabels: Record<TabType, string> = {
     commands: t('sharedPage.commands'),
     skills: t('sharedPage.skills'),
     agents: t('sharedPage.agents'),
+    plugins: t('sharedPage.plugins'),
+    settings: t('sharedPage.settings'),
   };
 
   const [query, setQuery] = useState('');
@@ -41,7 +53,10 @@ export function SharedPage() {
     error: summaryError,
     refetch: refetchSummary,
   } = useSharedSummary();
-  const { data: items, isLoading, isFetching, isError, error, refetch } = useSharedItems(tab);
+
+  const { data: accountsView } = useAccounts();
+  const activeTab = summary && !hasUserSelectedTab ? getPreferredInitialTab(summary) : tab;
+  const { data: items, isLoading, isFetching, isError, error, refetch } = useSharedItems(activeTab);
   const allItems = items?.items ?? [];
   const normalizedQuery = query.trim().toLowerCase();
   const activeQuery = query.trim();
@@ -71,23 +86,53 @@ export function SharedPage() {
     return filteredItems.find((item) => item.path === selectedItemPath) ?? filteredItems[0];
   }, [filteredItems, selectedItemPath]);
 
+  const contentPath =
+    activeTab === 'settings' && summary?.settings ? 'settings.json' : (selectedItem?.path ?? null);
   const {
     data: selectedItemContent,
     isLoading: isContentLoading,
     isError: isContentError,
     error: contentError,
     refetch: refetchContent,
-  } = useSharedItemContent(tab, selectedItem?.path ?? null);
+  } = useSharedItemContent(activeTab, contentPath);
 
-  const tabs: { id: TabType; label: string; icon: typeof FileText; count: number }[] = [
+  const tabs: { id: TabType; label: string; icon: typeof FileText; count: number | string }[] = [
     { id: 'commands', label: tabLabels.commands, icon: FileText, count: summary?.commands ?? 0 },
     { id: 'skills', label: tabLabels.skills, icon: Sparkles, count: summary?.skills ?? 0 },
     { id: 'agents', label: tabLabels.agents, icon: Bot, count: summary?.agents ?? 0 },
+    { id: 'plugins', label: tabLabels.plugins, icon: Box, count: summary?.plugins ?? 0 },
+    {
+      id: 'settings',
+      label: tabLabels.settings,
+      icon: FileJson,
+      count: summary?.settings ? 1 : 0,
+    },
   ];
-  const totalSharedItems = tabs.reduce((sum, tabOption) => sum + tabOption.count, 0);
+  const totalSharedItems = summary?.total ?? 0;
+  const settingsCount = summary?.settings ? 1 : 0;
+  const currentItemCount = activeTab === 'settings' ? settingsCount : allItems.length;
+  const currentVisibleCount = activeTab === 'settings' ? settingsCount : filteredItems.length;
+  const showListStatus = activeTab === 'settings' || (!isLoading && !isError);
+  const detailModeLabel =
+    activeTab === 'plugins'
+      ? t('sharedPage.registryDetail')
+      : activeTab === 'settings'
+        ? t('sharedPage.maskedSettingsDetail')
+        : t('sharedPage.markdownDetail');
+  const emptyStateMessage =
+    activeTab === 'plugins'
+      ? t('sharedPage.noPluginsFound')
+      : t('sharedPage.noSharedFound', { tab: activeTab });
 
   const hasNoItems = !isLoading && !isError && allItems.length === 0;
   const hasNoMatches = !isLoading && !isError && allItems.length > 0 && filteredItems.length === 0;
+  const sharedResourceAccounts =
+    accountsView?.accounts.filter(
+      (account) => (account.shared_resource_mode || 'shared') === 'shared'
+    ) ?? [];
+  const profileLocalResourceAccounts =
+    accountsView?.accounts.filter((account) => account.shared_resource_mode === 'profile-local') ??
+    [];
 
   // TODO i18n: missing key for "Shared item totals could not be loaded. Listing still works."
   const summaryErrorMessage = getSharedErrorMessage(
@@ -96,7 +141,7 @@ export function SharedPage() {
   );
   const itemsErrorMessage = getSharedErrorMessage(
     error,
-    `Unable to fetch shared ${tab}. Please try again.`
+    `Unable to fetch shared ${activeTab}. Please try again.`
   );
   const contentErrorMessage = getSharedErrorMessage(
     contentError,
@@ -104,7 +149,7 @@ export function SharedPage() {
   );
 
   return (
-    <div className="h-full overflow-hidden flex flex-col">
+    <div className="h-full overflow-auto lg:overflow-hidden flex flex-col">
       <div className="p-6 pb-4 space-y-3">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
           <div className="space-y-3">
@@ -114,8 +159,9 @@ export function SharedPage() {
             </div>
 
             <Tabs
-              value={tab}
+              value={activeTab}
               onValueChange={(nextTab) => {
+                setHasUserSelectedTab(true);
                 setTab(nextTab as TabType);
                 setQuery('');
                 setSelectedItemPath(null);
@@ -136,12 +182,12 @@ export function SharedPage() {
           <div className="flex flex-col gap-2 lg:items-end">
             <div className="grid w-full gap-2 sm:w-auto sm:min-w-[340px] sm:grid-cols-3">
               <HeaderMetricCard label={t('sharedPage.totalShared')} value={totalSharedItems} />
-              <HeaderMetricCard label={tabLabels[tab]} value={allItems.length} />
-              <HeaderMetricCard label={t('sharedPage.visible')} value={filteredItems.length} />
+              <HeaderMetricCard label={tabLabels[activeTab]} value={currentItemCount} />
+              <HeaderMetricCard label={t('sharedPage.visible')} value={currentVisibleCount} />
             </div>
 
             <div className="flex items-center gap-2 text-xs">
-              <Badge variant="secondary">{t('sharedPage.markdownDetail')}</Badge>
+              <Badge variant="secondary">{detailModeLabel}</Badge>
               {activeQuery ? (
                 <Badge variant="outline">
                   {t('sharedPage.filterPrefix')} {activeQuery}
@@ -183,21 +229,29 @@ export function SharedPage() {
             </AlertDescription>
           </Alert>
         )}
+
+        {accountsView ? (
+          <ResourcePoliciesPanel
+            sharedCount={sharedResourceAccounts.length}
+            profileLocalCount={profileLocalResourceAccounts.length}
+            profileLocalNames={profileLocalResourceAccounts.map((account) => account.name)}
+          />
+        ) : null}
       </div>
 
-      <div className="flex-1 min-h-0 px-6 pb-6">
-        <div className="h-full rounded-lg border overflow-hidden bg-background">
-          <div className="grid h-full min-h-0 lg:grid-cols-[320px_minmax(0,1fr)]">
-            <div className="min-h-0 border-b lg:border-b-0 lg:border-r flex flex-col bg-muted/30">
+      <div className="px-6 pb-6 lg:flex-1 lg:min-h-0">
+        <div className="rounded-lg border overflow-hidden bg-background lg:h-full">
+          <div className="grid lg:h-full lg:min-h-0 lg:grid-cols-[320px_minmax(0,1fr)]">
+            <div className="border-b lg:border-b-0 lg:border-r flex flex-col bg-muted/30 lg:min-h-0">
               <div className="p-4 border-b bg-background space-y-3">
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2 min-w-0">
                     <FolderOpen className="w-4 h-4 text-primary shrink-0" />
-                    <h2 className="font-semibold truncate">{tabLabels[tab]}</h2>
+                    <h2 className="font-semibold truncate">{tabLabels[activeTab]}</h2>
                   </div>
-                  {!isLoading && !isError && (
+                  {showListStatus && (
                     <Badge variant="outline" className="text-[10px] h-5">
-                      {filteredItems.length}/{allItems.length}
+                      {currentVisibleCount}/{currentItemCount}
                     </Badge>
                   )}
                 </div>
@@ -207,18 +261,18 @@ export function SharedPage() {
                   <Input
                     value={query}
                     onChange={(event) => setQuery(event.target.value)}
-                    placeholder={t('sharedPage.filterPlaceholder', { tab })}
-                    aria-label={t('sharedPage.filterPlaceholder', { tab })}
+                    placeholder={t('sharedPage.filterPlaceholder', { tab: activeTab })}
+                    aria-label={t('sharedPage.filterPlaceholder', { tab: activeTab })}
                     className="pl-8 h-9"
                   />
                 </div>
 
-                {!isLoading && !isError && (
+                {showListStatus && (
                   <p className="text-xs text-muted-foreground">
                     {t('sharedPage.showing', {
-                      visible: filteredItems.length,
-                      total: allItems.length,
-                      tab,
+                      visible: currentVisibleCount,
+                      total: currentItemCount,
+                      tab: activeTab,
                     })}
                     {activeQuery ? t('sharedPage.showingQuery', { query: activeQuery }) : ''}
                     {isFetching ? t('sharedPage.refreshing') : ''}
@@ -226,10 +280,37 @@ export function SharedPage() {
                 )}
               </div>
 
-              <ScrollArea className="flex-1 min-h-0">
-                {isLoading ? (
+              <ScrollArea className="max-h-[360px] lg:max-h-none lg:flex-1 lg:min-h-0">
+                {activeTab === 'settings' ? (
+                  <div className="p-2 space-y-1">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedItemPath('settings.json')}
+                      className={cn(
+                        'w-full text-left p-3 rounded-md border transition-colors',
+                        summary?.settings
+                          ? 'bg-primary/10 border-primary/30'
+                          : 'bg-background hover:bg-muted border-transparent opacity-50'
+                      )}
+                      disabled={!summary?.settings}
+                    >
+                      <p className="text-sm font-medium truncate">settings.json</p>
+                      <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                        {t('sharedPage.settingsDescription')}
+                      </p>
+                      <Badge
+                        variant={summary?.settings ? 'default' : 'secondary'}
+                        className="mt-2 text-[10px]"
+                      >
+                        {summary?.settings
+                          ? t('sharedPage.settingsActive')
+                          : t('sharedPage.settingsInactive')}
+                      </Badge>
+                    </button>
+                  </div>
+                ) : isLoading ? (
                   <div className="p-4 text-sm text-muted-foreground">
-                    {t('sharedPage.loadingShared', { tab })}
+                    {t('sharedPage.loadingShared', { tab: activeTab })}
                   </div>
                 ) : isError ? (
                   <div className="p-4 text-center">
@@ -237,7 +318,7 @@ export function SharedPage() {
                       <AlertCircle className="w-10 h-10 mx-auto text-destructive/50" />
                       <div>
                         <p className="text-sm font-medium">
-                          {t('sharedPage.failedLoadShared', { tab })}
+                          {t('sharedPage.failedLoadShared', { tab: activeTab })}
                         </p>
                         <p className="text-xs text-muted-foreground mt-1">{itemsErrorMessage}</p>
                       </div>
@@ -254,12 +335,12 @@ export function SharedPage() {
                     </div>
                   </div>
                 ) : hasNoItems ? (
-                  <div className="p-4 text-sm text-muted-foreground">
-                    {t('sharedPage.noSharedFound', { tab })}
+                  <div className="p-4 text-sm text-muted-foreground leading-relaxed">
+                    {emptyStateMessage}
                   </div>
                 ) : hasNoMatches ? (
                   <div className="p-4 text-sm text-muted-foreground">
-                    {t('sharedPage.noMatch', { tab, query: activeQuery })}
+                    {t('sharedPage.noMatch', { tab: activeTab, query: activeQuery })}
                   </div>
                 ) : (
                   <div className="p-2 space-y-1">
@@ -280,7 +361,7 @@ export function SharedPage() {
                           {item.description}
                         </p>
                         <p className="text-[11px] text-muted-foreground/90 mt-2 font-mono truncate">
-                          {item.path}
+                          {formatSharedItemPath(item.path)}
                         </p>
                       </button>
                     ))}
@@ -289,12 +370,94 @@ export function SharedPage() {
               </ScrollArea>
             </div>
 
-            <div className="min-w-0 min-h-0 flex flex-col bg-muted/20">
-              {!selectedItem ? (
+            <div className="min-w-0 min-h-[360px] flex flex-col bg-muted/20 lg:min-h-0">
+              {!selectedItem && activeTab !== 'settings' ? (
                 <div className="min-h-[320px] flex items-center justify-center p-6 text-center text-muted-foreground">
-                  {t('sharedPage.selectOne', { tab: tab.slice(0, -1) })}
+                  {t('sharedPage.selectOne', { tab: activeTab.slice(0, -1) })}
                 </div>
-              ) : (
+              ) : activeTab === 'settings' ? (
+                <>
+                  <div className="px-4 py-3 border-b bg-background">
+                    <div className="flex items-center gap-2">
+                      <h2 className="text-base font-semibold truncate">settings.json</h2>
+                      <Badge variant="outline" className="uppercase text-[10px]">
+                        {t('sharedPage.settings')}
+                      </Badge>
+                    </div>
+                  </div>
+
+                  <div className="p-4 space-y-4 min-h-0 flex-1 flex flex-col">
+                    <div className="rounded-md border bg-muted/35 p-3">
+                      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                        <MetadataField
+                          label={t('sharedPage.settingsTitle')}
+                          value={t('sharedPage.settingsDescription')}
+                        />
+                        {selectedItemContent?.contentPath ? (
+                          <MetadataField
+                            label={t('sharedPage.resolvedSource')}
+                            value={selectedItemContent.contentPath}
+                            mono
+                          />
+                        ) : null}
+                      </div>
+                    </div>
+
+                    <Card className="min-h-0 flex-1">
+                      <CardContent className="p-0 h-full">
+                        <ScrollArea className="h-full px-5 py-4">
+                          {!summary?.settings ? (
+                            <div className="min-h-[260px] flex flex-col items-center justify-center text-center">
+                              <FileJson className="w-12 h-12 text-muted-foreground/40 mb-4" />
+                              <h3 className="text-lg font-semibold">
+                                {t('sharedPage.settingsTitle')}
+                              </h3>
+                              <p className="text-sm text-muted-foreground max-w-md mt-2">
+                                {t('sharedPage.settingsDescription')}
+                              </p>
+                              <div className="mt-6 p-3 rounded-md bg-muted/50 border font-mono text-xs">
+                                {t('sharedPage.settingsInactive')}
+                              </div>
+                            </div>
+                          ) : isContentLoading ? (
+                            <p className="text-sm text-muted-foreground">
+                              {t('sharedPage.loadingSettings')}
+                            </p>
+                          ) : isContentError ? (
+                            <Alert variant="destructive" className="max-w-2xl">
+                              <AlertTriangle className="h-4 w-4" />
+                              <AlertTitle>{t('sharedPage.failedLoadContent')}</AlertTitle>
+                              <AlertDescription>
+                                <p>{contentErrorMessage}</p>
+                                <div className="mt-3">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => {
+                                      void refetchContent();
+                                    }}
+                                  >
+                                    <RefreshCw className="w-4 h-4 mr-2" />
+                                    {t('sharedPage.retryContent')}
+                                  </Button>
+                                </div>
+                              </AlertDescription>
+                            </Alert>
+                          ) : (
+                            <CodeEditor
+                              value={selectedItemContent?.content ?? ''}
+                              onChange={() => {}}
+                              language="json"
+                              readonly
+                              minHeight="320px"
+                            />
+                          )}
+                        </ScrollArea>
+                      </CardContent>
+                    </Card>
+                  </div>
+                </>
+              ) : selectedItem ? (
                 <>
                   <div className="px-4 py-3 border-b bg-background">
                     <div className="flex items-center gap-2">
@@ -310,7 +473,7 @@ export function SharedPage() {
                       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                         <MetadataField
                           label={t('sharedPage.pathLabel')}
-                          value={selectedItem.path}
+                          value={formatSharedItemPath(selectedItem.path)}
                           mono
                         />
                         {selectedItemContent?.contentPath &&
@@ -359,9 +522,81 @@ export function SharedPage() {
                     </Card>
                   </div>
                 </>
-              )}
+              ) : null}
             </div>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function getPreferredInitialTab(summary: SharedSummary): TabType {
+  if (summary.commands > 0) {
+    return 'commands';
+  }
+  if (summary.skills > 0) {
+    return 'skills';
+  }
+  if (summary.agents > 0) {
+    return 'agents';
+  }
+  if (summary.plugins > 0) {
+    return 'plugins';
+  }
+  if (summary.settings) {
+    return 'settings';
+  }
+
+  return 'commands';
+}
+
+function ResourcePoliciesPanel({
+  sharedCount,
+  profileLocalCount,
+  profileLocalNames,
+}: {
+  sharedCount: number;
+  profileLocalCount: number;
+  profileLocalNames: string[];
+}) {
+  const { t } = useTranslation();
+  const displayedProfileLocalNames = profileLocalNames.slice(0, 4);
+  const hiddenProfileLocalCount = Math.max(
+    profileLocalNames.length - displayedProfileLocalNames.length,
+    0
+  );
+
+  return (
+    <div className="rounded-md border bg-muted/25 px-4 py-3">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold">{t('sharedPage.resourcePolicies')}</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            {t('sharedPage.resourcePoliciesDescription')}
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge
+            variant="outline"
+            className="border-emerald-300/60 bg-emerald-50/50 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-900/20 dark:text-emerald-300"
+          >
+            {t('sharedPage.sharedAccounts', { count: sharedCount })}
+          </Badge>
+          <Badge variant="secondary">
+            {t('sharedPage.profileLocalAccounts', { count: profileLocalCount })}
+          </Badge>
+          {displayedProfileLocalNames.map((name) => (
+            <Badge key={name} variant="outline" className="font-mono text-[10px]">
+              {name}
+            </Badge>
+          ))}
+          {hiddenProfileLocalCount > 0 ? (
+            <Badge variant="outline" className="text-[10px]">
+              {t('sharedPage.moreProfileLocalAccounts', { count: hiddenProfileLocalCount })}
+            </Badge>
+          ) : null}
         </div>
       </div>
     </div>
@@ -406,6 +641,10 @@ function getSharedErrorMessage(error: unknown, fallbackMessage: string): string 
   }
 
   return error.message || fallbackMessage;
+}
+
+function formatSharedItemPath(itemPath: string): string {
+  return itemPath.startsWith('plugin-registry:') ? 'installed_plugins.json' : itemPath;
 }
 
 interface MarkdownBlockHeading {

@@ -266,6 +266,7 @@ export const MODEL_CATALOGS: Record<string, ProviderCatalog> = {
         description:
           'Newest Codex-released GPT-5 family model; falls back to GPT-5.4 on free plans',
         codexMaxEffort: 'xhigh',
+        codexServiceTiers: ['fast'],
         presetMapping: {
           default: 'gpt-5.5',
           opus: 'gpt-5.5',
@@ -278,6 +279,7 @@ export const MODEL_CATALOGS: Record<string, ProviderCatalog> = {
         name: 'GPT-5.4',
         description: 'Recommended Codex default for most coding and agentic tasks',
         codexMaxEffort: 'xhigh',
+        codexServiceTiers: ['fast'],
         presetMapping: {
           default: 'gpt-5.4',
           opus: 'gpt-5.4',
@@ -629,9 +631,21 @@ export const MODEL_CATALOGS: Record<string, ProviderCatalog> = {
     defaultModel: 'claude-sonnet-4-6',
     models: [
       {
+        id: 'claude-opus-4-7',
+        name: 'Claude Opus 4.7',
+        description: 'Latest flagship model',
+        extendedContext: true,
+        presetMapping: {
+          default: 'claude-opus-4-7',
+          opus: 'claude-opus-4-7',
+          sonnet: 'claude-sonnet-4-6',
+          haiku: 'claude-haiku-4-5-20251001',
+        },
+      },
+      {
         id: 'claude-opus-4-6',
         name: 'Claude Opus 4.6',
-        description: 'Latest flagship model',
+        description: 'Previous flagship model',
         extendedContext: true,
         presetMapping: {
           default: 'claude-opus-4-6',

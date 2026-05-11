@@ -4,13 +4,17 @@ export interface SharedItem {
   name: string;
   description: string;
   path: string;
-  type: 'command' | 'skill' | 'agent';
+  type: 'command' | 'skill' | 'agent' | 'plugin';
 }
 
-interface SharedSummary {
+export type SharedResourceTab = 'commands' | 'skills' | 'agents' | 'plugins' | 'settings';
+
+export interface SharedSummary {
   commands: number;
   skills: number;
   agents: number;
+  plugins: number;
+  settings: boolean;
   total: number;
   symlinkStatus: { valid: boolean; message: string };
 }
@@ -99,20 +103,22 @@ export function useSharedSummary() {
   });
 }
 
-export function useSharedItems(type: 'commands' | 'skills' | 'agents') {
+export function useSharedItems(type: SharedResourceTab) {
   return useQuery<{ items: SharedItem[] }>({
     queryKey: ['shared', type],
+    enabled: type !== 'settings',
     queryFn: async () => {
+      if (type === 'settings') {
+        return { items: [] };
+      }
+
       const res = await fetch(`/api/shared/${type}`);
       return readJsonOrThrow<{ items: SharedItem[] }>(res, `Failed to fetch shared ${type}`);
     },
   });
 }
 
-export function useSharedItemContent(
-  type: 'commands' | 'skills' | 'agents',
-  itemPath: string | null
-) {
+export function useSharedItemContent(type: SharedResourceTab, itemPath: string | null) {
   return useQuery<SharedItemContent>({
     queryKey: ['shared', type, 'content', itemPath],
     enabled: typeof itemPath === 'string' && itemPath.length > 0,

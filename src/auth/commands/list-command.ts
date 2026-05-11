@@ -7,16 +7,27 @@
 import { ProfileMetadata } from '../../types';
 import { initUI, header, color, dim, warn, table } from '../../utils/ui';
 import { resolveAccountContextPolicy, formatAccountContextPolicy } from '../account-context';
+import { resolveSharedResourcePolicy } from '../shared-resource-policy';
 import { exitWithError } from '../../errors';
 import { ExitCode } from '../../errors/exit-codes';
-import { CommandContext, ListOutput, parseArgs, formatRelativeTime } from './types';
+import {
+  CommandContext,
+  ListOutput,
+  parseArgs,
+  formatRelativeTime,
+  rejectUnsupportedAuthOptions,
+} from './types';
 
 /**
  * Handle the list command
  */
 export async function handleList(ctx: CommandContext, args: string[]): Promise<void> {
   await initUI();
-  const { verbose, json } = parseArgs(args);
+  const parsed = parseArgs(args);
+  const { verbose, json } = parsed;
+  rejectUnsupportedAuthOptions(parsed, {
+    usage: 'ccs auth list [--verbose] [--json]',
+  });
 
   try {
     // Get profiles from both legacy (profiles.json) and unified config (config.yaml)
@@ -33,6 +44,8 @@ export async function handleList(ctx: CommandContext, args: string[]): Promise<v
         context_mode: account.context_mode,
         context_group: account.context_group,
         continuity_mode: account.continuity_mode,
+        shared_resource_mode: account.shared_resource_mode,
+        bare: account.bare,
       };
     }
 
@@ -46,6 +59,7 @@ export async function handleList(ctx: CommandContext, args: string[]): Promise<v
         profiles: profileNames.map((name) => {
           const profile = profiles[name];
           const contextPolicy = resolveAccountContextPolicy(profile);
+          const resourcePolicy = resolveSharedResourcePolicy(profile);
           const isDefault = name === defaultProfile;
           const instancePath = ctx.instanceMgr.getInstancePath(name);
 
@@ -58,6 +72,9 @@ export async function handleList(ctx: CommandContext, args: string[]): Promise<v
             context_mode: contextPolicy.mode,
             context_group: contextPolicy.group || null,
             continuity_mode: contextPolicy.mode === 'shared' ? contextPolicy.continuityMode : null,
+            shared_resource_mode: resourcePolicy.mode,
+            shared_resource_inferred: resourcePolicy.inferred,
+            ...(resourcePolicy.profileLocal ? { bare: true } : {}),
             instance_path: instancePath,
           };
         }),
@@ -107,6 +124,7 @@ export async function handleList(ctx: CommandContext, args: string[]): Promise<v
       const profile = profiles[name];
       const isDefault = name === defaultProfile;
       const contextPolicy = resolveAccountContextPolicy(profile);
+      const resourcePolicy = resolveSharedResourcePolicy(profile);
 
       // Status column
       const status = isDefault ? color('[OK] default', 'success') : color('[OK]', 'success');
@@ -122,6 +140,7 @@ export async function handleList(ctx: CommandContext, args: string[]): Promise<v
       if (verbose) {
         row.push(lastUsed);
         row.push(formatAccountContextPolicy(contextPolicy));
+        row.push(resourcePolicy.mode);
       }
 
       return row;
@@ -129,14 +148,14 @@ export async function handleList(ctx: CommandContext, args: string[]): Promise<v
 
     // Headers
     const headers = verbose
-      ? ['Profile', 'Type', 'Status', 'Last Used', 'Context']
+      ? ['Profile', 'Type', 'Status', 'Last Used', 'Context', 'Resources']
       : ['Profile', 'Type', 'Status'];
 
     // Print table
     console.log(
       table(rows, {
         head: headers,
-        colWidths: verbose ? [15, 12, 15, 12, 34] : [15, 12, 15],
+        colWidths: verbose ? [15, 12, 15, 12, 34, 16] : [15, 12, 15],
       })
     );
     console.log('');

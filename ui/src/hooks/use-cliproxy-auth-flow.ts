@@ -371,8 +371,17 @@ export function useCliproxyAuthFlow() {
           const success = data.success === true;
 
           if (!response.ok || !success) {
+            // For Plus OAuth credential errors the server sends a human-readable
+            // explanation in `data.message`; prefer it over the machine error code.
+            const isPlusCredentialError =
+              data.error === 'plus_oauth_credentials_missing' ||
+              data.error === 'plus_oauth_url_missing_client_id';
             const errorMsg =
-              typeof data.error === 'string' ? data.error : t('toasts.providerStartOAuthFailed');
+              isPlusCredentialError && typeof data.message === 'string'
+                ? data.message
+                : typeof data.error === 'string'
+                  ? data.error
+                  : t('toasts.providerStartOAuthFailed');
             throw new Error(errorMsg);
           }
 

@@ -6,6 +6,9 @@
 
 import ProfileRegistry from '../profile-registry';
 import { InstanceManager } from '../../management/instance-manager';
+import { exitWithError } from '../../errors';
+import { ExitCode } from '../../errors/exit-codes';
+import { color, fail } from '../../utils/ui';
 
 // Re-export for backward compatibility
 export { formatRelativeTime } from '../../utils/time';
@@ -23,6 +26,7 @@ export interface AuthCommandArgs {
   contextGroup?: string;
   deeperContinuity?: boolean;
   bare?: boolean;
+  mode?: string;
   unknownFlags?: string[];
 }
 
@@ -38,8 +42,30 @@ export interface ProfileOutput {
   context_mode?: 'isolated' | 'shared';
   context_group?: string | null;
   continuity_mode?: 'standard' | 'deeper' | null;
+  shared_resource_mode?: 'shared' | 'profile-local';
+  shared_resource_inferred?: boolean;
   instance_path?: string;
   session_count?: number;
+  settings_sync?: {
+    state: 'shared' | 'profile-local' | 'missing' | 'unknown';
+    profile_settings_path: string;
+    shared_settings_path: string;
+    root_settings_path: string;
+  };
+  history?: {
+    project_count: number;
+    session_count: number;
+    projects_path: string;
+    projects_shared: boolean;
+    deeper_artifacts_shared: boolean;
+  };
+  plain_ccs_lane?: {
+    kind: string;
+    label: string;
+    config_dir: string;
+    project_count: number;
+    uses_this_account: boolean;
+  };
   bare?: boolean;
 }
 
@@ -60,12 +86,39 @@ export interface CommandContext {
   version: string;
 }
 
+export function rejectUnsupportedAuthOptions(
+  parsed: Pick<AuthCommandArgs, 'mode' | 'unknownFlags'>,
+  options: { usage: string; allowMode?: boolean }
+): void {
+  const unsupportedOptions = [
+    ...(parsed.unknownFlags ?? []),
+    ...(!options.allowMode && parsed.mode !== undefined ? ['--mode'] : []),
+  ];
+
+  if (unsupportedOptions.length === 0) {
+    return;
+  }
+
+  const unknownList = unsupportedOptions.map((flag) => `"${flag}"`).join(', ');
+  console.log(fail(`Unknown option(s): ${unknownList}`));
+  console.log('');
+  console.log(`Usage: ${color(options.usage, 'command')}`);
+  console.log(`Help:  ${color('ccs auth --help', 'command')}`);
+  console.log('');
+  exitWithError(`Unknown option(s): ${unknownList}`, ExitCode.PROFILE_ERROR);
+}
+
+interface ParseArgsOptions {
+  allowMode?: boolean;
+}
+
 /**
  * Parse command arguments from raw args array
  */
-export function parseArgs(args: string[]): AuthCommandArgs {
+export function parseArgs(args: string[], options: ParseArgsOptions = {}): AuthCommandArgs {
   let profileName: string | undefined;
   let contextGroup: string | undefined;
+  let mode: string | undefined;
   const unknownFlags = new Set<string>();
   const knownBooleanFlags = new Set([
     '--force',
@@ -78,6 +131,9 @@ export function parseArgs(args: string[]): AuthCommandArgs {
     '--bare',
   ]);
   const knownValueFlags = new Set(['--context-group']);
+  if (options.allowMode) {
+    knownValueFlags.add('--mode');
+  }
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -94,8 +150,25 @@ export function parseArgs(args: string[]): AuthCommandArgs {
       continue;
     }
 
+    if (options.allowMode && arg === '--mode') {
+      const next = args[i + 1];
+      if (!next || next.startsWith('-')) {
+        mode = '';
+        continue;
+      }
+
+      mode = next;
+      i++;
+      continue;
+    }
+
     if (arg.startsWith('--context-group=')) {
       contextGroup = arg.slice('--context-group='.length);
+      continue;
+    }
+
+    if (options.allowMode && arg.startsWith('--mode=')) {
+      mode = arg.slice('--mode='.length);
       continue;
     }
 
@@ -129,6 +202,7 @@ export function parseArgs(args: string[]): AuthCommandArgs {
     shareContext: args.includes('--share-context'),
     deeperContinuity: args.includes('--deeper-continuity'),
     bare: args.includes('--bare'),
+    mode,
     contextGroup,
     unknownFlags: [...unknownFlags],
   };

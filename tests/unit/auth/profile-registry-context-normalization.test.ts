@@ -98,6 +98,7 @@ describe('profile-registry context normalization', () => {
 
     const profile = registry.getProfile('work');
     expect(profile.bare).toBe(true);
+    expect(profile.shared_resource_mode).toBe('profile-local');
   });
 
   it('persists bare flag for unified accounts and merged projection', () => {
@@ -126,8 +127,52 @@ describe('profile-registry context normalization', () => {
 
     const accounts = registry.getAllAccountsUnified();
     expect(accounts.work.bare).toBe(true);
+    expect(accounts.work.shared_resource_mode).toBe('profile-local');
 
     const merged = registry.getAllProfilesMerged();
     expect(merged.work.bare).toBe(true);
+    expect(merged.work.shared_resource_mode).toBe('profile-local');
+  });
+
+  it('lets explicit shared resource mode override stale unified bare metadata', () => {
+    process.env.CCS_UNIFIED_CONFIG = '1';
+    const ccsDir = path.join(tempHome, '.ccs');
+    fs.mkdirSync(ccsDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(ccsDir, 'config.yaml'),
+      [
+        'version: 8',
+        'accounts:',
+        '  work:',
+        '    created: "2026-03-05T00:00:00.000Z"',
+        '    last_used: null',
+        '    shared_resource_mode: shared',
+        '    bare: true',
+        'profiles: {}',
+        'cliproxy:',
+        '  oauth_accounts: {}',
+        '  providers: {}',
+        '  variants: {}',
+      ].join('\n'),
+      'utf8'
+    );
+
+    const registry = new ProfileRegistry();
+    const accounts = registry.getAllAccountsUnified();
+
+    expect(accounts.work.shared_resource_mode).toBe('shared');
+    expect(accounts.work.bare).toBeUndefined();
+  });
+
+  it('persists explicit profile-local mode for legacy profiles', () => {
+    const registry = new ProfileRegistry();
+    registry.createProfile('work', {
+      type: 'account',
+      shared_resource_mode: 'profile-local',
+    });
+
+    const profile = registry.getProfile('work');
+    expect(profile.shared_resource_mode).toBe('profile-local');
+    expect(profile.bare).toBe(true);
   });
 });

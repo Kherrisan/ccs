@@ -11,7 +11,7 @@ import { InteractivePrompt } from '../../utils/prompt';
 
 import { exitWithError } from '../../errors';
 import { ExitCode } from '../../errors/exit-codes';
-import { CommandContext, parseArgs } from './types';
+import { CommandContext, parseArgs, rejectUnsupportedAuthOptions } from './types';
 import { isUnifiedMode } from '../../config/config-loader-facade';
 
 /**
@@ -19,7 +19,11 @@ import { isUnifiedMode } from '../../config/config-loader-facade';
  */
 export async function handleRemove(ctx: CommandContext, args: string[]): Promise<void> {
   await initUI();
-  const { profileName, yes } = parseArgs(args);
+  const parsed = parseArgs(args);
+  const { profileName, yes } = parsed;
+  rejectUnsupportedAuthOptions(parsed, {
+    usage: 'ccs auth remove <profile> [--yes]',
+  });
 
   if (!profileName) {
     console.log(fail('Profile name is required'));

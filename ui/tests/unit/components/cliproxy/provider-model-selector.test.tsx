@@ -70,6 +70,24 @@ describe('FlexibleModelSelector', () => {
     expect(screen.queryByText(/All Models \(/i)).not.toBeInTheDocument();
   });
 
+  it('surfaces Claude Opus 4.7 in the curated Claude picker', async () => {
+    render(
+      <FlexibleModelSelector
+        label="Primary model"
+        value={undefined}
+        onChange={vi.fn()}
+        catalog={MODEL_CATALOGS.claude}
+        allModels={[]}
+      />
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: /select model/i }));
+
+    expect(screen.getByRole('option', { name: /claude-opus-4-7/i })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /claude-opus-4-6/i })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /claude-sonnet-4-6/i })).toBeInTheDocument();
+  });
+
   it('preserves a filtered legacy value under the current-value fallback group', async () => {
     render(
       <FlexibleModelSelector
@@ -105,9 +123,32 @@ describe('FlexibleModelSelector', () => {
 
     expect(screen.getByText('gpt-5.3-codex-high')).toBeInTheDocument();
     expect(screen.getByText('gpt-5.3-codex-xhigh')).toBeInTheDocument();
+    expect(screen.getByText('gpt-5.4-high-fast')).toBeInTheDocument();
 
     await userEvent.click(screen.getByText('gpt-5.3-codex-high'));
     expect(onChange).toHaveBeenCalledWith('gpt-5.3-codex-high');
+  });
+
+  it('offers codex fast variants without relegating saved fast selections', async () => {
+    const onChange = vi.fn();
+
+    render(
+      <FlexibleModelSelector
+        label="Primary model"
+        value="gpt-5.4-high-fast"
+        onChange={onChange}
+        catalog={MODEL_CATALOGS.codex}
+        allModels={[]}
+      />
+    );
+
+    expect(screen.getByRole('button', { name: /gpt-5\.4-high-fast/i })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: /gpt-5\.4-high-fast/i }));
+
+    expect(screen.queryByText('Current value')).not.toBeInTheDocument();
+    expect(screen.getByText('gpt-5.4-fast')).toBeInTheDocument();
+    expect(screen.getAllByText('gpt-5.4-high-fast').length).toBeGreaterThan(0);
   });
 
   it('does not relegate saved codex effort variants to the legacy current-value fallback', async () => {

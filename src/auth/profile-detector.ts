@@ -213,6 +213,7 @@ class ProfileDetector {
           context_mode: account.context_mode,
           context_group: account.context_group,
           continuity_mode: account.continuity_mode,
+          shared_resource_mode: account.shared_resource_mode,
           bare: account.bare,
         },
       };

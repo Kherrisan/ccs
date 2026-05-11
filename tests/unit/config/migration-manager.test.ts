@@ -177,6 +177,43 @@ describe('migration-manager legacy kimi compatibility', () => {
     expect(unified?.accounts.personal.continuity_mode).toBeUndefined();
   });
 
+  it('migrates legacy bare accounts to profile-local shared resource mode', async () => {
+    fs.writeFileSync(
+      path.join(ccsDir, 'profiles.json'),
+      JSON.stringify(
+        {
+          default: 'sandbox',
+          profiles: {
+            sandbox: {
+              type: 'account',
+              created: '2026-02-01T00:00:00.000Z',
+              last_used: null,
+              bare: true,
+            },
+            restored: {
+              type: 'account',
+              created: '2026-02-02T00:00:00.000Z',
+              last_used: null,
+              shared_resource_mode: 'shared',
+              bare: true,
+            },
+          },
+        },
+        null,
+        2
+      )
+    );
+
+    const result = await migrate(false);
+    expect(result.success).toBe(true);
+
+    const unified = loadUnifiedConfig();
+    expect(unified?.accounts.sandbox.shared_resource_mode).toBe('profile-local');
+    expect(unified?.accounts.sandbox.bare).toBe(true);
+    expect(unified?.accounts.restored.shared_resource_mode).toBe('shared');
+    expect(unified?.accounts.restored.bare).toBeUndefined();
+  });
+
   it('applies safe browser defaults when migrating legacy config files', async () => {
     fs.writeFileSync(
       path.join(ccsDir, 'config.json'),

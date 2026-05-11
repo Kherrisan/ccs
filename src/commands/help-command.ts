@@ -54,6 +54,7 @@ async function showProfilesHelp(writeLine: HelpWriter): Promise<void> {
     'Profile Types',
     [
       { name: 'ccs auth create <name>', summary: 'Concurrent Claude account profile' },
+      { name: 'ccs auth resources <name>', summary: 'Shared resources for an account profile' },
       { name: 'ccs api create', summary: 'API-backed settings profile' },
       { name: 'ccs cliproxy create <name>', summary: 'Named CLIProxy variant profile' },
       { name: 'ccs env <profile>', summary: 'Export an existing profile for other tools' },
@@ -290,7 +291,7 @@ export async function handleHelpCommand(writeLine: HelpWriter = console.log): Pr
       { name: 'ccs proxy --help', summary: 'Deep help for the OpenAI-compatible local proxy' },
       { name: 'ccs docker --help', summary: 'Deep help for Docker deployment commands' },
       { name: 'ccs cursor --help', summary: 'Deep help for Cursor runtime/admin commands' },
-      { name: 'ccs copilot --help', summary: 'Deep help for GitHub Copilot commands' },
+      { name: 'ccs copilot --help', summary: 'Deep help for deprecated GitHub Copilot commands' },
     ],
     writeLine
   );
