@@ -7,6 +7,7 @@
 
 import { execClaude } from '../../utils/shell-executor';
 import { maybeWarnAboutResumeLaneMismatch } from '../../auth/resume-lane-warning';
+import { isProfileLocalSharedResourceMode } from '../../auth/shared-resource-policy';
 import { resolveNativeClaudeLaunchArgs } from '../environment-builder';
 import type { ProfileDispatchContext } from '../dispatcher-context';
 
@@ -26,10 +27,11 @@ export async function runAccountFlow(ctx: ProfileDispatchContext): Promise<void>
   const accountMetadata = isAccountContextMetadata(profileInfo.profile)
     ? profileInfo.profile
     : undefined;
-  const isBareProfile =
-    typeof profileInfo.profile === 'object' &&
-    profileInfo.profile !== null &&
-    (profileInfo.profile as { bare?: unknown }).bare === true;
+  const isBareProfile = isProfileLocalSharedResourceMode(
+    typeof profileInfo.profile === 'object' && profileInfo.profile !== null
+      ? (profileInfo.profile as { shared_resource_mode?: unknown; bare?: unknown })
+      : undefined
+  );
   const contextPolicy = resolveAccountContextPolicy(accountMetadata);
 
   // Ensure instance exists (lazy init if needed)

@@ -208,3 +208,28 @@ export function useConfirmLegacyAccountPolicies() {
     },
   });
 }
+export function useUpdateAccountSharedResources() {
+  const queryClient = useQueryClient();
+  const { t } = useTranslation();
+
+  return useMutation({
+    mutationFn: ({
+      name,
+      shared_resource_mode,
+    }: {
+      name: string;
+      shared_resource_mode: 'shared' | 'profile-local';
+    }) => api.accounts.updateSharedResources(name, { shared_resource_mode }),
+    onSuccess: (_data, vars) => {
+      queryClient.invalidateQueries({ queryKey: ['accounts'] });
+      const resourceSummary =
+        vars.shared_resource_mode === 'shared'
+          ? t('accountsPage.resourcesShared')
+          : t('accountsPage.resourcesProfileLocal');
+      toast.success(t('toasts.resourcesUpdated', { name: vars.name, summary: resourceSummary }));
+    },
+    onError: (error: Error) => {
+      toast.error(error.message);
+    },
+  });
+}

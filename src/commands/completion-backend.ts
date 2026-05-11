@@ -108,6 +108,13 @@ function getSuggestionsForCommand(tokensBeforeCurrent: string[]): CompletionSugg
         return completeSubcommands(['default', ...getProfileNames('accounts')], ['--json']);
       if (subcommand === 'show')
         return completeSubcommands(getProfileNames('accounts'), ['--json']);
+      if (subcommand === 'resources')
+        return completeSubcommands(getProfileNames('accounts'), [
+          '--mode',
+          '--mode=shared',
+          '--mode=profile-local',
+          '--json',
+        ]);
       if (subcommand === 'remove')
         return completeSubcommands(getProfileNames('accounts'), ['--yes', '-y']);
       if (subcommand === 'default') return completeSubcommands(getProfileNames('accounts'));

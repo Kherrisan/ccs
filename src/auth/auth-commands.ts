@@ -24,6 +24,7 @@ import {
   handleBackup,
   handleList,
   handleShow,
+  handleResources,
   handleRemove,
   handleDefault,
   handleResetDefault,
@@ -74,6 +75,9 @@ class AuthCommands {
     );
     console.log(`  ${color('list', 'command')}                   List all saved profiles`);
     console.log(`  ${color('show <profile>', 'command')}         Show profile details`);
+    console.log(
+      `  ${color('resources <profile>', 'command')}    Show or change shared resource mode`
+    );
     console.log(`  ${color('remove <profile>', 'command')}       Remove saved profile`);
     console.log(`  ${color('default <profile>', 'command')}      Set default profile`);
     console.log(
@@ -104,6 +108,10 @@ class AuthCommands {
     console.log('');
     console.log(`  ${dim('# Create clean profile without shared commands/skills/agents')}`);
     console.log(`  ${color('ccs auth create sandbox --bare', 'command')}`);
+    console.log('');
+    console.log(`  ${dim('# Change shared resources for an existing account')}`);
+    console.log(`  ${color('ccs auth resources work --mode profile-local', 'command')}`);
+    console.log(`  ${color('ccs auth resources work --mode shared', 'command')}`);
     console.log('');
     console.log(`  ${dim('# Set work as default')}`);
     console.log(`  ${color('ccs auth default work', 'command')}`);
@@ -137,6 +145,9 @@ class AuthCommands {
       `  ${color('--bare', 'command')}                    Create clean profile without shared symlinks (no CK/commands/skills)`
     );
     console.log(
+      `  ${color('--mode <mode>', 'command')}              Shared resource mode for resources: shared|profile-local`
+    );
+    console.log(
       `  ${color('--yes, -y', 'command')}                 Skip confirmation prompts (remove)`
     );
     console.log(
@@ -161,6 +172,9 @@ class AuthCommands {
       `  Non-bare account profiles share basic ${color('settings.json', 'path')} with ${color('~/.claude/settings.json', 'path')}; ${color('ccs auth show <profile>', 'command')} shows the link state.`
     );
     console.log(
+      `  Shared Resources control plugins/commands/skills/agents/settings.json; History Sync controls project/session continuity only.`
+    );
+    console.log(
       `  History sync is opt-in: both accounts need shared mode and the same ${color('context_group', 'path')}.`
     );
     console.log(
@@ -170,7 +184,10 @@ class AuthCommands {
       `  To make future plain ${color('ccs', 'command')} resume with an account, set ${color('ccs auth default <profile>', 'command')}; back up the current native lane first with ${color('ccs auth backup default', 'command')}.`
     );
     console.log(
-      `  Existing profiles: open ${color('ccs config', 'command')} -> Accounts -> Edit Context.`
+      `  Existing history sync: open ${color('ccs config', 'command')} -> Accounts -> Edit Context.`
+    );
+    console.log(
+      `  Existing shared resources: use ${color('ccs auth resources <profile> --mode shared|profile-local', 'command')}.`
     );
     console.log(`  Shared context groups are normalized (trim + lowercase) and spaces become "-".`);
     console.log(
@@ -204,6 +221,10 @@ class AuthCommands {
     return handleShow(this.getContext(), args);
   }
 
+  async handleResources(args: string[]): Promise<void> {
+    return handleResources(this.getContext(), args);
+  }
+
   /**
    * Remove profile - delegates to remove-command.ts
    */
@@ -221,8 +242,8 @@ class AuthCommands {
   /**
    * Reset default profile - delegates to default-command.ts
    */
-  async handleResetDefault(): Promise<void> {
-    return handleResetDefault(this.getContext());
+  async handleResetDefault(args: string[] = []): Promise<void> {
+    return handleResetDefault(this.getContext(), args);
   }
 
   /**
@@ -263,6 +284,10 @@ class AuthCommands {
         await this.handleShow(commandArgs);
         break;
 
+      case 'resources':
+        await this.handleResources(commandArgs);
+        break;
+
       case 'remove':
         await this.handleRemove(commandArgs);
         break;
@@ -272,7 +297,7 @@ class AuthCommands {
         break;
 
       case 'reset-default':
-        await this.handleResetDefault();
+        await this.handleResetDefault(commandArgs);
         break;
 
       case 'current':

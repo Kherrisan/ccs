@@ -26,6 +26,7 @@ Dashboard auth and account context metadata are separate:
 
 - `dashboard_auth`: protects dashboard access with username/password
 - `accounts.<name>.context_mode/context_group`: controls isolated vs shared account context
+- `accounts.<name>.shared_resource_mode`: controls plugins/commands/skills/agents/settings.json sharing
 
 Account context is isolation-first. The recommended two-account route is:
 
@@ -48,15 +49,22 @@ Shared continuity depth:
 - `standard` (default): shares project workspace context only
 - `deeper` (advanced opt-in): also syncs `session-env`, `file-history`, `shell-snapshots`, `todos`
 
-`ccs auth show <profile>` reports credential isolation, settings sync state, history lane, and whether plain `ccs` currently uses the same resume lane.
+`ccs auth show <profile>` reports credential isolation, shared resource mode, settings sync state, history lane, and whether plain `ccs` currently uses the same resume lane.
 
-Non-bare account profiles share the basic Claude `settings.json` with native Claude:
+Non-bare account profiles share Claude-local resources with native Claude:
 
 ```text
 ~/.ccs/instances/<profile>/settings.json -> ~/.ccs/shared/settings.json -> ~/.claude/settings.json
 ```
 
-This keeps ordinary Claude settings in sync without copying account tokens. Local history is separate: if users want future plain `ccs` and `ccs ck` sessions to resume from the same account lane, run `ccs auth default ck` after backing up the current native lane with `ccs auth backup default`.
+This keeps ordinary Claude settings, plugins, commands, skills, and agents in sync without copying account tokens. Existing accounts can opt out or back in:
+
+```bash
+ccs auth resources work --mode profile-local
+ccs auth resources work --mode shared
+```
+
+Local history is separate: if users want future plain `ccs` and `ccs ck` sessions to resume from the same account lane, run `ccs auth default ck` after backing up the current native lane with `ccs auth backup default`.
 
 `context_group` normalization and validation:
 
@@ -82,6 +90,17 @@ Dashboard accounts context editing:
 - `PUT /api/accounts/:name/context` updates context mode/group/continuity for existing auth accounts
 - rejects CLIProxy OAuth account keys for this route
 - applies normalization/validation rules above
+
+Shared resource editing:
+
+- `PUT /api/accounts/:name/shared-resources` updates `shared_resource_mode` for existing auth accounts
+- accepts only `shared` or `profile-local`
+- rejects CLIProxy OAuth account keys for this route
+- reconciles the account instance after metadata is updated
+- Dashboard -> Accounts exposes this as a separate Resources action so it is not confused with History Sync.
+- Dashboard -> Shared Resources shows the shared hub inventory for commands, skills, agents, plugins, and `settings.json`.
+- The Plugins tab is registry-oriented: installed plugin entries come from `installed_plugins.json`, while internal cache/data/marketplace folders stay hidden unless a real plugin entry exists.
+- Shared `settings.json` is read-only in the Shared Resources page and still edited through the settings surfaces that own those values.
 
 ## Commands
 

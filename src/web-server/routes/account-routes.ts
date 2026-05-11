@@ -27,6 +27,11 @@ import {
   resolveAccountContextPolicy,
 } from '../../auth/account-context';
 import {
+  isSharedResourceMode,
+  resolveSharedResourcePolicy,
+  sharedResourceModeToMetadata,
+} from '../../auth/shared-resource-policy';
+import {
   buildCliproxyAccountKey,
   parseCliproxyKey,
   type MergedAccountEntry,
@@ -79,6 +84,7 @@ router.get('/', async (_req: Request, res: Response): Promise<void> => {
     // Add legacy profiles first
     for (const [name, meta] of Object.entries(legacyProfiles)) {
       const contextPolicy = resolveAccountContextPolicy(meta);
+      const resourcePolicy = resolveSharedResourcePolicy(meta);
       const hasExplicitContextMode =
         meta.context_mode === 'isolated' || meta.context_mode === 'shared';
       const hasExplicitContinuityMode =
@@ -93,6 +99,9 @@ router.get('/', async (_req: Request, res: Response): Promise<void> => {
         context_inferred: !hasExplicitContextMode,
         continuity_inferred:
           contextPolicy.mode === 'shared' ? !hasExplicitContinuityMode : undefined,
+        shared_resource_mode: resourcePolicy.mode,
+        shared_resource_inferred: resourcePolicy.inferred,
+        ...(resourcePolicy.profileLocal ? { bare: true } : {}),
       };
     }
 
@@ -100,6 +109,7 @@ router.get('/', async (_req: Request, res: Response): Promise<void> => {
     for (const [name, account] of Object.entries(unifiedAccounts)) {
       const rawAccount = rawUnifiedAccounts[name];
       const contextPolicy = resolveAccountContextPolicy(account);
+      const resourcePolicy = resolveSharedResourcePolicy(account);
       const hasExplicitContextMode =
         rawAccount?.context_mode === 'isolated' || rawAccount?.context_mode === 'shared';
       const hasExplicitContinuityMode =
@@ -114,6 +124,9 @@ router.get('/', async (_req: Request, res: Response): Promise<void> => {
         context_inferred: !hasExplicitContextMode,
         continuity_inferred:
           contextPolicy.mode === 'shared' ? !hasExplicitContinuityMode : undefined,
+        shared_resource_mode: resourcePolicy.mode,
+        shared_resource_inferred: resourcePolicy.inferred,
+        ...(resourcePolicy.profileLocal ? { bare: true } : {}),
       };
     }
 
@@ -305,7 +318,7 @@ router.put('/:name/context', async (req: Request, res: Response): Promise<void> 
 
     const previousUnified = existsUnified ? registry.getAllAccountsUnified()[name] : undefined;
     const previousLegacy = existsLegacy ? registry.getProfile(name) : undefined;
-    const isBare = previousUnified?.bare === true || previousLegacy?.bare === true;
+    const resourcePolicy = resolveSharedResourcePolicy(previousUnified ?? previousLegacy);
 
     try {
       if (existsUnified) {
@@ -315,13 +328,21 @@ router.put('/:name/context', async (req: Request, res: Response): Promise<void> 
         registry.updateProfile(name, metadata);
       }
 
-      await instanceMgr.ensureInstance(name, policy, { bare: isBare });
+      await instanceMgr.ensureInstance(name, policy, { bare: resourcePolicy.profileLocal });
     } catch (error) {
       if (existsUnified && previousUnified) {
-        registry.updateAccountUnified(name, previousUnified);
+        registry.updateAccountUnified(name, {
+          ...previousUnified,
+          shared_resource_mode: previousUnified.shared_resource_mode,
+          bare: previousUnified.bare,
+        });
       }
       if (existsLegacy && previousLegacy) {
-        registry.updateProfile(name, previousLegacy);
+        registry.updateProfile(name, {
+          ...previousLegacy,
+          shared_resource_mode: previousLegacy.shared_resource_mode,
+          bare: previousLegacy.bare,
+        });
       }
       throw error;
     }
@@ -336,6 +357,89 @@ router.put('/:name/context', async (req: Request, res: Response): Promise<void> 
           : null,
       context_inferred: false,
       continuity_inferred: false,
+    });
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+/**
+ * PUT /api/accounts/:name/shared-resources - Update account shared resource mode
+ */
+router.put('/:name/shared-resources', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const registry = createProfileRegistry();
+    const instanceMgr = createInstanceManager();
+    const { name } = req.params;
+
+    if (!name) {
+      res.status(400).json({ error: 'Missing account name' });
+      return;
+    }
+
+    const cliproxyKey = !hasAuthAccount(name) ? parseCliproxyKey(name) : null;
+    if (cliproxyKey) {
+      res.status(400).json({
+        error: `Shared resource mode is not supported for CLIProxy account: ${name}`,
+      });
+      return;
+    }
+
+    const existsUnified = isUnifiedMode() && registry.hasAccountUnified(name);
+    const existsLegacy = registry.hasProfile(name);
+    if (!existsUnified && !existsLegacy) {
+      res.status(404).json({ error: `Account not found: ${name}` });
+      return;
+    }
+
+    const mode = req.body?.shared_resource_mode;
+    if (!isSharedResourceMode(mode)) {
+      res.status(400).json({
+        error: 'Missing or invalid shared_resource_mode: expected shared|profile-local',
+      });
+      return;
+    }
+
+    const previousUnified = existsUnified ? registry.getAllAccountsUnified()[name] : undefined;
+    const previousLegacy = existsLegacy ? registry.getProfile(name) : undefined;
+    const previousMetadata = previousUnified ?? previousLegacy;
+    const contextPolicy = resolveAccountContextPolicy(previousMetadata);
+    const metadata = sharedResourceModeToMetadata(mode);
+
+    try {
+      if (existsUnified) {
+        registry.updateAccountUnified(name, metadata);
+      }
+      if (existsLegacy) {
+        registry.updateProfile(name, metadata);
+      }
+
+      await instanceMgr.ensureInstance(name, contextPolicy, {
+        bare: mode === 'profile-local',
+      });
+    } catch (error) {
+      if (existsUnified && previousUnified) {
+        registry.updateAccountUnified(name, {
+          ...previousUnified,
+          shared_resource_mode: previousUnified.shared_resource_mode,
+          bare: previousUnified.bare,
+        });
+      }
+      if (existsLegacy && previousLegacy) {
+        registry.updateProfile(name, {
+          ...previousLegacy,
+          shared_resource_mode: previousLegacy.shared_resource_mode,
+          bare: previousLegacy.bare,
+        });
+      }
+      throw error;
+    }
+
+    res.json({
+      name,
+      shared_resource_mode: mode,
+      shared_resource_inferred: false,
+      bare: mode === 'profile-local' ? true : undefined,
     });
   } catch (error) {
     res.status(500).json({ error: (error as Error).message });

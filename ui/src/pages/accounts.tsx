@@ -176,6 +176,7 @@ export function AccountsPage() {
             <div className="flex items-center gap-2">
               <Badge variant="outline">{t('accountsPage.workspaceBadge')}</Badge>
               <Badge variant="secondary">{t('accountsPage.historySyncBadge')}</Badge>
+              <Badge variant="secondary">{t('accountsPage.resourcesBadge')}</Badge>
             </div>
             <h2 className="mt-2 text-xl font-semibold tracking-tight">
               {t('accountsPage.authAccounts')}

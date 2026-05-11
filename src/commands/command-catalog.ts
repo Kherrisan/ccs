@@ -248,6 +248,7 @@ export const AUTH_SUBCOMMANDS = [
   'backup',
   'list',
   'show',
+  'resources',
   'remove',
   'default',
   'reset-default',
