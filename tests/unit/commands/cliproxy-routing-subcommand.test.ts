@@ -16,6 +16,18 @@ describe('cliproxy routing command dispatch', () => {
       handleRoutingSet: async (args: string[]) => {
         calls.push(`set:${args.join(' ')}`);
       },
+      // Mock module must expose every named export `cliproxy/index.ts`
+      // statically imports from this module, otherwise Bun reports
+      // `Export named 'X' not found` at module-graph resolution time.
+      handleRoutingAffinityStatus: async () => {
+        calls.push('affinity:status');
+      },
+      handleRoutingAffinityHelp: async () => {
+        calls.push('affinity:help');
+      },
+      handleRoutingAffinitySet: async (args: string[]) => {
+        calls.push(`affinity:set:${args.join(' ')}`);
+      },
     }));
   });
 
