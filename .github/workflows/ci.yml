@@ -16,10 +16,12 @@ concurrency:
 
 jobs:
   validate:
-    runs-on: ubuntu-latest
+    if: >-
+      contains(fromJSON('["COLLABORATOR","MEMBER","OWNER"]'), github.event.pull_request.author_association)
+    runs-on: [self-hosted, linux, x64]
     env:
-      # Keep Bun cache isolated per job workspace so parallel CI runs
-      # do not race on shared cache paths and corrupt restore/install state.
+      # Keep Bun cache isolated per job workspace so parallel self-hosted runs
+      # do not race on ~/.bun/install/cache and corrupt restore/install state.
       BUN_INSTALL_CACHE_DIR: ${{ github.workspace }}/.bun/install/cache
     strategy:
       fail-fast: false
@@ -58,7 +60,9 @@ jobs:
         run: ${{ matrix.check.cmd }}
 
   build:
-    runs-on: ubuntu-latest
+    if: >-
+      contains(fromJSON('["COLLABORATOR","MEMBER","OWNER"]'), github.event.pull_request.author_association)
+    runs-on: [self-hosted, linux, x64]
     name: build
     env:
       BUN_INSTALL_CACHE_DIR: ${{ github.workspace }}/.bun/install/cache
@@ -98,7 +102,9 @@ jobs:
           if-no-files-found: error
 
   test:
-    runs-on: ubuntu-latest
+    if: >-
+      contains(fromJSON('["COLLABORATOR","MEMBER","OWNER"]'), github.event.pull_request.author_association)
+    runs-on: [self-hosted, linux, x64]
     name: test
     needs: [build]
     env:
