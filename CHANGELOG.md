@@ -1,3 +1,9 @@
+## [7.78.1](https://github.com/kaitranntt/ccs/compare/v7.78.0...v7.78.1) (2026-05-12)
+
+### Bug Fixes
+
+* **ci:** harden self-hosted workflow trust boundaries ([2273757](https://github.com/kaitranntt/ccs/commit/2273757c837254edd2277c785530835d6db2a977))
+
 ## [7.78.0](https://github.com/kaitranntt/ccs/compare/v7.77.1...v7.78.0) (2026-05-11)
 
 ### Features
