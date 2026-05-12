@@ -24,6 +24,10 @@ import { ToolSanitizationProxy } from '../proxy/tool-sanitization-proxy';
 import { HttpsTunnelProxy } from '../proxy/https-tunnel-proxy';
 import { setupCleanupHandlers } from './session-bridge';
 import { resolveRuntimeQuotaMonitorProviders } from './account-resolution';
+import {
+  isClaudeSubcommandInvocation,
+  stripSubcommandBlockingEnv,
+} from '../../utils/claude-subcommand-detector';
 
 export interface ClaudeLaunchContext {
   /** Path to the Claude CLI executable */
@@ -97,11 +101,14 @@ export async function launchClaude(context: ClaudeLaunchContext): Promise<ChildP
   const browserArgs = browserRuntimeEnv
     ? appendBrowserToolArgs(imageAnalysisArgs)
     : imageAnalysisArgs;
-  const launchArgs = [
-    '--settings',
-    settingsPath,
-    ...appendThirdPartyWebSearchToolArgs(browserArgs),
-  ];
+  // Claude subcommands (agents, doctor, mcp, ...) don't accept `--settings` —
+  // its presence flips `agents` into list mode instead of opening the
+  // interactive agent view. Provider routing still flows via env vars.
+  // Issue #1218.
+  const isSubcommand = isClaudeSubcommandInvocation(claudeArgs);
+  const launchArgs = isSubcommand
+    ? appendThirdPartyWebSearchToolArgs(browserArgs)
+    : ['--settings', settingsPath, ...appendThirdPartyWebSearchToolArgs(browserArgs)];
 
   // Inject web search trace context into env
   const traceEnv = createWebSearchTraceContext({
@@ -112,7 +119,12 @@ export async function launchClaude(context: ClaudeLaunchContext): Promise<ChildP
     settingsPath,
     claudeConfigDir: inheritedClaudeConfigDir,
   });
-  const tracedEnv = { ...env, ...traceEnv };
+  // Strip telemetry-disable env vars for subcommands; otherwise Claude's
+  // `agents`/`mcp`/... TUIs silently fall back to non-interactive list mode.
+  // Issue #1218.
+  const tracedEnv = isSubcommand
+    ? stripSubcommandBlockingEnv({ ...env, ...traceEnv })
+    : { ...env, ...traceEnv };
 
   // Spawn: Windows .cmd/.bat/.ps1 need shell escaping; all others spawn directly
   let claude: ChildProcess;

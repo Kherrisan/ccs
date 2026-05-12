@@ -8,6 +8,10 @@ import { spawn, spawnSync, ChildProcess, type SpawnOptions } from 'child_process
 import { ErrorManager } from './error-manager';
 import { getWebSearchHookEnv } from './websearch-manager';
 import { wireChildProcessSignals } from './signal-forwarder';
+import {
+  isClaudeSubcommandInvocation,
+  stripSubcommandBlockingEnv,
+} from './claude-subcommand-detector';
 
 import SharedManager from '../management/shared-manager';
 import { loadOrCreateUnifiedConfig } from '../config/config-loader-facade';
@@ -263,7 +267,15 @@ export function execClaude(
 
   // Strip Claude Code nested session guard env var to allow CCS delegation
   // (Claude Code v2.1.39+ sets CLAUDECODE to detect nested sessions)
-  const env = stripClaudeCodeEnv(effectiveMergedEnv);
+  let env = stripClaudeCodeEnv(effectiveMergedEnv);
+
+  // For Claude subcommand invocations (`agents`, `mcp`, `doctor`, ...) strip
+  // telemetry-disable env vars that cause upstream Claude Code to fall back
+  // to non-interactive list mode instead of opening the subcommand TUI.
+  // Issue #1218.
+  if (isClaudeSubcommandInvocation(args)) {
+    env = stripSubcommandBlockingEnv(env);
+  }
 
   if (profileType !== 'account') {
     try {
