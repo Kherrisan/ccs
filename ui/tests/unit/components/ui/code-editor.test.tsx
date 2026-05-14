@@ -131,6 +131,24 @@ describe('CodeEditor', () => {
     expect(masked).not.toContain('ok');
   });
 
+  it('does not terminate TOML array masking on a `]` inside a comment', () => {
+    const value = [
+      'AUTH_TOKEN = [',
+      '  "first", # closing bracket in comment: ]',
+      '  "second",',
+      ']',
+      'visible = "ok"',
+    ].join('\n');
+
+    const { container } = render(<CodeEditor value={value} onChange={vi.fn()} language="toml" />);
+    const masked = Array.from(container.querySelectorAll('.cm-sensitive-mask'))
+      .map((el) => el.textContent ?? '')
+      .join('');
+    expect(masked).toContain('"first"');
+    expect(masked).toContain('"second"');
+    expect(masked).not.toContain('ok');
+  });
+
   it('respects escaped quotes inside TOML array values when masking', () => {
     const value = ['AUTH_TOKEN = ["a \\"quoted\\" value", "x"]', 'visible = "ok"'].join('\n');
 

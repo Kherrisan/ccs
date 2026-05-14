@@ -146,9 +146,10 @@ function findValueEnd(
       return closeIdx >= 0 ? valueStart + 3 + closeIdx + 3 : docLen;
     }
     if (lookahead[0] === '[') {
-      // Track bracket depth, skipping content inside strings. Use the
-      // backslash-aware skipper so `\"` inside basic strings does not
-      // prematurely close the string scan.
+      // Track bracket depth, skipping content inside strings and comments.
+      // Use the backslash-aware skipper so `\"` inside basic strings does not
+      // prematurely close the string scan, and skip `# ... \n` so a `]` that
+      // appears inside a TOML comment cannot terminate the array early.
       const text = doc.toString();
       let depth = 0;
       let i = valueStart;
@@ -156,6 +157,11 @@ function findValueEnd(
         const ch = text[i];
         if (ch === '"' || ch === "'") {
           i = skipString(text, i, ch);
+          continue;
+        }
+        if (ch === '#') {
+          const nl = text.indexOf('\n', i);
+          i = nl >= 0 ? nl + 1 : docLen;
           continue;
         }
         if (ch === '[') depth++;
