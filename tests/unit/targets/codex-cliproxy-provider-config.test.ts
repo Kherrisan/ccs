@@ -49,6 +49,19 @@ describe('codex cliproxy provider config repair', () => {
     expect(rawText).toContain('[model_providers.cliproxy]');
   });
 
+  it('repairs Codex config files saved with a UTF-8 BOM', async () => {
+    fs.mkdirSync(codexHome, { recursive: true });
+    const rawText = '\ufeffmodel = "gpt-5.4"\n';
+    fs.writeFileSync(configPath, rawText, 'utf8');
+
+    const result = await ensureCodexCliproxyProviderConfig(8317, env);
+
+    expect(result.changed).toBe(true);
+    const repairedText = fs.readFileSync(configPath, 'utf8');
+    expect(repairedText.startsWith('\ufeffmodel = "gpt-5.4"\n\n')).toBe(true);
+    expect(repairedText).toContain('[model_providers.cliproxy]');
+  });
+
   it('repairs an existing incomplete cliproxy provider', async () => {
     fs.mkdirSync(codexHome, { recursive: true });
     fs.writeFileSync(
