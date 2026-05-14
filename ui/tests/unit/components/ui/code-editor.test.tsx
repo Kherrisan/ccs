@@ -97,4 +97,39 @@ describe('CodeEditor', () => {
     render(<CodeEditor value={'{ "broken": '} onChange={vi.fn()} language="json" />);
     expect(screen.queryByText('Valid JSON')).not.toBeInTheDocument();
   });
+
+  it('masks the entire multi-line TOML triple-quoted secret value', () => {
+    const value = [
+      'name = "demo"',
+      'API_KEY = """',
+      'secret-line-one',
+      'secret-line-two',
+      '"""',
+      'other = "visible"',
+    ].join('\n');
+
+    const { container } = render(<CodeEditor value={value} onChange={vi.fn()} language="toml" />);
+
+    const masks = container.querySelectorAll('.cm-sensitive-mask');
+    expect(masks.length).toBeGreaterThan(0);
+    const masked = Array.from(masks)
+      .map((el) => el.textContent ?? '')
+      .join('');
+    expect(masked).toContain('secret-line-one');
+    expect(masked).toContain('secret-line-two');
+    expect(masked).not.toContain('visible');
+  });
+
+  it('masks an entire multi-line TOML array value bound to a sensitive key', () => {
+    const value = ['AUTH_TOKEN = [', '  "first",', '  "second",', ']', 'visible = "ok"'].join('\n');
+
+    const { container } = render(<CodeEditor value={value} onChange={vi.fn()} language="toml" />);
+
+    const masked = Array.from(container.querySelectorAll('.cm-sensitive-mask'))
+      .map((el) => el.textContent ?? '')
+      .join('');
+    expect(masked).toContain('"first"');
+    expect(masked).toContain('"second"');
+    expect(masked).not.toContain('ok');
+  });
 });

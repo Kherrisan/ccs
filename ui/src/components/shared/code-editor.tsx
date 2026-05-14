@@ -77,34 +77,152 @@ function validateToml(code: string): ValidationResult {
 }
 
 const SENSITIVE_PATTERNS: Record<'json' | 'yaml' | 'toml', RegExp> = {
-  json: /"([^"\\]+)"\s*:\s*(?=("[^"\\]*"|true|false|null|-?\d[\d.eE+-]*))/g,
-  yaml: /^\s*([A-Za-z0-9_.-]+)\s*:\s*(?=\S)/gm,
-  toml: /^\s*([A-Za-z0-9_.-]+)\s*=\s*(?=\S)/gm,
+  // For JSON we scan the whole document text (not anchored to line starts) so
+  // we can catch keys inside nested objects without re-parsing.
+  json: /"([^"\\]+)"\s*:\s*/g,
+  yaml: /^(\s*)([A-Za-z0-9_.-]+)\s*:\s*/gm,
+  toml: /^(\s*)([A-Za-z0-9_.-]+)\s*=\s*/gm,
 };
+
+/**
+ * Locate the end offset of the value that begins at `valueStart`. Handles
+ * multi-line TOML strings (""" … """, ''' … '''), arrays ([ … ]), YAML block
+ * scalars (| / >), and JSON arrays/objects. Falls back to end-of-line.
+ */
+function findValueEnd(
+  doc: EditorView['state']['doc'],
+  valueStart: number,
+  language: 'json' | 'yaml' | 'toml',
+  keyIndent: number
+): number {
+  const docLen = doc.length;
+  if (valueStart >= docLen) return valueStart;
+  const lookahead = doc.sliceString(valueStart, Math.min(valueStart + 3, docLen));
+
+  if (language === 'toml') {
+    if (lookahead === '"""' || lookahead === "'''") {
+      const delim = lookahead;
+      const rest = doc.sliceString(valueStart + 3, docLen);
+      const closeIdx = rest.indexOf(delim);
+      return closeIdx >= 0 ? valueStart + 3 + closeIdx + 3 : docLen;
+    }
+    if (lookahead[0] === '[') {
+      // Track bracket depth, skipping content inside strings.
+      let depth = 0;
+      let i = valueStart;
+      while (i < docLen) {
+        const ch = doc.sliceString(i, i + 1);
+        if (ch === '"' || ch === "'") {
+          const rest = doc.sliceString(i + 1, docLen);
+          const closeIdx = rest.indexOf(ch);
+          i = closeIdx >= 0 ? i + 1 + closeIdx + 1 : docLen;
+          continue;
+        }
+        if (ch === '[') depth++;
+        else if (ch === ']') {
+          depth--;
+          if (depth === 0) return i + 1;
+        }
+        i++;
+      }
+      return docLen;
+    }
+    return doc.lineAt(valueStart).to;
+  }
+
+  if (language === 'yaml') {
+    if (lookahead[0] === '|' || lookahead[0] === '>') {
+      // Block scalar: include subsequent lines indented deeper than the key.
+      let line = doc.lineAt(valueStart);
+      let end = line.to;
+      while (line.number < doc.lines) {
+        const next = doc.line(line.number + 1);
+        const trimmed = next.text.replace(/\s+$/, '');
+        if (trimmed === '') {
+          end = next.to;
+          line = next;
+          continue;
+        }
+        const indent = next.text.search(/\S/);
+        if (indent <= keyIndent) break;
+        end = next.to;
+        line = next;
+      }
+      return end;
+    }
+    return doc.lineAt(valueStart).to;
+  }
+
+  // JSON: walk balanced braces/brackets when the value starts with one.
+  if (lookahead[0] === '[' || lookahead[0] === '{') {
+    const openCh = lookahead[0];
+    const closeCh = openCh === '[' ? ']' : '}';
+    let depth = 0;
+    let i = valueStart;
+    while (i < docLen) {
+      const ch = doc.sliceString(i, i + 1);
+      if (ch === '"') {
+        // Skip past JSON string, honoring backslash escapes.
+        i++;
+        while (i < docLen) {
+          const c = doc.sliceString(i, i + 1);
+          if (c === '\\') {
+            i += 2;
+            continue;
+          }
+          if (c === '"') {
+            i++;
+            break;
+          }
+          i++;
+        }
+        continue;
+      }
+      if (ch === openCh) depth++;
+      else if (ch === closeCh) {
+        depth--;
+        if (depth === 0) return i + 1;
+      }
+      i++;
+    }
+    return docLen;
+  }
+  return doc.lineAt(valueStart).to;
+}
 
 function buildSensitiveDecorations(
   view: EditorView,
   language: 'json' | 'yaml' | 'toml'
 ): DecorationSet {
   const builder = new RangeSetBuilder<Decoration>();
+  const doc = view.state.doc;
+  // Scan the entire document (decoration ranges outside the viewport are
+  // dropped automatically) so a multi-line value beginning above the viewport
+  // still masks when its tail scrolls into view.
+  const text = doc.toString();
   const pattern = new RegExp(SENSITIVE_PATTERNS[language].source, 'gm');
-  for (const { from, to } of view.visibleRanges) {
-    const text = view.state.doc.sliceString(from, to);
-    let match: RegExpExecArray | null;
-    while ((match = pattern.exec(text)) !== null) {
-      const key = match[1];
-      if (!isSensitiveKey(key)) continue;
-      const valueStart = from + match.index + match[0].length;
-      const line = view.state.doc.lineAt(valueStart);
-      const valueEnd = line.to;
-      const trimmed = view.state.doc.sliceString(valueStart, valueEnd).replace(/\s+$/, '');
-      if (!trimmed) continue;
-      builder.add(
-        valueStart,
-        valueStart + trimmed.length,
-        Decoration.mark({ class: 'cm-sensitive-mask' })
-      );
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(text)) !== null) {
+    let key: string;
+    let keyIndent: number;
+    if (language === 'json') {
+      key = match[1];
+      keyIndent = 0;
+    } else {
+      key = match[2];
+      keyIndent = match[1].length;
     }
+    if (!isSensitiveKey(key)) continue;
+    const valueStart = match.index + match[0].length;
+    if (valueStart >= doc.length) continue;
+    const valueEnd = findValueEnd(doc, valueStart, language, keyIndent);
+    const trimmedLen = doc.sliceString(valueStart, valueEnd).replace(/\s+$/, '').length;
+    if (trimmedLen === 0) continue;
+    builder.add(
+      valueStart,
+      valueStart + trimmedLen,
+      Decoration.mark({ class: 'cm-sensitive-mask' })
+    );
   }
   return builder.finish();
 }
