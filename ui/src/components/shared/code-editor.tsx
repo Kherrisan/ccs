@@ -79,10 +79,49 @@ function validateToml(code: string): ValidationResult {
 const SENSITIVE_PATTERNS: Record<'json' | 'yaml' | 'toml', RegExp> = {
   // For JSON we scan the whole document text (not anchored to line starts) so
   // we can catch keys inside nested objects without re-parsing.
-  json: /"([^"\\]+)"\s*:\s*/g,
-  yaml: /^(\s*)([A-Za-z0-9_.-]+)\s*:\s*/gm,
-  toml: /^(\s*)([A-Za-z0-9_.-]+)\s*=\s*/gm,
+  json: /"((?:[^"\\]|\\.)+)"\s*:\s*/g,
+  yaml: /^(\s*)("(?:[^"\\]|\\.)*"|'[^']*'|[A-Za-z0-9_.-]+)\s*:\s*/gm,
+  // TOML keys may be bare (`API_KEY`), basic-string ("..."), or literal-string
+  // ('...'). Capture all three so quoted-key configs are not silently skipped.
+  toml: /^(\s*)("(?:[^"\\]|\\.)*"|'[^']*'|[A-Za-z0-9_.-]+)\s*=\s*/gm,
 };
+
+/**
+ * Strip the surrounding quotes (and unescape minimally for basic strings) from
+ * a key captured by the patterns above.
+ */
+function normalizeKey(raw: string): string {
+  if (raw.length >= 2 && raw[0] === '"' && raw[raw.length - 1] === '"') {
+    return raw.slice(1, -1).replace(/\\(.)/g, '$1');
+  }
+  if (raw.length >= 2 && raw[0] === "'" && raw[raw.length - 1] === "'") {
+    return raw.slice(1, -1);
+  }
+  return raw;
+}
+
+/**
+ * Advance past a TOML/JSON string starting at `start` (whose first char is the
+ * opening quote). Basic strings (") honor backslash escapes; literal strings
+ * (') do not.
+ */
+function skipString(text: string, start: number, quote: '"' | "'"): number {
+  let i = start + 1;
+  if (quote === "'") {
+    const idx = text.indexOf("'", i);
+    return idx >= 0 ? idx + 1 : text.length;
+  }
+  while (i < text.length) {
+    const ch = text[i];
+    if (ch === '\\') {
+      i += 2;
+      continue;
+    }
+    if (ch === '"') return i + 1;
+    i++;
+  }
+  return text.length;
+}
 
 /**
  * Locate the end offset of the value that begins at `valueStart`. Handles
@@ -107,15 +146,16 @@ function findValueEnd(
       return closeIdx >= 0 ? valueStart + 3 + closeIdx + 3 : docLen;
     }
     if (lookahead[0] === '[') {
-      // Track bracket depth, skipping content inside strings.
+      // Track bracket depth, skipping content inside strings. Use the
+      // backslash-aware skipper so `\"` inside basic strings does not
+      // prematurely close the string scan.
+      const text = doc.toString();
       let depth = 0;
       let i = valueStart;
       while (i < docLen) {
-        const ch = doc.sliceString(i, i + 1);
+        const ch = text[i];
         if (ch === '"' || ch === "'") {
-          const rest = doc.sliceString(i + 1, docLen);
-          const closeIdx = rest.indexOf(ch);
-          i = closeIdx >= 0 ? i + 1 + closeIdx + 1 : docLen;
+          i = skipString(text, i, ch);
           continue;
         }
         if (ch === '[') depth++;
@@ -157,25 +197,13 @@ function findValueEnd(
   if (lookahead[0] === '[' || lookahead[0] === '{') {
     const openCh = lookahead[0];
     const closeCh = openCh === '[' ? ']' : '}';
+    const text = doc.toString();
     let depth = 0;
     let i = valueStart;
     while (i < docLen) {
-      const ch = doc.sliceString(i, i + 1);
+      const ch = text[i];
       if (ch === '"') {
-        // Skip past JSON string, honoring backslash escapes.
-        i++;
-        while (i < docLen) {
-          const c = doc.sliceString(i, i + 1);
-          if (c === '\\') {
-            i += 2;
-            continue;
-          }
-          if (c === '"') {
-            i++;
-            break;
-          }
-          i++;
-        }
+        i = skipString(text, i, '"');
         continue;
       }
       if (ch === openCh) depth++;
@@ -206,10 +234,10 @@ function buildSensitiveDecorations(
     let key: string;
     let keyIndent: number;
     if (language === 'json') {
-      key = match[1];
+      key = normalizeKey(`"${match[1]}"`);
       keyIndent = 0;
     } else {
-      key = match[2];
+      key = normalizeKey(match[2]);
       keyIndent = match[1].length;
     }
     if (!isSensitiveKey(key)) continue;

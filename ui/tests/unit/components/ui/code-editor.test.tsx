@@ -120,6 +120,30 @@ describe('CodeEditor', () => {
     expect(masked).not.toContain('visible');
   });
 
+  it('masks values whose key uses a TOML quoted-key form', () => {
+    const value = ['"API_KEY" = "supersecret"', 'visible = "ok"'].join('\n');
+
+    const { container } = render(<CodeEditor value={value} onChange={vi.fn()} language="toml" />);
+    const masked = Array.from(container.querySelectorAll('.cm-sensitive-mask'))
+      .map((el) => el.textContent ?? '')
+      .join('');
+    expect(masked).toContain('supersecret');
+    expect(masked).not.toContain('ok');
+  });
+
+  it('respects escaped quotes inside TOML array values when masking', () => {
+    const value = ['AUTH_TOKEN = ["a \\"quoted\\" value", "x"]', 'visible = "ok"'].join('\n');
+
+    const { container } = render(<CodeEditor value={value} onChange={vi.fn()} language="toml" />);
+    const masked = Array.from(container.querySelectorAll('.cm-sensitive-mask'))
+      .map((el) => el.textContent ?? '')
+      .join('');
+    // The closing bracket must be reached; both array members and the
+    // unrelated `visible` line stay on their respective sides of the mask.
+    expect(masked).toContain('"x"');
+    expect(masked).not.toContain('ok');
+  });
+
   it('masks an entire multi-line TOML array value bound to a sensitive key', () => {
     const value = ['AUTH_TOKEN = [', '  "first",', '  "second",', ']', 'visible = "ok"'].join('\n');
 
