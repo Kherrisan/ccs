@@ -76,13 +76,13 @@ function validateToml(code: string): ValidationResult {
   }
 }
 
-const SENSITIVE_PATTERNS: Record<'json' | 'yaml' | 'toml', RegExp> = {
-  // For JSON we scan the whole document text (not anchored to line starts) so
-  // we can catch keys inside nested objects without re-parsing.
-  json: /"((?:[^"\\]|\\.)+)"\s*:\s*/g,
+// Line-anchored key patterns for TOML/YAML. Each captures (indent, key). Keys
+// may be bare, basic-string ("..."), or literal-string ('...'). JSON uses a
+// dedicated state-aware scanner (`findJsonSensitiveRanges`) instead so that
+// `"API_KEY":` substrings embedded inside escaped value strings are not
+// mis-classified as keys.
+const SENSITIVE_PATTERNS: Record<'yaml' | 'toml', RegExp> = {
   yaml: /^(\s*)("(?:[^"\\]|\\.)*"|'[^']*'|[A-Za-z0-9_.-]+)\s*:\s*/gm,
-  // TOML keys may be bare (`API_KEY`), basic-string ("..."), or literal-string
-  // ('...'). Capture all three so quoted-key configs are not silently skipped.
   toml: /^(\s*)("(?:[^"\\]|\\.)*"|'[^']*'|[A-Za-z0-9_.-]+)\s*=\s*/gm,
 };
 
@@ -124,6 +124,22 @@ function skipString(text: string, start: number, quote: '"' | "'"): number {
 }
 
 /**
+ * Advance past a TOML string starting at `start`. Detects triple-quoted
+ * multi-line strings (""" … """ and ''' … ''') so a `]` or `#` inside the
+ * string body cannot terminate an enclosing array or pretend to be a comment.
+ */
+function skipTomlString(text: string, start: number): number {
+  const ch = text[start];
+  if (ch !== '"' && ch !== "'") return start + 1;
+  if (text.slice(start, start + 3) === ch + ch + ch) {
+    const triple = ch + ch + ch;
+    const closeIdx = text.indexOf(triple, start + 3);
+    return closeIdx >= 0 ? closeIdx + 3 : text.length;
+  }
+  return skipString(text, start, ch);
+}
+
+/**
  * Locate the end offset of the value that begins at `valueStart`. Handles
  * multi-line TOML strings (""" … """, ''' … '''), arrays ([ … ]), YAML block
  * scalars (| / >), and JSON arrays/objects. Falls back to end-of-line.
@@ -156,7 +172,9 @@ function findValueEnd(
       while (i < docLen) {
         const ch = text[i];
         if (ch === '"' || ch === "'") {
-          i = skipString(text, i, ch);
+          // TOML strings may be triple-quoted. Skip the whole literal as one
+          // unit so its body cannot terminate the array.
+          i = skipTomlString(text, i);
           continue;
         }
         if (ch === '#') {
@@ -224,6 +242,66 @@ function findValueEnd(
   return doc.lineAt(valueStart).to;
 }
 
+/**
+ * JSON-specific scanner: walks the document character by character, only
+ * registering a quoted string as a key when it sits at an object-key position
+ * (preceded by `{` or `,`, ignoring whitespace) AND is followed by `:`. This
+ * avoids the regex false-positive where a `"API_KEY":` substring inside an
+ * escaped value string would be treated as a sensitive key.
+ */
+function findJsonSensitiveRanges(text: string): Array<{ valueStart: number; key: string }> {
+  const hits: Array<{ valueStart: number; key: string }> = [];
+  let i = 0;
+  let prevSignificant: string | null = null; // last non-whitespace structural char
+  while (i < text.length) {
+    const ch = text[i];
+    if (ch === ' ' || ch === '\t' || ch === '\n' || ch === '\r') {
+      i++;
+      continue;
+    }
+    if (ch === '"') {
+      const stringStart = i;
+      const stringEnd = skipString(text, i, '"');
+      // Skip whitespace to peek at the next significant character.
+      let j = stringEnd;
+      while (
+        j < text.length &&
+        (text[j] === ' ' || text[j] === '\t' || text[j] === '\n' || text[j] === '\r')
+      ) {
+        j++;
+      }
+      const isKeyPos =
+        prevSignificant === '{' || prevSignificant === ',' || prevSignificant === null;
+      if (isKeyPos && text[j] === ':') {
+        const rawKey = text.slice(stringStart + 1, stringEnd - 1);
+        const key = rawKey.replace(/\\(.)/g, '$1');
+        // Advance past the colon and any whitespace to the value start.
+        let valueStart = j + 1;
+        while (
+          valueStart < text.length &&
+          (text[valueStart] === ' ' ||
+            text[valueStart] === '\t' ||
+            text[valueStart] === '\n' ||
+            text[valueStart] === '\r')
+        ) {
+          valueStart++;
+        }
+        hits.push({ valueStart, key });
+        prevSignificant = '"';
+        i = j + 1;
+        continue;
+      }
+      // Not a key position; treat the string as a value scalar.
+      prevSignificant = '"';
+      i = stringEnd;
+      continue;
+    }
+    prevSignificant = ch;
+    i++;
+  }
+  return hits;
+}
+
 function buildSensitiveDecorations(
   view: EditorView,
   language: 'json' | 'yaml' | 'toml'
@@ -234,18 +312,28 @@ function buildSensitiveDecorations(
   // dropped automatically) so a multi-line value beginning above the viewport
   // still masks when its tail scrolls into view.
   const text = doc.toString();
+
+  if (language === 'json') {
+    for (const { valueStart, key } of findJsonSensitiveRanges(text)) {
+      if (!isSensitiveKey(key)) continue;
+      if (valueStart >= doc.length) continue;
+      const valueEnd = findValueEnd(doc, valueStart, 'json', 0);
+      const trimmedLen = doc.sliceString(valueStart, valueEnd).replace(/\s+$/, '').length;
+      if (trimmedLen === 0) continue;
+      builder.add(
+        valueStart,
+        valueStart + trimmedLen,
+        Decoration.mark({ class: 'cm-sensitive-mask' })
+      );
+    }
+    return builder.finish();
+  }
+
   const pattern = new RegExp(SENSITIVE_PATTERNS[language].source, 'gm');
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(text)) !== null) {
-    let key: string;
-    let keyIndent: number;
-    if (language === 'json') {
-      key = normalizeKey(`"${match[1]}"`);
-      keyIndent = 0;
-    } else {
-      key = normalizeKey(match[2]);
-      keyIndent = match[1].length;
-    }
+    const key = normalizeKey(match[2]);
+    const keyIndent = match[1].length;
     if (!isSensitiveKey(key)) continue;
     const valueStart = match.index + match[0].length;
     if (valueStart >= doc.length) continue;

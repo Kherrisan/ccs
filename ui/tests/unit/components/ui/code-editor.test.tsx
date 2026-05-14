@@ -131,6 +131,34 @@ describe('CodeEditor', () => {
     expect(masked).not.toContain('ok');
   });
 
+  it('does not terminate TOML array masking on a `]` inside a triple-quoted string', () => {
+    const value = ['AUTH_TOKEN = [', '  """abc]xyz""",', '  "second",', ']', 'visible = "ok"'].join(
+      '\n'
+    );
+
+    const { container } = render(<CodeEditor value={value} onChange={vi.fn()} language="toml" />);
+    const masked = Array.from(container.querySelectorAll('.cm-sensitive-mask'))
+      .map((el) => el.textContent ?? '')
+      .join('');
+    expect(masked).toContain('abc]xyz');
+    expect(masked).toContain('"second"');
+    expect(masked).not.toContain('ok');
+  });
+
+  it('ignores JSON pseudo-keys embedded inside escaped value strings', () => {
+    const value = '{"description": "use \\"API_KEY\\": header", "API_KEY": "real-secret"}';
+
+    const { container } = render(<CodeEditor value={value} onChange={vi.fn()} language="json" />);
+    const masked = Array.from(container.querySelectorAll('.cm-sensitive-mask'))
+      .map((el) => el.textContent ?? '')
+      .join('');
+    // Only the real API_KEY value gets masked, not the embedded `API_KEY` text
+    // inside the `description` value.
+    expect(masked).toContain('real-secret');
+    expect(masked).not.toContain('use ');
+    expect(masked).not.toContain('header');
+  });
+
   it('does not terminate TOML array masking on a `]` inside a comment', () => {
     const value = [
       'AUTH_TOKEN = [',
