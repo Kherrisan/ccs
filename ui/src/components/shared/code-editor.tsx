@@ -263,7 +263,9 @@ function makeSensitivePlugin(language: 'json' | 'yaml' | 'toml'): Extension {
         this.decorations = buildSensitiveDecorations(view, language);
       }
       update(update: ViewUpdate) {
-        if (update.docChanged || update.viewportChanged) {
+        // Decorations are derived from the whole document, not the viewport,
+        // so a viewport-only change (scroll) does not require a rebuild.
+        if (update.docChanged) {
           this.decorations = buildSensitiveDecorations(update.view, language);
         }
       }
@@ -343,7 +345,9 @@ const sensitiveMaskTheme = EditorView.baseTheme({
     opacity: '0.7',
     transition: 'filter 200ms ease, opacity 200ms ease',
   },
-  '.cm-editor.cm-sensitive-revealed .cm-sensitive-mask': {
+  // The reveal class is placed on the @uiw/react-codemirror wrapper rather
+  // than directly on `.cm-editor`, so target the wrapper as the toggle root.
+  '.cm-sensitive-revealed .cm-sensitive-mask': {
     filter: 'none',
     opacity: '1',
   },
