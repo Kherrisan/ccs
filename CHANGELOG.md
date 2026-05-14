@@ -1,3 +1,9 @@
+## [7.79.1](https://github.com/kaitranntt/ccs/compare/v7.79.0...v7.79.1) (2026-05-14)
+
+### Hotfixes
+
+* **codex:** tolerate BOM in Codex TOML config ([5b664d2](https://github.com/kaitranntt/ccs/commit/5b664d2105b81ec263c05a37c4549a4a6c409bb3))
+
 ## [7.79.0](https://github.com/kaitranntt/ccs/compare/v7.78.1...v7.79.0) (2026-05-14)
 
 ### Features
