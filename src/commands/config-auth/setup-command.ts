@@ -8,9 +8,10 @@
 
 import bcrypt from 'bcrypt';
 import { InteractivePrompt } from '../../utils/prompt';
-import { loadOrCreateUnifiedConfig, saveUnifiedConfig } from '../../config/unified-config-loader';
+
 import { initUI, header, subheader, ok, fail, info, warn, dim } from '../../utils/ui';
 import type { AuthSetupResult } from './types';
+import { mutateConfig } from '../../config/config-loader-facade';
 
 const BCRYPT_ROUNDS = 10;
 const MIN_PASSWORD_LENGTH = 8;
@@ -99,24 +100,23 @@ export async function handleSetup(): Promise<AuthSetupResult> {
     // Hash password
     const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
 
-    // Load existing config and update
-    const config = loadOrCreateUnifiedConfig();
-    config.dashboard_auth = {
-      enabled: true,
-      username,
-      password_hash: passwordHash,
-      session_timeout_hours: config.dashboard_auth?.session_timeout_hours ?? 24,
-    };
-
-    // Save config
-    saveUnifiedConfig(config);
+    const config = mutateConfig((currentConfig) => {
+      currentConfig.dashboard_auth = {
+        enabled: true,
+        username,
+        password_hash: passwordHash,
+        session_timeout_hours: currentConfig.dashboard_auth?.session_timeout_hours ?? 24,
+      };
+    });
 
     console.log('');
     console.log(ok('Dashboard authentication configured'));
     console.log('');
     console.log(info('Settings saved to ~/.ccs/config.yaml'));
     console.log(info(`Username: ${username}`));
-    console.log(info(`Session timeout: ${config.dashboard_auth.session_timeout_hours} hours`));
+    console.log(
+      info(`Session timeout: ${config.dashboard_auth?.session_timeout_hours ?? 24} hours`)
+    );
     console.log('');
     console.log(dim('    Start dashboard: ccs config'));
     console.log(dim('    Show status: ccs config auth show'));

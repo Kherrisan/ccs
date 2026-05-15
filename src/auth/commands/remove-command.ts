@@ -8,17 +8,22 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { initUI, color, ok, fail, info } from '../../utils/ui';
 import { InteractivePrompt } from '../../utils/prompt';
-import { isUnifiedMode } from '../../config/unified-config-loader';
+
 import { exitWithError } from '../../errors';
 import { ExitCode } from '../../errors/exit-codes';
-import { CommandContext, parseArgs } from './types';
+import { CommandContext, parseArgs, rejectUnsupportedAuthOptions } from './types';
+import { isUnifiedMode } from '../../config/config-loader-facade';
 
 /**
  * Handle the remove command
  */
 export async function handleRemove(ctx: CommandContext, args: string[]): Promise<void> {
   await initUI();
-  const { profileName, yes } = parseArgs(args);
+  const parsed = parseArgs(args);
+  const { profileName, yes } = parsed;
+  rejectUnsupportedAuthOptions(parsed, {
+    usage: 'ccs auth remove <profile> [--yes]',
+  });
 
   if (!profileName) {
     console.log(fail('Profile name is required'));
@@ -68,7 +73,7 @@ export async function handleRemove(ctx: CommandContext, args: string[]): Promise
     }
 
     // Delete instance
-    ctx.instanceMgr.deleteInstance(profileName);
+    await ctx.instanceMgr.deleteInstance(profileName);
 
     // Delete profile from appropriate config
     if (isUnifiedMode() && existsUnified) {

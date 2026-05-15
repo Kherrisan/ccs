@@ -209,9 +209,8 @@ export class StreamParser {
 
     if (!toolCallDeltas) return events;
 
-    // Close current content block ONCE before processing any tool calls
     const currentBlock = accumulator.getCurrentBlock();
-    if (currentBlock && !currentBlock.stopped) {
+    if (currentBlock && !currentBlock.stopped && currentBlock.type !== 'tool_use') {
       if (currentBlock.type === 'thinking') {
         events.push(...this.closeThinkingBlock(currentBlock, accumulator));
       } else {
@@ -220,7 +219,6 @@ export class StreamParser {
       }
     }
 
-    // Process tool call deltas
     events.push(...this.toolCallHandler.processToolCallDeltas(toolCallDeltas, accumulator));
 
     return events;
@@ -251,44 +249,41 @@ export class StreamParser {
   private forceFinalization(accumulator: DeltaAccumulator): AnthropicSSEEvent[] {
     const events: AnthropicSSEEvent[] = [];
 
-    // Close current block if any
-    const currentBlock = accumulator.getCurrentBlock();
-    if (currentBlock && !currentBlock.stopped) {
-      if (currentBlock.type === 'thinking') {
-        events.push(...this.closeThinkingBlock(currentBlock, accumulator));
-      } else {
-        events.push(this.responseBuilder.createContentBlockStopEvent(currentBlock));
-        accumulator.stopCurrentBlock();
+    const unstoppedBlocks = accumulator.getUnstoppedBlocks();
+    for (const block of unstoppedBlocks) {
+      if (block.type === 'thinking') {
+        const signatureEvent = this.responseBuilder.createSignatureDeltaEvent(block);
+        if (signatureEvent) {
+          events.push(signatureEvent);
+        }
       }
+      events.push(this.responseBuilder.createContentBlockStopEvent(block));
+      block.stopped = true;
     }
 
-    // Force finalization
     events.push(...this.finalizeDelta(accumulator));
     return events;
   }
 
-  /**
-   * Finalize streaming and generate closing events
-   */
   finalizeDelta(accumulator: DeltaAccumulator): AnthropicSSEEvent[] {
     if (accumulator.isFinalized()) {
-      return []; // Already finalized
+      return [];
     }
 
     const events: AnthropicSSEEvent[] = [];
 
-    // Close current content block if any
-    const currentBlock = accumulator.getCurrentBlock();
-    if (currentBlock && !currentBlock.stopped) {
-      if (currentBlock.type === 'thinking') {
-        events.push(...this.closeThinkingBlock(currentBlock, accumulator));
-      } else {
-        events.push(this.responseBuilder.createContentBlockStopEvent(currentBlock));
-        accumulator.stopCurrentBlock();
+    const unstoppedBlocks = accumulator.getUnstoppedBlocks();
+    for (const block of unstoppedBlocks) {
+      if (block.type === 'thinking') {
+        const signatureEvent = this.responseBuilder.createSignatureDeltaEvent(block);
+        if (signatureEvent) {
+          events.push(signatureEvent);
+        }
       }
+      events.push(this.responseBuilder.createContentBlockStopEvent(block));
+      block.stopped = true;
     }
 
-    // Message delta (stop reason + usage) and message stop
     const stopReason = this.responseBuilder.mapStopReason(accumulator.getFinishReason() || 'stop');
     events.push(...this.responseBuilder.createFinalizationEvents(accumulator, stopReason));
 

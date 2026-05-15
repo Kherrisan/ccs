@@ -4,6 +4,7 @@
  */
 
 import { useState, useMemo, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -33,9 +34,10 @@ interface OpenRouterModelPickerProps {
 export function OpenRouterModelPicker({
   value,
   onChange,
-  placeholder = 'Search models...',
+  placeholder,
   className,
 }: OpenRouterModelPickerProps) {
+  const { t } = useTranslation();
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<ModelCategory | null>(null);
 
@@ -105,7 +107,7 @@ export function OpenRouterModelPicker({
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder={placeholder}
+            placeholder={placeholder ?? t('openrouterModelPicker.searchModels')}
             className="pl-9"
           />
         </div>
@@ -180,7 +182,7 @@ export function OpenRouterModelPicker({
               <div>
                 <div className="text-muted-foreground bg-background sticky top-0 mb-2 flex items-center gap-1.5 py-1.5 text-xs font-semibold border-b pb-2">
                   <Sparkles className="h-3 w-3 text-accent" />
-                  <span>Newest Models</span>
+                  <span>{t('openrouterModelPicker.newestModels')}</span>
                 </div>
                 <div className="space-y-1">
                   {newestModels.map((model) => (

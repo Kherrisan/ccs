@@ -49,6 +49,7 @@ export function BulkActionBar({
           disabled={isLoading}
         >
           {isPausing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Pause className="w-3 h-3" />}
+          {/* TODO i18n: missing key for "Pause Selected" */}
           Pause Selected
         </Button>
         <Button
@@ -59,6 +60,7 @@ export function BulkActionBar({
           disabled={isLoading}
         >
           {isResuming ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />}
+          {/* TODO i18n: missing key for "Resume Selected" */}
           Resume Selected
         </Button>
       </div>

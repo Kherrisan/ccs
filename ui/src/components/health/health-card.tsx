@@ -2,6 +2,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { CheckCircle, AlertTriangle, XCircle, Wrench } from 'lucide-react';
 import { useFixHealth } from '@/hooks/use-health';
+import { useTranslation } from 'react-i18next';
 
 interface HealthCheck {
   id: string;
@@ -35,6 +36,7 @@ const statusConfig = {
 
 export function HealthCard({ check }: { check: HealthCheck }) {
   const fixMutation = useFixHealth();
+  const { t } = useTranslation();
   const config = statusConfig[check.status];
   const Icon = config.icon;
 
@@ -54,7 +56,7 @@ export function HealthCard({ check }: { check: HealthCheck }) {
               disabled={fixMutation.isPending}
             >
               <Wrench className="w-3 h-3 mr-1" />
-              Fix
+              {t('health.fix')}
             </Button>
           )}
         </div>

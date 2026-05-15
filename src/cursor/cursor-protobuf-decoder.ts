@@ -4,7 +4,12 @@
  */
 
 import * as zlib from 'zlib';
-import { WIRE_TYPE, FIELD, COMPRESS_FLAG, type WireType } from './cursor-protobuf-schema.js';
+import {
+  WIRE_TYPE,
+  FIELD,
+  isCompressedConnectFrame,
+  type WireType,
+} from './cursor-protobuf-schema.js';
 
 /**
  * Decode a varint from buffer
@@ -121,11 +126,7 @@ export function parseConnectRPCFrame(buffer: Buffer): {
   let payload = buffer.slice(5, 5 + length);
 
   // Decompress if gzip
-  if (
-    flags === COMPRESS_FLAG.GZIP ||
-    flags === COMPRESS_FLAG.GZIP_ALT ||
-    flags === COMPRESS_FLAG.GZIP_BOTH
-  ) {
+  if (isCompressedConnectFrame(flags)) {
     try {
       payload = Buffer.from(zlib.gunzipSync(payload));
     } catch (err) {

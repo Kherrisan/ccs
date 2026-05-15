@@ -15,6 +15,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Server, Zap, Cpu, Coins } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useCliproxyStats, useCliproxyStatus } from '@/hooks/use-cliproxy-stats';
+import { useTranslation } from 'react-i18next';
 
 interface CliproxyStatsCardProps {
   className?: string;
@@ -27,6 +28,7 @@ export function CliproxyStatsCard({
 }: CliproxyStatsCardProps) {
   const { data: status, isLoading: statusLoading } = useCliproxyStatus();
   const { data: stats, isLoading: statsLoading, error } = useCliproxyStats(status?.running);
+  const { t } = useTranslation();
 
   const isLoading = externalLoading || statusLoading || (status?.running && statsLoading);
 
@@ -36,6 +38,7 @@ export function CliproxyStatsCard({
         <CardHeader className="px-3 py-2">
           <CardTitle className="text-base font-semibold flex items-center gap-2">
             <Server className="h-4 w-4" />
+            {/* TODO i18n: missing key for "CLIProxy Stats" */}
             CLIProxy Stats
           </CardTitle>
         </CardHeader>
@@ -62,16 +65,17 @@ export function CliproxyStatsCard({
           <div className="flex items-center justify-between">
             <CardTitle className="text-base font-semibold flex items-center gap-2">
               <Server className="h-4 w-4 text-muted-foreground" />
+              {/* TODO i18n: missing key for "CLIProxy Stats" */}
               CLIProxy Stats
             </CardTitle>
             <Badge variant="secondary" className="text-[10px] h-5">
-              Offline
+              {t('cliproxyStatsOverview.offline')}
             </Badge>
           </div>
         </CardHeader>
         <CardContent className="px-3 pb-3 pt-0 flex-1 flex items-center justify-center">
           <p className="text-xs text-muted-foreground text-center">
-            Start a CLIProxy session (gemini, codex, agy) to collect stats.
+            {t('cliproxyStatsOverview.noActiveSessionHint')}
           </p>
         </CardContent>
       </Card>
@@ -91,9 +95,11 @@ export function CliproxyStatsCard({
           <div className="flex items-center justify-between">
             <CardTitle className="text-base font-semibold flex items-center gap-2">
               <Server className="h-4 w-4" />
+              {/* TODO i18n: missing key for "CLIProxy Stats" */}
               CLIProxy Stats
             </CardTitle>
             <Badge variant="destructive" className="text-[10px] h-5">
+              {/* TODO i18n: missing key for "Error" */}
               Error
             </Badge>
           </div>
@@ -125,6 +131,7 @@ export function CliproxyStatsCard({
         <div className="flex items-center justify-between">
           <CardTitle className="text-base font-semibold flex items-center gap-2">
             <Server className="h-4 w-4" />
+            {/* TODO i18n: missing key for "CLIProxy Stats" */}
             CLIProxy Stats
           </CardTitle>
           <Badge
@@ -132,7 +139,7 @@ export function CliproxyStatsCard({
             className="text-[10px] h-5 text-green-600 border-green-200 bg-green-50 dark:bg-green-900/10 dark:border-green-800"
           >
             <Zap className="h-3 w-3 mr-0.5" />
-            Running
+            {t('cliproxyStatsOverview.running')}
           </Badge>
         </div>
       </CardHeader>
@@ -176,6 +183,7 @@ export function CliproxyStatsCard({
                   </div>
                   <div className="text-[9px] text-muted-foreground mt-0.5">
                     {failedRequests > 0 ? `${failedRequests} failed` : 'All success'}
+                    {/* TODO i18n: missing keys for "failed" / "All success" */}
                   </div>
                 </div>
               </div>
@@ -187,7 +195,9 @@ export function CliproxyStatsCard({
                 </div>
                 <div className="min-w-0">
                   <div className="text-lg font-bold leading-none">{formatNumber(totalTokens)}</div>
-                  <div className="text-[9px] text-muted-foreground mt-0.5">Total tokens</div>
+                  <div className="text-[9px] text-muted-foreground mt-0.5">
+                    {t('cliproxyStatsOverview.totalTokens')}
+                  </div>
                 </div>
               </div>
             </div>
@@ -197,7 +207,7 @@ export function CliproxyStatsCard({
               <div className="space-y-1.5">
                 <div className="flex items-center gap-1.5 text-[10px] font-medium text-muted-foreground">
                   <Cpu className="h-3 w-3" />
-                  Models Used
+                  {t('cliproxyStatsOverview.modelsUsed')}
                 </div>
                 <div className="space-y-1">
                   {models.map(([model, count]) => {

@@ -5,10 +5,14 @@
 import * as fs from 'fs';
 import { spawn } from 'child_process';
 import { getClaudeCliInfo } from '../../utils/claude-detector';
-import { escapeShellArg, stripClaudeCodeEnv } from '../../utils/shell-executor';
+import {
+  escapeShellArg,
+  getWindowsEscapedCommandShell,
+  stripClaudeCodeEnv,
+} from '../../utils/shell-executor';
 import { ok, fail } from '../../utils/ui';
 import { HealthCheck, IHealthChecker, createSpinner } from './types';
-import { getCcsDir } from '../../utils/config-manager';
+import { getCcsDir } from '../../config/config-loader-facade';
 
 const ora = createSpinner();
 
@@ -47,7 +51,7 @@ export class ClaudeCliChecker implements IHealthChecker {
           ? spawn([claudeCli, '--version'].map(escapeShellArg).join(' '), {
               stdio: 'pipe',
               timeout: 5000,
-              shell: true,
+              shell: getWindowsEscapedCommandShell(),
               env: stripClaudeCodeEnv(process.env),
             })
           : spawn(claudeCli, ['--version'], {

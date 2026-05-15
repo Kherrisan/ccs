@@ -47,7 +47,7 @@ function createDeps(
 }
 
 describe('installDashboardCliproxyVersion', () => {
-  it('restarts the proxy after install when it was already running', async () => {
+  it('restarts the plus proxy after install when it was already running', async () => {
     const { deps, calls } = createDeps({ sessionRunning: true });
 
     const result = await installDashboardCliproxyVersion('6.7.1', 'plus', deps);
@@ -63,7 +63,7 @@ describe('installDashboardCliproxyVersion', () => {
     expect(calls.ensureCliproxyService).toBe(1);
   });
 
-  it('keeps the proxy stopped after install when it was not running beforehand', async () => {
+  it('keeps the plus proxy stopped after install when it was not running beforehand', async () => {
     const { deps, calls } = createDeps({ sessionRunning: false, remoteRunning: false });
 
     const result = await installDashboardCliproxyVersion('6.7.1', 'plus', deps);

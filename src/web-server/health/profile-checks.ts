@@ -7,8 +7,10 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { isUnifiedMode, loadUnifiedConfig } from '../../config/unified-config-loader';
+
 import type { HealthCheck } from './types';
+import { isUnifiedMode, loadUnifiedConfig } from '../../config/config-loader-facade';
+import { listAccountInstanceNames } from '../../management/instance-directory';
 
 /**
  * Check profiles configuration (API profiles from config.json or config.yaml)
@@ -107,9 +109,7 @@ export function checkInstances(ccsDir: string): HealthCheck {
     };
   }
 
-  const instances = fs.readdirSync(instancesDir).filter((name) => {
-    return fs.statSync(path.join(instancesDir, name)).isDirectory();
-  });
+  const instances = listAccountInstanceNames(instancesDir);
 
   if (instances.length === 0) {
     return {

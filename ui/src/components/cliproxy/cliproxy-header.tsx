@@ -3,21 +3,15 @@
  * Fixed header with OAuth login buttons, status indicator, and refresh
  */
 
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { RefreshCw, Loader2, AlertTriangle } from 'lucide-react';
-import { useCliproxyAuth } from '@/hooks/use-cliproxy';
+import { useCliproxyAuth, useCliproxyUpdateCheck } from '@/hooks/use-cliproxy';
 import { useCliproxyAuthFlow } from '@/hooks/use-cliproxy-auth-flow';
 import { cn } from '@/lib/utils';
 import { CLIPROXY_PROVIDERS, getProviderDisplayName } from '@/lib/provider-config';
-
-interface VersionInfo {
-  currentVersion: string;
-  isStable: boolean;
-  stabilityMessage?: string;
-  backendLabel?: string;
-}
+import { useTranslation } from 'react-i18next';
 
 interface LoginButtonProps {
   provider: string;
@@ -116,25 +110,10 @@ export function CliproxyHeader({
   isRunning = true,
 }: CliproxyHeaderProps) {
   const { data: authData } = useCliproxyAuth();
+  const { data: updateCheck } = useCliproxyUpdateCheck();
   const { provider: authProvider, isAuthenticating, startAuth } = useCliproxyAuthFlow();
+  const { t } = useTranslation();
   const lastUpdatedText = useRelativeTime(lastUpdated);
-  const [versionInfo, setVersionInfo] = useState<VersionInfo | null>(null);
-
-  useEffect(() => {
-    fetch('/api/cliproxy/update-check')
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (data) {
-          setVersionInfo({
-            currentVersion: data.currentVersion,
-            isStable: data.isStable,
-            stabilityMessage: data.stabilityMessage,
-            backendLabel: data.backendLabel,
-          });
-        }
-      })
-      .catch(() => {}); // Silently fail
-  }, []);
 
   const providers = CLIPROXY_PROVIDERS.map((id) => ({
     id,
@@ -155,9 +134,11 @@ export function CliproxyHeader({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">
-            {versionInfo?.backendLabel ?? 'CLIProxy'}
+            {updateCheck?.backendLabel ?? 'CLIProxy'}
           </h1>
-          <p className="text-sm text-muted-foreground mt-1">CCS-level account management</p>
+          <p className="text-sm text-muted-foreground mt-1">
+            {t('cliproxyHeader.ccsLevelAccountManagement')}
+          </p>
         </div>
 
         {/* Login Buttons - Wrap on mobile */}
@@ -188,21 +169,21 @@ export function CliproxyHeader({
               isRunning ? 'bg-green-500 animate-pulse' : 'bg-muted-foreground'
             )}
           />
-          {isRunning ? 'Running' : 'Offline'}
+          {isRunning ? t('cliproxyStatsOverview.running') : t('cliproxyStatsOverview.offline')}
         </Badge>
 
-        {versionInfo && (
+        {updateCheck && (
           <Badge
-            variant={versionInfo.isStable ? 'secondary' : 'destructive'}
+            variant={updateCheck.isStable ? 'secondary' : 'destructive'}
             className={cn(
               'gap-1.5',
-              !versionInfo.isStable &&
+              !updateCheck.isStable &&
                 'bg-amber-500/20 text-amber-600 dark:text-amber-400 border-amber-500/30'
             )}
-            title={versionInfo.stabilityMessage}
+            title={updateCheck.stabilityMessage}
           >
-            {!versionInfo.isStable && <AlertTriangle className="w-3 h-3" />}v
-            {versionInfo.currentVersion}
+            {!updateCheck.isStable && <AlertTriangle className="w-3 h-3" />}v
+            {updateCheck.currentVersion}
           </Badge>
         )}
 

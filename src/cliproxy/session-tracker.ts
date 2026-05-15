@@ -18,9 +18,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
 import * as lockfile from 'proper-lockfile';
-import { getCliproxyDir } from './config-generator';
+import { getCliproxyDir } from './config/config-generator';
 import { getPortProcess, isCLIProxyProcess } from '../utils/port-utils';
-import { CLIPROXY_DEFAULT_PORT } from './config-generator';
+import { CLIPROXY_DEFAULT_PORT } from './config/config-generator';
 
 /** Session lock file structure */
 interface SessionLock {
@@ -395,6 +395,7 @@ export function cleanupOrphanedSessions(port: number): void {
  */
 export async function stopProxy(port: number = CLIPROXY_DEFAULT_PORT): Promise<{
   stopped: boolean;
+  port?: number;
   pid?: number;
   sessionCount?: number;
   error?: string;
@@ -406,12 +407,13 @@ export async function stopProxy(port: number = CLIPROXY_DEFAULT_PORT): Promise<{
     const portProcess = await getPortProcess(port);
 
     if (!portProcess) {
-      return { stopped: false, error: 'No active CLIProxy session found' };
+      return { stopped: false, port, error: 'No active CLIProxy session found' };
     }
 
     if (!isCLIProxyProcess(portProcess)) {
       return {
         stopped: false,
+        port,
         error: `Port ${port} is in use by ${portProcess.processName}, not CLIProxy`,
       };
     }
@@ -432,20 +434,25 @@ export async function stopProxy(port: number = CLIPROXY_DEFAULT_PORT): Promise<{
         }
       }
 
-      return { stopped: true, pid: portProcess.pid, sessionCount: 0 };
+      return { stopped: true, port, pid: portProcess.pid, sessionCount: 0 };
     } catch (err) {
       const error = err as NodeJS.ErrnoException;
       if (error.code === 'ESRCH') {
-        return { stopped: false, error: 'CLIProxy process already terminated' };
+        return { stopped: false, port, error: 'CLIProxy process already terminated' };
       }
-      return { stopped: false, pid: portProcess.pid, error: `Failed to stop: ${error.message}` };
+      return {
+        stopped: false,
+        port,
+        pid: portProcess.pid,
+        error: `Failed to stop: ${error.message}`,
+      };
     }
   }
 
   // Check if proxy is running
   if (!isProcessRunning(lock.pid)) {
     deleteSessionLockForPort(port);
-    return { stopped: false, error: 'CLIProxy was not running (cleaned up stale lock)' };
+    return { stopped: false, port, error: 'CLIProxy was not running (cleaned up stale lock)' };
   }
 
   const sessionCount = lock.sessions.length;
@@ -470,15 +477,15 @@ export async function stopProxy(port: number = CLIPROXY_DEFAULT_PORT): Promise<{
     // Clean up session lock
     deleteSessionLockForPort(port);
 
-    return { stopped: true, pid, sessionCount };
+    return { stopped: true, port, pid, sessionCount };
   } catch (err) {
     const error = err as NodeJS.ErrnoException;
     if (error.code === 'ESRCH') {
       // Process already gone
       deleteSessionLockForPort(port);
-      return { stopped: false, error: 'CLIProxy process already terminated' };
+      return { stopped: false, port, error: 'CLIProxy process already terminated' };
     }
-    return { stopped: false, pid, error: `Failed to stop: ${error.message}` };
+    return { stopped: false, port, pid, error: `Failed to stop: ${error.message}` };
   }
 }
 

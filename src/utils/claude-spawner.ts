@@ -6,7 +6,11 @@
  */
 
 import { spawn, ChildProcess, SpawnOptions } from 'child_process';
-import { escapeShellArg, stripClaudeCodeEnv } from './shell-executor';
+import {
+  escapeShellArg,
+  getWindowsEscapedCommandShell,
+  stripClaudeCodeEnv,
+} from './shell-executor';
 import { getClaudeCliInfo } from './claude-detector';
 import { ErrorManager } from './error-manager';
 
@@ -56,7 +60,7 @@ export function spawnClaude(options: SpawnClaudeOptions = {}): SpawnClaudeResult
     child = spawn(cmdString, {
       stdio,
       windowsHide: true,
-      shell: true,
+      shell: getWindowsEscapedCommandShell(),
       env: mergedEnv,
       cwd,
     });

@@ -3,6 +3,7 @@
  * Permanent promotional card for OpenRouter - always visible in sidebar footer
  */
 
+import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { useOpenRouterReady } from '@/hooks/use-openrouter-models';
 import { Zap } from 'lucide-react';
@@ -12,7 +13,8 @@ interface OpenRouterPromoCardProps {
 }
 
 export function OpenRouterPromoCard({ onCreateClick }: OpenRouterPromoCardProps) {
-  const { modelCount, isLoading } = useOpenRouterReady();
+  const { t } = useTranslation();
+  useOpenRouterReady();
 
   return (
     <div className="p-3 border-t bg-gradient-to-r from-accent/5 to-accent/10 dark:from-accent/10 dark:to-accent/15">
@@ -21,9 +23,11 @@ export function OpenRouterPromoCard({ onCreateClick }: OpenRouterPromoCardProps)
           <img src="/icons/openrouter.svg" alt="" className="w-4 h-4" />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-xs font-medium text-accent dark:text-accent-foreground">OpenRouter</p>
+          <p className="text-xs font-medium text-accent dark:text-accent-foreground">
+            {t('openrouterPromoCard.title')}
+          </p>
           <p className="text-[10px] text-muted-foreground truncate">
-            {isLoading ? '300+' : `${modelCount}+`} models available
+            {t('openrouterPromoCard.description')}
           </p>
         </div>
         <Button
@@ -33,7 +37,7 @@ export function OpenRouterPromoCard({ onCreateClick }: OpenRouterPromoCardProps)
           className="h-7 px-2 text-accent hover:text-accent hover:bg-accent/10 dark:hover:bg-accent/20"
         >
           <Zap className="w-3 h-3 mr-1" />
-          <span className="text-xs">Add</span>
+          <span className="text-xs">{t('openrouterBanner.add')}</span>
         </Button>
       </div>
     </div>

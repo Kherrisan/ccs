@@ -88,8 +88,8 @@ export function DeviceCodeDialog({
   const instructions = getDeviceCodeProviderInstruction(provider);
   const openActionLabel =
     providerDisplay === 'Unknown provider'
-      ? 'Open verification page'
-      : `Open ${providerDisplay.split(' ')[0]}`;
+      ? i18n.t('deviceCodeDialog.openVerificationPage')
+      : i18n.t('deviceCodeDialog.openProviderPage', { provider: providerDisplay.split(' ')[0] });
 
   // Format remaining time
   const formatTime = (seconds: number): string => {
@@ -106,16 +106,20 @@ export function DeviceCodeDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <KeyRound className="w-5 h-5" />
-            Authorize {providerDisplay}
+            {i18n.t('deviceCodeDialog.authorize', { provider: providerDisplay })}
           </DialogTitle>
           <DialogDescription>
-            Enter the code below at the authorization page.
+            {i18n.t('deviceCodeDialog.enterCodeAtPage')}
             {timeRemaining !== null && timeRemaining > 0 && (
               <span className="text-muted-foreground ml-1">
-                (Expires in {formatTime(timeRemaining)})
+                {i18n.t('deviceCodeDialog.expiresIn', { time: formatTime(timeRemaining) })}
               </span>
             )}
-            {isExpired && <span className="text-destructive ml-1 font-medium">(Code expired)</span>}
+            {isExpired && (
+              <span className="text-destructive ml-1 font-medium">
+                {i18n.t('deviceCodeDialog.codeExpired')}
+              </span>
+            )}
           </DialogDescription>
         </DialogHeader>
 
@@ -132,7 +136,11 @@ export function DeviceCodeDialog({
               size="icon"
               className="absolute top-2 right-2"
               onClick={handleCopyCode}
-              aria-label={hasCopied ? 'Code copied' : 'Copy verification code'}
+              aria-label={
+                hasCopied
+                  ? i18n.t('deviceCodeDialog.codeCopiedAria')
+                  : i18n.t('deviceCodeDialog.copyCodeAria')
+              }
             >
               {hasCopied ? (
                 <Check className="h-4 w-4 text-green-500" />
@@ -157,12 +165,12 @@ export function DeviceCodeDialog({
               {hasCopied ? (
                 <>
                   <Check className="w-4 h-4 mr-2 text-green-500" />
-                  Copied!
+                  {i18n.t('deviceCodeDialog.copied')}
                 </>
               ) : (
                 <>
                   <Copy className="w-4 h-4 mr-2" />
-                  Copy Code
+                  {i18n.t('deviceCodeDialog.copyCode')}
                 </>
               )}
             </Button>
@@ -171,7 +179,7 @@ export function DeviceCodeDialog({
           {/* Waiting indicator */}
           <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
-            <span>Waiting for authorization...</span>
+            <span>{i18n.t('deviceCodeDialog.waitingForAuth')}</span>
           </div>
         </div>
       </DialogContent>

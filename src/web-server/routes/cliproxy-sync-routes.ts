@@ -3,7 +3,7 @@
  */
 
 import { Router, Request, Response } from 'express';
-import { loadOrCreateUnifiedConfig } from '../../config/unified-config-loader';
+
 import {
   generateSyncPayload,
   generateSyncPreview,
@@ -12,7 +12,7 @@ import {
   syncToLocalConfig,
   getLocalSyncStatus,
 } from '../../cliproxy/sync';
-import { saveUnifiedConfig } from '../../config/unified-config-loader';
+import { mutateConfig } from '../../config/config-loader-facade';
 
 const router = Router();
 
@@ -130,18 +130,13 @@ router.put('/auto-sync', async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // Update config
-    const config = loadOrCreateUnifiedConfig();
-    if (!config.cliproxy) {
-      // Should not happen as loadOrCreate initializes it, but handle gracefully
-      res.status(500).json({ error: 'CLIProxy config not initialized' });
-      return;
-    }
-
-    // Save config
     try {
-      config.cliproxy.auto_sync = enabled;
-      saveUnifiedConfig(config);
+      mutateConfig((config) => {
+        if (!config.cliproxy) {
+          throw new Error('CLIProxy config not initialized');
+        }
+        config.cliproxy.auto_sync = enabled;
+      });
     } catch (error) {
       res.status(500).json({ error: `Failed to save config: ${(error as Error).message}` });
       return;

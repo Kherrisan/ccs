@@ -4,6 +4,7 @@
  */
 
 import type { OpenRouterModel, CategorizedModel, ModelCategory } from './openrouter-types';
+import i18n from './i18n';
 
 const CACHE_KEY = 'ccs:openrouter-models';
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
@@ -19,8 +20,8 @@ export function pricePerMillion(perToken: string): number {
 /** Format price for display */
 export function formatPrice(perToken: string): string {
   const perMillion = pricePerMillion(perToken);
-  if (perMillion === 0) return 'Free';
-  if (perMillion < 0.01) return '<$0.01';
+  if (perMillion === 0) return i18n.t('openrouterUtils.priceFree');
+  if (perMillion < 0.01) return i18n.t('openrouterUtils.priceLessThanCent');
   if (perMillion < 1) return `$${perMillion.toFixed(2)}`;
   return `$${perMillion.toFixed(perMillion < 10 ? 2 : 0)}`;
 }
@@ -29,7 +30,11 @@ export function formatPrice(perToken: string): string {
 export function formatPricingPair(pricing: { prompt: string; completion: string }): string {
   const promptPrice = formatPrice(pricing.prompt);
   const completionPrice = formatPrice(pricing.completion);
-  if (promptPrice === 'Free' && completionPrice === 'Free') return 'Free';
+  if (
+    promptPrice === i18n.t('openrouterUtils.priceFree') &&
+    completionPrice === i18n.t('openrouterUtils.priceFree')
+  )
+    return i18n.t('openrouterUtils.priceFree');
   return `${promptPrice}/${completionPrice}`;
 }
 
@@ -248,10 +253,13 @@ export function formatModelAge(created: number): string {
   const now = Date.now() / 1000; // Convert to seconds
   const diff = now - created;
 
-  if (diff < 86400) return 'Today';
-  if (diff < 172800) return 'Yesterday';
-  if (diff < 604800) return `${Math.floor(diff / 86400)}d ago`;
-  if (diff < 2592000) return `${Math.floor(diff / 604800)}w ago`;
-  if (diff < 31536000) return `${Math.floor(diff / 2592000)}mo ago`;
-  return `${Math.floor(diff / 31536000)}y ago`;
+  if (diff < 86400) return i18n.t('openrouterUtils.ageToday');
+  if (diff < 172800) return i18n.t('openrouterUtils.ageYesterday');
+  if (diff < 604800)
+    return i18n.t('openrouterUtils.ageDaysAgo', { count: Math.floor(diff / 86400) });
+  if (diff < 2592000)
+    return i18n.t('openrouterUtils.ageWeeksAgo', { count: Math.floor(diff / 604800) });
+  if (diff < 31536000)
+    return i18n.t('openrouterUtils.ageMonthsAgo', { count: Math.floor(diff / 2592000) });
+  return i18n.t('openrouterUtils.ageYearsAgo', { count: Math.floor(diff / 31536000) });
 }

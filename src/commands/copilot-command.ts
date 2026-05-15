@@ -12,12 +12,14 @@ import {
   stopDaemon,
   getAvailableModels,
   isCopilotApiInstalled,
+  normalizeCopilotConfigWithWarnings,
 } from '../copilot';
 import type { CopilotModel } from '../copilot';
-import { loadOrCreateUnifiedConfig, saveUnifiedConfig } from '../config/unified-config-loader';
+
 import { DEFAULT_COPILOT_CONFIG } from '../config/unified-config-types';
-import { ok, fail, info, color } from '../utils/ui';
+import { ok, fail, info, color, warn } from '../utils/ui';
 import { normalizeCopilotSubcommand } from '../copilot/constants';
+import { loadOrCreateUnifiedConfig, mutateConfig } from '../config/config-loader-facade';
 
 /**
  * Handle copilot subcommand.
@@ -55,11 +57,29 @@ export async function handleCopilotCommand(args: string[]): Promise<number> {
   }
 }
 
+function loadCopilotConfigWithWarnings() {
+  const config = loadOrCreateUnifiedConfig();
+  return normalizeCopilotConfigWithWarnings(config.copilot ?? DEFAULT_COPILOT_CONFIG);
+}
+
+function printCopilotWarnings(messages: string[]): void {
+  if (messages.length === 0) return;
+  messages.forEach((message) => console.log(warn(message)));
+  console.log(warn('Run `ccs config` and save the Copilot section to persist these replacements.'));
+  console.log('');
+}
+
 /**
  * Show help for copilot commands.
  */
 function handleHelp(): number {
-  console.log('GitHub Copilot Integration');
+  console.log('GitHub Copilot Integration (deprecated)');
+  console.log('');
+  console.log(
+    warn(
+      'Deprecated: GitHub usage-based Copilot billing begins June 1, 2026. Existing local setups remain available for compatibility; prefer Codex or another active provider for new work.'
+    )
+  );
   console.log('');
   console.log('Usage: ccs copilot <subcommand>');
   console.log('');
@@ -124,8 +144,8 @@ async function handleAuth(): Promise<number> {
  * Handle status subcommand.
  */
 async function handleStatus(): Promise<number> {
-  const config = loadOrCreateUnifiedConfig();
-  const copilotConfig = config.copilot ?? DEFAULT_COPILOT_CONFIG;
+  const { config: copilotConfig, warnings } = loadCopilotConfigWithWarnings();
+  printCopilotWarnings(warnings.map((warning) => warning.message));
 
   const status = await getCopilotStatus(copilotConfig);
 
@@ -182,8 +202,8 @@ async function handleStatus(): Promise<number> {
  * Handle models subcommand.
  */
 async function handleModels(): Promise<number> {
-  const config = loadOrCreateUnifiedConfig();
-  const copilotConfig = config.copilot ?? DEFAULT_COPILOT_CONFIG;
+  const { config: copilotConfig, warnings } = loadCopilotConfigWithWarnings();
+  printCopilotWarnings(warnings.map((warning) => warning.message));
 
   console.log('Available Copilot Models');
   console.log('────────────────────────');
@@ -273,8 +293,8 @@ function formatResetDate(resetDate: string | null): string {
  * Handle usage subcommand.
  */
 async function handleUsage(): Promise<number> {
-  const config = loadOrCreateUnifiedConfig();
-  const copilotConfig = config.copilot ?? DEFAULT_COPILOT_CONFIG;
+  const { config: copilotConfig, warnings } = loadCopilotConfigWithWarnings();
+  printCopilotWarnings(warnings.map((warning) => warning.message));
   const status = await getCopilotStatus(copilotConfig);
 
   if (!status.daemon.running) {
@@ -311,8 +331,8 @@ async function handleUsage(): Promise<number> {
  * Handle start subcommand.
  */
 async function handleStart(): Promise<number> {
-  const config = loadOrCreateUnifiedConfig();
-  const copilotConfig = config.copilot ?? DEFAULT_COPILOT_CONFIG;
+  const { config: copilotConfig, warnings } = loadCopilotConfigWithWarnings();
+  printCopilotWarnings(warnings.map((warning) => warning.message));
 
   console.log(info(`Starting copilot-api daemon on port ${copilotConfig.port}...`));
 
@@ -348,14 +368,13 @@ async function handleStop(): Promise<number> {
  * Handle enable subcommand.
  */
 async function handleEnable(): Promise<number> {
-  const config = loadOrCreateUnifiedConfig();
+  mutateConfig((config) => {
+    if (!config.copilot) {
+      config.copilot = { ...DEFAULT_COPILOT_CONFIG };
+    }
 
-  if (!config.copilot) {
-    config.copilot = { ...DEFAULT_COPILOT_CONFIG };
-  }
-
-  config.copilot.enabled = true;
-  saveUnifiedConfig(config);
+    config.copilot.enabled = true;
+  });
 
   console.log(ok('Copilot integration enabled'));
   console.log('');
@@ -371,12 +390,11 @@ async function handleEnable(): Promise<number> {
  * Handle disable subcommand.
  */
 async function handleDisable(): Promise<number> {
-  const config = loadOrCreateUnifiedConfig();
-
-  if (config.copilot) {
-    config.copilot.enabled = false;
-    saveUnifiedConfig(config);
-  }
+  mutateConfig((config) => {
+    if (config.copilot) {
+      config.copilot.enabled = false;
+    }
+  });
 
   console.log(ok('Copilot integration disabled'));
 

@@ -1,15 +1,17 @@
 import * as fs from 'fs';
-import {
-  getConfigJsonPath,
-  getContinuityInheritanceMap,
-  isUnifiedMode,
-} from '../config/unified-config-loader';
+
 import { warn } from '../utils/ui';
 import InstanceManager from '../management/instance-manager';
 import ProfileRegistry from './profile-registry';
 import { isAccountContextMetadata, resolveAccountContextPolicy } from './account-context';
+import { isProfileLocalSharedResourceMode } from './shared-resource-policy';
 import type { ProfileType } from '../types/profile';
 import { getProfileLookupCandidates, resolveAliasToCanonical } from '../utils/profile-compat';
+import {
+  getConfigJsonPath,
+  getContinuityInheritanceMap,
+  isUnifiedMode,
+} from '../config/config-loader-facade';
 
 export interface ProfileContinuityInheritanceInput {
   profileName: string;
@@ -100,6 +102,19 @@ function resolveMappedAccount(
   return undefined;
 }
 
+export function resolveConfiguredContinuitySourceAccount(
+  profileName: string,
+  profileType: ProfileType
+): string | undefined {
+  const inheritFromAccount = getContinuityInheritanceMap();
+  return (
+    resolveMappedAccount(profileName, profileType, inheritFromAccount) ??
+    (!isUnifiedMode()
+      ? resolveMappedAccount(profileName, profileType, loadLegacyContinuityInheritanceMap())
+      : undefined)
+  );
+}
+
 /**
  * Resolve optional cross-profile continuity inheritance.
  *
@@ -115,16 +130,10 @@ export async function resolveProfileContinuityInheritance(
     return {};
   }
 
-  const inheritFromAccount = getContinuityInheritanceMap();
-  const sourceAccount =
-    resolveMappedAccount(input.profileName, input.profileType, inheritFromAccount) ??
-    (!isUnifiedMode()
-      ? resolveMappedAccount(
-          input.profileName,
-          input.profileType,
-          loadLegacyContinuityInheritanceMap()
-        )
-      : undefined);
+  const sourceAccount = resolveConfiguredContinuitySourceAccount(
+    input.profileName,
+    input.profileType
+  );
   if (!sourceAccount) {
     return {};
   }
@@ -147,7 +156,7 @@ export async function resolveProfileContinuityInheritance(
     );
     const instanceMgr = new InstanceManager();
     const instancePath = await instanceMgr.ensureInstance(sourceAccount, contextPolicy, {
-      bare: mappedProfile.bare === true,
+      bare: isProfileLocalSharedResourceMode(mappedProfile),
     });
 
     return {

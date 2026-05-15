@@ -6,11 +6,7 @@
  */
 
 import { initUI, header, ok, info, warn, fail, subheader, color, dim } from '../utils/ui';
-import {
-  getThinkingConfig,
-  updateUnifiedConfig,
-  loadOrCreateUnifiedConfig,
-} from '../config/unified-config-loader';
+
 import { DEFAULT_THINKING_TIER_DEFAULTS } from '../config/unified-config-types';
 import { VALID_THINKING_LEVELS } from '../cliproxy/thinking-validator';
 import {
@@ -18,6 +14,11 @@ import {
   parseThinkingCommandArgs,
   parseThinkingOverrideInput,
 } from './config-thinking-parser';
+import {
+  getThinkingConfig,
+  loadOrCreateUnifiedConfig,
+  updateConfig,
+} from '../config/config-loader-facade';
 
 const VALID_THINKING_MODES = ['auto', 'off', 'manual'] as const;
 
@@ -60,7 +61,7 @@ function showHelp(): void {
 
   console.log(subheader('Levels:'));
   console.log(
-    `  ${dim('minimal (512), low (1K), medium (8K), high (24K), xhigh (32K), auto, off')}`
+    `  ${dim('minimal (512), low (1K), medium (8K), high (24K), xhigh (32K), max (adaptive ceiling), auto, off')}`
   );
   console.log('');
 
@@ -293,7 +294,7 @@ export async function handleConfigThinkingCommand(args: string[]): Promise<void>
   }
 
   if (hasChanges) {
-    updateUnifiedConfig({ thinking: thinkingConfig });
+    updateConfig({ thinking: thinkingConfig });
     console.log(ok('Configuration updated'));
     console.log('');
   }

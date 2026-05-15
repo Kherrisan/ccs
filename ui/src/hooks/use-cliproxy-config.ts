@@ -11,6 +11,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { parse as parseYaml } from 'yaml';
 import { api } from '@/lib/api-client';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 
 interface ValidationResult {
   valid: boolean;
@@ -70,6 +71,7 @@ function validateYaml(code: string): ValidationResult {
 
 export function useCliproxyConfig() {
   const queryClient = useQueryClient();
+  const { t } = useTranslation();
 
   // Fetch config.yaml - server state
   const configQuery = useQuery({
@@ -121,21 +123,21 @@ export function useCliproxyConfig() {
       dispatch({ type: 'SAVE_SUCCESS', content: variables });
       queryClient.invalidateQueries({ queryKey: ['cliproxy-config-yaml'] });
       queryClient.invalidateQueries({ queryKey: ['cliproxy'] });
-      toast.success('Configuration saved successfully');
+      toast.success(t('toasts.configSaved'));
     },
     onError: (error: Error) => {
-      toast.error(`Failed to save: ${error.message}`);
+      toast.error(t('toasts.configSaveFailed', { error: error.message }));
     },
   });
 
   // Save handler
   const saveContent = useCallback(() => {
     if (!validation.valid) {
-      toast.error('Cannot save invalid YAML');
+      toast.error(t('toasts.invalidYaml'));
       return;
     }
     saveMutation.mutate(content);
-  }, [content, validation.valid, saveMutation]);
+  }, [content, validation.valid, saveMutation, t]);
 
   return {
     // State

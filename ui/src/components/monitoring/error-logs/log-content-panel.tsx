@@ -133,8 +133,12 @@ export function LogContentPanel({ name, absolutePath }: LogContentPanelProps) {
       <div className="flex-1 overflow-hidden bg-card/30">
         {activeTab === 'overview' && <OverviewTab parsed={parsed} />}
         {activeTab === 'headers' && <HeadersTab headers={parsed.requestHeaders} />}
-        {activeTab === 'request' && <BodyTab content={parsed.requestBody} label="Request" />}
-        {activeTab === 'response' && <BodyTab content={parsed.responseBody} label="Response" />}
+        {activeTab === 'request' && (
+          <BodyTab content={parsed.requestBody} label={t('errorLogs.tabRequest')} />
+        )}
+        {activeTab === 'response' && (
+          <BodyTab content={parsed.responseBody} label={t('errorLogs.tabResponse')} />
+        )}
         {activeTab === 'raw' && <RawTab content={content} />}
       </div>
     </div>

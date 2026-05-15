@@ -4,6 +4,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { CheckCircle2, Zap, Gauge, DollarSign, Database, Lightbulb } from 'lucide-react';
 import type { Anomaly, AnomalySummary, AnomalyType } from '@/hooks/use-usage';
 import { cn } from '@/lib/utils';
+import { useTranslation } from 'react-i18next';
 
 interface UsageInsightsCardProps {
   anomalies?: Anomaly[];
@@ -53,6 +54,8 @@ export function UsageInsightsCard({
   isLoading,
   className,
 }: UsageInsightsCardProps) {
+  const { t } = useTranslation();
+
   if (isLoading) {
     return (
       <Card
@@ -90,7 +93,9 @@ export function UsageInsightsCard({
           <div className="w-12 h-12 rounded-full bg-green-100 dark:bg-green-900/20 flex items-center justify-center mb-3 ring-4 ring-green-50 dark:ring-green-900/10">
             <CheckCircle2 className="w-6 h-6 text-green-600 dark:text-green-400" />
           </div>
-          <h3 className="font-medium text-foreground text-sm">All Systems Nominal</h3>
+          <h3 className="font-medium text-foreground text-sm">
+            {t('healthCard.allSystemsNominal')}
+          </h3>
           <p className="text-xs mt-1.5 max-w-[200px] leading-relaxed">
             Your usage patterns are within normal ranges for the selected period.
           </p>
@@ -104,13 +109,15 @@ export function UsageInsightsCard({
       <div className="px-1 py-2 flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
           <Lightbulb className="w-4 h-4 text-amber-500" />
-          <h3 className="font-semibold text-sm">Usage Insights</h3>
+          <h3 className="font-semibold text-sm">{t('analyticsCards.usageInsights')}</h3>
         </div>
         <Badge
           variant="outline"
           className="h-5 px-2 text-[10px] font-medium border-amber-200 bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:border-amber-800 dark:text-amber-400"
         >
-          {summary.totalAnomalies} {summary.totalAnomalies === 1 ? 'Alert' : 'Alerts'}
+          {summary.totalAnomalies}{' '}
+          {/* TODO i18n: missing key for singular/plural "Alert"/"Alerts" */}{' '}
+          {summary.totalAnomalies === 1 ? 'Alert' : 'Alerts'}
         </Badge>
       </div>
 

@@ -3,7 +3,7 @@
  * Phase 05: Dashboard UI full CRUD for composite variants
  */
 
-import { useForm } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { useEffect } from 'react';
@@ -15,7 +15,13 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { useUpdateVariant } from '@/hooks/use-cliproxy';
-import { CLIPROXY_PROVIDERS, getProviderDisplayName } from '@/lib/provider-config';
+import {
+  CLIPROXY_PROVIDERS,
+  CLIPROXY_PROVIDER_SECTIONS,
+  getProviderDisplayName,
+  getProviderSection,
+  isPlusExtraProvider,
+} from '@/lib/provider-config';
 import type { UpdateVariant, Variant } from '@/lib/api-client';
 import { isDeniedAgyModelId } from '@/lib/utils';
 
@@ -23,12 +29,12 @@ const singleProviderSchema = z.object({
   provider: z.enum(CLIPROXY_PROVIDERS, { message: 'Provider is required' }),
   model: z.string().optional(),
   account: z.string().optional(),
-  target: z.enum(['claude', 'droid']),
+  target: z.enum(['claude', 'droid', 'codex']),
 });
 
 const compositeSchema = z.object({
   default_tier: z.enum(['opus', 'sonnet', 'haiku'], { message: 'Default tier is required' }),
-  target: z.enum(['claude', 'droid']),
+  target: z.enum(['claude', 'droid', 'codex']),
   tiers: z.object({
     opus: z.object({
       provider: z.enum(CLIPROXY_PROVIDERS, { message: 'Provider is required' }),
@@ -64,7 +70,7 @@ const providerOptions = CLIPROXY_PROVIDERS.map((id) => ({
 
 const COMPOSITE_TIERS = ['opus', 'sonnet', 'haiku'] as const;
 const AGY_DENYLIST_MESSAGE =
-  'Antigravity denylist: Claude Opus 4.5 and Claude Sonnet 4.5 are deprecated.';
+  'Antigravity denylist: Claude Opus 4.5 and Claude Sonnet 4.5 are deprecated.'; // TODO i18n: use t('providerEditor.agyDenylist')
 
 function normalizeOptionalValue(value?: string): string | undefined {
   const trimmed = value?.trim();
@@ -137,6 +143,8 @@ export function CliproxyEditDialog({ variant, open, onOpenChange }: CliproxyEdit
   const compositeForm = useForm<CompositeFormData>({
     resolver: zodResolver(compositeSchema),
   });
+  const selectedProvider = useWatch({ control: singleForm.control, name: 'provider' });
+  const compositeTiers = useWatch({ control: compositeForm.control, name: 'tiers' });
 
   // Pre-populate form when variant changes
   useEffect(() => {
@@ -318,12 +326,26 @@ export function CliproxyEditDialog({ variant, open, onOpenChange }: CliproxyEdit
                         {...compositeForm.register(`tiers.${tier}.provider`)}
                         className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                       >
-                        {providerOptions.map((opt) => (
-                          <option key={opt.value} value={opt.value}>
-                            {opt.label}
-                          </option>
+                        {CLIPROXY_PROVIDER_SECTIONS.map((section) => (
+                          <optgroup key={section.id} label={t(section.labelKey)}>
+                            {providerOptions
+                              .filter((opt) => section.providers.includes(opt.value))
+                              .map((opt) => (
+                                <option key={opt.value} value={opt.value}>
+                                  {opt.label}
+                                </option>
+                              ))}
+                          </optgroup>
                         ))}
                       </select>
+                      {compositeTiers?.[tier]?.provider && (
+                        <p className="mt-2 text-xs text-muted-foreground">
+                          {t(getProviderSection(compositeTiers[tier].provider)?.hintKey || '')}
+                          {isPlusExtraProvider(compositeTiers[tier].provider)
+                            ? ` ${t('providerConfig.plusTrackNote')}`
+                            : ''}
+                        </p>
+                      )}
                     </div>
                     <div>
                       <Label htmlFor={`edit-${tier}-model`}>{t('cliproxyDialog.model')}</Label>
@@ -375,6 +397,7 @@ export function CliproxyEditDialog({ variant, open, onOpenChange }: CliproxyEdit
               >
                 <option value="claude">{t('cliproxyDialog.claudeCode')}</option>
                 <option value="droid">{t('cliproxyDialog.factoryDroid')}</option>
+                <option value="codex">Codex CLI</option>
               </select>
             </div>
 
@@ -398,12 +421,26 @@ export function CliproxyEditDialog({ variant, open, onOpenChange }: CliproxyEdit
                 {...singleForm.register('provider')}
                 className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
               >
-                {providerOptions.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
+                {CLIPROXY_PROVIDER_SECTIONS.map((section) => (
+                  <optgroup key={section.id} label={t(section.labelKey)}>
+                    {providerOptions
+                      .filter((opt) => section.providers.includes(opt.value))
+                      .map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                  </optgroup>
                 ))}
               </select>
+              {selectedProvider && (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {t(getProviderSection(selectedProvider)?.hintKey || '')}
+                  {isPlusExtraProvider(selectedProvider)
+                    ? ` ${t('providerConfig.plusTrackNote')}`
+                    : ''}
+                </p>
+              )}
             </div>
 
             <div>
@@ -433,6 +470,7 @@ export function CliproxyEditDialog({ variant, open, onOpenChange }: CliproxyEdit
               >
                 <option value="claude">{t('cliproxyDialog.claudeCode')}</option>
                 <option value="droid">{t('cliproxyDialog.factoryDroid')}</option>
+                <option value="codex">Codex CLI</option>
               </select>
             </div>
 

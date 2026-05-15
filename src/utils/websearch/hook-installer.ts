@@ -1,7 +1,7 @@
 /**
  * WebSearch Hook Installer
  *
- * Manages installation and uninstallation of the WebSearch hook.
+ * Manages installation and uninstallation of the legacy WebSearch hook runtime.
  *
  * @module utils/websearch/hook-installer
  */
@@ -9,16 +9,57 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { info, warn } from '../ui';
-import { getWebSearchConfig } from '../../config/unified-config-loader';
-import { getCcsHooksDir } from '../config-manager';
+
+import { getCcsDir, getCcsHooksDir } from '../config-manager';
 import { getHookPath } from './hook-config';
-import { removeMigrationMarker } from './profile-hook-injector';
+import { getWebSearchConfig } from '../../config/config-loader-facade';
 
 // Re-export from hook-config for backward compatibility
 export { getHookPath, getWebSearchHookConfig } from './hook-config';
 
 // Hook file name
 const WEBSEARCH_HOOK = 'websearch-transformer.cjs';
+
+function hasMatchingHookContents(sourcePath: string, destinationPath: string): boolean {
+  if (!fs.existsSync(destinationPath)) {
+    return false;
+  }
+
+  const source = fs.readFileSync(sourcePath);
+  try {
+    const destination = fs.readFileSync(destinationPath);
+    return source.equals(destination);
+  } catch (error) {
+    if (process.env.CCS_DEBUG) {
+      console.error(
+        warn(`Existing WebSearch hook is unreadable; reinstalling: ${(error as Error).message}`)
+      );
+    }
+    return false;
+  }
+}
+
+function getTempHookPath(hookPath: string): string {
+  const uniqueSuffix = `${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  return `${hookPath}.${uniqueSuffix}.tmp`;
+}
+
+export function getMigrationMarkerPath(): string {
+  return path.join(getCcsDir(), '.hook-migrated');
+}
+
+export function removeMigrationMarker(): void {
+  try {
+    const markerPath = getMigrationMarkerPath();
+    if (fs.existsSync(markerPath)) {
+      fs.unlinkSync(markerPath);
+    }
+  } catch (error) {
+    if (process.env.CCS_DEBUG) {
+      console.error(warn(`removeMigrationMarker failed: ${(error as Error).message}`));
+    }
+  }
+}
 
 /**
  * Check if WebSearch hook is installed
@@ -30,7 +71,8 @@ export function hasWebSearchHook(): boolean {
 /**
  * Install WebSearch hook to ~/.ccs/hooks/
  *
- * This hook intercepts WebSearch and executes via Gemini CLI.
+ * This hook now serves as a compatibility fallback and a shared provider runtime
+ * for the first-class CCS WebSearch MCP server.
  *
  * @returns true if hook installed successfully
  */
@@ -78,9 +120,35 @@ export function installWebSearchHook(): boolean {
       return false;
     }
 
-    // Copy hook to ~/.ccs/hooks/
-    fs.copyFileSync(sourcePath, hookPath);
-    fs.chmodSync(hookPath, 0o755);
+    // Avoid rewriting the shared hook binary when the bundled script is unchanged.
+    if (hasMatchingHookContents(sourcePath, hookPath)) {
+      return true;
+    }
+
+    // Copy hook to ~/.ccs/hooks/ via a unique temp path so concurrent installers
+    // do not contend on the same file.
+    const tempHookPath = getTempHookPath(hookPath);
+    try {
+      fs.copyFileSync(sourcePath, tempHookPath);
+      fs.chmodSync(tempHookPath, 0o755);
+
+      try {
+        fs.renameSync(tempHookPath, hookPath);
+      } catch (renameError) {
+        const errorCode = (renameError as NodeJS.ErrnoException).code;
+        if (errorCode !== 'EEXIST' && errorCode !== 'EPERM') {
+          throw renameError;
+        }
+
+        fs.copyFileSync(tempHookPath, hookPath);
+        fs.chmodSync(hookPath, 0o755);
+        fs.unlinkSync(tempHookPath);
+      }
+    } finally {
+      if (fs.existsSync(tempHookPath)) {
+        fs.unlinkSync(tempHookPath);
+      }
+    }
 
     if (process.env.CCS_DEBUG) {
       console.error(info(`Installed WebSearch hook: ${hookPath}`));

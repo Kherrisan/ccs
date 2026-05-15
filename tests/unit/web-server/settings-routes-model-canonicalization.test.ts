@@ -154,6 +154,83 @@ describe('settings-routes model canonicalization', () => {
     expect(persisted.presets[0]?.haiku).toBe('qwen3-coder-plus');
   });
 
+  it('preserves codex effort suffixes on PUT /:profile while still normalizing legacy aliases', async () => {
+    const settingsPath = path.join(tempHome, '.ccs', 'codex.settings.json');
+    writeSettings(settingsPath, { env: {} });
+
+    const response = await fetch(`${baseUrl}/api/settings/codex`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        settings: {
+          env: {
+            ANTHROPIC_BASE_URL: 'http://127.0.0.1:8317/api/provider/codex',
+            ANTHROPIC_AUTH_TOKEN: 'ccs-internal-managed',
+            ANTHROPIC_MODEL: 'gpt-5.3-codex-xhigh',
+            ANTHROPIC_DEFAULT_OPUS_MODEL: 'gpt-5-codex-high',
+            ANTHROPIC_DEFAULT_SONNET_MODEL: 'gpt-5.3-codex-high',
+            ANTHROPIC_DEFAULT_HAIKU_MODEL: 'gpt-5-mini-medium',
+          },
+          presets: [
+            {
+              name: 'legacy-codex',
+              default: 'gpt-5.3-codex-xhigh',
+              opus: 'gpt-5-codex-high',
+              sonnet: 'gpt-5.3-codex-high',
+              haiku: 'gpt-5-mini-medium',
+            },
+          ],
+        },
+      }),
+    });
+    expect(response.status).toBe(200);
+
+    const persisted = JSON.parse(fs.readFileSync(settingsPath, 'utf8')) as {
+      env: Record<string, string>;
+      presets: Array<Record<string, string>>;
+    };
+
+    expect(persisted.env.ANTHROPIC_MODEL).toBe('gpt-5.3-codex-xhigh');
+    expect(persisted.env.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe('gpt-5.4-high');
+    expect(persisted.env.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe('gpt-5.3-codex-high');
+    expect(persisted.env.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe('gpt-5.4-mini-medium');
+    expect(persisted.presets[0]?.default).toBe('gpt-5.3-codex-xhigh');
+    expect(persisted.presets[0]?.opus).toBe('gpt-5.4-high');
+    expect(persisted.presets[0]?.sonnet).toBe('gpt-5.3-codex-high');
+    expect(persisted.presets[0]?.haiku).toBe('gpt-5.4-mini-medium');
+  });
+
+  it('preserves codex effort suffixes on GET /:profile/raw canonicalization', async () => {
+    const settingsPath = path.join(tempHome, '.ccs', 'codex.settings.json');
+    writeSettings(settingsPath, {
+      env: {
+        ANTHROPIC_BASE_URL: 'http://127.0.0.1:8317/api/provider/codex',
+        ANTHROPIC_AUTH_TOKEN: 'ccs-internal-managed',
+        ANTHROPIC_MODEL: 'gpt-5-codex-high',
+        ANTHROPIC_DEFAULT_OPUS_MODEL: 'gpt-5.3-codex-xhigh',
+        ANTHROPIC_DEFAULT_SONNET_MODEL: 'gpt-5.3-codex-high',
+        ANTHROPIC_DEFAULT_HAIKU_MODEL: 'gpt-5-mini-medium',
+      },
+    });
+
+    const response = await fetch(`${baseUrl}/api/settings/codex/raw`);
+    expect(response.status).toBe(200);
+
+    const body = (await response.json()) as { settings: { env: Record<string, string> } };
+    expect(body.settings.env.ANTHROPIC_MODEL).toBe('gpt-5.4-high');
+    expect(body.settings.env.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe('gpt-5.3-codex-xhigh');
+    expect(body.settings.env.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe('gpt-5.3-codex-high');
+    expect(body.settings.env.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe('gpt-5.4-mini-medium');
+
+    const persisted = JSON.parse(fs.readFileSync(settingsPath, 'utf8')) as {
+      env: Record<string, string>;
+    };
+    expect(persisted.env.ANTHROPIC_MODEL).toBe('gpt-5.4-high');
+    expect(persisted.env.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe('gpt-5.3-codex-xhigh');
+    expect(persisted.env.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe('gpt-5.3-codex-high');
+    expect(persisted.env.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe('gpt-5.4-mini-medium');
+  });
+
   it('canonicalizes AGY preset values on POST /:profile/presets', async () => {
     const settingsPath = path.join(tempHome, '.ccs', 'agy.settings.json');
     writeSettings(settingsPath, {

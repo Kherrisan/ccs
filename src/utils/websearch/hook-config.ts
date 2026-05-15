@@ -9,10 +9,11 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { info, warn } from '../ui';
-import { getWebSearchConfig } from '../../config/unified-config-loader';
+
 import { getCcsHooksDir } from '../config-manager';
 import { getClaudeSettingsPath } from '../claude-config-path';
 import { isCcsWebSearchHook, deduplicateCcsHooks } from './hook-utils';
+import { getWebSearchConfig } from '../../config/config-loader-facade';
 
 // Hook file name
 const WEBSEARCH_HOOK = 'websearch-transformer.cjs';

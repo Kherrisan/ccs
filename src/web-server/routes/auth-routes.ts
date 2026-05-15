@@ -6,8 +6,10 @@
 import { Router, type Request, type Response } from 'express';
 import bcrypt from 'bcrypt';
 import crypto from 'crypto';
-import { getDashboardAuthConfig } from '../../config/unified-config-loader';
-import { loginRateLimiter } from '../middleware/auth-middleware';
+
+import type { DashboardAuthConfig } from '../../config/unified-config-types';
+import { isLoopbackRemoteAddress, loginRateLimiter } from '../middleware/auth-middleware';
+import { getDashboardAuthConfig } from '../../config/config-loader-facade';
 
 /**
  * Timing-safe string comparison to prevent timing attacks.
@@ -23,6 +25,52 @@ function timingSafeEqual(a: string, b: string): boolean {
 }
 
 const router = Router();
+
+export type DashboardAccessMode = 'open' | 'login' | 'setup';
+
+export interface DashboardAccessState {
+  authRequired: boolean;
+  authEnabled: boolean;
+  authConfigured: boolean;
+  isLocalAccess: boolean;
+  accessMode: DashboardAccessMode;
+}
+
+export function resolveDashboardAccessState(
+  authConfig: DashboardAuthConfig,
+  remoteAddress: string | undefined
+): DashboardAccessState {
+  const isLocalAccess = isLoopbackRemoteAddress(remoteAddress);
+  const authConfigured = Boolean(authConfig.username && authConfig.password_hash);
+
+  if (!authConfig.enabled) {
+    return {
+      authRequired: false,
+      authEnabled: false,
+      authConfigured,
+      isLocalAccess,
+      accessMode: 'open',
+    };
+  }
+
+  if (authConfigured) {
+    return {
+      authRequired: true,
+      authEnabled: true,
+      authConfigured: true,
+      isLocalAccess,
+      accessMode: 'login',
+    };
+  }
+
+  return {
+    authRequired: true,
+    authEnabled: true,
+    authConfigured,
+    isLocalAccess,
+    accessMode: 'setup',
+  };
+}
 
 /**
  * POST /api/auth/login
@@ -94,9 +142,10 @@ router.post('/logout', (req: Request, res: Response) => {
  */
 router.get('/check', (req: Request, res: Response) => {
   const authConfig = getDashboardAuthConfig();
+  const accessState = resolveDashboardAccessState(authConfig, req.socket.remoteAddress);
 
   res.json({
-    authRequired: authConfig.enabled,
+    ...accessState,
     authenticated: req.session?.authenticated ?? false,
     username: req.session?.username ?? null,
   });

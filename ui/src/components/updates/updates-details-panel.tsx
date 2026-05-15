@@ -9,7 +9,7 @@ import { SupportStatusBadge } from '@/components/updates/support-status-badge';
 import { NoticeProgressBadge } from '@/components/updates/notice-progress-badge';
 import { UpdatesNoticeActionRow } from '@/components/updates/updates-notice-action-row';
 import {
-  SUPPORT_SCOPE_LABELS,
+  getSupportScopeLabels,
   formatCatalogDate,
   type CliSupportEntry,
   type SupportNotice,
@@ -31,6 +31,7 @@ export function UpdatesDetailsPanel({
   onUpdateProgress: (nextState: UpdatableNoticeProgress) => void;
 }) {
   const { t } = useTranslation();
+  const scopeLabels = getSupportScopeLabels();
   if (!notice) {
     return (
       <div className="flex h-full items-center justify-center rounded-lg border border-dashed bg-muted/20 p-6">
@@ -109,7 +110,7 @@ export function UpdatesDetailsPanel({
                         <div className="flex items-start justify-between gap-2">
                           <p className="min-w-0 truncate text-sm font-medium">{entry.name}</p>
                           <Badge variant="outline" className="h-5 px-1.5 text-[10px]">
-                            {SUPPORT_SCOPE_LABELS[entry.scope]}
+                            {scopeLabels[entry.scope]}
                           </Badge>
                         </div>
                         <div className="mt-2 flex items-center gap-2">

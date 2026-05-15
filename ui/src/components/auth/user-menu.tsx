@@ -36,7 +36,7 @@ export function UserMenu() {
       <DropdownMenuContent align="end">
         <DropdownMenuItem onClick={handleLogout} className="gap-2 text-destructive">
           <LogOut className="h-4 w-4" />
-          Sign Out
+          {/* TODO i18n: missing key for "Sign Out" */}Sign Out
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

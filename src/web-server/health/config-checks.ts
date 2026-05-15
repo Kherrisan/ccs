@@ -7,9 +7,10 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { getConfigPath, getCcsDir } from '../../utils/config-manager';
-import { isUnifiedMode, hasUnifiedConfig } from '../../config/unified-config-loader';
+import { getConfigPath } from '../../utils/config-manager';
+
 import type { HealthCheck } from './types';
+import { getCcsDir, hasUnifiedConfig, isUnifiedMode } from '../../config/config-loader-facade';
 
 /**
  * Check config file (config.json or config.yaml based on mode)

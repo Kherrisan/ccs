@@ -7,10 +7,13 @@
 
 import { Heart } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useTranslation } from 'react-i18next';
 
 const SPONSOR_URL = 'https://github.com/sponsors/kaitranntt';
 
 export function SponsorButton() {
+  const { t } = useTranslation();
+
   return (
     <a
       href={SPONSOR_URL}
@@ -22,7 +25,7 @@ export function SponsorButton() {
         'hover:bg-pink-400 hover:border-pink-400',
         'transition-all duration-200 shadow-sm hover:shadow-md'
       )}
-      title="Sponsor this project on GitHub"
+      title={t('sponsorButton.title')}
     >
       <Heart
         className={cn(
@@ -39,7 +42,7 @@ export function SponsorButton() {
           'transition-colors'
         )}
       >
-        Sponsor
+        {t('sponsorButton.sponsor')}
       </span>
     </a>
   );

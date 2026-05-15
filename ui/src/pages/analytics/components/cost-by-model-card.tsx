@@ -11,6 +11,7 @@ import { getModelColor, cn } from '@/lib/utils';
 import { PRIVACY_BLUR_CLASS } from '@/contexts/privacy-context';
 import { formatTokens } from '../utils';
 import type { ModelUsage } from '@/hooks/use-usage';
+import { useTranslation } from 'react-i18next';
 
 interface CostByModelCardProps {
   models: ModelUsage[] | undefined;
@@ -25,12 +26,14 @@ export function CostByModelCard({
   onModelClick,
   privacyMode,
 }: CostByModelCardProps) {
+  const { t } = useTranslation();
+
   return (
     <Card className="flex flex-col h-full min-h-0 overflow-hidden gap-0 py-0 shadow-sm lg:col-span-4">
       <CardHeader className="px-3 py-2">
         <CardTitle className="text-base font-semibold flex items-center gap-2">
           <DollarSign className="w-4 h-4" />
-          Cost by Model
+          {t('analyticsPages.costByModel')}
         </CardTitle>
       </CardHeader>
       <CardContent className="px-2 pb-2 pt-0 flex-1 min-h-0 overflow-y-auto">

@@ -6,10 +6,11 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { getCcsDir } from '../../utils/config-manager';
+
 import { expandPath } from '../../utils/helpers';
 import { listApiProfiles, isApiProfileConfigured } from '../../api/services/profile-reader';
-import type { ClaudeKey } from '../management-api-types';
+import type { ClaudeKey } from '../management/management-api-types';
+import { getCcsDir } from '../../config/config-loader-facade';
 
 /**
  * Profile info with settings for sync.
@@ -149,6 +150,28 @@ export function mapProfileToClaudeKey(profile: SyncableProfile): ClaudeKey | nul
         alias: '',
       },
     ];
+
+    // Append extra models from ANTHROPIC_EXTRA_MODELS env var (comma-separated).
+    // Skip duplicates of the primary model and any repeated entries to keep
+    // the synced CLIProxy `models` array clean.
+    const extraModelsRaw = env.ANTHROPIC_EXTRA_MODELS;
+    if (extraModelsRaw && extraModelsRaw.trim()) {
+      const seen = new Set<string>([modelName]);
+      const extraModels = extraModelsRaw
+        .split(',')
+        .map((m) => m.trim())
+        .filter((m) => m.length > 0);
+      for (const extra of extraModels) {
+        if (seen.has(extra)) {
+          continue;
+        }
+        seen.add(extra);
+        claudeKey.models.push({
+          name: extra,
+          alias: '',
+        });
+      }
+    }
   }
 
   return claudeKey;

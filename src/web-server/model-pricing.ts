@@ -7,6 +7,12 @@
  * All rates are in USD per MILLION tokens.
  */
 
+import {
+  getKnownModelsDevModels,
+  resolveModelsDevPricing,
+  type ModelsDevPricingLookupOptions,
+} from './models-dev/pricing-resolver';
+
 // ============================================================================
 // TYPE DEFINITIONS
 // ============================================================================
@@ -24,6 +30,8 @@ export interface TokenUsage {
   cacheCreationTokens: number;
   cacheReadTokens: number;
 }
+
+export type PricingLookupOptions = ModelsDevPricingLookupOptions;
 
 // ============================================================================
 // USER-EDITABLE PRICING TABLE
@@ -223,6 +231,13 @@ const PRICING_REGISTRY: Record<string, ModelPricing> = {
     cacheReadPerMillion: 0.5,
   },
   'claude-opus-4-6-thinking': {
+    inputPerMillion: 5.0,
+    outputPerMillion: 25.0,
+    cacheCreationPerMillion: 6.25,
+    cacheReadPerMillion: 0.5,
+  },
+  // Claude 4.7 Opus ($5/$25)
+  'claude-opus-4-7': {
     inputPerMillion: 5.0,
     outputPerMillion: 25.0,
     cacheCreationPerMillion: 6.25,
@@ -718,6 +733,16 @@ const MODEL_PRICING_ALIASES: Record<string, string> = {
   'qwen3-235b': 'qwen3-max',
   'qwen3-vl-plus': 'qwen3.5-plus',
   'qwen3-32b': 'qwen3.5-plus',
+  'gemini-3-flash-preview': 'gemini-2.5-flash',
+  'gemini-3-flash-preview-customtools': 'gemini-2.5-flash',
+  'gemini-3.1-pro-preview': 'gemini-3-pro-preview',
+  'gemini-3.1-flash-preview': 'gemini-2.5-flash',
+  'gemini-3.1-pro-preview-customtools': 'gemini-3-pro-preview',
+  'gemini-3.1-flash-preview-customtools': 'gemini-2.5-flash',
+  'gemini-3-1-pro-preview': 'gemini-3-pro-preview',
+  'gemini-3-1-flash-preview': 'gemini-2.5-flash',
+  'gemini-3-1-pro-preview-customtools': 'gemini-3-pro-preview',
+  'gemini-3-1-flash-preview-customtools': 'gemini-2.5-flash',
 };
 
 // Default pricing for unknown models
@@ -733,16 +758,25 @@ const UNKNOWN_MODEL_PRICING: ModelPricing = {
 // ============================================================================
 
 /**
- * Normalize model name for matching
- * Handles variations like provider prefixes and case differences
+ * Strip provider prefixes used by routing/catalog metadata.
+ * The CCS static table remains model-keyed, so static fallback normalizes
+ * provider-qualified model IDs before checking aliases.
+ */
+function stripProviderPrefix(model: string): string {
+  const trimmed = model.trim();
+  const slashIndex = trimmed.indexOf('/');
+  if (slashIndex <= 0) {
+    return trimmed;
+  }
+  return trimmed.slice(slashIndex + 1);
+}
+
+/**
+ * Normalize model name for matching.
+ * Handles variations like provider prefixes and case differences.
  */
 function normalizeModelName(model: string): string {
-  // Remove provider prefixes (e.g., "anthropic/claude-..." -> "claude-...")
-  const normalized = model
-    .trim()
-    .toLowerCase()
-    .replace(/^[^/]+\//, '');
-  return normalized;
+  return stripProviderPrefix(model).toLowerCase();
 }
 
 /**
@@ -810,29 +844,80 @@ function getDirectOrAliasPricing(model: string): ModelPricing | undefined {
   return undefined;
 }
 
-/**
- * Get pricing for a model with fuzzy matching fallback
- * @param model - Model name (exact or with provider prefix)
- * @returns ModelPricing for the model or fallback pricing
- */
-export function getModelPricing(model: string): ModelPricing {
-  const directOrAliasPricing = getDirectOrAliasPricing(model);
-  if (directOrAliasPricing !== undefined) {
-    return directOrAliasPricing;
+function getCcsStaticPricing(model: string): ModelPricing | undefined {
+  const staticPricing = getDirectOrAliasPricing(model);
+  if (staticPricing !== undefined) {
+    return staticPricing;
   }
 
-  for (const candidate of getLookupCandidates(model)) {
-    // Try suffix matching (e.g., "claude-sonnet-4-5" matches "*-claude-sonnet-4-5")
-    for (const [key, pricing] of Object.entries(NORMALIZED_PRICING_REGISTRY)) {
-      if (candidate.endsWith(key) || key.endsWith(candidate)) {
-        return pricing;
+  const providerlessModel = stripProviderPrefix(model);
+  if (providerlessModel !== model.trim()) {
+    return getDirectOrAliasPricing(providerlessModel);
+  }
+
+  return undefined;
+}
+
+function getCcsPolicyOverridePricing(model: string): ModelPricing | undefined {
+  const providerlessModel = stripProviderPrefix(model);
+  const normalized = normalizeModelName(providerlessModel);
+
+  for (const candidate of getLookupCandidates(providerlessModel)) {
+    const alias = MODEL_PRICING_ALIASES[candidate];
+    if (alias !== undefined) {
+      const aliasPricing = NORMALIZED_PRICING_REGISTRY[alias];
+      if (aliasPricing !== undefined) {
+        return aliasPricing;
       }
     }
 
-    // Try partial matching for model families
+    if (candidate !== normalized) {
+      const variantPricing = NORMALIZED_PRICING_REGISTRY[candidate];
+      if (variantPricing !== undefined) {
+        return variantPricing;
+      }
+    }
+  }
+
+  return undefined;
+}
+
+function hasProviderContext(model: string, options: PricingLookupOptions): boolean {
+  return Boolean(options.provider || /^[^/]+\//.test(model.trim()));
+}
+
+/**
+ * Get pricing for a model with narrow fuzzy matching fallback.
+ * Unknown future model families should fall back instead of inheriting the
+ * first known family tier that happens to share a prefix.
+ */
+export function getModelPricing(model: string, options: PricingLookupOptions = {}): ModelPricing {
+  if (hasProviderContext(model, options)) {
+    const ccsOverridePricing = getCcsPolicyOverridePricing(model);
+    if (ccsOverridePricing !== undefined) {
+      return ccsOverridePricing;
+    }
+
+    const providerPricing = resolveModelsDevPricing(model, options);
+    if (providerPricing !== undefined) {
+      return providerPricing.pricing;
+    }
+  }
+
+  const ccsStaticPricing = getCcsStaticPricing(model);
+  if (ccsStaticPricing !== undefined) {
+    return ccsStaticPricing;
+  }
+
+  const modelsDevPricing = resolveModelsDevPricing(model, options);
+  if (modelsDevPricing !== undefined) {
+    return modelsDevPricing.pricing;
+  }
+
+  for (const candidate of getLookupCandidates(model)) {
+    // Allow provider/routing wrappers to suffix a canonical model ID.
     for (const [key, pricing] of Object.entries(NORMALIZED_PRICING_REGISTRY)) {
-      // Match by model family prefix
-      if (candidate.startsWith(key.split('-').slice(0, 2).join('-'))) {
+      if (candidate.endsWith(key)) {
         return pricing;
       }
     }
@@ -848,8 +933,12 @@ export function getModelPricing(model: string): ModelPricing {
  * @param model - Model name for pricing lookup
  * @returns Cost in USD
  */
-export function calculateCost(usage: TokenUsage, model: string): number {
-  const pricing = getModelPricing(model);
+export function calculateCost(
+  usage: TokenUsage,
+  model: string,
+  options: PricingLookupOptions = {}
+): number {
+  const pricing = getModelPricing(model, options);
 
   const inputCost = (usage.inputTokens / 1_000_000) * pricing.inputPerMillion;
   const outputCost = (usage.outputTokens / 1_000_000) * pricing.outputPerMillion;
@@ -864,12 +953,15 @@ export function calculateCost(usage: TokenUsage, model: string): number {
  * Get list of all known models for UI display
  */
 export function getKnownModels(): string[] {
-  return Object.keys(PRICING_REGISTRY);
+  return [...new Set([...Object.keys(PRICING_REGISTRY), ...getKnownModelsDevModels()])];
 }
 
 /**
  * Check if a model has custom pricing (not using fallback)
  */
-export function hasCustomPricing(model: string): boolean {
-  return getDirectOrAliasPricing(model) !== undefined;
+export function hasCustomPricing(model: string, options: PricingLookupOptions = {}): boolean {
+  return (
+    getCcsStaticPricing(model) !== undefined ||
+    resolveModelsDevPricing(model, options) !== undefined
+  );
 }

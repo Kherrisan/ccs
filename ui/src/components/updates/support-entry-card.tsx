@@ -3,7 +3,7 @@ import { ArrowUpRight } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
-  SUPPORT_SCOPE_LABELS,
+  getSupportScopeLabels,
   type CliSupportEntry,
   type SupportScope,
 } from '@/lib/support-updates-catalog';
@@ -23,10 +23,11 @@ const SCOPE_STYLES: Record<SupportScope, string> = {
 
 export function SupportEntryCard({ entry }: { entry: CliSupportEntry }) {
   const { t } = useTranslation();
+  const scopeLabels = getSupportScopeLabels();
   const pillarLabels: { key: keyof CliSupportEntry['pillars']; label: string }[] = [
-    { key: 'baseUrl', label: 'Base URL' },
-    { key: 'auth', label: 'Auth' },
-    { key: 'model', label: 'Model' },
+    { key: 'baseUrl', label: t('profileDialog.baseUrl') },
+    { key: 'auth', label: t('copilotPage.auth') },
+    { key: 'model', label: t('cliproxyTable.model') },
   ];
 
   return (
@@ -41,7 +42,7 @@ export function SupportEntryCard({ entry }: { entry: CliSupportEntry }) {
         </div>
 
         <Badge variant="outline" className={SCOPE_STYLES[entry.scope]}>
-          {SUPPORT_SCOPE_LABELS[entry.scope]}
+          {scopeLabels[entry.scope]}
         </Badge>
       </CardHeader>
 

@@ -12,17 +12,20 @@
 
 import * as fs from 'fs';
 import { fail, info, warn, color, ok } from '../../utils/ui';
-import { ensureCLIProxyBinary } from '../binary-manager';
-import { generateConfig } from '../config-generator';
-import { CLIProxyProvider } from '../types';
+import { createLogger } from '../../services/logging';
+import { ensureCLIProxyBinary, getStoredConfiguredBackend } from '../binary-manager';
+import { generateConfig } from '../config/config-generator';
+import { CLIProxyBackend, CLIProxyProvider } from '../types';
 import {
   AccountInfo,
   getProviderAccounts,
   getDefaultAccount,
   touchAccount,
+  hasAccountNameConflict,
+  findAccountNameMatch,
   PROVIDERS_WITHOUT_EMAIL,
   validateNickname,
-} from '../account-manager';
+} from '../accounts/account-manager';
 import {
   enhancedPreflightOAuthCheck,
   OAUTH_CALLBACK_PORTS as OAUTH_PORTS,
@@ -30,8 +33,9 @@ import {
 import {
   OAuthOptions,
   DEFAULT_KIRO_AUTH_METHOD,
+  DEFAULT_KIRO_IDC_FLOW,
   getKiroCallbackPort,
-  getKiroCLIAuthFlag,
+  getKiroCLIAuthArgs,
   isKiroCLIAuthMethod,
   isKiroDeviceCodeMethod,
   getOAuthConfig,
@@ -40,24 +44,38 @@ import {
   getPasteCallbackStartPath,
   getManagementOAuthCallbackPath,
   normalizeKiroAuthMethod,
+  normalizeKiroIDCFlow,
 } from './auth-types';
 import { isHeadlessEnvironment, killProcessOnPort, showStep } from './environment-detector';
-import { getProviderTokenDir, isAuthenticated, registerAccountFromToken } from './token-manager';
+import {
+  ProviderTokenSnapshot,
+  findNewTokenSnapshotForAuthAttempt,
+  getProviderTokenDir,
+  isAuthenticated,
+  listProviderTokenSnapshots,
+  registerAccountFromToken,
+} from './token-manager';
 import { executeOAuthProcess } from './oauth-process';
 import { importKiroToken } from './kiro-import';
+import { parseGitLabPatAuthResponse } from './gitlab-pat-response';
+import {
+  buildOAuthStartFailureGuidance,
+  formatOAuthStartFailureForCli,
+} from './oauth-start-failure-guidance';
 import {
   getProxyTarget,
   buildProxyUrl,
   buildManagementHeaders,
   type ProxyTarget,
-} from '../proxy-target-resolver';
+} from '../proxy/proxy-target-resolver';
 import {
   checkNewAccountConflict,
   warnNewAccountConflict,
   warnOAuthBanRisk,
   warnPossible403Ban,
-} from '../account-safety';
-import { ensureCliAntigravityResponsibility } from '../antigravity-responsibility';
+} from '../accounts/account-safety';
+import { ensureCliAntigravityResponsibility } from '../auth/antigravity-responsibility';
+import { InteractivePrompt } from '../../utils/prompt';
 
 interface PasteCallbackStartData {
   url?: string;
@@ -67,18 +85,163 @@ interface PasteCallbackStartData {
 }
 
 const PASTE_CALLBACK_AUTH_URL_POLL_INTERVAL_MS = 3000;
+const POLLED_AUTH_LOCAL_TOKEN_GRACE_MS = 15 * 1000;
+const GEMINI_PLUS_CLIENT_ID_ENV = 'CLIPROXY_GEMINI_OAUTH_CLIENT_ID';
+const GEMINI_PLUS_CLIENT_SECRET_ENV = 'CLIPROXY_GEMINI_OAUTH_CLIENT_SECRET';
+
+const logger = createLogger('cliproxy:auth:oauth');
+
+/**
+ * Table of providers that require Google OAuth client credentials when running
+ * against CLIProxy Plus. Keyed by CLIProxyProvider value.
+ *
+ * Used by the generalized helpers so the dashboard handler can guard any
+ * table-listed provider without duplicating env-var names.
+ */
+export const PLUS_OAUTH_ENV_BY_PROVIDER: Partial<
+  Record<CLIProxyProvider, { idEnv: string; secretEnv: string; displayName: string }>
+> = {
+  gemini: {
+    idEnv: GEMINI_PLUS_CLIENT_ID_ENV,
+    secretEnv: GEMINI_PLUS_CLIENT_SECRET_ENV,
+    displayName: 'Gemini',
+  },
+  agy: {
+    idEnv: 'CLIPROXY_ANTIGRAVITY_OAUTH_CLIENT_ID',
+    secretEnv: 'CLIPROXY_ANTIGRAVITY_OAUTH_CLIENT_SECRET',
+    displayName: 'Antigravity',
+  },
+};
+
+/**
+ * Build a human-readable error message for a provider whose Plus OAuth client
+ * credentials are missing.
+ *
+ * @param displayName - Human-readable provider name (e.g. "Gemini", "Antigravity")
+ * @param idEnv       - Name of the client-ID env var
+ * @param secretEnv   - Name of the client-secret env var
+ * @param missing     - Which of the two vars are absent (omit to suppress the "Missing:" prefix)
+ */
+function buildPlusOAuthCredentialMessage(
+  displayName: string,
+  idEnv: string,
+  secretEnv: string,
+  missing?: string[]
+): string {
+  const missingText = missing?.length ? ` Missing: ${missing.join(', ')}.` : '';
+  return (
+    `${displayName} OAuth from CLIProxy Plus is missing Google OAuth client credentials.` +
+    missingText +
+    ` Set ${idEnv} and ${secretEnv} before starting CLIProxy Plus,` +
+    ` or switch \`cliproxy.backend\` to \`original\` for ${displayName}.`
+  );
+}
+
+/**
+ * Generalized credential-missing guard for any provider in PLUS_OAUTH_ENV_BY_PROVIDER.
+ *
+ * Returns null when:
+ *   - provider is not in the table (not a Plus-credentialed provider)
+ *   - backend is not 'plus'
+ *   - both credential env vars are set and non-empty
+ *
+ * Returns an error string when Plus is active and one or both vars are missing.
+ */
+export function getPlusOAuthCredentialError(
+  provider: CLIProxyProvider,
+  backend: CLIProxyBackend,
+  env: NodeJS.ProcessEnv = process.env
+): string | null {
+  const entry = PLUS_OAUTH_ENV_BY_PROVIDER[provider];
+  if (!entry || backend !== 'plus') {
+    return null;
+  }
+
+  const missing = [entry.idEnv, entry.secretEnv].filter((name) => !env[name]?.trim());
+  return missing.length > 0
+    ? buildPlusOAuthCredentialMessage(entry.displayName, entry.idEnv, entry.secretEnv, missing)
+    : null;
+}
+
+/**
+ * Generalized auth-URL guard for any provider in PLUS_OAUTH_ENV_BY_PROVIDER.
+ *
+ * Returns null when:
+ *   - provider is not in the table
+ *   - authUrl cannot be parsed as a URL (ignore malformed upstream responses)
+ *   - client_id query param is present and non-empty
+ *
+ * Returns an error string when client_id is absent or empty.
+ */
+export function getPlusAuthUrlCredentialError(
+  provider: CLIProxyProvider,
+  authUrl: string
+): string | null {
+  const entry = PLUS_OAUTH_ENV_BY_PROVIDER[provider];
+  if (!entry) {
+    return null;
+  }
+
+  try {
+    const parsed = new URL(authUrl);
+    const clientId = parsed.searchParams.get('client_id')?.trim();
+    return clientId
+      ? null
+      : buildPlusOAuthCredentialMessage(entry.displayName, entry.idEnv, entry.secretEnv);
+  } catch {
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Gemini-specific aliases — kept for backward-compat with PR #1131's callers.
+// These lock the provider to 'gemini' and delegate to the generalized helpers.
+// ---------------------------------------------------------------------------
+
+export function getGeminiPlusOAuthCredentialError(
+  provider: CLIProxyProvider,
+  backend: CLIProxyBackend,
+  env: NodeJS.ProcessEnv = process.env
+): string | null {
+  if (provider !== 'gemini') {
+    return null;
+  }
+  return getPlusOAuthCredentialError(provider, backend, env);
+}
+
+export function getGeminiAuthUrlCredentialError(
+  provider: CLIProxyProvider,
+  authUrl: string
+): string | null {
+  if (provider !== 'gemini') {
+    return null;
+  }
+  return getPlusAuthUrlCredentialError(provider, authUrl);
+}
 
 export async function requestPasteCallbackStart(
   provider: CLIProxyProvider,
-  target: ProxyTarget
+  target: ProxyTarget,
+  options?: {
+    kiroMethod?: OAuthOptions['kiroMethod'];
+    gitlabBaseUrl?: OAuthOptions['gitlabBaseUrl'];
+  }
 ): Promise<PasteCallbackStartData> {
-  const startPath = getPasteCallbackStartPath(provider);
+  let startPath = getPasteCallbackStartPath(provider, {
+    kiroMethod: options?.kiroMethod,
+  });
+  if (!startPath) {
+    throw new Error(
+      `Paste-callback start is not available for ${provider} with the selected method`
+    );
+  }
+  const normalizedGitLabBaseUrl =
+    provider === 'gitlab' ? normalizeGitLabBaseUrl(options?.gitlabBaseUrl) : undefined;
+  if (normalizedGitLabBaseUrl) {
+    startPath += `&base_url=${encodeURIComponent(normalizedGitLabBaseUrl)}`;
+  }
   const response = await fetch(buildProxyUrl(target, startPath), {
-    ...(provider === 'kiro' ? { method: 'POST' } : {}),
-    headers:
-      provider === 'kiro'
-        ? buildManagementHeaders(target, { 'Content-Type': 'application/json' })
-        : buildManagementHeaders(target),
+    headers: buildManagementHeaders(target),
   });
 
   if (!response.ok) {
@@ -88,8 +251,158 @@ export async function requestPasteCallbackStart(
   return (await response.json()) as PasteCallbackStartData;
 }
 
+export function getCliAuthNicknameError(
+  provider: CLIProxyProvider,
+  nickname: string | undefined,
+  existingAccounts: Array<Pick<AccountInfo, 'id' | 'nickname'>>,
+  allowExistingAccountId?: string
+): string | null {
+  if (!nickname || !PROVIDERS_WITHOUT_EMAIL.includes(provider)) {
+    return null;
+  }
+
+  const validationError = validateNickname(nickname);
+  if (validationError) {
+    return validationError;
+  }
+
+  if (hasAccountNameConflict(existingAccounts, nickname, allowExistingAccountId)) {
+    return `Nickname "${nickname}" is already in use. Choose a different one.`;
+  }
+
+  return null;
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function parseAuthUrlState(url: string | null | undefined): string | null {
+  if (!url) {
+    return null;
+  }
+
+  try {
+    return new URL(url).searchParams.get('state');
+  } catch {
+    return null;
+  }
+}
+
+export function normalizeGitLabBaseUrl(baseUrl: string | undefined): string | undefined {
+  const normalized = baseUrl?.trim();
+  if (!normalized) {
+    return undefined;
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(normalized);
+  } catch {
+    throw new Error('GitLab URL must be a valid http:// or https:// URL');
+  }
+
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new Error('GitLab URL must use http:// or https://');
+  }
+
+  parsed.hash = '';
+  parsed.search = '';
+  parsed.username = '';
+  parsed.password = '';
+
+  const normalizedPath = parsed.pathname.replace(/\/+$/, '');
+  return normalizedPath ? `${parsed.origin}${normalizedPath}` : parsed.origin;
+}
+
+export async function promptGitLabPersonalAccessToken(): Promise<string | null> {
+  try {
+    const token = (await InteractivePrompt.password('GitLab Personal Access Token')).trim();
+    return token.length > 0 ? token : null;
+  } catch (error) {
+    if ((error as Error).message.includes('TTY')) {
+      console.log(
+        fail(
+          'GitLab Personal Access Token prompt requires an interactive TTY. Set the token explicitly or use Browser OAuth.'
+        )
+      );
+      return null;
+    }
+    throw error;
+  }
+}
+
+export function findNewTokenSnapshotForManualAuth(
+  provider: CLIProxyProvider,
+  tokenDir: string,
+  knownTokenFiles: ProviderTokenSnapshot[],
+  expectedAccountId?: string
+): ProviderTokenSnapshot | null {
+  return findNewTokenSnapshotForAuthAttempt(provider, tokenDir, knownTokenFiles, expectedAccountId);
+}
+
+async function waitForManualCallbackToken(
+  provider: CLIProxyProvider,
+  target: ProxyTarget,
+  tokenDir: string,
+  oauthState: string | null,
+  knownTokenFiles: ProviderTokenSnapshot[],
+  expectedAccountId: string | undefined,
+  timeoutMs: number,
+  pollIntervalMs: number = PASTE_CALLBACK_AUTH_URL_POLL_INTERVAL_MS
+): Promise<{ tokenSnapshot: ProviderTokenSnapshot | null; error?: string }> {
+  const deadline = Date.now() + timeoutMs;
+  let upstreamCompletedAt: number | null = null;
+
+  while (Date.now() < deadline) {
+    const tokenSnapshot = findNewTokenSnapshotForManualAuth(
+      provider,
+      tokenDir,
+      knownTokenFiles,
+      expectedAccountId
+    );
+    if (tokenSnapshot) {
+      return { tokenSnapshot };
+    }
+
+    if (oauthState) {
+      const response = await fetch(
+        buildProxyUrl(
+          target,
+          `/v0/management/get-auth-status?state=${encodeURIComponent(oauthState)}`
+        ),
+        { headers: buildManagementHeaders(target) }
+      );
+
+      if (response.ok) {
+        const data = (await response.json()) as { status?: string; error?: string };
+        if (data.status === 'error') {
+          return {
+            tokenSnapshot: null,
+            error: data.error || 'Authentication failed while waiting for local token persistence',
+          };
+        }
+        if (data.status === 'ok' && upstreamCompletedAt === null) {
+          upstreamCompletedAt = Date.now();
+        }
+      }
+    }
+
+    if (
+      upstreamCompletedAt !== null &&
+      Date.now() - upstreamCompletedAt >= POLLED_AUTH_LOCAL_TOKEN_GRACE_MS
+    ) {
+      break;
+    }
+
+    if (Date.now() + pollIntervalMs >= deadline) {
+      break;
+    }
+
+    await sleep(pollIntervalMs);
+  }
+
+  return { tokenSnapshot: null };
 }
 
 export async function resolvePasteCallbackAuthUrl(
@@ -207,74 +520,6 @@ async function promptOAuthModeChoice(callbackPort: number | null): Promise<'past
 }
 
 /**
- * Prompt user for account nickname (required for kiro/ghcp)
- * Returns null if user cancels
- */
-async function promptNickname(
-  provider: CLIProxyProvider,
-  existingAccounts: AccountInfo[]
-): Promise<string | null> {
-  const readline = await import('readline');
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  });
-
-  const existingNicknames = existingAccounts.map(
-    (a) => a.nickname?.toLowerCase() || a.id.toLowerCase()
-  );
-
-  console.log('');
-  console.log(info(`${provider} accounts require a unique nickname to distinguish them.`));
-  if (existingNicknames.length > 0) {
-    console.log(`    Existing: ${existingNicknames.join(', ')}`);
-  }
-
-  return new Promise<string | null>((resolve) => {
-    let resolved = false;
-
-    // Handle Ctrl+C gracefully (only if not already resolved)
-    rl.on('close', () => {
-      if (!resolved) {
-        resolved = true;
-        resolve(null);
-      }
-    });
-
-    const askForNickname = () => {
-      rl.question('[?] Enter a nickname for this account: ', (answer) => {
-        const nickname = answer.trim();
-
-        if (!nickname) {
-          console.log(fail('Nickname cannot be empty'));
-          askForNickname();
-          return;
-        }
-
-        const validationError = validateNickname(nickname);
-        if (validationError) {
-          console.log(fail(validationError));
-          askForNickname();
-          return;
-        }
-
-        if (existingNicknames.includes(nickname.toLowerCase())) {
-          console.log(fail(`Nickname "${nickname}" is already in use. Choose a different one.`));
-          askForNickname();
-          return;
-        }
-
-        resolved = true;
-        rl.close();
-        resolve(nickname);
-      });
-    };
-
-    askForNickname();
-  });
-}
-
-/**
  * Run pre-flight OAuth checks
  */
 async function runPreflightChecks(
@@ -320,7 +565,7 @@ async function prepareBinary(
   showStep(1, 4, 'progress', 'Preparing CLIProxy binary...');
 
   try {
-    const binaryPath = await ensureCLIProxyBinary(verbose);
+    const binaryPath = await ensureCLIProxyBinary(verbose, { skipAutoUpdate: true });
     process.stdout.write('\x1b[1A\x1b[2K');
     showStep(1, 4, 'ok', 'CLIProxy binary ready');
 
@@ -341,6 +586,57 @@ async function prepareBinary(
   }
 }
 
+function buildOAuthArgs(
+  provider: CLIProxyProvider,
+  configPath: string,
+  headless: boolean,
+  noIncognito: boolean,
+  options: {
+    kiroMethod?: OAuthOptions['kiroMethod'];
+    kiroIDCStartUrl?: string;
+    kiroIDCRegion?: string;
+    kiroIDCFlow?: OAuthOptions['kiroIDCFlow'];
+  } = {}
+): string[] {
+  const args = ['--config', configPath];
+
+  if (provider === 'kiro') {
+    const method = normalizeKiroAuthMethod(options.kiroMethod);
+    if (!isKiroCLIAuthMethod(method)) {
+      throw new Error(`Kiro auth method '${method}' is not supported by CLI flow.`);
+    }
+    args.push(
+      ...getKiroCLIAuthArgs(method, {
+        idcStartUrl: options.kiroIDCStartUrl,
+        idcRegion: options.kiroIDCRegion,
+        idcFlow: options.kiroIDCFlow,
+      })
+    );
+  } else {
+    args.push(getOAuthConfig(provider).authFlag);
+  }
+
+  if (headless) {
+    args.push('--no-browser');
+  }
+  if (provider === 'kiro' && noIncognito) {
+    args.push('--no-incognito');
+  }
+
+  return args;
+}
+
+export function usesKiroLocalCallbackReplay(
+  method: OAuthOptions['kiroMethod'],
+  idcFlow: OAuthOptions['kiroIDCFlow']
+): boolean {
+  const normalizedMethod = normalizeKiroAuthMethod(method);
+  if (normalizedMethod === 'aws-authcode') {
+    return true;
+  }
+  return normalizedMethod === 'idc' && normalizeKiroIDCFlow(idcFlow) === 'authcode';
+}
+
 /**
  * Handle paste-callback mode: show auth URL, prompt for callback paste
  * Uses proxy target resolver to connect to correct CLIProxyAPI instance (local or remote)
@@ -350,7 +646,13 @@ async function handlePasteCallbackMode(
   oauthConfig: ProviderOAuthConfig,
   verbose: boolean,
   tokenDir: string,
-  nickname?: string
+  nickname?: string,
+  expectedAccountId?: string,
+  options?: {
+    kiroMethod?: OAuthOptions['kiroMethod'];
+    gitlabBaseUrl?: OAuthOptions['gitlabBaseUrl'];
+    add?: boolean;
+  }
 ): Promise<AccountInfo | null> {
   // Resolve CLIProxyAPI target (local or remote based on config)
   const target = getProxyTarget();
@@ -361,15 +663,36 @@ async function handlePasteCallbackMode(
   console.log(info(`Starting ${oauthConfig.displayName} OAuth (paste-callback mode)...`));
 
   try {
-    // Request auth URL from CLIProxyAPI.
-    // Kiro keeps its legacy start route because CLI auth methods do not share the generic
-    // management auth-url contract used by providers like Claude.
+    // Request auth URL from CLIProxyAPI management endpoints when the selected
+    // provider/method supports the manual start-url contract.
     let startData: PasteCallbackStartData;
+    let startPath = getPasteCallbackStartPath(provider, {
+      kiroMethod: options?.kiroMethod,
+    });
+    const normalizedGitLabBaseUrl =
+      provider === 'gitlab' ? normalizeGitLabBaseUrl(options?.gitlabBaseUrl) : undefined;
+    if (startPath && normalizedGitLabBaseUrl) {
+      startPath += `&base_url=${encodeURIComponent(normalizedGitLabBaseUrl)}`;
+    }
     try {
-      startData = await requestPasteCallbackStart(provider, target);
+      startData = await requestPasteCallbackStart(provider, target, {
+        kiroMethod: options?.kiroMethod,
+        gitlabBaseUrl: options?.gitlabBaseUrl,
+      });
     } catch (error) {
       const startError = (error as Error).message;
       console.log(fail('Failed to start OAuth flow'));
+      if (startPath) {
+        const guidance = buildOAuthStartFailureGuidance(provider, {
+          target,
+          startPath,
+          cause: error,
+          addAccount: options?.add,
+        });
+        for (const line of formatOAuthStartFailureForCli(guidance)) {
+          console.log(`    ${line}`);
+        }
+      }
       warnPossible403Ban(provider, startError);
       return null;
     }
@@ -380,6 +703,15 @@ async function handlePasteCallbackMode(
       console.log(fail('No authorization URL received'));
       return null;
     }
+
+    const authUrlCredentialError = getGeminiAuthUrlCredentialError(provider, authUrl);
+    if (authUrlCredentialError) {
+      console.log(fail(authUrlCredentialError));
+      return null;
+    }
+
+    const oauthState = startData.state || parseAuthUrlState(authUrl);
+    const knownTokenFiles = listProviderTokenSnapshots(provider, tokenDir);
 
     // Display auth URL in box
     console.log('');
@@ -473,8 +805,48 @@ async function handlePasteCallbackMode(
       return null;
     }
 
+    console.log(info('Callback submitted. Waiting for token exchange...'));
+    const { tokenSnapshot, error: tokenWaitError } = await waitForManualCallbackToken(
+      provider,
+      target,
+      tokenDir,
+      oauthState,
+      knownTokenFiles,
+      expectedAccountId,
+      OAUTH_STATE_TIMEOUT_MS
+    );
+
+    if (tokenWaitError) {
+      console.log(fail(tokenWaitError));
+      warnPossible403Ban(provider, tokenWaitError);
+      return null;
+    }
+
+    if (!tokenSnapshot) {
+      console.log(
+        fail(
+          'Authentication completed upstream, but no new local token was saved for this account. Update CCS/CLIProxy and retry.'
+        )
+      );
+      return null;
+    }
+
+    const account = registerAccountFromToken(
+      provider,
+      tokenDir,
+      nickname,
+      verbose,
+      tokenSnapshot.file
+    );
+
+    if (!account) {
+      console.log(
+        fail('Authenticated token could not be matched to the requested account. Retry the flow.')
+      );
+      return null;
+    }
+
     console.log(ok('Authentication successful!'));
-    const account = registerAccountFromToken(provider, tokenDir, nickname);
 
     // Account safety: check for cross-provider conflicts
     if (account?.email) {
@@ -495,6 +867,91 @@ async function handlePasteCallbackMode(
   }
 }
 
+async function handleGitLabPatLogin(
+  provider: CLIProxyProvider,
+  oauthConfig: ProviderOAuthConfig,
+  verbose: boolean,
+  tokenDir: string,
+  nickname?: string,
+  expectedAccountId?: string,
+  options?: {
+    gitlabBaseUrl?: OAuthOptions['gitlabBaseUrl'];
+    gitlabPersonalAccessToken?: OAuthOptions['gitlabPersonalAccessToken'];
+  }
+): Promise<AccountInfo | null> {
+  const target = getProxyTarget();
+  const baseUrl = normalizeGitLabBaseUrl(options?.gitlabBaseUrl);
+  const knownTokenFiles = listProviderTokenSnapshots(provider, tokenDir);
+  const suppliedToken = options?.gitlabPersonalAccessToken?.trim();
+  const personalAccessToken =
+    suppliedToken || process.env['GITLAB_PERSONAL_ACCESS_TOKEN']?.trim() || undefined;
+
+  let token = personalAccessToken;
+  if (!token) {
+    console.log('');
+    console.log(info(`Starting ${oauthConfig.displayName} PAT login...`));
+    console.log('Paste a Personal Access Token with api and read_user scopes.');
+    token = (await promptGitLabPersonalAccessToken()) || undefined;
+  }
+
+  if (!token) {
+    console.log(info('Cancelled'));
+    return null;
+  }
+
+  const response = await fetch(buildProxyUrl(target, '/v0/management/gitlab-auth-url'), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...buildManagementHeaders(target),
+    },
+    body: JSON.stringify({
+      ...(baseUrl ? { base_url: baseUrl } : {}),
+      personal_access_token: token,
+    }),
+  });
+
+  const responseBody = await response.text();
+  const parsedResponse = parseGitLabPatAuthResponse(
+    response.ok,
+    response.status,
+    responseBody,
+    token
+  );
+
+  if (!parsedResponse.ok) {
+    console.log(fail(parsedResponse.errorMessage));
+    return null;
+  }
+
+  const tokenSnapshot = findNewTokenSnapshotForAuthAttempt(
+    provider,
+    tokenDir,
+    knownTokenFiles,
+    expectedAccountId
+  );
+  if (!tokenSnapshot) {
+    console.log(fail('GitLab PAT login completed, but CCS could not find the saved token file.'));
+    return null;
+  }
+
+  const account = registerAccountFromToken(
+    provider,
+    tokenDir,
+    nickname,
+    verbose,
+    expectedAccountId || tokenSnapshot.file
+  );
+
+  if (!account) {
+    console.log(fail('Authenticated GitLab token could not be registered as a CCS account.'));
+    return null;
+  }
+
+  console.log(ok('Authentication successful!'));
+  return account;
+}
+
 /**
  * Trigger OAuth flow for provider
  * Auto-detects headless environment and uses --no-browser flag accordingly
@@ -507,11 +964,30 @@ export async function triggerOAuth(
 ): Promise<AccountInfo | null> {
   const oauthConfig = getOAuthConfig(provider);
   warnOAuthBanRisk(provider);
+  const oauthStartedAt = Date.now();
+  logger.stage('auth', 'cliproxy.oauth.start', 'Triggering OAuth flow', {
+    provider,
+    add: options.add === true,
+    fromUI: options.fromUI === true,
+  });
   const { verbose = false, add = false, fromUI = false, noIncognito = true } = options;
   const acceptAgyRisk = options.acceptAgyRisk === true;
-  let { nickname } = options;
+  const { nickname } = options;
   const resolvedKiroMethod =
     provider === 'kiro' ? normalizeKiroAuthMethod(options.kiroMethod) : DEFAULT_KIRO_AUTH_METHOD;
+  const resolvedKiroIDCFlow =
+    provider === 'kiro' ? normalizeKiroIDCFlow(options.kiroIDCFlow) : DEFAULT_KIRO_IDC_FLOW;
+  const resolvedGitLabAuthMode =
+    provider === 'gitlab' && options.gitlabAuthMode === 'pat' ? 'pat' : 'oauth';
+  let resolvedGitLabBaseUrl: string | undefined;
+  if (provider === 'gitlab') {
+    try {
+      resolvedGitLabBaseUrl = normalizeGitLabBaseUrl(options.gitlabBaseUrl);
+    } catch (error) {
+      console.log(fail((error as Error).message));
+      return null;
+    }
+  }
 
   if (provider === 'agy') {
     if (fromUI && !acceptAgyRisk) {
@@ -533,21 +1009,13 @@ export async function triggerOAuth(
 
   // Check for existing accounts
   const existingAccounts = getProviderAccounts(provider);
-
-  // Handle paste-callback mode
-  if (options.pasteCallback) {
-    const tokenDir = getProviderTokenDir(provider);
-    return handlePasteCallbackMode(provider, oauthConfig, verbose, tokenDir, nickname);
-  }
-
-  // For kiro/ghcp: require nickname if not provided (CLI only, not fromUI)
-  if (PROVIDERS_WITHOUT_EMAIL.includes(provider) && !nickname && !fromUI) {
-    const promptedNickname = await promptNickname(provider, existingAccounts);
-    if (!promptedNickname) {
-      console.log(info('Cancelled'));
-      return null;
-    }
-    nickname = promptedNickname;
+  const existingNameMatch = nickname ? findAccountNameMatch(existingAccounts, nickname) : null;
+  const nicknameError = !fromUI
+    ? getCliAuthNicknameError(provider, nickname, existingAccounts, existingNameMatch?.id)
+    : null;
+  if (nicknameError) {
+    console.log(fail(nicknameError));
+    return null;
   }
 
   // Handle --import flag: skip OAuth and import from Kiro IDE directly
@@ -555,7 +1023,7 @@ export async function triggerOAuth(
     const tokenDir = getProviderTokenDir(provider);
     const success = await importKiroToken(verbose);
     if (success) {
-      return registerAccountFromToken(provider, tokenDir, nickname);
+      return registerAccountFromToken(provider, tokenDir, nickname, verbose, existingNameMatch?.id);
     }
     return null;
   }
@@ -567,36 +1035,61 @@ export async function triggerOAuth(
   }
 
   const callbackPort =
-    provider === 'kiro' ? getKiroCallbackPort(resolvedKiroMethod) : OAUTH_PORTS[provider];
+    provider === 'kiro'
+      ? getKiroCallbackPort(resolvedKiroMethod, { idcFlow: resolvedKiroIDCFlow })
+      : OAUTH_PORTS[provider];
   const isCLI = !fromUI;
   const headless = options.headless ?? isHeadlessEnvironment();
   const isDeviceCodeFlow =
-    provider === 'kiro' ? isKiroDeviceCodeMethod(resolvedKiroMethod) : callbackPort === null;
+    provider === 'kiro'
+      ? isKiroDeviceCodeMethod(resolvedKiroMethod, { idcFlow: resolvedKiroIDCFlow })
+      : callbackPort === null;
+  let selectedPasteCallback = options.pasteCallback === true;
 
-  let authFlag = oauthConfig.authFlag;
-  if (provider === 'kiro') {
-    if (!isKiroCLIAuthMethod(resolvedKiroMethod)) {
-      console.log(fail(`Kiro auth method '${resolvedKiroMethod}' is not supported by CLI flow.`));
-      console.log('    Use Dashboard management OAuth for this method.');
-      return null;
-    }
-    authFlag = getKiroCLIAuthFlag(resolvedKiroMethod);
+  if (provider === 'kiro' && !isKiroCLIAuthMethod(resolvedKiroMethod)) {
+    console.log(fail(`Kiro auth method '${resolvedKiroMethod}' is not supported by CLI flow.`));
+    console.log('    Use Dashboard management OAuth for this method.');
+    return null;
   }
 
   // Interactive mode selection for headless environments
   // Skip if explicit mode flag provided or device code flow (no callback needed)
-  if (headless && !options.pasteCallback && !options.portForward && !isDeviceCodeFlow) {
+  if (headless && !selectedPasteCallback && !options.portForward && !isDeviceCodeFlow) {
     // Non-interactive environment (piped input) - default to paste mode
     if (!process.stdin.isTTY) {
-      const tokenDir = getProviderTokenDir(provider);
-      return handlePasteCallbackMode(provider, oauthConfig, verbose, tokenDir, nickname);
+      selectedPasteCallback = true;
+    } else {
+      const mode = await promptOAuthModeChoice(callbackPort);
+      if (mode === 'paste') {
+        selectedPasteCallback = true;
+      }
     }
-    const mode = await promptOAuthModeChoice(callbackPort);
-    if (mode === 'paste') {
-      const tokenDir = getProviderTokenDir(provider);
-      return handlePasteCallbackMode(provider, oauthConfig, verbose, tokenDir, nickname);
+  }
+
+  if (provider === 'gitlab' && resolvedGitLabBaseUrl && !selectedPasteCallback) {
+    selectedPasteCallback = true;
+    console.log('');
+    console.log(
+      info('GitLab custom base URL selected. Switching to paste-callback mode for OAuth.')
+    );
+  }
+
+  const useSelectedKiroLocalPasteCallback =
+    selectedPasteCallback &&
+    provider === 'kiro' &&
+    usesKiroLocalCallbackReplay(resolvedKiroMethod, resolvedKiroIDCFlow);
+  const useSelectedKiroDirectCliFlow =
+    provider === 'kiro' && (isDeviceCodeFlow || useSelectedKiroLocalPasteCallback);
+
+  if (!(selectedPasteCallback && !useSelectedKiroDirectCliFlow)) {
+    const credentialError = getGeminiPlusOAuthCredentialError(
+      provider,
+      getStoredConfiguredBackend()
+    );
+    if (credentialError) {
+      console.log(fail(credentialError));
+      return null;
     }
-    // mode === 'forward' continues to existing port-forwarding flow below
   }
 
   if (existingAccounts.length > 0 && !add) {
@@ -611,6 +1104,39 @@ export async function triggerOAuth(
       console.log(info('Cancelled'));
       return null;
     }
+  }
+
+  if (provider === 'gitlab' && resolvedGitLabAuthMode === 'pat') {
+    const tokenDir = getProviderTokenDir(provider);
+    return handleGitLabPatLogin(
+      provider,
+      oauthConfig,
+      verbose,
+      tokenDir,
+      nickname,
+      existingNameMatch?.id,
+      {
+        gitlabBaseUrl: resolvedGitLabBaseUrl,
+        gitlabPersonalAccessToken: options.gitlabPersonalAccessToken,
+      }
+    );
+  }
+
+  if (selectedPasteCallback && !useSelectedKiroDirectCliFlow) {
+    const tokenDir = getProviderTokenDir(provider);
+    return handlePasteCallbackMode(
+      provider,
+      oauthConfig,
+      verbose,
+      tokenDir,
+      nickname,
+      existingNameMatch?.id,
+      {
+        kiroMethod: provider === 'kiro' ? resolvedKiroMethod : undefined,
+        gitlabBaseUrl: provider === 'gitlab' ? resolvedGitLabBaseUrl : undefined,
+        add,
+      }
+    );
   }
 
   // Pre-flight checks (skip for device code flows which don't need callback ports)
@@ -635,14 +1161,18 @@ export async function triggerOAuth(
     }
   }
 
-  // Build args
-  const args = ['--config', configPath, authFlag];
-  if (headless) {
-    args.push('--no-browser');
-  }
-  // Kiro-specific: --no-incognito to use normal browser (saves login credentials)
-  if (provider === 'kiro' && noIncognito) {
-    args.push('--no-incognito');
+  const processHeadless = selectedPasteCallback && provider === 'kiro' ? true : headless;
+  let args: string[];
+  try {
+    args = buildOAuthArgs(provider, configPath, processHeadless, noIncognito, {
+      kiroMethod: provider === 'kiro' ? resolvedKiroMethod : undefined,
+      kiroIDCStartUrl: options.kiroIDCStartUrl,
+      kiroIDCRegion: options.kiroIDCRegion,
+      kiroIDCFlow: provider === 'kiro' ? resolvedKiroIDCFlow : undefined,
+    });
+  } catch (error) {
+    console.log(fail((error as Error).message));
+    return null;
   }
 
   // Show step based on flow type
@@ -654,7 +1184,14 @@ export async function triggerOAuth(
     showStep(2, 4, 'progress', `Starting callback server on port ${callbackPort}...`);
 
     // Show headless instructions (only for authorization code flows)
-    if (headless) {
+    if (useSelectedKiroLocalPasteCallback) {
+      console.log('');
+      console.log(info('Paste-callback mode enabled for Kiro CLI auth.'));
+      console.log(
+        '    CCS will print the authorization URL and wait for you to paste the final callback URL.'
+      );
+      console.log('');
+    } else if (headless) {
       console.log('');
       console.log(warn('PORT FORWARDING REQUIRED'));
       console.log(`    OAuth callback uses localhost:${callbackPort} which must be reachable.`);
@@ -674,10 +1211,14 @@ export async function triggerOAuth(
     tokenDir,
     oauthConfig,
     callbackPort,
-    headless,
+    headless: processHeadless,
     verbose,
     isCLI,
     nickname,
+    expectedAccountId: existingNameMatch?.id,
+    authFlowType: isDeviceCodeFlow ? 'device_code' : 'authorization_code',
+    kiroMethod: provider === 'kiro' ? resolvedKiroMethod : undefined,
+    manualCallback: useSelectedKiroLocalPasteCallback,
   });
 
   // Show hint for Kiro users about --no-incognito option (first-time auth only)
@@ -696,6 +1237,24 @@ export async function triggerOAuth(
     }
   }
 
+  if (account) {
+    logger.stage(
+      'auth',
+      'cliproxy.oauth.success',
+      'OAuth flow completed successfully',
+      { provider, accountId: account.id },
+      { latencyMs: Date.now() - oauthStartedAt }
+    );
+  } else {
+    logger.stage(
+      'cleanup',
+      'cliproxy.oauth.failed',
+      'OAuth flow failed or was cancelled',
+      { provider },
+      { level: 'warn', latencyMs: Date.now() - oauthStartedAt }
+    );
+  }
+
   return account;
 }
 
@@ -708,6 +1267,9 @@ export async function ensureAuth(
   options: { verbose?: boolean; headless?: boolean; account?: string } = {}
 ): Promise<boolean> {
   if (isAuthenticated(provider)) {
+    logger.stage('auth', 'cliproxy.auth.cached', 'Provider already authenticated', {
+      provider,
+    });
     if (options.verbose) {
       console.error(`[auth] ${provider} already authenticated`);
     }
@@ -717,6 +1279,10 @@ export async function ensureAuth(
     }
     return true;
   }
+
+  logger.stage('auth', 'cliproxy.auth.required', 'Provider needs authentication', {
+    provider,
+  });
 
   const oauthConfig = getOAuthConfig(provider);
   console.log(info(`${oauthConfig.displayName} authentication required`));

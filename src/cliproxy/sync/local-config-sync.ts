@@ -7,9 +7,9 @@
 
 import * as fs from 'fs';
 import * as yaml from 'js-yaml';
-import { getCliproxyConfigPath } from '../config-generator';
+import { getCliproxyConfigPath } from '../config/config-generator';
 import { generateSyncPayload } from './profile-mapper';
-import type { ClaudeKey } from '../management-api-types';
+import type { ClaudeKey } from '../management/management-api-types';
 
 /**
  * Sync profiles to local CLIProxy config.yaml.

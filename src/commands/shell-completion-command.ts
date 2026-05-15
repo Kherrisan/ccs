@@ -28,6 +28,24 @@ interface ShellCompletionInstallerLike {
   install(shell: ShellTarget, options: { force: boolean }): ShellCompletionInstallResult;
 }
 
+export function showShellCompletionHelp(writeLine: (line: string) => void = console.log): void {
+  writeLine(header('Shell Completion'));
+  writeLine('');
+  writeLine(color('Usage:', 'info'));
+  writeLine('  ccs --shell-completion              # Auto-detect shell and install');
+  writeLine('  ccs --shell-completion --bash       # Install for bash');
+  writeLine('  ccs --shell-completion --zsh        # Install for zsh');
+  writeLine('  ccs --shell-completion --fish       # Install for fish');
+  writeLine('  ccs --shell-completion --powershell # Install for PowerShell');
+  writeLine('  ccs --shell-completion --force      # Reinstall/refresh the active shell setup');
+  writeLine('');
+  writeLine(color('Test:', 'info'));
+  writeLine('  ccs <TAB>');
+  writeLine('  ccs help <TAB>');
+  writeLine('  ccs auth <TAB>');
+  writeLine('');
+}
+
 export function parseShellCompletionArgs(args: string[]): ShellCompletionParsedArgs {
   let targetShell: ShellTarget = null;
   const force = args.includes('--force') || args.includes('-f');
@@ -77,12 +95,15 @@ export function createShellCompletionCommandContract(
  */
 export async function handleShellCompletionCommand(args: string[]): Promise<void> {
   await initUI();
-  const { ShellCompletionInstaller } = await import('../utils/shell-completion');
-
-  console.log(header('Shell Completion Installer'));
-  console.log('');
+  if (args.includes('--help') || args.includes('-h')) {
+    showShellCompletionHelp();
+    return;
+  }
 
   try {
+    const { ShellCompletionInstaller } = await import('../utils/shell-completion');
+    console.log(header('Shell Completion Installer'));
+    console.log('');
     const installer = new ShellCompletionInstaller();
     const contract = createShellCompletionCommandContract(installer);
     await runCommandWithContract(args, contract);
@@ -90,13 +111,7 @@ export async function handleShellCompletionCommand(args: string[]): Promise<void
     const err = error as Error;
     console.error(fail(`Error: ${err.message}`));
     console.error('');
-    console.error(color('Usage:', 'warning'));
-    console.error('  ccs --shell-completion           # Auto-detect shell');
-    console.error('  ccs --shell-completion --bash    # Install for bash');
-    console.error('  ccs --shell-completion --zsh     # Install for zsh');
-    console.error('  ccs --shell-completion --fish    # Install for fish');
-    console.error('  ccs --shell-completion --powershell  # Install for PowerShell');
-    console.error('');
+    showShellCompletionHelp(console.error);
     process.exit(1);
   }
 }

@@ -8,16 +8,29 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { initUI, header, color, fail, table } from '../../utils/ui';
 import { resolveAccountContextPolicy, formatAccountContextPolicy } from '../account-context';
+import { describeSettingsSync, summarizeAccountHistory } from '../account-profile-diagnostics';
+import { resolveConfiguredPlainCcsResumeLane } from '../resume-lane-diagnostics';
+import { resolveSharedResourcePolicy } from '../shared-resource-policy';
 import { exitWithError } from '../../errors';
 import { ExitCode } from '../../errors/exit-codes';
-import { CommandContext, ProfileOutput, parseArgs } from './types';
+import { CommandContext, ProfileOutput, parseArgs, rejectUnsupportedAuthOptions } from './types';
+
+function formatHistorySummary(history: ReturnType<typeof summarizeAccountHistory>): string {
+  const scope = history.projects_shared ? 'shared projects' : 'profile-local projects';
+  const deeper = history.deeper_artifacts_shared ? ', deeper artifacts shared' : '';
+  return `${scope}: ${history.project_count} project(s), ${history.session_count} session env file(s)${deeper}`;
+}
 
 /**
  * Handle the show command
  */
 export async function handleShow(ctx: CommandContext, args: string[]): Promise<void> {
   await initUI();
-  const { profileName, json } = parseArgs(args);
+  const parsed = parseArgs(args);
+  const { profileName, json } = parsed;
+  rejectUnsupportedAuthOptions(parsed, {
+    usage: 'ccs auth show <profile> [--json]',
+  });
 
   if (!profileName) {
     console.log(fail('Profile name is required'));
@@ -37,6 +50,12 @@ export async function handleShow(ctx: CommandContext, args: string[]): Promise<v
     const isDefault = profileName === defaultProfile;
     const instancePath = ctx.instanceMgr.getInstancePath(profileName);
     const contextPolicy = resolveAccountContextPolicy(profile);
+    const resourcePolicy = resolveSharedResourcePolicy(profile);
+    const settingsSync = describeSettingsSync(instancePath, { bare: resourcePolicy.profileLocal });
+    const historySummary = summarizeAccountHistory(instancePath, contextPolicy);
+    const plainCcsLane = await resolveConfiguredPlainCcsResumeLane().catch(() => null);
+    const plainCcsUsesThisAccount =
+      !!plainCcsLane && path.resolve(plainCcsLane.configDir) === path.resolve(instancePath);
 
     // Count sessions
     let sessionCount = 0;
@@ -61,9 +80,29 @@ export async function handleShow(ctx: CommandContext, args: string[]): Promise<v
         context_mode: contextPolicy.mode,
         context_group: contextPolicy.group || null,
         continuity_mode: contextPolicy.mode === 'shared' ? contextPolicy.continuityMode : null,
+        shared_resource_mode: resourcePolicy.mode,
+        shared_resource_inferred: resourcePolicy.inferred,
         instance_path: instancePath,
         session_count: sessionCount,
-        ...(profile.bare ? { bare: true } : {}),
+        settings_sync: {
+          state: settingsSync.state,
+          profile_settings_path: settingsSync.profile_settings_path,
+          shared_settings_path: settingsSync.shared_settings_path,
+          root_settings_path: settingsSync.root_settings_path,
+        },
+        history: historySummary,
+        ...(plainCcsLane
+          ? {
+              plain_ccs_lane: {
+                kind: plainCcsLane.kind,
+                label: plainCcsLane.label,
+                config_dir: plainCcsLane.configDir,
+                project_count: plainCcsLane.projectCount,
+                uses_this_account: plainCcsUsesThisAccount,
+              },
+            }
+          : {}),
+        ...(resourcePolicy.profileLocal ? { bare: true } : {}),
       };
       console.log(JSON.stringify(output, null, 2));
       return;
@@ -81,7 +120,21 @@ export async function handleShow(ctx: CommandContext, args: string[]): Promise<v
       ['Created', new Date(profile.created).toLocaleString()],
       ['Last Used', profile.last_used ? new Date(profile.last_used).toLocaleString() : 'Never'],
       ['Context', formatAccountContextPolicy(contextPolicy)],
-      ...(profile.bare ? [['Bare', 'yes (no shared symlinks)']] : []),
+      ['Resources', resourcePolicy.mode],
+      ['Credentials', 'isolated per account'],
+      ['Settings', settingsSync.description],
+      ['History', formatHistorySummary(historySummary)],
+      ...(plainCcsLane
+        ? [
+            [
+              'Plain ccs',
+              plainCcsUsesThisAccount
+                ? `uses this account lane (${plainCcsLane.projectCount} project(s))`
+                : `${plainCcsLane.label} (${plainCcsLane.projectCount} project(s))`,
+            ],
+          ]
+        : []),
+      ...(resourcePolicy.profileLocal ? [['Bare', 'yes (no shared symlinks)']] : []),
       ['Sessions', `${sessionCount}`],
     ];
 

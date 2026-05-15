@@ -8,7 +8,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { getCcsDir, getConfigPath } from '../utils/config-manager';
+import { getConfigPath } from '../utils/config-manager';
 import packageJson from '../../package.json';
 
 // Import all check functions from modular components
@@ -35,6 +35,7 @@ import {
   checkOAuthPortsForDashboard,
   checkWebSearchClis,
 } from './health';
+import { getCcsDir } from '../config/config-loader-facade';
 
 // Re-export types for external consumers
 export type { HealthCheck, HealthGroup, HealthReport };
@@ -143,14 +144,10 @@ export function fixHealthIssue(checkId: string): { success: boolean; message: st
 
     case 'config-file': {
       // Use appropriate config based on unified mode
-      const { isUnifiedMode } = require('../config/unified-config-loader');
+      const { isUnifiedMode } = require('../config/config-loader-facade');
       if (isUnifiedMode()) {
-        const {
-          loadOrCreateUnifiedConfig,
-          saveUnifiedConfig,
-        } = require('../config/unified-config-loader');
-        const config = loadOrCreateUnifiedConfig();
-        saveUnifiedConfig(config);
+        const { mutateConfig } = require('../config/config-loader-facade');
+        mutateConfig(() => {});
         return { success: true, message: 'Created/updated config.yaml' };
       }
       const configPath = getConfigPath();
@@ -161,7 +158,7 @@ export function fixHealthIssue(checkId: string): { success: boolean; message: st
 
     case 'profiles-file': {
       // Use appropriate storage based on unified mode
-      const { isUnifiedMode: isUnified } = require('../config/unified-config-loader');
+      const { isUnifiedMode: isUnified } = require('../config/config-loader-facade');
       if (isUnified()) {
         // In unified mode, accounts are stored in config.yaml
         return { success: true, message: 'Accounts stored in config.yaml (unified mode)' };

@@ -4,12 +4,13 @@
  */
 
 /* eslint-disable react-refresh/only-export-components */
-import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useState, useMemo, useCallback, useEffect, useDeferredValue } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { Loader2, Code2, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 
 import { HeaderSection } from './header-section';
 import { FriendlyUISection } from './friendly-ui-section';
@@ -24,6 +25,7 @@ export function ProfileEditor({
   onDelete,
   onHasChangesUpdate,
 }: ProfileEditorProps) {
+  const { t } = useTranslation();
   const [localEdits, setLocalEdits] = useState<Record<string, string>>({});
   const [conflictDialog, setConflictDialog] = useState(false);
   const [rawJsonEdits, setRawJsonEdits] = useState<string | null>(null);
@@ -67,6 +69,31 @@ export function ProfileEditor({
     setRawJsonEdits(value);
   }, []);
 
+  const updateNativeImageRead = useCallback(
+    (enabled: boolean) => {
+      const nextSettings = { ...(currentSettings ?? {}) } as Settings;
+      const currentCcsImage =
+        nextSettings.ccs_image && typeof nextSettings.ccs_image === 'object'
+          ? { ...nextSettings.ccs_image }
+          : {};
+
+      if (enabled) {
+        currentCcsImage.native_read = true;
+      } else {
+        delete currentCcsImage.native_read;
+      }
+
+      if (Object.keys(currentCcsImage).length > 0) {
+        nextSettings.ccs_image = currentCcsImage;
+      } else {
+        delete nextSettings.ccs_image;
+      }
+
+      setRawJsonEdits(JSON.stringify(nextSettings, null, 2));
+    },
+    [currentSettings]
+  );
+
   // Sync Visual Editor changes to Raw JSON
   const updateEnvValue = (key: string, value: string) => {
     const newEnv = { ...(currentSettings?.env || {}), [key]: value };
@@ -106,6 +133,66 @@ export function ProfileEditor({
     if (rawJsonEdits !== null) return rawJsonEdits !== JSON.stringify(settings, null, 2);
     return Object.keys(localEdits).length > 0;
   }, [rawJsonEdits, localEdits, settings]);
+
+  const deferredPreviewJson = useDeferredValue(computedRawJsonContent);
+  const previewSettings = useMemo((): Settings | null => {
+    if (!computedHasChanges || !computedIsRawJsonValid) {
+      return null;
+    }
+
+    try {
+      return JSON.parse(deferredPreviewJson) as Settings;
+    } catch {
+      return null;
+    }
+  }, [computedHasChanges, computedIsRawJsonValid, deferredPreviewJson]);
+
+  const {
+    data: previewStatusResponse,
+    isFetching: isPreviewStatusFetching,
+    isError: isPreviewStatusError,
+    isPlaceholderData: isPreviewStatusPlaceholderData,
+  } = useQuery<{ imageAnalysisStatus: SettingsResponse['imageAnalysisStatus'] }>({
+    queryKey: ['settings', profileName, 'image-analysis-status-preview', deferredPreviewJson],
+    enabled: previewSettings !== null,
+    placeholderData: (previousData) => previousData,
+    queryFn: async () => {
+      const res = await fetch(`/api/settings/${profileName}/image-analysis-status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ settings: previewSettings }),
+      });
+
+      if (!res.ok) {
+        throw new Error(`Failed to preview image-analysis status: ${res.status}`);
+      }
+
+      return res.json();
+    },
+  });
+
+  const imageAnalysisStatus =
+    computedHasChanges && computedIsRawJsonValid && !isPreviewStatusError
+      ? (previewStatusResponse?.imageAnalysisStatus ?? data?.imageAnalysisStatus)
+      : data?.imageAnalysisStatus;
+  const imageAnalysisStatusSource =
+    computedHasChanges &&
+    computedIsRawJsonValid &&
+    !isPreviewStatusError &&
+    previewStatusResponse?.imageAnalysisStatus
+      ? 'editor'
+      : 'saved';
+  const imageAnalysisStatusPreviewState = !computedHasChanges
+    ? 'saved'
+    : !computedIsRawJsonValid
+      ? 'invalid'
+      : isPreviewStatusError
+        ? 'saved'
+        : isPreviewStatusFetching &&
+            (!previewStatusResponse?.imageAnalysisStatus || isPreviewStatusPlaceholderData)
+          ? 'refreshing'
+          : 'preview';
+  const nativeReadPreferenceOverride = currentSettings?.ccs_image?.native_read === true;
 
   // Check for missing required fields (informational warning)
   const missingRequiredFields = useMemo(() => {
@@ -162,7 +249,8 @@ export function ProfileEditor({
       toast.success(i18n.t('commonToast.defaultTargetUpdated'));
     },
     onError: (error: Error, target: CliTarget) => {
-      const targetLabel = target === 'droid' ? 'Factory Droid' : 'Claude Code';
+      const targetLabel =
+        target === 'droid' ? 'Factory Droid' : target === 'codex' ? 'Codex CLI' : 'Claude Code';
       const suffix = error.message.trim() ? `: ${error.message}` : '';
       toast.error(i18n.t('commonToast.failedUpdateDefaultTarget', { target: targetLabel, suffix }));
     },
@@ -213,21 +301,21 @@ export function ProfileEditor({
       {isLoading ? (
         <div className="flex-1 flex items-center justify-center">
           <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
-          <span className="ml-3 text-muted-foreground">Loading settings...</span>
+          <span className="ml-3 text-muted-foreground">{t('settingsDialog.loadingSettings')}</span>
         </div>
       ) : isError ? (
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center space-y-3">
-            <p className="text-sm text-muted-foreground">Failed to load settings.</p>
+            <p className="text-sm text-muted-foreground">{t('settingsPage.failedLoad')}</p>
             <Button variant="outline" size="sm" onClick={() => refetch()}>
               <RefreshCw className="w-4 h-4 mr-1" />
-              Retry
+              {t('apiProfiles.retry')}
             </Button>
           </div>
         </div>
       ) : (
-        <div className="flex-1 grid grid-cols-[40%_60%] divide-x overflow-hidden">
-          <div className="flex flex-col overflow-hidden bg-muted/5 min-w-0">
+        <div className="min-h-0 flex-1 grid grid-cols-[40%_60%] divide-x overflow-hidden">
+          <div className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-muted/5">
             <FriendlyUISection
               profileName={profileName}
               target={resolvedTarget}
@@ -242,11 +330,11 @@ export function ProfileEditor({
               onAddEnvVar={addNewEnvVar}
             />
           </div>
-          <div className="flex flex-col overflow-hidden">
+          <div className="flex min-h-0 min-w-0 flex-col overflow-hidden">
             <div className="px-6 py-2 bg-muted/30 border-b flex items-center gap-2 shrink-0 h-[45px]">
               <Code2 className="w-4 h-4 text-muted-foreground" />
               <span className="text-sm font-medium text-muted-foreground">
-                Raw Configuration (JSON)
+                {t('rawEditorSection.rawConfig')}
               </span>
             </div>
             <RawEditorSection
@@ -254,6 +342,12 @@ export function ProfileEditor({
               isRawJsonValid={computedIsRawJsonValid}
               rawJsonEdits={rawJsonEdits}
               settings={settings}
+              profileTarget={resolvedTarget}
+              imageAnalysisStatus={imageAnalysisStatus}
+              imageAnalysisStatusSource={imageAnalysisStatusSource}
+              imageAnalysisStatusPreviewState={imageAnalysisStatusPreviewState}
+              nativeReadPreferenceOverride={nativeReadPreferenceOverride}
+              onToggleNativeRead={updateNativeImageRead}
               onChange={handleRawJsonChange}
               missingRequiredFields={missingRequiredFields}
             />
@@ -263,9 +357,9 @@ export function ProfileEditor({
 
       <ConfirmDialog
         open={conflictDialog}
-        title="File Modified Externally"
-        description="Overwrite with your changes or discard?"
-        confirmText="Overwrite"
+        title={t('settingsDialog.conflictTitle')}
+        description={t('settingsDialog.conflictDesc')}
+        confirmText={t('settingsDialog.overwrite')}
         variant="destructive"
         onConfirm={() => handleConflictResolve(true)}
         onCancel={() => handleConflictResolve(false)}

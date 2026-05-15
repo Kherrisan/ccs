@@ -4,19 +4,17 @@
  * Exports refresh functions for each OAuth provider.
  *
  * Refresh responsibility:
- * - CCS-managed: gemini (CCS refreshes tokens directly via Google OAuth)
- * - CLIProxy-delegated: codex, agy, kiro, ghcp, qwen, iflow, kimi
+ * - CLIProxy-delegated: gemini, codex, agy, kiro, ghcp, qwen, iflow, kimi
  *   (CLIProxyAPIPlus handles refresh automatically in background)
  * - Not implemented: claude
  */
 
 import { CLIProxyProvider } from '../../types';
-import { getProviderAccounts } from '../../account-manager';
+import { getProviderAccounts } from '../../accounts/account-manager';
 import {
   getTokenRefreshOwnership,
   isRefreshDelegatedToCLIProxy,
 } from '../../provider-capabilities';
-import { refreshGeminiToken } from '../gemini-token-refresh';
 
 /** Token refresh result */
 export interface ProviderRefreshResult {
@@ -66,19 +64,18 @@ export async function refreshToken(
     };
   }
 
-  if (provider === 'gemini') {
-    return await refreshGeminiTokenWrapper(normalizedAccountId);
-  }
-
   const ownership = getTokenRefreshOwnership(provider);
   switch (ownership) {
     case 'cliproxy':
       // CLIProxyAPIPlus handles refresh for these providers automatically.
       // No action needed from CCS — report success with delegated flag.
       return { success: true, delegated: true };
-    case 'unsupported':
     case 'ccs':
-      // Non-gemini CCS-owned refresh paths are not implemented yet.
+      return {
+        success: false,
+        error: `Token refresh not yet implemented for ${provider}`,
+      };
+    case 'unsupported':
       return {
         success: false,
         error: `Token refresh not yet implemented for ${provider}`,
@@ -86,24 +83,4 @@ export async function refreshToken(
     default:
       return assertNever(ownership);
   }
-}
-
-/**
- * Wrapper for Gemini token refresh
- * Converts gemini-token-refresh.ts format to provider-refreshers format
- */
-async function refreshGeminiTokenWrapper(accountId: string): Promise<ProviderRefreshResult> {
-  const result = await refreshGeminiToken(accountId);
-
-  if (!result.success) {
-    return {
-      success: false,
-      error: result.error,
-    };
-  }
-
-  return {
-    success: true,
-    expiresAt: result.expiresAt,
-  };
 }

@@ -6,10 +6,13 @@
  */
 
 import { cn } from '@/lib/utils';
+import { useTranslation } from 'react-i18next';
 
 const CLAUDEKIT_URL = 'https://claudekit.cc?ref=HMNKXOHN';
 
 export function ClaudeKitBadge() {
+  const { t } = useTranslation();
+
   return (
     <a
       href={CLAUDEKIT_URL}
@@ -21,9 +24,9 @@ export function ClaudeKitBadge() {
         'hover:bg-accent hover:border-accent',
         'transition-all duration-200 shadow-sm hover:shadow-md'
       )}
-      title="Powered by ClaudeKit Framework"
+      title={t('claudekitBadge.title')}
     >
-      <img src="/logos/claudekit-logo.png" alt="ClaudeKit" className="w-5 h-5" />
+      <img src="/logos/claudekit-logo.png" alt={t('claudekitBadge.alt')} className="w-5 h-5" />
       <span className="flex items-baseline gap-1.5 whitespace-nowrap">
         <span
           className={cn(
@@ -32,7 +35,7 @@ export function ClaudeKitBadge() {
             'transition-colors'
           )}
         >
-          Powered by
+          {t('claudekitBadge.poweredBy')}
         </span>
         <span
           className={cn(
@@ -41,7 +44,7 @@ export function ClaudeKitBadge() {
             'transition-colors'
           )}
         >
-          ClaudeKit
+          {t('claudekitBadge.claudekit')}
         </span>
       </span>
     </a>

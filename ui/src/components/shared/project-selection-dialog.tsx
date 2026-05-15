@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Loader2, FolderOpen, Check, Circle, CheckCircle } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 interface GCloudProject {
   id: string;
@@ -50,6 +51,7 @@ export function ProjectSelectionDialog({
   const [selectedId, setSelectedId] = useState(defaultProjectId);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [countdown, setCountdown] = useState(timeoutSeconds);
+  const { t } = useTranslation();
 
   // Countdown timer for auto-selection
   useEffect(() => {
@@ -115,13 +117,13 @@ export function ProjectSelectionDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FolderOpen className="w-5 h-5" />
-            Select Google Cloud Project
+            {t('projectSelectionDialog.title')}
           </DialogTitle>
           <DialogDescription>
-            Choose which project to use for {providerDisplay} authentication.
+            {t('projectSelectionDialog.description', { provider: providerDisplay })}
             {countdown > 0 && (
               <span className="text-muted-foreground ml-1">
-                (Auto-selecting default in {countdown}s)
+                {t('projectSelectionDialog.autoSelectCountdown', { count: countdown })}
               </span>
             )}
           </DialogDescription>
@@ -149,7 +151,9 @@ export function ProjectSelectionDialog({
                   <div className="text-sm text-muted-foreground font-mono">{project.id}</div>
                 </div>
                 {project.id === defaultProjectId && (
-                  <span className="text-xs px-2 py-1 bg-secondary rounded">Default</span>
+                  <span className="text-xs px-2 py-1 bg-secondary rounded">
+                    {t('projectSelectionDialog.default')}
+                  </span>
                 )}
               </div>
             ))}
@@ -169,9 +173,9 @@ export function ProjectSelectionDialog({
                   <Circle className="w-5 h-5 text-muted-foreground" />
                 )}
                 <div className="flex-1">
-                  <div className="font-medium">All Projects</div>
+                  <div className="font-medium">{t('projectSelectionDialog.allProjects')}</div>
                   <div className="text-sm text-muted-foreground">
-                    Onboard all {projects.length} listed projects
+                    {t('projectSelectionDialog.allProjectsDescription', { count: projects.length })}
                   </div>
                 </div>
               </div>
@@ -180,18 +184,18 @@ export function ProjectSelectionDialog({
 
           <div className="flex items-center justify-end gap-2 pt-2">
             <Button variant="ghost" onClick={() => handleSubmit(true)} disabled={isSubmitting}>
-              Use Default
+              {t('projectSelectionDialog.useDefault')}
             </Button>
             <Button onClick={() => handleSubmit(false)} disabled={isSubmitting}>
               {isSubmitting ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Selecting...
+                  {t('projectSelectionDialog.selecting')}
                 </>
               ) : (
                 <>
                   <Check className="w-4 h-4 mr-2" />
-                  Confirm Selection
+                  {t('projectSelectionDialog.confirmSelection')}
                 </>
               )}
             </Button>

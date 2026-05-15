@@ -20,6 +20,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import type { TokenBreakdown } from '@/hooks/use-usage';
 import { cn } from '@/lib/utils';
 import { usePrivacy, PRIVACY_BLUR_CLASS } from '@/contexts/privacy-context';
+import { useTranslation } from 'react-i18next';
 
 interface TokenBreakdownChartProps {
   data?: TokenBreakdown;
@@ -36,6 +37,7 @@ const COLORS = {
 
 export function TokenBreakdownChart({ data, isLoading, className }: TokenBreakdownChartProps) {
   const { privacyMode } = usePrivacy();
+  const { t } = useTranslation();
 
   const chartData = useMemo(() => {
     if (!data) return [];
@@ -82,7 +84,7 @@ export function TokenBreakdownChart({ data, isLoading, className }: TokenBreakdo
   if (!data || chartData.every((d) => d.tokens === 0)) {
     return (
       <div className={cn('h-[250px] flex items-center justify-center', className)}>
-        <p className="text-muted-foreground">No token data available</p>
+        <p className="text-muted-foreground">{t('analyticsCards.noTokenData')}</p>
       </div>
     );
   }

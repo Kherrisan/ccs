@@ -8,15 +8,27 @@
 
 import express from 'express';
 import http from 'http';
+import type { AddressInfo } from 'net';
 import path from 'path';
 import { WebSocketServer } from 'ws';
 import { setupWebSocket } from './websocket';
-import { createSessionMiddleware, authMiddleware } from './middleware/auth-middleware';
+import {
+  authMiddleware,
+  createSessionMiddleware,
+  getDashboardWebSocketRejectionStatus,
+  isDashboardWebSocketUpgradeAllowed,
+} from './middleware/auth-middleware';
+import { requestLoggingMiddleware } from './middleware/request-logging-middleware';
+import { ensureManagedModelPrefixes } from '../cliproxy/ai-providers/managed-model-prefixes';
+import { getProxyTarget } from '../cliproxy/proxy/proxy-target-resolver';
 import { startAutoSyncWatcher, stopAutoSyncWatcher } from '../cliproxy/sync';
 import { shutdownUsageAggregator } from './usage/aggregator';
+import { createLogger } from '../services/logging';
+import { DEFAULT_DASHBOARD_HOST, isLoopbackHost } from '../commands/config-dashboard-host';
 
 export interface ServerOptions {
   port: number;
+  host?: string;
   staticDir?: string;
   dev?: boolean;
 }
@@ -27,6 +39,12 @@ export interface ServerInstance {
   cleanup: () => void;
 }
 
+function getListenHost(options: ServerOptions): string {
+  return options.host || DEFAULT_DASHBOARD_HOST;
+}
+
+const logger = createLogger('web-server');
+
 /**
  * Start Express server with WebSocket support
  */
@@ -34,7 +52,7 @@ export async function startServer(options: ServerOptions): Promise<ServerInstanc
   const app = express();
   const server = http.createServer(app);
   const wss = new WebSocketServer({
-    server,
+    noServer: true,
     maxPayload: 1024 * 1024, // 1MB hard limit to prevent DoS
     perMessageDeflate: false, // Prevent zip bomb attacks
   });
@@ -55,12 +73,18 @@ export async function startServer(options: ServerOptions): Promise<ServerInstanc
       next(err);
     }
   );
+  app.use(requestLoggingMiddleware);
 
   // Session middleware (for dashboard auth)
-  app.use(createSessionMiddleware());
+  const sessionMiddleware = createSessionMiddleware();
+  app.use(sessionMiddleware);
 
   // Auth middleware (protects API routes when enabled)
   app.use(authMiddleware);
+
+  // CLIProxy local reverse proxy (avoids cross-origin issues in Docker)
+  const cliproxyLocalProxy = (await import('./routes/cliproxy-local-proxy')).default;
+  app.use('/api/cliproxy-local', cliproxyLocalProxy);
 
   // REST API routes (modularized)
   const { apiRoutes } = await import('./routes/index');
@@ -83,7 +107,11 @@ export async function startServer(options: ServerOptions): Promise<ServerInstanc
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       root: path.join(__dirname, '../../ui'),
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        // Reuse the dashboard HTTP server for HMR in middleware mode.
+        hmr: { server },
+      },
       appType: 'spa',
     });
     app.use(vite.middlewares);
@@ -98,11 +126,59 @@ export async function startServer(options: ServerOptions): Promise<ServerInstanc
     });
   }
 
+  server.on('upgrade', (request, socket, head) => {
+    const pathname = getUpgradePathname(request.url);
+    if (!pathname) {
+      rejectWebSocketUpgrade(socket, 400, 'Invalid WebSocket upgrade request');
+      return;
+    }
+
+    if (pathname !== '/ws') {
+      if (!options.dev) {
+        rejectWebSocketUpgrade(socket, 404, 'WebSocket endpoint not found');
+      }
+      return;
+    }
+
+    const response = new http.ServerResponse(request);
+    sessionMiddleware(
+      request as express.Request,
+      response as express.Response,
+      (error?: unknown) => {
+        if (error) {
+          rejectWebSocketUpgrade(socket, 500, 'WebSocket session validation failed');
+          return;
+        }
+
+        if (!isDashboardWebSocketUpgradeAllowed(request)) {
+          rejectWebSocketUpgrade(
+            socket,
+            getDashboardWebSocketRejectionStatus(request),
+            'WebSocket access denied'
+          );
+          return;
+        }
+
+        wss.handleUpgrade(request, socket, head, (ws) => {
+          wss.emit('connection', ws, request);
+        });
+      }
+    );
+  });
+
   // WebSocket connection handler + file watcher
   const { cleanup: wsCleanup } = setupWebSocket(wss);
 
   // Start auto-sync watcher (if enabled in config)
   startAutoSyncWatcher();
+
+  if (!getProxyTarget().isRemote) {
+    void ensureManagedModelPrefixes().catch((error) => {
+      logger.warn('cliproxy.prefix_sync_failed', 'Managed model prefix repair failed', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
+  }
 
   // Combined cleanup function
   const cleanup = () => {
@@ -112,11 +188,110 @@ export async function startServer(options: ServerOptions): Promise<ServerInstanc
   };
 
   // Start listening
-  return new Promise<ServerInstance>((resolve) => {
-    server.listen(options.port, () => {
+  return new Promise<ServerInstance>((resolve, reject) => {
+    const listenHost = getListenHost(options);
+    const onError = (error: NodeJS.ErrnoException) => {
+      logger.error('server.listen_failed', 'Dashboard server failed to start', {
+        code: error.code || 'unknown',
+        message: error.message,
+        host: listenHost,
+        port: options.port,
+      });
+      cleanup();
+      reject(new Error(formatListenError(error, options)));
+    };
+
+    server.once('error', onError);
+
+    const onListening = () => {
+      server.off('error', onError);
+      try {
+        assertSafeDashboardBind(options, server.address());
+      } catch (error) {
+        cleanup();
+        server.close(() => {
+          reject(error instanceof Error ? error : new Error(String(error)));
+        });
+        return;
+      }
+
+      logger.info('server.listening', 'Dashboard server listening', {
+        host: listenHost,
+        port: options.port,
+        dev: Boolean(options.dev),
+      });
       // Usage cache loads on-demand when Analytics page is visited
       // This keeps server startup instant for users who don't need analytics
       resolve({ server, wss, cleanup });
-    });
+    };
+
+    try {
+      server.listen(options.port, listenHost, onListening);
+    } catch (error) {
+      server.off('error', onError);
+      cleanup();
+      reject(new Error(formatListenError(error as NodeJS.ErrnoException, options)));
+    }
   });
+}
+
+function getUpgradePathname(requestUrl: string | undefined): string | null {
+  try {
+    return new URL(requestUrl ?? '/', 'http://localhost').pathname;
+  } catch {
+    return null;
+  }
+}
+
+function rejectWebSocketUpgrade(
+  socket: NodeJS.WritableStream & { destroy: () => void },
+  statusCode: 400 | 401 | 403 | 404 | 500,
+  message: string
+): void {
+  socket.write(
+    `HTTP/1.1 ${statusCode} ${message}\r\n` +
+      'Connection: close\r\n' +
+      'Content-Type: text/plain; charset=utf-8\r\n' +
+      `Content-Length: ${Buffer.byteLength(message)}\r\n` +
+      '\r\n' +
+      message
+  );
+  socket.destroy();
+}
+
+function assertSafeDashboardBind(
+  options: ServerOptions,
+  address: string | AddressInfo | null
+): void {
+  const listenHost = getListenHost(options);
+
+  if (!isLoopbackHost(listenHost) || typeof address === 'string' || !address) {
+    return;
+  }
+
+  if (isLoopbackHost(address.address)) {
+    return;
+  }
+
+  throw new Error(
+    `Dashboard host ${listenHost} resolved to non-loopback address ${address.address}; pass --host explicitly to allow network exposure.`
+  );
+}
+
+function formatListenError(error: NodeJS.ErrnoException, options: ServerOptions): string {
+  const listenHost = getListenHost(options);
+
+  if (error.code === 'EADDRINUSE') {
+    return `Unable to bind ${listenHost}:${options.port}; the address may be unavailable or the port may already be in use`;
+  }
+
+  if (error.code === 'EADDRNOTAVAIL') {
+    return `Cannot bind to ${listenHost}:${options.port} on this machine`;
+  }
+
+  if (error.code === 'EACCES') {
+    return `Permission denied while binding to port ${options.port}`;
+  }
+
+  return `Cannot bind to ${listenHost}:${options.port}: ${error.message}`;
 }

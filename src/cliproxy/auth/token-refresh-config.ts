@@ -5,8 +5,8 @@
  * Returns null if disabled or not configured.
  */
 
-import { loadOrCreateUnifiedConfig } from '../../config/unified-config-loader';
 import type { TokenRefreshSettings } from '../../config/unified-config-types';
+import { loadOrCreateUnifiedConfig } from '../../config/config-loader-facade';
 
 /**
  * Get token refresh configuration from unified config

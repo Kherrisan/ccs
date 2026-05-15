@@ -1,8 +1,13 @@
-import { installCliproxyVersion } from '../../cliproxy/binary-manager';
+import { installCliproxyVersion, resolveLocalBackend } from '../../cliproxy/binary-manager';
+import { resolveLifecyclePort } from '../../cliproxy/config/port-manager';
 import { ensureCliproxyService, type ServiceStartResult } from '../../cliproxy/service-manager';
 import { getProxyStatus as getProxyProcessStatus } from '../../cliproxy/session-tracker';
-import { isCliproxyRunning } from '../../cliproxy/stats-fetcher';
+import { isCliproxyRunning } from '../../cliproxy/services/stats-fetcher';
 import type { CLIProxyBackend } from '../../cliproxy/types';
+import {
+  isRunningUnderSupervisord,
+  restartCliproxyViaSupervisord,
+} from '../../docker/supervisord-lifecycle';
 
 interface ProxyStatusLike {
   running: boolean;
@@ -20,10 +25,10 @@ interface InstallDashboardCliproxyVersionDeps {
 }
 
 const defaultDeps: InstallDashboardCliproxyVersionDeps = {
-  getProxyStatus: getProxyProcessStatus,
-  isCliproxyRunning,
+  getProxyStatus: () => getProxyProcessStatus(resolveLifecyclePort()),
+  isCliproxyRunning: () => isCliproxyRunning(resolveLifecyclePort()),
   installCliproxyVersion,
-  ensureCliproxyService: () => ensureCliproxyService(),
+  ensureCliproxyService: () => ensureCliproxyService(resolveLifecyclePort()),
 };
 
 export interface DashboardCliproxyInstallResult {
@@ -48,18 +53,33 @@ export async function installDashboardCliproxyVersion(
   backend: CLIProxyBackend,
   deps: InstallDashboardCliproxyVersionDeps = defaultDeps
 ): Promise<DashboardCliproxyInstallResult> {
-  const backendLabel = backend === 'plus' ? 'CLIProxy Plus' : 'CLIProxy';
+  const effectiveBackend = resolveLocalBackend(backend, { notifyOnPlus: true });
+  const backendLabel = effectiveBackend === 'plus' ? 'CLIProxy Plus' : 'CLIProxy';
   const shouldRestoreService = await wasProxyRunning(deps);
 
   // The installer owns the stop-and-replace lifecycle, including best-effort
   // shutdown for tracked and untracked proxies before swapping the binary.
-  await deps.installCliproxyVersion(version, true, backend);
+  await deps.installCliproxyVersion(version, true, effectiveBackend);
 
   if (!shouldRestoreService) {
     return {
       success: true,
       restarted: false,
       message: `Successfully installed ${backendLabel} v${version}`,
+    };
+  }
+
+  // In Docker, supervisord owns process lifecycle — delegate restart to it
+  if (isRunningUnderSupervisord()) {
+    const result = restartCliproxyViaSupervisord();
+    return {
+      success: result.success,
+      restarted: result.success,
+      port: result.port,
+      error: result.error,
+      message: result.success
+        ? `Successfully installed ${backendLabel} v${version} and restarted it on port ${result.port}`
+        : `Installed ${backendLabel} v${version}, but restart failed`,
     };
   }
 

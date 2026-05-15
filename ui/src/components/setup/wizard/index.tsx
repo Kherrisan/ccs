@@ -17,6 +17,7 @@ import {
 import { Sparkles } from 'lucide-react';
 import {
   useCliproxyAuth,
+  useCliproxyCatalog,
   useCreateVariant,
   useStartAuth,
   useCancelAuth,
@@ -24,6 +25,7 @@ import {
 import type { AuthStatus, OAuthAccount } from '@/lib/api-client';
 import type { CLIProxyProvider } from '@/lib/provider-config';
 import { applyDefaultPreset } from '@/lib/preset-utils';
+import { buildUiCatalogs } from '@/lib/model-catalogs';
 import i18n from '@/lib/i18n';
 import { usePrivacy } from '@/contexts/privacy-context';
 import { toast } from 'sonner';
@@ -47,6 +49,7 @@ export function QuickSetupWizard({ open, onClose }: QuickSetupWizardProps) {
   const [isAddingNewAccount, setIsAddingNewAccount] = useState(false);
 
   const { data: authData, refetch } = useCliproxyAuth();
+  const { data: catalogData } = useCliproxyCatalog();
   const createMutation = useCreateVariant();
   const startAuthMutation = useStartAuth();
   const cancelAuthMutation = useCancelAuth();
@@ -57,6 +60,8 @@ export function QuickSetupWizard({ open, onClose }: QuickSetupWizardProps) {
     (s: AuthStatus) => s.provider === selectedProvider
   );
   const accounts = useMemo(() => providerAuth?.accounts || [], [providerAuth?.accounts]);
+  const catalogs = useMemo(() => buildUiCatalogs(catalogData?.catalogs), [catalogData?.catalogs]);
+  const fetchedCatalogsReady = Boolean(catalogData);
 
   // Reset on close
   useEffect(() => {
@@ -97,7 +102,11 @@ export function QuickSetupWizard({ open, onClose }: QuickSetupWizardProps) {
       {
         onSuccess: async (data) => {
           if (isFirstAccount) {
-            const result = await applyDefaultPreset(selectedProvider);
+            const result = await applyDefaultPreset(
+              selectedProvider,
+              undefined,
+              fetchedCatalogsReady ? catalogs[selectedProvider] : undefined
+            );
             if (result.success && result.presetName) {
               toast.success(`Applied "${result.presetName}" preset`);
             } else if (!result.success) {
@@ -168,7 +177,7 @@ export function QuickSetupWizard({ open, onClose }: QuickSetupWizardProps) {
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent
-        className="sm:max-w-lg"
+        className="grid max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-lg grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden p-0 sm:max-w-lg"
         onPointerDownOutside={(e) => {
           if (step !== 'success' && step !== 'provider') {
             e.preventDefault();
@@ -180,21 +189,21 @@ export function QuickSetupWizard({ open, onClose }: QuickSetupWizardProps) {
           }
         }}
       >
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
+        <DialogHeader className="min-w-0 px-6 pt-6 pr-12">
+          <DialogTitle className="flex min-w-0 items-center gap-2">
             <Sparkles className="w-5 h-5 text-primary" />
-            Quick Setup Wizard
+            {i18n.t('setupWizard.title')}
           </DialogTitle>
           <DialogDescription>
-            {step === 'provider' && 'Select a provider to get started'}
-            {step === 'auth' && 'Authenticate with your provider'}
-            {step === 'account' && 'Select which account to use'}
-            {step === 'variant' && 'Create your custom variant'}
-            {step === 'success' && 'Setup complete!'}
+            {step === 'provider' && i18n.t('setupWizard.stepProviderDesc')}
+            {step === 'auth' && i18n.t('setupWizard.stepAuthDesc')}
+            {step === 'account' && i18n.t('setupWizard.stepAccountDesc')}
+            {step === 'variant' && i18n.t('setupWizard.stepVariantDesc')}
+            {step === 'success' && i18n.t('setupWizard.stepSuccessDesc')}
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 py-4">
+        <div className="min-h-0 space-y-4 overflow-y-auto px-6 py-4">
           {step === 'provider' && (
             <ProviderStep providers={PROVIDERS} onSelect={handleProviderSelect} />
           )}
@@ -228,6 +237,7 @@ export function QuickSetupWizard({ open, onClose }: QuickSetupWizardProps) {
           {step === 'variant' && (
             <VariantStep
               selectedProvider={selectedProvider}
+              catalog={catalogs[selectedProvider]}
               selectedAccount={selectedAccount}
               variantName={variantName}
               modelName={modelName}
@@ -244,7 +254,9 @@ export function QuickSetupWizard({ open, onClose }: QuickSetupWizardProps) {
           {step === 'success' && <SuccessStep variantName={variantName} onClose={onClose} />}
         </div>
 
-        <ProgressIndicator currentProgress={currentProgress} allSteps={ALL_STEPS} />
+        <div className="px-6 pb-6">
+          <ProgressIndicator currentProgress={currentProgress} allSteps={ALL_STEPS} />
+        </div>
       </DialogContent>
     </Dialog>
   );

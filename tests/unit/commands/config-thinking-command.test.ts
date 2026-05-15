@@ -35,6 +35,7 @@ describe('config thinking override normalization', () => {
 
   it('accepts valid levels', () => {
     expect(parseThinkingOverrideInput('High')).toEqual({ value: 'high' });
+    expect(parseThinkingOverrideInput('Max')).toEqual({ value: 'max' });
   });
 
   it('validates numeric bounds', () => {

@@ -8,6 +8,7 @@
  */
 
 import { Router } from 'express';
+import { requireLocalAccessWhenAuthDisabled } from '../middleware/auth-middleware';
 import {
   handleSummary,
   handleDaily,
@@ -23,6 +24,20 @@ import {
 export { prewarmUsageCache, clearUsageCache, getLastFetchTimestamp } from './aggregator';
 
 export const usageRoutes = Router();
+
+const USAGE_WRITE_ACCESS_ERROR =
+  'Usage refresh requires localhost access when dashboard auth is disabled.';
+
+usageRoutes.use((req, res, next) => {
+  if (req.method.toUpperCase() !== 'POST') {
+    next();
+    return;
+  }
+
+  if (requireLocalAccessWhenAuthDisabled(req, res, USAGE_WRITE_ACCESS_ERROR)) {
+    next();
+  }
+});
 
 // Summary endpoint
 usageRoutes.get('/summary', handleSummary);

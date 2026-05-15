@@ -6,15 +6,16 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import i18n from '@/lib/i18n';
 import type { SettingsResponse, UseProviderEditorReturn } from './types';
+import type { ProviderCatalog } from '../provider-model-selector';
 import {
-  applyExtendedContextSuffix,
-  stripExtendedContextSuffix,
-  hasExtendedContextSuffix,
+  applyExtendedContextPreferenceToAnthropicModels,
+  hasAnthropicExtendedContextEnabled,
+  isAnthropicModelEnvKey,
 } from '@/lib/extended-context-utils';
-
-/** Model env keys that should have [1m] suffix applied */
-const MODEL_ENV_KEYS = ['ANTHROPIC_MODEL'] as const;
+import { supportsExtendedContext } from '@/lib/model-catalogs';
+import { isValidProvider } from '@/lib/provider-config';
 
 /** Required env vars for CLIProxy providers (informational only - runtime fills defaults) */
 const REQUIRED_ENV_KEYS = ['ANTHROPIC_BASE_URL', 'ANTHROPIC_AUTH_TOKEN'] as const;
@@ -25,7 +26,10 @@ function checkMissingFields(settings: { env?: Record<string, string> }): string[
   return REQUIRED_ENV_KEYS.filter((key) => !env[key]?.trim());
 }
 
-export function useProviderEditor(provider: string): UseProviderEditorReturn {
+export function useProviderEditor(
+  provider: string,
+  catalog?: ProviderCatalog
+): UseProviderEditorReturn {
   const [rawJsonEdits, setRawJsonEdits] = useState<string | null>(null);
   const [conflictDialog, setConflictDialog] = useState(false);
   const queryClient = useQueryClient();
@@ -36,12 +40,18 @@ export function useProviderEditor(provider: string): UseProviderEditorReturn {
     queryFn: async () => {
       const res = await fetch(`/api/settings/${provider}/raw`);
       if (!res.ok) {
+        const fallbackPath =
+          provider === 'cursor'
+            ? `~/.ccs/cliproxy/providers/${provider}.settings.json`
+            : isValidProvider(provider)
+              ? `~/.ccs/${provider}.settings.json`
+              : `~/.ccs/profiles/${provider}/settings.json`;
         // Return empty settings for unconfigured providers
         return {
           profile: provider,
           settings: { env: {} },
           mtime: Date.now(),
-          path: `~/.ccs/profiles/${provider}/settings.json`,
+          path: fallbackPath,
         };
       }
       return res.json();
@@ -78,56 +88,59 @@ export function useProviderEditor(provider: string): UseProviderEditorReturn {
 
   // Extended context is enabled if any model has [1m] suffix
   const extendedContextEnabled = useMemo(() => {
-    const env = currentSettings?.env || {};
-    return MODEL_ENV_KEYS.some((key) => {
-      const value = env[key];
-      return value && hasExtendedContextSuffix(value);
-    });
+    return hasAnthropicExtendedContextEnabled(currentSettings?.env || {});
   }, [currentSettings]);
+
+  const applySavedLongContextIntent = useCallback(
+    (env: Record<string, string>, enabled: boolean) =>
+      applyExtendedContextPreferenceToAnthropicModels(env, enabled, {
+        supportsExtendedContext: (modelId) => supportsExtendedContext(provider, modelId, catalog),
+      }),
+    [catalog, provider]
+  );
 
   // Update a single setting value
   const updateEnvValue = useCallback(
     (key: string, value: string) => {
       const newEnv = { ...(currentSettings?.env || {}), [key]: value };
-      const newSettings = { ...currentSettings, env: newEnv };
+      const envWithIntent = isAnthropicModelEnvKey(key)
+        ? applySavedLongContextIntent(newEnv, extendedContextEnabled)
+        : newEnv;
+      delete envWithIntent['CCS_EXTENDED_CONTEXT'];
+
+      const newSettings = { ...currentSettings, env: envWithIntent };
       setRawJsonEdits(JSON.stringify(newSettings, null, 2));
     },
-    [currentSettings]
+    [applySavedLongContextIntent, currentSettings, extendedContextEnabled]
   );
 
   // Toggle extended context - applies/strips [1m] suffix to all model env vars
   const toggleExtendedContext = useCallback(
     (enabled: boolean) => {
       const env = currentSettings?.env || {};
-      const updates: Record<string, string> = {};
-
-      for (const key of MODEL_ENV_KEYS) {
-        const value = env[key];
-        if (value) {
-          updates[key] = enabled
-            ? applyExtendedContextSuffix(value)
-            : stripExtendedContextSuffix(value);
-        }
-      }
-
-      // Remove the legacy flag if present
-      const newEnv = { ...env, ...updates };
+      const newEnv = applySavedLongContextIntent(env, enabled);
       delete newEnv['CCS_EXTENDED_CONTEXT'];
 
       const newSettings = { ...currentSettings, env: newEnv };
       setRawJsonEdits(JSON.stringify(newSettings, null, 2));
     },
-    [currentSettings]
+    [applySavedLongContextIntent, currentSettings]
   );
 
   // Batch update multiple env values at once
   const updateEnvValues = useCallback(
     (updates: Record<string, string>) => {
       const newEnv = { ...(currentSettings?.env || {}), ...updates };
-      const newSettings = { ...currentSettings, env: newEnv };
+      const touchesAnthropicModel = Object.keys(updates).some(isAnthropicModelEnvKey);
+      const envWithIntent = touchesAnthropicModel
+        ? applySavedLongContextIntent(newEnv, extendedContextEnabled)
+        : newEnv;
+      delete envWithIntent['CCS_EXTENDED_CONTEXT'];
+
+      const newSettings = { ...currentSettings, env: envWithIntent };
       setRawJsonEdits(JSON.stringify(newSettings, null, 2));
     },
-    [currentSettings]
+    [applySavedLongContextIntent, currentSettings, extendedContextEnabled]
   );
 
   // Check if JSON is valid
@@ -172,11 +185,11 @@ export function useProviderEditor(provider: string): UseProviderEditorReturn {
       setRawJsonEdits(null);
       // Show warning if fields missing (runtime uses defaults)
       if (responseData?.warning) {
-        toast.success('Settings saved', {
+        toast.success(i18n.t('settings.saved'), {
           description: responseData.warning,
         });
       } else {
-        toast.success('Settings saved');
+        toast.success(i18n.t('settings.saved'));
       }
     },
     onError: (error: Error) => {

@@ -25,6 +25,7 @@ export function getPlanBadgeStyle(plan?: CopilotPlanTier): string {
 /** Get multiplier display */
 export function getMultiplierDisplay(multiplier?: number): string | null {
   if (multiplier === undefined || multiplier === null) return null;
+  // TODO i18n: missing key for 'Free' multiplier label
   if (multiplier === 0) return 'Free';
   if (multiplier < 1) return `${multiplier}x`;
   if (multiplier === 1) return '1x';

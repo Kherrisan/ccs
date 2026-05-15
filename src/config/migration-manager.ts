@@ -22,9 +22,57 @@ import { createEmptyUnifiedConfig } from './unified-config-types';
 import { CLIPROXY_PROVIDER_IDS } from '../cliproxy/provider-capabilities';
 import { saveUnifiedConfig, hasUnifiedConfig, loadUnifiedConfig } from './unified-config-loader';
 import { isValidContextGroupName, normalizeContextGroupName } from '../auth/account-context';
+import { isSharedResourceMode, resolveSharedResourcePolicy } from '../auth/shared-resource-policy';
 import { infoBox, warn } from '../utils/ui';
 
 const BACKUP_DIR_PREFIX = 'backup-v1-';
+
+function resolveCanonicalPath(targetPath: string): string {
+  try {
+    return fs.realpathSync.native(targetPath);
+  } catch {
+    return path.resolve(targetPath);
+  }
+}
+
+function isPathWithinDirectory(candidatePath: string, rootPath: string): boolean {
+  const normalizedCandidate = path.resolve(candidatePath);
+  const normalizedRoot = path.resolve(rootPath);
+  const relative = path.relative(normalizedRoot, normalizedCandidate);
+
+  return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
+}
+
+export function resolveManagedBackupPath(backupPath: string): string | null {
+  const resolvedInput = path.resolve(backupPath);
+  const baseName = path.basename(resolvedInput);
+
+  if (!baseName.startsWith(BACKUP_DIR_PREFIX)) {
+    return null;
+  }
+
+  try {
+    const stats = fs.lstatSync(resolvedInput);
+    if (!stats.isDirectory() || stats.isSymbolicLink()) {
+      return null;
+    }
+  } catch {
+    return null;
+  }
+
+  const canonicalCcsDir = resolveCanonicalPath(getCcsDir());
+  const canonicalBackupPath = resolveCanonicalPath(resolvedInput);
+
+  if (!isPathWithinDirectory(canonicalBackupPath, canonicalCcsDir)) {
+    return null;
+  }
+
+  if (path.dirname(canonicalBackupPath) !== canonicalCcsDir) {
+    return null;
+  }
+
+  return canonicalBackupPath;
+}
 
 /**
  * Migration result with details about what was migrated.
@@ -74,9 +122,10 @@ export function loadMigrationCheckData(): MigrationCheckData {
 
   if (legacyConfig?.profiles && typeof legacyConfig.profiles === 'object' && unifiedConfig) {
     const legacyProfiles = legacyConfig.profiles as Record<string, unknown>;
+    const unifiedProfiles = unifiedConfig.profiles ?? {};
     for (const profileName of Object.keys(legacyProfiles)) {
       const targetProfileName = resolveAliasToCanonical(profileName);
-      if (!unifiedConfig.profiles[targetProfileName]) {
+      if (!unifiedProfiles[targetProfileName]) {
         needsMigration = true;
         break;
       }
@@ -112,6 +161,7 @@ export function getBackupDirectories(): string[] {
     .readdirSync(ccsDir)
     .filter((name) => name.startsWith(BACKUP_DIR_PREFIX))
     .map((name) => path.join(ccsDir, name))
+    .filter((backupPath) => resolveManagedBackupPath(backupPath) !== null)
     .sort()
     .reverse(); // Most recent first
 }
@@ -173,6 +223,16 @@ export async function migrate(dryRun = false): Promise<MigrationResult> {
           context_group: contextMode === 'shared' ? contextGroup : undefined,
           continuity_mode: contextMode === 'shared' ? continuityMode : undefined,
         };
+        const resourcePolicy = resolveSharedResourcePolicy({
+          shared_resource_mode: metadata.shared_resource_mode,
+          bare: metadata.bare,
+        });
+        if (resourcePolicy.mode === 'profile-local') {
+          account.shared_resource_mode = 'profile-local';
+          account.bare = true;
+        } else if (isSharedResourceMode(metadata.shared_resource_mode)) {
+          account.shared_resource_mode = 'shared';
+        }
         unifiedConfig.accounts[name] = account;
       }
       migratedFiles.push('profiles.json → config.yaml.accounts');
@@ -327,9 +387,10 @@ export async function migrate(dryRun = false): Promise<MigrationResult> {
  */
 export async function rollback(backupPath: string): Promise<boolean> {
   const ccsDir = getCcsDir();
+  const managedBackupPath = resolveManagedBackupPath(backupPath);
 
-  if (!fs.existsSync(backupPath)) {
-    console.error(`[X] Backup not found: ${backupPath}`);
+  if (!managedBackupPath) {
+    console.error(`[X] Invalid backup path: ${backupPath}`);
     return false;
   }
 
@@ -356,9 +417,9 @@ export async function rollback(backupPath: string): Promise<boolean> {
     }
 
     // Restore files from backup
-    const files = fs.readdirSync(backupPath);
+    const files = fs.readdirSync(managedBackupPath);
     for (const file of files) {
-      fs.copyFileSync(path.join(backupPath, file), path.join(ccsDir, file));
+      fs.copyFileSync(path.join(managedBackupPath, file), path.join(ccsDir, file));
     }
 
     return true;

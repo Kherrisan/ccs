@@ -28,6 +28,7 @@ import { useDeleteVariant } from '@/hooks/use-cliproxy';
 import { CliproxyEditDialog } from './cliproxy-edit-dialog';
 import type { Variant } from '@/lib/api-client';
 import { getProviderDisplayName } from '@/lib/provider-config';
+import { useTranslation } from 'react-i18next';
 
 interface CliproxyTableProps {
   data: Variant[];
@@ -36,30 +37,35 @@ interface CliproxyTableProps {
 export function CliproxyTable({ data }: CliproxyTableProps) {
   const deleteMutation = useDeleteVariant();
   const [editingVariant, setEditingVariant] = useState<Variant | null>(null);
+  const { t } = useTranslation();
 
   const columns: ColumnDef<Variant>[] = [
     {
       accessorKey: 'name',
-      header: 'Name',
+      header: t('cliproxyTable.name'),
       cell: ({ row }) => <span className="font-medium">{row.original.name}</span>,
     },
     {
       accessorKey: 'provider',
-      header: 'Provider',
+      header: t('cliproxyTable.provider'),
       cell: ({ row }) => {
         if (row.original.type === 'composite') {
-          return <Badge variant="secondary">composite</Badge>;
+          return <Badge variant="secondary">{t('providerEditor.composite')}</Badge>;
         }
         return getProviderDisplayName(row.original.provider);
       },
     },
     {
       accessorKey: 'account',
-      header: 'Account',
+      header: t('cliproxyTable.account'),
       cell: ({ row }) => {
         const account = row.original.account;
         if (!account) {
-          return <span className="text-muted-foreground text-xs italic">default</span>;
+          return (
+            <span className="text-muted-foreground text-xs italic">
+              {t('providerEditor.defaultLabel')}
+            </span>
+          );
         }
         return (
           <Badge variant="secondary" className="text-xs font-normal">
@@ -89,7 +95,7 @@ export function CliproxyTable({ data }: CliproxyTableProps) {
     },
     {
       id: 'actions',
-      header: 'Actions',
+      header: t('cliproxyTable.actions'),
       cell: ({ row }) => (
         <div className="flex justify-end">
           <DropdownMenu>
@@ -102,6 +108,7 @@ export function CliproxyTable({ data }: CliproxyTableProps) {
             <DropdownMenuContent align="end" className="bg-white dark:bg-zinc-950">
               <DropdownMenuItem onClick={() => setEditingVariant(row.original)}>
                 <Pencil className="w-4 h-4 mr-2" />
+                {/* TODO i18n: missing key for "Edit" */}
                 Edit
               </DropdownMenuItem>
               <DropdownMenuItem
@@ -109,6 +116,7 @@ export function CliproxyTable({ data }: CliproxyTableProps) {
                 onClick={() => deleteMutation.mutate(row.original.name)}
               >
                 <Trash2 className="w-4 h-4 mr-2" />
+                {/* TODO i18n: missing key for "Delete" */}
                 Delete
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -128,7 +136,7 @@ export function CliproxyTable({ data }: CliproxyTableProps) {
   if (data.length === 0) {
     return (
       <div className="text-center py-12 border rounded-lg bg-muted/5 border-dashed">
-        <div className="text-muted-foreground text-sm">No CLIProxy variants found.</div>
+        <div className="text-muted-foreground text-sm">{t('cliproxyHeader.noVariants')}</div>
         <div className="text-xs text-muted-foreground mt-1">
           Create one to use OAuth-based providers with specific account configurations.
         </div>

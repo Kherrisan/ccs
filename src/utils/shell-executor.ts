@@ -4,11 +4,20 @@
  * Cross-platform shell execution utilities for CCS.
  */
 
-import { spawn, spawnSync, ChildProcess } from 'child_process';
+import { spawn, spawnSync, ChildProcess, type SpawnOptions } from 'child_process';
+import * as path from 'path';
 import { ErrorManager } from './error-manager';
 import { getWebSearchHookEnv } from './websearch-manager';
 import { wireChildProcessSignals } from './signal-forwarder';
-import { loadOrCreateUnifiedConfig } from '../config/unified-config-loader';
+import {
+  isClaudeSubcommandInvocation,
+  stripClaudeCodeFeatureBlockingEnv,
+  stripClaudeSubcommandSessionArgs,
+  stripSubcommandBlockingEnv,
+} from './claude-subcommand-detector';
+
+import SharedManager from '../management/shared-manager';
+import { loadOrCreateUnifiedConfig } from '../config/config-loader-facade';
 
 /**
  * Strip ANTHROPIC_* env vars from an environment object.
@@ -19,6 +28,106 @@ export function stripAnthropicEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const result: NodeJS.ProcessEnv = {};
   for (const key of Object.keys(env)) {
     if (!key.startsWith('ANTHROPIC_')) {
+      result[key] = env[key];
+    }
+  }
+  return result;
+}
+
+const ANTHROPIC_ROUTING_ENV_KEYS = [
+  'ANTHROPIC_BASE_URL',
+  'ANTHROPIC_AUTH_TOKEN',
+  'ANTHROPIC_API_KEY',
+];
+const ANTHROPIC_ROUTING_ENV_KEY_SET = new Set(ANTHROPIC_ROUTING_ENV_KEYS);
+const ANTHROPIC_MODEL_ENV_KEYS = [
+  'ANTHROPIC_MODEL',
+  'ANTHROPIC_DEFAULT_OPUS_MODEL',
+  'ANTHROPIC_DEFAULT_SONNET_MODEL',
+  'ANTHROPIC_DEFAULT_HAIKU_MODEL',
+  'ANTHROPIC_SMALL_FAST_MODEL',
+];
+const TMUX_SYNC_ENV_KEYS = [
+  'CLAUDE_CONFIG_DIR',
+  'CCS_PROFILE_TYPE',
+  'CCS_WEBSEARCH_SKIP',
+  'CCS_STRIP_INHERITED_ANTHROPIC_ENV',
+  'CLAUDE_CODE_MAX_OUTPUT_TOKENS',
+  ...ANTHROPIC_MODEL_ENV_KEYS,
+  ...ANTHROPIC_ROUTING_ENV_KEYS,
+];
+const DEFAULT_WINDOWS_CMD_SHELL = 'C:\\Windows\\System32\\cmd.exe';
+
+/**
+ * Strip inherited Anthropic routing/auth env while preserving model intent.
+ * Used for nested settings-profile Claude launches where `--settings` already
+ * defines the provider transport and the parent process should only lend model
+ * defaults or effort hints.
+ *
+ * `preserveFrom`: if provided, routing keys present in this source survive the
+ * strip (with their values from `preserveFrom`). Settings-type profiles use
+ * this to keep routing/auth supplied by their own `settings.env` while
+ * dropping any routing leaked from the parent shell or `global.env`.
+ */
+export function stripAnthropicRoutingEnv(
+  env: NodeJS.ProcessEnv,
+  preserveFrom?: NodeJS.ProcessEnv
+): NodeJS.ProcessEnv {
+  const result: NodeJS.ProcessEnv = {};
+  for (const key of Object.keys(env)) {
+    if (!ANTHROPIC_ROUTING_ENV_KEY_SET.has(key.toUpperCase())) {
+      result[key] = env[key];
+    }
+  }
+  if (preserveFrom) {
+    for (const key of ANTHROPIC_ROUTING_ENV_KEYS) {
+      if (
+        Object.prototype.hasOwnProperty.call(preserveFrom, key) &&
+        preserveFrom[key] !== undefined
+      ) {
+        result[key] = preserveFrom[key];
+      }
+    }
+  }
+  return result;
+}
+
+function syncTmuxNestedSessionEnv(env: NodeJS.ProcessEnv, profileType: string | undefined): void {
+  if (!process.env.TMUX) {
+    return;
+  }
+
+  const nestedSessionEnv =
+    profileType === 'account' || profileType === 'default'
+      ? stripAnthropicEnv(env)
+      : profileType === 'settings'
+        ? stripAnthropicRoutingEnv(env)
+        : env;
+
+  for (const key of TMUX_SYNC_ENV_KEYS) {
+    try {
+      const value = nestedSessionEnv[key];
+      if (value !== undefined) {
+        spawnSync('tmux', ['setenv', key, value], { stdio: 'ignore' });
+      } else {
+        spawnSync('tmux', ['setenv', '-u', key], { stdio: 'ignore' });
+      }
+    } catch {
+      // tmux setenv can fail if not in a tmux session; safe to ignore
+    }
+  }
+}
+
+/**
+ * Strip inherited browser attach/runtime env vars from a process environment.
+ *
+ * Browser capability is opt-in and launch-scoped. Stale CCS_BROWSER_* values
+ * from the parent process must never bleed into a browser-off child launch.
+ */
+export function stripBrowserEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const result: NodeJS.ProcessEnv = {};
+  for (const key of Object.keys(env)) {
+    if (!key.toUpperCase().startsWith('CCS_BROWSER_')) {
       result[key] = env[key];
     }
   }
@@ -37,6 +146,25 @@ export function stripClaudeCodeEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
     if (key.toUpperCase() !== 'CLAUDECODE') {
       result[key] = env[key];
     }
+  }
+  return result;
+}
+
+/**
+ * Strip Codex session-scoped env vars before launching a nested Codex process.
+ *
+ * Keep real user config such as CODEX_HOME intact. Only remove the known
+ * session/runtime metadata exported by the current Codex host process.
+ */
+export function stripCodexSessionEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const sessionKeys = new Set(['CODEX_CI', 'CODEX_MANAGED_BY_BUN', 'CODEX_THREAD_ID']);
+  const result: NodeJS.ProcessEnv = {};
+  for (const key of Object.keys(env)) {
+    const upperKey = key.toUpperCase();
+    if (sessionKeys.has(upperKey)) {
+      continue;
+    }
+    result[key] = env[key];
   }
   return result;
 }
@@ -88,12 +216,48 @@ export function escapeShellArg(arg: string): string {
 }
 
 /**
+ * Return the shell that matches escapeShellArg() quoting semantics.
+ *
+ * On Windows, use an absolute, trusted system cmd.exe path instead of a bare
+ * executable name so wrapper launches cannot be hijacked through the current
+ * directory or PATH. ComSpec is accepted only when it resolves to that same
+ * system shell.
+ */
+export function getWindowsEscapedCommandShell(): SpawnOptions['shell'] {
+  if (process.platform !== 'win32') {
+    return true;
+  }
+
+  const systemRoot = [process.env.SystemRoot, process.env.SYSTEMROOT, process.env.windir].find(
+    (candidate): candidate is string => Boolean(candidate && path.win32.isAbsolute(candidate))
+  );
+  const trustedSystemCmd = systemRoot
+    ? path.win32.normalize(path.win32.join(systemRoot, 'System32', 'cmd.exe'))
+    : DEFAULT_WINDOWS_CMD_SHELL;
+  const trustedSystemCmdLower = trustedSystemCmd.toLowerCase();
+
+  for (const candidate of [process.env.ComSpec, process.env.COMSPEC]) {
+    if (!candidate || !path.win32.isAbsolute(candidate)) {
+      continue;
+    }
+
+    const normalizedCandidate = path.win32.normalize(candidate);
+    if (normalizedCandidate.toLowerCase() === trustedSystemCmdLower) {
+      return normalizedCandidate;
+    }
+  }
+
+  return trustedSystemCmd;
+}
+
+/**
  * Execute Claude CLI with unified spawn logic
  */
 export function execClaude(
   claudeCli: string,
   args: string[],
-  envVars: NodeJS.ProcessEnv | null = null
+  envVars: NodeJS.ProcessEnv | null = null,
+  onExitCleanup?: () => void
 ): void {
   const isWindows = process.platform === 'win32';
   const isPowerShellScript = isWindows && /\.ps1$/i.test(claudeCli);
@@ -103,45 +267,62 @@ export function execClaude(
   const webSearchEnv = getWebSearchHookEnv();
   const claudeLaunchEnv = getClaudeLaunchEnvOverrides();
 
-  // For account/default profiles, strip ANTHROPIC_* from parent env to prevent
-  // stale proxy config (e.g., from prior CLIProxy sessions) from interfering
-  // with native Claude API routing. Settings-based profiles explicitly inject
-  // their own ANTHROPIC_* values, so they don't need this protection.
+  // Strip inherited ANTHROPIC_* when the launch should not reuse parent routing.
+  // Account/default profiles need full isolation from prior proxy sessions.
+  // Settings profiles can selectively strip only routing/auth when `--settings`
+  // already carries the provider source of truth but the parent model intent
+  // should still flow into nested Team/subagent launches.
   const profileType = envVars?.CCS_PROFILE_TYPE;
-  const baseEnv =
-    profileType === 'account' || profileType === 'default'
-      ? stripAnthropicEnv(process.env)
+  const stripInheritedAnthropicEnv = profileType === 'account' || profileType === 'default';
+  const stripInheritedAnthropicRoutingEnv = envVars?.CCS_STRIP_INHERITED_ANTHROPIC_ENV === '1';
+  const inheritedEnv = stripInheritedAnthropicEnv
+    ? stripAnthropicEnv(process.env)
+    : stripInheritedAnthropicRoutingEnv
+      ? stripAnthropicRoutingEnv(process.env)
       : process.env;
+  const baseEnv = stripBrowserEnv(inheritedEnv);
 
   // Prepare environment (merge with base env if envVars provided)
   const mergedEnv = envVars
     ? { ...baseEnv, ...claudeLaunchEnv, ...envVars, ...webSearchEnv }
     : { ...baseEnv, ...claudeLaunchEnv, ...webSearchEnv };
+  const effectiveMergedEnv = stripInheritedAnthropicRoutingEnv
+    ? stripAnthropicRoutingEnv(mergedEnv, envVars ?? undefined)
+    : mergedEnv;
+
+  const effectiveArgs = isClaudeSubcommandInvocation(args)
+    ? stripClaudeSubcommandSessionArgs(args)
+    : args;
 
   // Strip Claude Code nested session guard env var to allow CCS delegation
   // (Claude Code v2.1.39+ sets CLAUDECODE to detect nested sessions)
-  const env = stripClaudeCodeEnv(mergedEnv);
+  let env = stripClaudeCodeFeatureBlockingEnv(stripClaudeCodeEnv(effectiveMergedEnv));
 
-  // propagate key env vars to tmux session so agent team teammates
-  // (spawned via tmux split-window) inherit the correct config dir
-  if (process.env.TMUX && envVars) {
-    const tmuxPropagateVars = ['CLAUDE_CONFIG_DIR', 'CCS_PROFILE_TYPE', 'CCS_WEBSEARCH_SKIP'];
-    for (const key of tmuxPropagateVars) {
-      if (envVars[key]) {
-        try {
-          spawnSync('tmux', ['setenv', key, envVars[key] ?? ''], { stdio: 'ignore' });
-        } catch {
-          // tmux setenv can fail if not in a tmux session; safe to ignore
-        }
-      }
+  // For Claude subcommand invocations (`agents`, `mcp`, `doctor`, ...) strip
+  // telemetry-disable env vars that cause upstream Claude Code to fall back
+  // to non-interactive list mode instead of opening the subcommand TUI.
+  // Issue #1218.
+  if (isClaudeSubcommandInvocation(effectiveArgs)) {
+    env = stripSubcommandBlockingEnv(env);
+  }
+
+  if (profileType !== 'account') {
+    try {
+      new SharedManager().normalizeSharedPluginMetadataPathsLocked(env.CLAUDE_CONFIG_DIR);
+    } catch {
+      // Best-effort normalization should never block Claude launch.
     }
   }
+
+  // Keep tmux teammate panes aligned with the nested-safe Claude runtime env
+  // rather than the tmux server's original shell environment.
+  syncTmuxNestedSessionEnv(env, profileType);
 
   let child: ChildProcess;
   if (isPowerShellScript) {
     child = spawn(
       'powershell.exe',
-      ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', claudeCli, ...args],
+      ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', claudeCli, ...effectiveArgs],
       {
         stdio: 'inherit',
         windowsHide: true,
@@ -150,21 +331,32 @@ export function execClaude(
     );
   } else if (needsShell) {
     // When shell needed: concatenate into string to avoid DEP0190 warning
-    const cmdString = [claudeCli, ...args].map(escapeShellArg).join(' ');
+    const cmdString = [claudeCli, ...effectiveArgs].map(escapeShellArg).join(' ');
     child = spawn(cmdString, {
       stdio: 'inherit',
       windowsHide: true,
-      shell: true,
+      shell: getWindowsEscapedCommandShell(),
       env,
     });
   } else {
     // When no shell needed: use array form (faster, no shell overhead)
-    child = spawn(claudeCli, args, {
+    child = spawn(claudeCli, effectiveArgs, {
       stdio: 'inherit',
       windowsHide: true,
       env,
     });
   }
+
+  let cleanedUp = false;
+  const runExitCleanup = (): void => {
+    if (cleanedUp) {
+      return;
+    }
+    cleanedUp = true;
+    onExitCleanup?.();
+  };
+  child.once('exit', runExitCleanup);
+  child.once('error', runExitCleanup);
 
   wireChildProcessSignals(child, async (err: NodeJS.ErrnoException) => {
     if (err.code === 'EACCES') {

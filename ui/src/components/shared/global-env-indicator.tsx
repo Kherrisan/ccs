@@ -9,6 +9,7 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Settings2, ChevronDown, ChevronUp, ExternalLink, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useTranslation } from 'react-i18next';
 
 interface GlobalEnvConfig {
   enabled: boolean;
@@ -21,6 +22,7 @@ interface GlobalEnvIndicatorProps {
 }
 
 export function GlobalEnvIndicator({ profileEnv = {} }: GlobalEnvIndicatorProps) {
+  const { t } = useTranslation();
   const [config, setConfig] = useState<GlobalEnvConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(false);
@@ -64,11 +66,10 @@ export function GlobalEnvIndicator({ profileEnv = {} }: GlobalEnvIndicatorProps)
       >
         <Info className="w-4 h-4 text-blue-500" />
         <span className="text-xs text-muted-foreground flex-1 text-left">
-          <span className="font-medium text-foreground">{injectedKeys.length}</span> global env var
-          {injectedKeys.length !== 1 ? 's' : ''} will be injected at runtime
+          {t('globalEnvIndicator.injectedCount', { count: injectedKeys.length })}
           {overriddenKeys.length > 0 && (
             <span className="text-amber-600 dark:text-amber-400 ml-1">
-              ({overriddenKeys.length} overridden by profile)
+              {t('globalEnvIndicator.overriddenCount', { count: overriddenKeys.length })}
             </span>
           )}
         </span>
@@ -102,7 +103,9 @@ export function GlobalEnvIndicator({ profileEnv = {} }: GlobalEnvIndicatorProps)
           {/* Overridden vars (profile takes precedence) */}
           {overriddenKeys.length > 0 && (
             <div className="space-y-1">
-              <p className="text-xs text-muted-foreground">Skipped (profile already defines):</p>
+              <p className="text-xs text-muted-foreground">
+                {t('globalEnvIndicator.skippedLabel')}
+              </p>
               {overriddenKeys.map((key) => (
                 <div
                   key={key}
@@ -120,7 +123,7 @@ export function GlobalEnvIndicator({ profileEnv = {} }: GlobalEnvIndicatorProps)
             <Button variant="ghost" size="sm" asChild className="h-7 text-xs gap-1.5 -ml-2">
               <Link to="/settings?tab=globalenv">
                 <Settings2 className="w-3.5 h-3.5" />
-                Configure in Settings
+                {t('globalEnvIndicator.configureInSettings')}
                 <ExternalLink className="w-3 h-3 opacity-50" />
               </Link>
             </Button>

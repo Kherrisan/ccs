@@ -1,16 +1,16 @@
 # CCS Product Development Requirements (PDR)
 
-Last Updated: 2026-02-04
+Last Updated: 2026-05-07
 
 ## Product Overview
 
 **Product Name**: CCS (Claude Code Switch)
 
-**Tagline**: The universal AI profile manager for Claude Code
+**Tagline**: The multi-provider profile and runtime manager for Claude Code and compatible CLIs
 
-**Description**: CLI wrapper enabling seamless switching between multiple Claude accounts and alternative AI providers (GLM, Gemini, Codex, OpenRouter, Qwen, Kimi, DeepSeek) with a React-based dashboard for configuration management. Supports both local and remote CLIProxyAPI instances with hybrid quota management.
+**Description**: Multi-provider CLI/runtime manager enabling seamless switching between multiple Claude accounts, OAuth/API providers, and alternate targets such as Claude Code, Factory Droid, and Codex CLI. Includes a React-based dashboard for configuration management, plus support for local and remote CLIProxyAPI instances, hybrid quota management, and official Claude channel runtime setup for Telegram, Discord, and iMessage.
 
-**Current Version**: v7.34.x (Image Analysis Hook + Performance Improvements)
+**Current Version**: v7.34.x+ (First-class ImageAnalysis MCP tooling, WebSearch MCP, performance improvements)
 
 ---
 
@@ -31,11 +31,15 @@ Developers using Claude Code face these challenges:
 CCS provides:
 
 1. **Multi-Account Claude**: Isolated instances via `CLAUDE_CONFIG_DIR`
-2. **OAuth Providers**: Zero-config Gemini, Codex, Antigravity, Copilot, Kiro (ghcp) integration
-3. **API Profiles**: GLM, Kimi, OpenRouter, any Anthropic-compatible API
-4. **Visual Dashboard**: React SPA for configuration management
-5. **Automatic WebSearch**: MCP fallback for third-party providers
-6. **Usage Analytics**: Token tracking, cost analysis, model breakdown
+2. **OAuth Providers**: Zero-config Gemini, Codex, Antigravity, Kiro, and other active OAuth integrations, with deprecated Copilot compatibility for existing setups
+3. **AI Providers**: Dedicated CLIProxy dashboard for Gemini, Codex, Claude, Vertex, and OpenAI-compatible API-key families
+4. **API Profiles**: GLM, Kimi, OpenRouter, any Anthropic-compatible API
+5. **Visual Dashboard**: React SPA for configuration management
+6. **Automatic WebSearch**: First-class local WebSearch tool with deterministic provider chain for third-party providers
+7. **Automatic Image Analysis**: First-class local ImageAnalysis tool with direct provider routing for third-party profiles
+8. **Usage Analytics**: Token tracking, cost analysis, model breakdown
+9. **Official Claude Channels**: Runtime auto-enable plus dashboard token/config flow for Telegram, Discord, and macOS-only iMessage
+10. **Routing Strategy Guidance**: First-class `round-robin` vs `fill-first` controls in CLI and dashboard, with explicit opt-in changes and no account-based guessing
 
 ---
 
@@ -64,8 +68,8 @@ CCS provides:
 - Share commands, skills, agents across accounts
 
 ### FR-003: OAuth Provider Integration
-- Support Gemini, Codex, Antigravity, Copilot, Kiro (ghcp) OAuth flows
-- Browser-based authentication (Authorization Code flow for most, Device Code for ghcp)
+- Support Gemini, Codex, Antigravity, Kiro, and deprecated Copilot compatibility OAuth flows
+- Browser-based authentication (Authorization Code flow for most, Device Code for ghcp compatibility)
 - Token caching and refresh
 
 ### FR-004: API Profile Management
@@ -73,6 +77,11 @@ CCS provides:
 - Support Anthropic-compatible APIs
 - Model mapping and configuration
 - OpenRouter integration with 300+ models
+
+### FR-004A: CLIProxy AI Provider Management
+- Configure CLIProxy-managed Gemini, Codex, Claude, Vertex, and OpenAI-compatible API-key entries
+- Keep provider authoring separate from CCS API Profile creation
+- Support local config editing and remote CLIProxy management parity where available
 
 ### FR-005: Dashboard UI
 - Visual profile management
@@ -86,9 +95,20 @@ CCS provides:
 - Validate symlinks and permissions
 
 ### FR-007: WebSearch Fallback
-- Auto-configure MCP web search for third-party profiles
-- Support Gemini CLI, OpenCode, Grok providers
+- Expose a CCS-managed local WebSearch tool for third-party profiles that cannot reach Anthropic's native tool
+- Suppress native `WebSearch` on third-party launches and steer Claude toward the CCS-owned path when it is available
+- Support Exa, Tavily, Brave, and DuckDuckGo real search backends
+- Keep Gemini CLI, OpenCode, and Grok as optional legacy fallback
 - Graceful fallback chain
+
+### FR-007A: First-Class Image Analysis
+- Expose a CCS-managed local `ImageAnalysis` MCP tool for third-party profiles that need provider-backed vision
+- Resolve the provider route before launch and send requests directly to `/api/provider/<backend>/v1/messages`
+- Use editable prompt templates for `default`, `screenshot`, and `document` analysis modes
+- Suppress the old CCS-managed `Read` hook during healthy MCP launches so it cannot compete with the primary path
+- Keep the old `Read` hook as compatibility fallback only when MCP provisioning fails but provider-backed analysis is still viable
+- Auto-heal stale CCS-managed image hooks and missing isolated MCP sync through launch-time cleanup, dashboard provisioning, and `ccs doctor --fix`
+- Fall back to native `Read` without failing the whole launch when managed runtime, auth, or proxy readiness is unavailable
 
 ### FR-008: Remote CLIProxy Support
 - Connect to remote CLIProxyAPI instances
@@ -101,10 +121,15 @@ CCS provides:
 ### FR-009: Quota Management (v7.14)
 - Pause/resume individual accounts via `ccs cliproxy pause/resume <account>`
 - Check quota status via `ccs cliproxy status [account]`
+- Inspect the current proxy-wide routing strategy via `ccs cliproxy routing`
+- Explicitly switch `round-robin` vs `fill-first` from CLI or dashboard
+- Keep `round-robin` as the default until the user explicitly changes it
+- Never infer routing strategy from account count, tier mix, or paused/default account state
 - Auto-failover when account exhausted
-- Tier detection: free/paid/unknown
+- Tier detection: free/pro/ultra/unknown
+- Distinguish entitlement failures from temporary capacity exhaustion
 - Pre-flight quota checks before session start
-- Dashboard UI with pause/resume toggles and tier badges
+- Dashboard UI with pause/resume toggles, tier badges, and quota-detail guidance
 
 ### FR-010: Docker Deployment
 - Multi-stage Dockerfile with bun 1.2.21 and node:20-bookworm-slim
@@ -121,6 +146,16 @@ CCS provides:
 - Auto-detect shell (bash/zsh, fish, PowerShell) from $SHELL
 - Security: single-quoted output, key sanitization, shell-specific escaping
 - Cross-platform compatibility (macOS, Linux, Windows)
+
+### FR-012: Official Claude Channels
+- Support Telegram, Discord, and iMessage selection via `ccs config channels` and the dashboard
+- Auto-inject `--channels` only for native Claude `default` and `account` sessions
+- Store Telegram/Discord bot tokens in Claude's own `~/.claude/channels/<channel>/.env` state or the official `*_STATE_DIR` override path when one is configured
+- Treat iMessage as macOS-only, tokenless, and dependent on Claude-side install plus OS permissions
+- Require Bun, Claude Code v2.1.80+, and verified `claude.ai` auth before runtime auto-enable
+- Keep `--dangerously-skip-permissions` optional and never add it when the user already made an explicit permission choice
+- Surface platform/auth/version/setup blockers clearly in both CLI and dashboard flows
+- Preserve dashboard token drafts when save/refresh fails, and let already-selected unsupported iMessage entries be turned off without allowing re-enable on unsupported platforms
 
 ---
 
@@ -163,13 +198,15 @@ CCS provides:
 
 ### TR-002: Optional Dependencies
 - CLIProxyAPI binary (auto-managed)
-- Gemini CLI for WebSearch
-- Additional MCP servers
+- Exa/Tavily/Brave API keys for higher-quality WebSearch
+- Gemini CLI for legacy WebSearch fallback
+- Bun plus Claude Code v2.1.80+ with `claude.ai` auth for Official Channels auto-enable
 
 ### TR-003: Configuration
 - YAML-based config (`~/.ccs/config.yaml`)
 - JSON settings per profile
 - Environment variable overrides
+- Official channel bot tokens stored in Claude-managed `~/.claude/channels/<channel>/.env`
 
 ---
 
@@ -236,14 +273,14 @@ CCS provides:
 
 ### v7.2 Release (Complete)
 - [x] Kiro (AWS) OAuth provider support via CLIProxyAPIPlus
-- [x] GitHub Copilot (ghcp) OAuth provider via Device Code flow
+- [x] GitHub Copilot (ghcp) OAuth provider via Device Code flow (deprecated compatibility)
 - [x] Authorization Code flow for Kiro (port 9876)
 - [x] Device Code flow for ghcp (no local port needed)
 
 ### v7.14 Release (Complete)
 - [x] Hybrid quota management with auto-failover
 - [x] `ccs cliproxy pause/resume/status` commands
-- [x] API tier detection (free/paid/unknown)
+- [x] API tier detection (free/pro/ultra/unknown)
 - [x] Dashboard pause/resume toggles and tier badges
 - [x] Pre-flight quota checks before session start
 
@@ -256,10 +293,11 @@ CCS provides:
 - [x] Entrypoint with privilege dropping
 
 ### v7.34 Release (Complete)
-- [x] Image Analysis Hook for vision model proxying
-- [x] Auto-injection for agy, gemini, codex, cliproxy profiles
-- [x] Skip hook for Claude Sub accounts (native vision)
-- [x] CLIProxy fallback with deprecated block-image-read
+- [x] First-class `ImageAnalysis` MCP tool for third-party launches
+- [x] Direct provider-scoped routing for image analysis requests
+- [x] Prompt template selection for default / screenshot / document flows
+- [x] Hook fallback retained only for compatibility
+- [x] Non-fatal native `Read` fallback when managed runtime is unavailable
 - [x] `ccs config image-analysis` CLI command
 - [x] Doctor integration for hook validation
 - [x] 791-line E2E test suite for image analysis
@@ -296,8 +334,8 @@ CCS provides:
 ### External Services
 - Anthropic Claude API
 - Google Gemini API
-- GitHub Codex/Copilot API
-- GitHub Copilot (ghcp - Device Code OAuth)
+- GitHub Codex API
+- GitHub Copilot (ghcp - deprecated Device Code OAuth compatibility)
 - AWS Kiro (Authorization Code OAuth)
 - Z.AI GLM API
 - OpenRouter API
@@ -332,5 +370,5 @@ CCS provides:
 
 - [Codebase Summary](./codebase-summary.md) - Technical structure
 - [Code Standards](./code-standards.md) - Development conventions
-- [System Architecture](./system-architecture.md) - Architecture diagrams
+- [System Architecture](./system-architecture/index.md) - Architecture diagrams
 - [Project Roadmap](./project-roadmap.md) - Development phases and GitHub issues

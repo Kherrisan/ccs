@@ -8,7 +8,7 @@
 import { Router, Request, Response } from 'express';
 import ProfileRegistry from '../../auth/profile-registry';
 import InstanceManager from '../../management/instance-manager';
-import { isUnifiedMode } from '../../config/unified-config-loader';
+
 import {
   getAllAccountsSummary,
   setDefaultAccount as setCliproxyDefault,
@@ -17,7 +17,8 @@ import {
   bulkPauseAccounts,
   bulkResumeAccounts,
   soloAccount,
-} from '../../cliproxy/account-manager';
+} from '../../cliproxy/accounts/account-manager';
+import { formatAccountDisplayName } from '../../cliproxy/accounts/email-account-identity';
 import { isCLIProxyProvider } from '../../cliproxy/provider-capabilities';
 import {
   DEFAULT_ACCOUNT_CONTINUITY_MODE,
@@ -26,26 +27,52 @@ import {
   resolveAccountContextPolicy,
 } from '../../auth/account-context';
 import {
+  isSharedResourceMode,
+  resolveSharedResourcePolicy,
+  sharedResourceModeToMetadata,
+} from '../../auth/shared-resource-policy';
+import {
   buildCliproxyAccountKey,
   parseCliproxyKey,
   type MergedAccountEntry,
 } from './account-route-helpers';
+import type { AccountConfig } from '../../config/unified-config-types';
+import { resolveConfiguredPlainCcsResumeLane } from '../../auth/resume-lane-diagnostics';
+import { isUnifiedMode, loadOrCreateUnifiedConfig } from '../../config/config-loader-facade';
 
 const router = Router();
-const registry = new ProfileRegistry();
-const instanceMgr = new InstanceManager();
+
+function createProfileRegistry(): ProfileRegistry {
+  return new ProfileRegistry();
+}
+
+function createInstanceManager(): InstanceManager {
+  return new InstanceManager();
+}
+
+function getUnifiedAccountsRaw(): Record<string, AccountConfig> {
+  if (!isUnifiedMode()) {
+    return {};
+  }
+
+  return loadOrCreateUnifiedConfig().accounts;
+}
 
 function hasAuthAccount(name: string): boolean {
+  const registry = createProfileRegistry();
   return registry.hasAccountUnified(name) || registry.hasProfile(name);
 }
 
 /**
  * GET /api/accounts - List accounts from both profiles.json and config.yaml
  */
-router.get('/', (_req: Request, res: Response): void => {
+router.get('/', async (_req: Request, res: Response): Promise<void> => {
   try {
+    const registry = createProfileRegistry();
+
     // Get profiles from both legacy and unified config (same logic as CLI)
     const legacyProfiles = registry.getAllProfiles();
+    const rawUnifiedAccounts = getUnifiedAccountsRaw();
     const unifiedAccounts = registry.getAllAccountsUnified();
 
     // Get CLIProxy OAuth accounts (gemini, codex, agy, etc.)
@@ -57,6 +84,7 @@ router.get('/', (_req: Request, res: Response): void => {
     // Add legacy profiles first
     for (const [name, meta] of Object.entries(legacyProfiles)) {
       const contextPolicy = resolveAccountContextPolicy(meta);
+      const resourcePolicy = resolveSharedResourcePolicy(meta);
       const hasExplicitContextMode =
         meta.context_mode === 'isolated' || meta.context_mode === 'shared';
       const hasExplicitContinuityMode =
@@ -71,16 +99,21 @@ router.get('/', (_req: Request, res: Response): void => {
         context_inferred: !hasExplicitContextMode,
         continuity_inferred:
           contextPolicy.mode === 'shared' ? !hasExplicitContinuityMode : undefined,
+        shared_resource_mode: resourcePolicy.mode,
+        shared_resource_inferred: resourcePolicy.inferred,
+        ...(resourcePolicy.profileLocal ? { bare: true } : {}),
       };
     }
 
     // Override with unified config accounts (takes precedence)
     for (const [name, account] of Object.entries(unifiedAccounts)) {
+      const rawAccount = rawUnifiedAccounts[name];
       const contextPolicy = resolveAccountContextPolicy(account);
+      const resourcePolicy = resolveSharedResourcePolicy(account);
       const hasExplicitContextMode =
-        account.context_mode === 'isolated' || account.context_mode === 'shared';
+        rawAccount?.context_mode === 'isolated' || rawAccount?.context_mode === 'shared';
       const hasExplicitContinuityMode =
-        account.continuity_mode === 'standard' || account.continuity_mode === 'deeper';
+        rawAccount?.continuity_mode === 'standard' || rawAccount?.continuity_mode === 'deeper';
       merged[name] = {
         type: 'account',
         created: account.created,
@@ -91,6 +124,9 @@ router.get('/', (_req: Request, res: Response): void => {
         context_inferred: !hasExplicitContextMode,
         continuity_inferred:
           contextPolicy.mode === 'shared' ? !hasExplicitContinuityMode : undefined,
+        shared_resource_mode: resourcePolicy.mode,
+        shared_resource_inferred: resourcePolicy.inferred,
+        ...(resourcePolicy.profileLocal ? { bare: true } : {}),
       };
     }
 
@@ -102,7 +138,7 @@ router.get('/', (_req: Request, res: Response): void => {
           continue;
         }
         // Use unique ID for key to prevent collisions between accounts with same nickname/email
-        const displayName = acct.nickname || acct.email || acct.id;
+        const displayName = acct.nickname || formatAccountDisplayName(acct);
         const rawKey = `${provider}:${acct.id}`;
         const key = buildCliproxyAccountKey(rawKey, merged);
         if (!key) {
@@ -126,8 +162,19 @@ router.get('/', (_req: Request, res: Response): void => {
 
     // Get default from unified config first, fallback to legacy
     const defaultProfile = registry.getDefaultUnified() ?? registry.getDefaultProfile() ?? null;
+    const plainCcsLane = await resolveConfiguredPlainCcsResumeLane();
 
-    res.json({ accounts, default: defaultProfile });
+    res.json({
+      accounts,
+      default: defaultProfile,
+      plain_ccs_lane: {
+        kind: plainCcsLane.kind,
+        label: plainCcsLane.label,
+        account_name: plainCcsLane.accountName ?? null,
+        profile_name: plainCcsLane.profileName ?? null,
+        project_count: plainCcsLane.projectCount,
+      },
+    });
   } catch (error) {
     res.status(500).json({ error: (error as Error).message });
   }
@@ -138,6 +185,7 @@ router.get('/', (_req: Request, res: Response): void => {
  */
 router.post('/default', (req: Request, res: Response): void => {
   try {
+    const registry = createProfileRegistry();
     const { name } = req.body;
 
     if (!name) {
@@ -175,6 +223,8 @@ router.post('/default', (req: Request, res: Response): void => {
  */
 router.put('/:name/context', async (req: Request, res: Response): Promise<void> => {
   try {
+    const registry = createProfileRegistry();
+    const instanceMgr = createInstanceManager();
     const { name } = req.params;
 
     if (!name) {
@@ -268,7 +318,7 @@ router.put('/:name/context', async (req: Request, res: Response): Promise<void> 
 
     const previousUnified = existsUnified ? registry.getAllAccountsUnified()[name] : undefined;
     const previousLegacy = existsLegacy ? registry.getProfile(name) : undefined;
-    const isBare = previousUnified?.bare === true || previousLegacy?.bare === true;
+    const resourcePolicy = resolveSharedResourcePolicy(previousUnified ?? previousLegacy);
 
     try {
       if (existsUnified) {
@@ -278,13 +328,21 @@ router.put('/:name/context', async (req: Request, res: Response): Promise<void> 
         registry.updateProfile(name, metadata);
       }
 
-      await instanceMgr.ensureInstance(name, policy, { bare: isBare });
+      await instanceMgr.ensureInstance(name, policy, { bare: resourcePolicy.profileLocal });
     } catch (error) {
       if (existsUnified && previousUnified) {
-        registry.updateAccountUnified(name, previousUnified);
+        registry.updateAccountUnified(name, {
+          ...previousUnified,
+          shared_resource_mode: previousUnified.shared_resource_mode,
+          bare: previousUnified.bare,
+        });
       }
       if (existsLegacy && previousLegacy) {
-        registry.updateProfile(name, previousLegacy);
+        registry.updateProfile(name, {
+          ...previousLegacy,
+          shared_resource_mode: previousLegacy.shared_resource_mode,
+          bare: previousLegacy.bare,
+        });
       }
       throw error;
     }
@@ -306,10 +364,94 @@ router.put('/:name/context', async (req: Request, res: Response): Promise<void> 
 });
 
 /**
+ * PUT /api/accounts/:name/shared-resources - Update account shared resource mode
+ */
+router.put('/:name/shared-resources', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const registry = createProfileRegistry();
+    const instanceMgr = createInstanceManager();
+    const { name } = req.params;
+
+    if (!name) {
+      res.status(400).json({ error: 'Missing account name' });
+      return;
+    }
+
+    const cliproxyKey = !hasAuthAccount(name) ? parseCliproxyKey(name) : null;
+    if (cliproxyKey) {
+      res.status(400).json({
+        error: `Shared resource mode is not supported for CLIProxy account: ${name}`,
+      });
+      return;
+    }
+
+    const existsUnified = isUnifiedMode() && registry.hasAccountUnified(name);
+    const existsLegacy = registry.hasProfile(name);
+    if (!existsUnified && !existsLegacy) {
+      res.status(404).json({ error: `Account not found: ${name}` });
+      return;
+    }
+
+    const mode = req.body?.shared_resource_mode;
+    if (!isSharedResourceMode(mode)) {
+      res.status(400).json({
+        error: 'Missing or invalid shared_resource_mode: expected shared|profile-local',
+      });
+      return;
+    }
+
+    const previousUnified = existsUnified ? registry.getAllAccountsUnified()[name] : undefined;
+    const previousLegacy = existsLegacy ? registry.getProfile(name) : undefined;
+    const previousMetadata = previousUnified ?? previousLegacy;
+    const contextPolicy = resolveAccountContextPolicy(previousMetadata);
+    const metadata = sharedResourceModeToMetadata(mode);
+
+    try {
+      if (existsUnified) {
+        registry.updateAccountUnified(name, metadata);
+      }
+      if (existsLegacy) {
+        registry.updateProfile(name, metadata);
+      }
+
+      await instanceMgr.ensureInstance(name, contextPolicy, {
+        bare: mode === 'profile-local',
+      });
+    } catch (error) {
+      if (existsUnified && previousUnified) {
+        registry.updateAccountUnified(name, {
+          ...previousUnified,
+          shared_resource_mode: previousUnified.shared_resource_mode,
+          bare: previousUnified.bare,
+        });
+      }
+      if (existsLegacy && previousLegacy) {
+        registry.updateProfile(name, {
+          ...previousLegacy,
+          shared_resource_mode: previousLegacy.shared_resource_mode,
+          bare: previousLegacy.bare,
+        });
+      }
+      throw error;
+    }
+
+    res.json({
+      name,
+      shared_resource_mode: mode,
+      shared_resource_inferred: false,
+      bare: mode === 'profile-local' ? true : undefined,
+    });
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+/**
  * DELETE /api/accounts/reset-default - Reset to CCS default
  */
 router.delete('/reset-default', (_req: Request, res: Response): void => {
   try {
+    const registry = createProfileRegistry();
     if (isUnifiedMode()) {
       registry.clearDefaultUnified();
     } else {
@@ -324,8 +466,10 @@ router.delete('/reset-default', (_req: Request, res: Response): void => {
 /**
  * DELETE /api/accounts/:name - Delete an account
  */
-router.delete('/:name', (req: Request, res: Response): void => {
+router.delete('/:name', async (req: Request, res: Response): Promise<void> => {
   try {
+    const registry = createProfileRegistry();
+    const instanceMgr = createInstanceManager();
     const { name } = req.params;
 
     if (!name) {
@@ -371,7 +515,7 @@ router.delete('/:name', (req: Request, res: Response): void => {
     }
 
     // Match CLI remove ordering: delete instance first, metadata second.
-    instanceMgr.deleteInstance(name);
+    await instanceMgr.deleteInstance(name);
 
     if (existsUnified) {
       registry.removeAccountUnified(name);

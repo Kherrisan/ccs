@@ -8,7 +8,7 @@ try {
   expandPath = require('../../dist/utils/helpers').expandPath;
 } catch (e) {
   // If helpers module doesn't exist or doesn't export expandPath, create a mock
-  expandPath = function(p) {
+  expandPath = function (p) {
     if (!p || typeof p !== 'string') return p;
     if (p.startsWith('~/')) {
       return path.join(os.homedir(), p.slice(2));
@@ -76,7 +76,10 @@ describe('cross-platform', () => {
   describe('platform-specific behavior', () => {
     it('detects platform correctly', () => {
       const platform = os.platform();
-      assert(['darwin', 'linux', 'win32'].includes(platform), 'Should be running on supported platform');
+      assert(
+        ['darwin', 'linux', 'win32'].includes(platform),
+        'Should be running on supported platform'
+      );
     });
 
     it('handles path separators correctly', () => {
@@ -129,7 +132,54 @@ describe('cross-platform', () => {
 
       assert(packageJson.bin, 'package.json should have bin field');
       assert(packageJson.bin.ccs, 'bin field should specify ccs command');
+      assert(packageJson.bin['ccs-droid'], 'bin field should specify ccs-droid command');
+      assert(packageJson.bin.ccsd, 'bin field should specify ccsd command');
+      assert(packageJson.bin['ccs-codex'], 'bin field should specify ccs-codex command');
+      assert(packageJson.bin.ccsx, 'bin field should specify ccsx command');
+      assert(packageJson.bin.ccsxp, 'bin field should specify ccsxp command');
+      assert.notStrictEqual(
+        packageJson.bin['ccs-droid'],
+        packageJson.bin.ccs,
+        'ccs-droid should use a dedicated runtime entrypoint'
+      );
+      assert.strictEqual(
+        packageJson.bin['ccs-droid'],
+        packageJson.bin.ccsd,
+        'legacy ccsd alias should share the dedicated droid runtime entrypoint'
+      );
+      assert.notStrictEqual(
+        packageJson.bin['ccs-codex'],
+        packageJson.bin.ccs,
+        'ccs-codex should use a dedicated runtime entrypoint'
+      );
+      assert.strictEqual(
+        packageJson.bin['ccs-codex'],
+        packageJson.bin.ccsx,
+        'ccsx should share the dedicated codex runtime entrypoint'
+      );
+      assert.notStrictEqual(
+        packageJson.bin.ccsxp,
+        packageJson.bin.ccsx,
+        'ccsxp should use a dedicated shortcut entrypoint'
+      );
+      assert(
+        fs.existsSync(path.join(__dirname, '..', '..', packageJson.bin['ccs-droid'])),
+        'dedicated droid runtime entrypoint should exist'
+      );
+      assert(
+        fs.existsSync(path.join(__dirname, '..', '..', packageJson.bin['ccs-codex'])),
+        'dedicated codex runtime entrypoint should exist'
+      );
+      assert(
+        fs.existsSync(path.join(__dirname, '..', '..', packageJson.bin.ccsxp)),
+        'dedicated ccsxp shortcut entrypoint should exist'
+      );
       assert(packageJson.scripts, 'package.json should have scripts field');
+      assert.strictEqual(
+        packageJson.scripts.prepack,
+        'bun run build:all',
+        'prepack should rebuild packaged assets before npm pack/publish'
+      );
     });
   });
 });

@@ -12,9 +12,16 @@ import { getDroidBinaryInfo, detectDroidCli, checkDroidVersion } from './droid-d
 import type { ProfileType } from '../types/profile';
 import { upsertCcsModel } from './droid-config-manager';
 import { resolveDroidProvider } from './droid-provider';
-import { escapeShellArg } from '../utils/shell-executor';
+import {
+  escapeShellArg,
+  getWindowsEscapedCommandShell,
+  stripAnthropicEnv,
+} from '../utils/shell-executor';
 import { wireChildProcessSignals } from '../utils/signal-forwarder';
 import { runCleanup } from '../errors';
+import { createLogger } from '../services/logging';
+
+const adapterLogger = createLogger('targets:droid');
 
 export class DroidAdapter implements TargetAdapter {
   readonly type: TargetType = 'droid';
@@ -74,10 +81,11 @@ export class DroidAdapter implements TargetAdapter {
   }
 
   /**
-   * Droid uses config file for credentials — minimal env needed.
+   * Droid uses config file for credentials — keep parent env, but strip stale
+   * ANTHROPIC_* values so prior CCS/CLIProxy sessions do not leak into Droid.
    */
   buildEnv(_creds: TargetCredentials, _profileType: ProfileType): NodeJS.ProcessEnv {
-    return { ...process.env };
+    return { ...stripAnthropicEnv(process.env) };
   }
 
   exec(
@@ -117,6 +125,13 @@ export class DroidAdapter implements TargetAdapter {
     const isPowerShellScript = isWindows && /\.ps1$/i.test(droidPath);
     const needsShell = isWindows && /\.(cmd|bat)$/i.test(droidPath);
 
+    const spawnStartedAt = Date.now();
+    adapterLogger.stage('dispatch', 'target.spawn', 'Spawning Droid CLI child process', {
+      target: 'droid',
+      droidPath,
+      argCount: args.length,
+    });
+
     let child: ChildProcess;
     if (isPowerShellScript) {
       child = spawn(
@@ -133,7 +148,7 @@ export class DroidAdapter implements TargetAdapter {
       child = spawn(cmdString, {
         stdio: 'inherit',
         windowsHide: true,
-        shell: true,
+        shell: getWindowsEscapedCommandShell(),
         env,
       });
     } else {
@@ -143,6 +158,16 @@ export class DroidAdapter implements TargetAdapter {
         env,
       });
     }
+
+    child.on('exit', (code, signal) => {
+      adapterLogger.stage(
+        'respond',
+        'target.exit',
+        'Droid CLI child process exited',
+        { target: 'droid', exitCode: code, signal },
+        { latencyMs: Date.now() - spawnStartedAt }
+      );
+    });
 
     wireChildProcessSignals(child, (err: NodeJS.ErrnoException) => {
       if (err.code === 'EACCES') {

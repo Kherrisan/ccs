@@ -40,6 +40,19 @@ export interface CLIProxyVariantsConfig {
   [profileName: string]: CLIProxyVariantConfig;
 }
 
+export interface OpenAICompatProxyRoutingConfig {
+  default?: string;
+  background?: string;
+  think?: string;
+  longContext?: string;
+  webSearch?: string;
+  longContextThreshold?: number;
+}
+
+export interface OpenAICompatProxyConfig {
+  routing?: OpenAICompatProxyRoutingConfig;
+}
+
 /**
  * Main CCS configuration
  * Located at: ~/.ccs/config.json
@@ -51,6 +64,8 @@ export interface Config {
   profile_targets?: Record<string, TargetType>;
   /** User-defined CLIProxy profile variants (optional) */
   cliproxy?: CLIProxyVariantsConfig;
+  /** OpenAI-compatible local proxy configuration (optional) */
+  proxy?: OpenAICompatProxyConfig;
   /** Legacy continuity inheritance mapping (profile -> source account) */
   continuity_inherit_from_account?: Record<string, string>;
 }
@@ -75,6 +90,10 @@ export interface ModelPreset {
   haiku: string;
 }
 
+export interface CcsImageSettings {
+  native_read?: boolean;
+}
+
 /**
  * Claude CLI settings.json structure
  * Located at: ~/.claude/settings.json or profile-specific
@@ -83,6 +102,8 @@ export interface Settings {
   env?: EnvVars;
   /** Saved model presets for this provider */
   presets?: ModelPreset[];
+  /** CCS-only per-profile Image preferences */
+  ccs_image?: CcsImageSettings;
   [key: string]: unknown; // Allow other settings
 }
 
@@ -100,6 +121,8 @@ export interface ProfileMetadata {
   context_group?: string;
   /** Shared continuity depth when context_mode='shared' */
   continuity_mode?: 'standard' | 'deeper';
+  /** Account-level shared resource behavior for plugins, commands, skills, agents, and settings.json */
+  shared_resource_mode?: 'shared' | 'profile-local';
   /** Bare profile: no shared symlinks (commands, skills, agents, settings.json) */
   bare?: boolean;
 }

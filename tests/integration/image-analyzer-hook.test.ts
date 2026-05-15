@@ -47,20 +47,31 @@ function enqueueResponses(...responses: MockResponse[]): void {
   queuedResponses = responses;
 }
 
-function invokeHook(env: Record<string, string> = {}): Promise<HookResult> {
+function invokeHook(
+  env: Record<string, string> = {},
+  options: { filePath?: string; cwd?: string } = {}
+): Promise<HookResult> {
   return new Promise((resolve, reject) => {
     const child = spawn('node', [HOOK_PATH], {
       env: {
         ...process.env,
+        CCS_IMAGE_ANALYSIS_SKIP: '', // clear any inherited skip flag
+        CCS_IMAGE_ANALYSIS_SKIP_HOOK: '', // clear any inherited MCP-ready bypass
+        CCS_IMAGE_ANALYSIS_MODEL: '', // let each test control explicit model fallback behavior
+        CCS_IMAGE_ANALYSIS_BACKEND_ID: '',
+        CCS_IMAGE_ANALYSIS_RUNTIME_PATH: '',
+        CCS_IMAGE_ANALYSIS_RUNTIME_BASE_URL: '',
         CCS_CLIPROXY_API_KEY: CLIPROXY_API_KEY,
         CCS_CLIPROXY_PORT: String(mockPort),
         CCS_IMAGE_ANALYSIS_ENABLED: '1',
         CCS_PROFILE_TYPE: 'cliproxy',
         CCS_CURRENT_PROVIDER: 'codex',
-        CCS_IMAGE_ANALYSIS_PROVIDER_MODELS: 'codex:gpt-5.1-codex-mini,agy:gemini-2.5-flash',
+        CCS_IMAGE_ANALYSIS_PROVIDER_MODELS:
+          'codex:gpt-5.1-codex-mini,agy:gemini-3-1-flash-preview',
         ...env,
       },
       stdio: ['pipe', 'pipe', 'pipe'],
+      cwd: options.cwd ?? TEST_DIR,
     });
 
     let stdout = '';
@@ -91,7 +102,7 @@ function invokeHook(env: Record<string, string> = {}): Promise<HookResult> {
     child.stdin.end(
       JSON.stringify({
         tool_name: 'Read',
-        tool_input: { file_path: TEST_PNG_PATH },
+        tool_input: { file_path: options.filePath ?? TEST_PNG_PATH },
       })
     );
   });
@@ -191,10 +202,58 @@ describe('image analyzer hook regression coverage', () => {
     expect((requests[0].body as { model: string }).model).toBe('gpt-5.1-codex-mini');
   });
 
+  it('does not analyze files outside the current workspace', async () => {
+    const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ccs-image-hook-outside-'));
+    const outsidePath = path.join(outsideDir, 'sensitive-outside-workspace.png');
+    createTestPng(outsidePath);
+
+    try {
+      const result = await invokeHook({}, { filePath: outsidePath });
+
+      expect(result.code).toBe(0);
+      expect(requests).toHaveLength(0);
+    } finally {
+      fs.rmSync(outsideDir, { recursive: true, force: true });
+    }
+  });
+
+  it.if(process.platform === 'win32')(
+    'analyzes Windows-style relative paths inside the current workspace',
+    async () => {
+      const nestedDir = path.join(TEST_DIR, 'windows-style-fixture-dir');
+      const nestedPath = path.join(nestedDir, 'inside-workspace.png');
+      fs.mkdirSync(nestedDir, { recursive: true });
+      createTestPng(nestedPath);
+
+      const result = await invokeHook({}, { filePath: path.win32.relative(TEST_DIR, nestedPath) });
+
+      expect(result.code).toBe(2);
+      expect(requests).toHaveLength(1);
+    }
+  );
+
+  it('does not analyze workspace symlinks that resolve outside the current workspace', async () => {
+    const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ccs-image-hook-symlink-'));
+    const outsidePath = path.join(outsideDir, 'sensitive-symlink-target.png');
+    const linkPath = path.join(TEST_DIR, 'linked-sensitive.png');
+    createTestPng(outsidePath);
+
+    try {
+      fs.symlinkSync(outsidePath, linkPath);
+      const result = await invokeHook({}, { filePath: linkPath });
+
+      expect(result.code).toBe(0);
+      expect(requests).toHaveLength(0);
+    } finally {
+      fs.rmSync(linkPath, { force: true });
+      fs.rmSync(outsideDir, { recursive: true, force: true });
+    }
+  });
+
   it('skips analysis before contacting CLIProxy when the current provider has no mapped vision model', async () => {
     const result = await invokeHook({
       CCS_CURRENT_PROVIDER: 'unknown-provider',
-      CCS_IMAGE_ANALYSIS_PROVIDER_MODELS: 'agy:gemini-2.5-flash',
+      CCS_IMAGE_ANALYSIS_PROVIDER_MODELS: 'agy:gemini-3-1-flash-preview',
     });
 
     expect(result.code).toBe(0);

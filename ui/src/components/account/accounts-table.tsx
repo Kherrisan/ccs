@@ -14,6 +14,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -24,32 +25,43 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Check, CheckCheck, Pencil, RotateCcw, Trash2 } from 'lucide-react';
+import { Box, Check, CheckCheck, Pencil, RotateCcw, Trash2 } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { useTranslation } from 'react-i18next';
 import { EditAccountContextDialog } from '@/components/account/edit-account-context-dialog';
+import { EditAccountSharedResourcesDialog } from '@/components/account/edit-account-shared-resources-dialog';
 import {
   useSetDefaultAccount,
   useDeleteAccount,
   useResetDefaultAccount,
   useUpdateAccountContext,
 } from '@/hooks/use-accounts';
-import type { Account } from '@/lib/api-client';
+import type { AuthAccountRow, SharedGroupSummary } from '@/lib/account-continuity';
+import type { PlainCcsLane } from '@/lib/api-client';
 
 interface AccountsTableProps {
-  data: Account[];
+  data: AuthAccountRow[];
   defaultAccount: string | null;
+  groupSummaries: SharedGroupSummary[];
+  plainCcsLane: PlainCcsLane | null;
 }
 
-export function AccountsTable({ data, defaultAccount }: AccountsTableProps) {
+export function AccountsTable({
+  data,
+  defaultAccount,
+  groupSummaries,
+  plainCcsLane,
+}: AccountsTableProps) {
   const { t } = useTranslation();
   const setDefaultMutation = useSetDefaultAccount();
   const deleteMutation = useDeleteAccount();
   const resetDefaultMutation = useResetDefaultAccount();
   const updateContextMutation = useUpdateAccountContext();
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
-  const [contextTarget, setContextTarget] = useState<Account | null>(null);
+  const [contextTarget, setContextTarget] = useState<AuthAccountRow | null>(null);
+  const [resourcesTarget, setResourcesTarget] = useState<AuthAccountRow | null>(null);
 
-  const columns: ColumnDef<Account>[] = [
+  const columns: ColumnDef<AuthAccountRow>[] = [
     {
       accessorKey: 'name',
       header: t('accountsTable.name'),
@@ -104,38 +116,91 @@ export function AccountsTable({ data, defaultAccount }: AccountsTableProps) {
         const mode = row.original.context_mode || 'isolated';
         if (mode === 'shared') {
           const group = row.original.context_group || 'default';
-          if (row.original.continuity_mode === 'deeper') {
-            return (
-              <span className="text-muted-foreground">
-                {t('accountsTable.sharedGroupDeeper', { group })}
-              </span>
-            );
-          }
-
-          if (row.original.continuity_inferred) {
-            return (
-              <span className="text-amber-700 dark:text-amber-400">
-                {t('accountsTable.sharedGroupLegacy', { group })}
-              </span>
-            );
-          }
-
+          const isDeeper = row.original.continuity_mode === 'deeper';
           return (
-            <span className="text-muted-foreground">
-              {t('accountsTable.sharedGroupStandard', { group })}
-            </span>
+            <div className="flex flex-col items-start gap-1">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <Badge
+                  variant="outline"
+                  className={`font-mono text-[10px] uppercase px-1.5 py-0 border ${isDeeper ? 'text-indigo-700 border-indigo-300/60 bg-indigo-50/50 dark:text-indigo-300 dark:border-indigo-900/40 dark:bg-indigo-900/20' : 'text-emerald-700 border-emerald-300/60 bg-emerald-50/50 dark:text-emerald-300 dark:border-emerald-900/40 dark:bg-emerald-900/20'}`}
+                >
+                  {isDeeper ? t('accountsTable.badges.deeper') : t('accountsTable.badges.shared')}
+                </Badge>
+                <span className="text-xs font-semibold text-foreground/80">{group}</span>
+              </div>
+              <p className="text-[10px] text-muted-foreground whitespace-nowrap">
+                {row.original.sameGroupPeerCount > 0
+                  ? t('accountsTable.sameGroupPeerCount', {
+                      count: row.original.sameGroupPeerCount,
+                    })
+                  : t('accountsTable.noSameGroupPeer')}
+              </p>
+            </div>
           );
         }
 
         if (row.original.context_inferred) {
           return (
-            <span className="text-amber-700 dark:text-amber-400">
-              {t('accountsTable.isolatedLegacy')}
-            </span>
+            <div className="flex flex-col items-start gap-1">
+              <Badge
+                variant="outline"
+                className="text-amber-700 border-amber-300/60 bg-amber-50/50 dark:text-amber-400 dark:border-amber-900/40 dark:bg-amber-900/20 font-mono text-[10px] uppercase px-1.5 py-0"
+              >
+                {t('accountsTable.badges.legacy')}
+              </Badge>
+              <p className="text-[10px] text-amber-700/80 dark:text-amber-400/80 whitespace-nowrap">
+                {t('accountsTable.legacyReview')}
+              </p>
+            </div>
           );
         }
 
-        return <span className="text-muted-foreground">{t('accountsTable.isolated')}</span>;
+        return (
+          <div className="flex flex-col items-start gap-1.5">
+            <Badge
+              variant="secondary"
+              className="font-mono text-[10px] uppercase px-1.5 py-0 text-muted-foreground bg-muted/60 border-transparent shadow-none"
+            >
+              {t('accountsTable.badges.isolated')}
+            </Badge>
+          </div>
+        );
+      },
+    },
+    {
+      id: 'resources',
+      header: t('accountsTable.sharedResources'),
+      size: 150,
+      cell: ({ row }) => {
+        if (row.original.type === 'cliproxy') {
+          return <span className="text-muted-foreground/50">-</span>;
+        }
+
+        const mode = row.original.shared_resource_mode || 'shared';
+        const isInferred = row.original.shared_resource_inferred;
+
+        return (
+          <div className="flex flex-col items-start gap-1">
+            <Badge
+              variant={mode === 'shared' ? 'outline' : 'secondary'}
+              className={cn(
+                'font-mono text-[10px] uppercase px-1.5 py-0',
+                mode === 'shared'
+                  ? 'text-emerald-700 border-emerald-300/60 bg-emerald-50/50 dark:text-emerald-300 dark:border-emerald-900/40 dark:bg-emerald-900/20'
+                  : 'text-muted-foreground bg-muted/60 border-transparent shadow-none'
+              )}
+            >
+              {mode === 'shared'
+                ? t('accountsTable.resourcesShared')
+                : t('accountsTable.resourcesProfileLocal')}
+            </Badge>
+            {isInferred && (
+              <p className="text-[10px] text-amber-700/80 dark:text-amber-400/80 whitespace-nowrap">
+                {t('accountsTable.legacyReview')}
+              </p>
+            )}
+          </div>
+        );
       },
     },
     {
@@ -165,6 +230,19 @@ export function AccountsTable({ data, defaultAccount }: AccountsTableProps) {
               >
                 <Pencil className="w-3.5 h-3.5 mr-1" />
                 {t('accountsTable.sync')}
+              </Button>
+            )}
+            {!isCliproxy && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 px-2"
+                disabled={isPending}
+                onClick={() => setResourcesTarget(row.original)}
+                title={t('accountsTable.resourcesTitle')}
+              >
+                <Box className="w-3.5 h-3.5 mr-1" />
+                {t('accountsTable.sharedResources')}
               </Button>
             )}
             {!isCliproxy && hasLegacyInference && (
@@ -249,12 +327,13 @@ export function AccountsTable({ data, defaultAccount }: AccountsTableProps) {
                   {headerGroup.headers.map((header) => {
                     const widthClass =
                       {
-                        name: 'w-[200px]',
-                        type: 'w-[100px]',
-                        created: 'w-[150px]',
-                        last_used: 'w-[150px]',
-                        context: 'w-[170px]',
-                        actions: 'w-[290px]',
+                        name: 'w-[180px]',
+                        type: 'w-[80px]',
+                        created: 'w-[120px]',
+                        last_used: 'w-[120px]',
+                        context: 'w-[150px]',
+                        resources: 'w-[120px]',
+                        actions: 'w-[320px]',
                       }[header.id] || 'w-auto';
 
                     return (
@@ -299,7 +378,19 @@ export function AccountsTable({ data, defaultAccount }: AccountsTableProps) {
       </div>
 
       {contextTarget && (
-        <EditAccountContextDialog account={contextTarget} onClose={() => setContextTarget(null)} />
+        <EditAccountContextDialog
+          account={contextTarget}
+          groupSummaries={groupSummaries}
+          plainCcsLane={plainCcsLane}
+          onClose={() => setContextTarget(null)}
+        />
+      )}
+
+      {resourcesTarget && (
+        <EditAccountSharedResourcesDialog
+          account={resourcesTarget}
+          onClose={() => setResourcesTarget(null)}
+        />
       )}
 
       {/* Delete confirmation dialog */}

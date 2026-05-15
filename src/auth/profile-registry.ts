@@ -1,14 +1,20 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { ProfileMetadata } from '../types';
-import {
-  loadOrCreateUnifiedConfig,
-  saveUnifiedConfig,
-  isUnifiedMode,
-} from '../config/unified-config-loader';
+
 import type { AccountConfig } from '../config/unified-config-types';
-import { getCcsDir } from '../utils/config-manager';
+
 import { isValidContextGroupName, normalizeContextGroupName } from './account-context';
+import { createLogger } from '../services/logging';
+import {
+  getCcsDir,
+  isUnifiedMode,
+  loadOrCreateUnifiedConfig,
+  mutateConfig,
+} from '../config/config-loader-facade';
+import { normalizeSharedResourceMetadata, type SharedResourceMode } from './shared-resource-policy';
+
+const logger = createLogger('auth:profile-registry');
 
 /**
  * Profile Registry (Simplified)
@@ -45,6 +51,7 @@ interface CreateMetadata {
   context_mode?: 'isolated' | 'shared';
   context_group?: string;
   continuity_mode?: 'standard' | 'deeper';
+  shared_resource_mode?: SharedResourceMode;
   bare?: boolean;
 }
 
@@ -85,7 +92,7 @@ export class ProfileRegistry {
       normalized.continuity_mode = normalized.continuity_mode === 'deeper' ? 'deeper' : 'standard';
     }
 
-    return normalized;
+    return normalizeSharedResourceMetadata(normalized);
   }
 
   private normalizeUnifiedAccountConfig(account: AccountConfig): AccountConfig {
@@ -105,7 +112,7 @@ export class ProfileRegistry {
       normalized.continuity_mode = normalized.continuity_mode === 'deeper' ? 'deeper' : 'standard';
     }
 
-    return normalized;
+    return normalizeSharedResourceMetadata(normalized);
   }
 
   /**
@@ -174,6 +181,7 @@ export class ProfileRegistry {
       context_mode: metadata.context_mode,
       context_group: metadata.context_group,
       continuity_mode: metadata.continuity_mode,
+      shared_resource_mode: metadata.shared_resource_mode,
       bare: metadata.bare,
     });
 
@@ -182,6 +190,10 @@ export class ProfileRegistry {
     // Default always stays on implicit 'default' profile (uses ~/.claude/)
 
     this._write(data);
+    logger.stage('route', 'auth.profile.created', 'Profile created in registry', {
+      profile: name,
+      profileType: metadata.type || 'account',
+    });
   }
 
   /**
@@ -235,6 +247,9 @@ export class ProfileRegistry {
     }
 
     this._write(data);
+    logger.stage('cleanup', 'auth.profile.deleted', 'Profile deleted from registry', {
+      profile: name,
+    });
   }
 
   /**
@@ -313,74 +328,73 @@ export class ProfileRegistry {
    * Create account in unified config (config.yaml)
    */
   createAccountUnified(name: string, metadata: CreateMetadata = {}): void {
-    const config = loadOrCreateUnifiedConfig();
-    if (config.accounts[name]) {
-      throw new Error(`Account already exists: ${name}`);
-    }
-    config.accounts[name] = this.normalizeUnifiedAccountConfig({
-      created: new Date().toISOString(),
-      last_used: null,
-      context_mode: metadata.context_mode,
-      context_group: metadata.context_group,
-      continuity_mode: metadata.continuity_mode,
-      bare: metadata.bare,
+    mutateConfig((config) => {
+      if (config.accounts[name]) {
+        throw new Error(`Account already exists: ${name}`);
+      }
+      config.accounts[name] = this.normalizeUnifiedAccountConfig({
+        created: new Date().toISOString(),
+        last_used: null,
+        context_mode: metadata.context_mode,
+        context_group: metadata.context_group,
+        continuity_mode: metadata.continuity_mode,
+        shared_resource_mode: metadata.shared_resource_mode,
+        bare: metadata.bare,
+      });
     });
-    saveUnifiedConfig(config);
   }
 
   /**
    * Update account metadata in unified config
    */
   updateAccountUnified(name: string, updates: Partial<AccountConfig>): void {
-    const config = loadOrCreateUnifiedConfig();
-    if (!config.accounts[name]) {
-      throw new Error(`Account not found: ${name}`);
-    }
-    config.accounts[name] = this.normalizeUnifiedAccountConfig({
-      ...config.accounts[name],
-      ...updates,
+    mutateConfig((config) => {
+      if (!config.accounts[name]) {
+        throw new Error(`Account not found: ${name}`);
+      }
+      config.accounts[name] = this.normalizeUnifiedAccountConfig({
+        ...config.accounts[name],
+        ...updates,
+      });
     });
-    saveUnifiedConfig(config);
   }
 
   /**
    * Remove account from unified config
    */
   removeAccountUnified(name: string): void {
-    const config = loadOrCreateUnifiedConfig();
-    if (!config.accounts[name]) {
-      throw new Error(`Account not found: ${name}`);
-    }
-    delete config.accounts[name];
-    // Clear default if it was the deleted account
-    if (config.default === name) {
-      config.default = undefined;
-    }
-    saveUnifiedConfig(config);
+    mutateConfig((config) => {
+      if (!config.accounts[name]) {
+        throw new Error(`Account not found: ${name}`);
+      }
+      delete config.accounts[name];
+      if (config.default === name) {
+        config.default = undefined;
+      }
+    });
   }
 
   /**
    * Set default profile in unified config
    */
   setDefaultUnified(name: string): void {
-    const config = loadOrCreateUnifiedConfig();
-    // Check if exists in accounts, profiles, or cliproxy variants
-    const exists =
-      config.accounts[name] || config.profiles[name] || config.cliproxy?.variants?.[name];
-    if (!exists) {
-      throw new Error(`Profile not found: ${name}`);
-    }
-    config.default = name;
-    saveUnifiedConfig(config);
+    mutateConfig((config) => {
+      const exists =
+        config.accounts[name] || config.profiles[name] || config.cliproxy?.variants?.[name];
+      if (!exists) {
+        throw new Error(`Profile not found: ${name}`);
+      }
+      config.default = name;
+    });
   }
 
   /**
    * Clear default profile in unified config (restore original CCS behavior)
    */
   clearDefaultUnified(): void {
-    const config = loadOrCreateUnifiedConfig();
-    config.default = undefined;
-    saveUnifiedConfig(config);
+    mutateConfig((config) => {
+      config.default = undefined;
+    });
   }
 
   /**
@@ -418,13 +432,13 @@ export class ProfileRegistry {
    * Update account last_used in unified config
    */
   touchAccountUnified(name: string): void {
-    const config = loadOrCreateUnifiedConfig();
-    if (!config.accounts[name]) {
-      throw new Error(`Account not found: ${name}`);
-    }
-    config.accounts[name].last_used = new Date().toISOString();
-    config.accounts[name] = this.normalizeUnifiedAccountConfig(config.accounts[name]);
-    saveUnifiedConfig(config);
+    mutateConfig((config) => {
+      if (!config.accounts[name]) {
+        throw new Error(`Account not found: ${name}`);
+      }
+      config.accounts[name].last_used = new Date().toISOString();
+      config.accounts[name] = this.normalizeUnifiedAccountConfig(config.accounts[name]);
+    });
   }
 
   // ==========================================
@@ -452,6 +466,7 @@ export class ProfileRegistry {
         context_mode: account.context_mode,
         context_group: account.context_group,
         continuity_mode: account.continuity_mode,
+        shared_resource_mode: account.shared_resource_mode,
         bare: account.bare,
       };
     }

@@ -1,14 +1,15 @@
 /**
- * WebSearch Manager - Manages WebSearch hook for CCS
+ * WebSearch Manager - Manages CCS WebSearch runtime
  *
  * WebSearch is a server-side tool executed by Anthropic's API.
  * Third-party providers (gemini, agy, codex, qwen) don't have access.
- * This manager installs a hook that uses CLI tools (Gemini CLI) as fallback.
+ * CCS exposes a first-class local WebSearch tool for those profiles and keeps
+ * the legacy hook runtime only as a compatibility fallback.
  *
- * Simplified Architecture:
- *   - No MCP complexity
- *   - Uses CLI tools (currently Gemini CLI)
- *   - Easy to extend for future CLI tools (opencode, etc.)
+ * Runtime Architecture:
+ *   - User-scope MCP server in ~/.claude.json for third-party profiles
+ *   - Real search providers first (Exa, Tavily, Brave Search, DuckDuckGo)
+ *   - Gemini/OpenCode/Grok retained as optional legacy fallback
  *
  * @module utils/websearch-manager
  */
@@ -45,11 +46,37 @@ export {
   hasWebSearchHook,
   getWebSearchHookConfig,
   installWebSearchHook,
+  removeMigrationMarker,
   uninstallWebSearchHook,
 } from './websearch/hook-installer';
 
 // Re-export hook environment
 export { getWebSearchHookEnv } from './websearch/hook-env';
+
+// Re-export MCP runtime helpers
+export {
+  getWebSearchMcpServerName,
+  getWebSearchMcpServerPath,
+  installWebSearchMcpServer,
+  ensureWebSearchMcpConfig,
+  ensureWebSearchMcp,
+  uninstallWebSearchMcpServer,
+  removeWebSearchMcpConfig,
+  uninstallWebSearchMcp,
+  syncWebSearchMcpToConfigDir,
+  ensureWebSearchMcpOrThrow,
+} from './websearch/mcp-installer';
+
+// Re-export Claude launch arg helpers
+export { appendThirdPartyWebSearchToolArgs } from './websearch/claude-tool-args';
+
+// Re-export trace helpers
+export {
+  appendWebSearchTrace,
+  createWebSearchTraceContext,
+  isWebSearchTraceEnabled,
+  readWebSearchTraceRecords,
+} from './websearch/trace';
 
 // Re-export status and readiness functions
 export {
@@ -60,8 +87,8 @@ export {
   displayWebSearchStatus,
 } from './websearch/status';
 
-// Re-export profile hook injection
-export { ensureProfileHooks, removeMigrationMarker } from './websearch/profile-hook-injector';
+// Re-export profile compatibility hook injection
+export { ensureProfileHooks, ensureProfileHooksOrThrow } from './websearch/profile-hook-injector';
 
 // Import for local use
 import { clearGeminiCliCache, clearGrokCliCache, clearOpenCodeCliCache } from './websearch';
@@ -75,11 +102,4 @@ export function clearAllCliCaches(): void {
   clearOpenCodeCliCache();
 }
 
-// ========== Backward Compatibility Exports ==========
-
-/**
- * @deprecated Use installWebSearchHook instead - MCP is no longer used
- */
-export function ensureMcpWebSearch(): boolean {
-  return false;
-}
+export { ensureWebSearchMcp as ensureMcpWebSearch } from './websearch/mcp-installer';

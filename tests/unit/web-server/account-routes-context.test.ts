@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from 'bun:test';
 import express from 'express';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -164,6 +164,149 @@ describe('web-server account-routes context normalization', () => {
     expect(work?.continuity_inferred).toBe(true);
   });
 
+  it('reports the plain ccs lane as native when no account default or inheritance exists', async () => {
+    const ccsDir = path.join(tempHome, '.ccs');
+    fs.mkdirSync(ccsDir, { recursive: true });
+
+    fs.writeFileSync(
+      path.join(ccsDir, 'config.yaml'),
+      [
+        'version: 12',
+        'accounts:',
+        '  work:',
+        '    created: "2026-02-01T00:00:00.000Z"',
+        'profiles: {}',
+        'cliproxy:',
+        '  oauth_accounts: {}',
+        '  providers: {}',
+        '  variants: {}',
+      ].join('\n'),
+      'utf8'
+    );
+
+    const payload = await getJson<{
+      plain_ccs_lane?: {
+        kind: string;
+        account_name?: string | null;
+      };
+    }>(baseUrl, '/api/accounts');
+
+    expect(payload.plain_ccs_lane?.kind).toBe('native');
+    expect(payload.plain_ccs_lane?.account_name).toBeNull();
+  });
+
+  it('reports the plain ccs lane as an account when default profile is an auth account', async () => {
+    const ccsDir = path.join(tempHome, '.ccs');
+    fs.mkdirSync(ccsDir, { recursive: true });
+
+    fs.writeFileSync(
+      path.join(ccsDir, 'config.yaml'),
+      [
+        'version: 12',
+        'default: work',
+        'accounts:',
+        '  work:',
+        '    created: "2026-02-01T00:00:00.000Z"',
+        '    context_mode: shared',
+        '    context_group: default',
+        '    continuity_mode: deeper',
+        'profiles: {}',
+        'cliproxy:',
+        '  oauth_accounts: {}',
+        '  providers: {}',
+        '  variants: {}',
+      ].join('\n'),
+      'utf8'
+    );
+
+    const payload = await getJson<{
+      plain_ccs_lane?: {
+        kind: string;
+        account_name?: string | null;
+      };
+    }>(baseUrl, '/api/accounts');
+
+    expect(payload.plain_ccs_lane?.kind).toBe('account-default');
+    expect(payload.plain_ccs_lane?.account_name).toBe('work');
+  });
+
+  it('does not initialize an account instance as a side effect of listing accounts', async () => {
+    const ccsDir = path.join(tempHome, '.ccs');
+    fs.mkdirSync(ccsDir, { recursive: true });
+
+    fs.writeFileSync(
+      path.join(ccsDir, 'config.yaml'),
+      [
+        'version: 12',
+        'default: work',
+        'accounts:',
+        '  work:',
+        '    created: "2026-02-01T00:00:00.000Z"',
+        '    context_mode: shared',
+        '    context_group: default',
+        '    continuity_mode: deeper',
+        'profiles: {}',
+        'cliproxy:',
+        '  oauth_accounts: {}',
+        '  providers: {}',
+        '  variants: {}',
+      ].join('\n'),
+      'utf8'
+    );
+
+    const instancePath = path.join(ccsDir, 'instances', 'work');
+    expect(fs.existsSync(instancePath)).toBe(false);
+
+    await getJson(baseUrl, '/api/accounts');
+
+    expect(fs.existsSync(instancePath)).toBe(false);
+  });
+
+  it('reports effective shared resource mode without initializing an account instance', async () => {
+    const ccsDir = path.join(tempHome, '.ccs');
+    fs.mkdirSync(ccsDir, { recursive: true });
+
+    fs.writeFileSync(
+      path.join(ccsDir, 'config.yaml'),
+      [
+        'version: 12',
+        'accounts:',
+        '  work:',
+        '    created: "2026-02-01T00:00:00.000Z"',
+        '    shared_resource_mode: profile-local',
+        '  restored:',
+        '    created: "2026-02-02T00:00:00.000Z"',
+        '    shared_resource_mode: shared',
+        '    bare: true',
+        'profiles: {}',
+        'cliproxy:',
+        '  oauth_accounts: {}',
+        '  providers: {}',
+        '  variants: {}',
+      ].join('\n'),
+      'utf8'
+    );
+
+    const payload = await getJson<{
+      accounts: Array<{
+        name: string;
+        shared_resource_mode?: string;
+        shared_resource_inferred?: boolean;
+        bare?: boolean;
+      }>;
+    }>(baseUrl, '/api/accounts');
+
+    const work = payload.accounts.find((account) => account.name === 'work');
+    const restored = payload.accounts.find((account) => account.name === 'restored');
+    expect(work?.shared_resource_mode).toBe('profile-local');
+    expect(work?.shared_resource_inferred).toBe(false);
+    expect(work?.bare).toBe(true);
+    expect(restored?.shared_resource_mode).toBe('shared');
+    expect(restored?.shared_resource_inferred).toBe(false);
+    expect(restored?.bare).toBeUndefined();
+    expect(fs.existsSync(path.join(ccsDir, 'instances', 'work'))).toBe(false);
+  });
+
   it('does not delete metadata when instance deletion fails', async () => {
     const ccsDir = path.join(tempHome, '.ccs');
     fs.mkdirSync(ccsDir, { recursive: true });
@@ -254,6 +397,148 @@ describe('web-server account-routes context normalization', () => {
     expect(work?.context_mode).toBe('shared');
     expect(work?.context_group).toBe('team-alpha');
     expect(work?.continuity_mode).toBe('deeper');
+  });
+
+  it('updates existing account shared resource mode without changing history sync metadata', async () => {
+    const ccsDir = path.join(tempHome, '.ccs');
+    fs.mkdirSync(ccsDir, { recursive: true });
+
+    fs.writeFileSync(
+      path.join(ccsDir, 'config.yaml'),
+      [
+        'version: 8',
+        'accounts:',
+        '  work:',
+        '    created: "2026-02-01T00:00:00.000Z"',
+        '    last_used: null',
+        '    context_mode: shared',
+        '    context_group: sprint-a',
+        '    continuity_mode: deeper',
+        'profiles: {}',
+        'cliproxy:',
+        '  oauth_accounts: {}',
+        '  providers: {}',
+        '  variants: {}',
+      ].join('\n'),
+      'utf8'
+    );
+
+    const ensureSpy = spyOn(InstanceManager.prototype, 'ensureInstance').mockResolvedValue(
+      path.join(ccsDir, 'instances', 'work')
+    );
+
+    try {
+      const response = await putJson(baseUrl, '/api/accounts/work/shared-resources', {
+        shared_resource_mode: 'profile-local',
+      });
+      expect(response.status).toBe(200);
+      const payload = (await response.json()) as {
+        shared_resource_mode: string;
+        shared_resource_inferred?: boolean;
+      };
+      expect(payload.shared_resource_mode).toBe('profile-local');
+      expect(payload.shared_resource_inferred).toBe(false);
+      expect(ensureSpy).toHaveBeenCalledWith(
+        'work',
+        {
+          mode: 'shared',
+          group: 'sprint-a',
+          continuityMode: 'deeper',
+        },
+        { bare: true }
+      );
+    } finally {
+      ensureSpy.mockRestore();
+    }
+
+    const registry = new ProfileRegistry();
+    const account = registry.getAllAccountsUnified().work;
+    expect(account.shared_resource_mode).toBe('profile-local');
+    expect(account.bare).toBe(true);
+    expect(account.context_mode).toBe('shared');
+    expect(account.context_group).toBe('sprint-a');
+    expect(account.continuity_mode).toBe('deeper');
+  });
+
+  it('rolls back inferred shared resource metadata when instance reconciliation fails', async () => {
+    const ccsDir = path.join(tempHome, '.ccs');
+    fs.mkdirSync(ccsDir, { recursive: true });
+
+    fs.writeFileSync(
+      path.join(ccsDir, 'config.yaml'),
+      [
+        'version: 8',
+        'accounts:',
+        '  work:',
+        '    created: "2026-02-01T00:00:00.000Z"',
+        '    last_used: null',
+        'profiles: {}',
+        'cliproxy:',
+        '  oauth_accounts: {}',
+        '  providers: {}',
+        '  variants: {}',
+      ].join('\n'),
+      'utf8'
+    );
+
+    const ensureSpy = spyOn(InstanceManager.prototype, 'ensureInstance').mockRejectedValue(
+      new Error('reconcile failed')
+    );
+
+    try {
+      const response = await putJson(baseUrl, '/api/accounts/work/shared-resources', {
+        shared_resource_mode: 'profile-local',
+      });
+      expect(response.status).toBe(500);
+      const payload = (await response.json()) as { error: string };
+      expect(payload.error).toContain('reconcile failed');
+    } finally {
+      ensureSpy.mockRestore();
+    }
+
+    const registry = new ProfileRegistry();
+    const account = registry.getAllAccountsUnified().work;
+    expect(account.shared_resource_mode).toBeUndefined();
+    expect(account.bare).toBeUndefined();
+  });
+
+  it('rejects invalid shared resource mode updates', async () => {
+    const ccsDir = path.join(tempHome, '.ccs');
+    fs.mkdirSync(ccsDir, { recursive: true });
+
+    fs.writeFileSync(
+      path.join(ccsDir, 'config.yaml'),
+      [
+        'version: 8',
+        'accounts:',
+        '  work:',
+        '    created: "2026-02-01T00:00:00.000Z"',
+        '    last_used: null',
+        'profiles: {}',
+        'cliproxy:',
+        '  oauth_accounts: {}',
+        '  providers: {}',
+        '  variants: {}',
+      ].join('\n'),
+      'utf8'
+    );
+
+    const response = await putJson(baseUrl, '/api/accounts/work/shared-resources', {
+      shared_resource_mode: 'plugins-only',
+    });
+    expect(response.status).toBe(400);
+    const payload = (await response.json()) as { error: string };
+    expect(payload.error).toContain('shared_resource_mode');
+  });
+
+  it('rejects shared resource updates for CLIProxy account identifiers', async () => {
+    const response = await putJson(baseUrl, '/api/accounts/gemini:test/shared-resources', {
+      shared_resource_mode: 'profile-local',
+    });
+    expect(response.status).toBe(400);
+
+    const payload = (await response.json()) as { error: string };
+    expect(payload.error).toContain('CLIProxy');
   });
 
   it('rejects shared mode updates without context_group', async () => {

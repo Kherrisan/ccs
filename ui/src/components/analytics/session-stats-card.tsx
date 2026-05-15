@@ -14,6 +14,7 @@ import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
 import { usePrivacy, PRIVACY_BLUR_CLASS } from '@/contexts/privacy-context';
 import { getProjectDisplayName } from './project-name-utils';
+import { useTranslation } from 'react-i18next';
 
 interface SessionStatsCardProps {
   data: PaginatedSessions | undefined;
@@ -23,32 +24,25 @@ interface SessionStatsCardProps {
 
 export function SessionStatsCard({ data, isLoading, className }: SessionStatsCardProps) {
   const { privacyMode } = usePrivacy();
+  const { t } = useTranslation();
 
   const stats = useMemo(() => {
     if (!data?.sessions || data.sessions.length === 0) return null;
 
     const sessions = data.sessions;
     const totalSessions = data.total;
-
-    // Calculate average tokens per session
-    const totalTokens = sessions.reduce((sum, s) => sum + (s.inputTokens + s.outputTokens), 0);
-    const avgTokens = Math.round(totalTokens / sessions.length);
+    const sampledSessions = sessions.length;
+    const hasPartialSample = data.hasMore || data.offset > 0;
 
     // Calculate total cost for visible sessions
     const totalCost = sessions.reduce((sum, s) => sum + s.cost, 0);
     const avgCost = totalCost / sessions.length;
 
-    // Most recent session
-    const lastSession = sessions[0];
-    const lastActive = lastSession
-      ? formatDistanceToNow(new Date(lastSession.lastActivity), { addSuffix: true })
-      : 'N/A';
-
     return {
+      displayedSessions: hasPartialSample ? sampledSessions : totalSessions,
       totalSessions,
-      avgTokens,
       avgCost,
-      lastActive,
+      hasPartialSample,
       recentSessions: sessions.slice(0, 3),
     };
   }, [data]);
@@ -72,11 +66,14 @@ export function SessionStatsCard({ data, isLoading, className }: SessionStatsCar
         <CardHeader className="px-3 py-2">
           <CardTitle className="text-base font-semibold flex items-center gap-2">
             <Terminal className="w-4 h-4" />
+            {/* TODO i18n: missing key for "Session Stats" */}
             Session Stats
           </CardTitle>
         </CardHeader>
         <CardContent className="px-3 pb-3 pt-0 flex-1 flex items-center justify-center">
-          <p className="text-sm text-muted-foreground text-center">No session data available</p>
+          <p className="text-sm text-muted-foreground text-center">
+            {t('analyticsCards.noSessionData')}
+          </p>
         </CardContent>
       </Card>
     );
@@ -89,6 +86,7 @@ export function SessionStatsCard({ data, isLoading, className }: SessionStatsCar
       <CardHeader className="px-3 py-2">
         <CardTitle className="text-base font-semibold flex items-center gap-2">
           <Terminal className="w-4 h-4" />
+          {/* TODO i18n: missing key for "Session Stats" */}
           Session Stats
         </CardTitle>
       </CardHeader>
@@ -99,11 +97,16 @@ export function SessionStatsCard({ data, isLoading, className }: SessionStatsCar
           <div className="p-2 rounded-md bg-muted/50 border text-center">
             <div className="flex items-center justify-center gap-1.5 text-blue-600 dark:text-blue-400">
               <Users className="w-4 h-4" />
-              <span className="text-xl font-bold">{stats.totalSessions}</span>
+              <span className="text-xl font-bold">{stats.displayedSessions}</span>
             </div>
             <p className="text-[10px] text-muted-foreground uppercase tracking-wider mt-0.5">
-              Total Sessions
+              {stats.hasPartialSample ? 'Sampled Sessions' : 'Total Sessions'}
             </p>
+            {stats.hasPartialSample && (
+              <p className="text-[10px] text-muted-foreground mt-0.5">
+                {stats.totalSessions} total
+              </p>
+            )}
           </div>
 
           {/* Avg Cost */}
@@ -115,7 +118,7 @@ export function SessionStatsCard({ data, isLoading, className }: SessionStatsCar
               </span>
             </div>
             <p className="text-[10px] text-muted-foreground uppercase tracking-wider mt-0.5">
-              Avg Cost/Session
+              {stats.hasPartialSample ? 'Recent Avg Cost' : 'Avg Cost/Session'}
             </p>
           </div>
         </div>
@@ -124,6 +127,7 @@ export function SessionStatsCard({ data, isLoading, className }: SessionStatsCar
         <div className="flex-1 min-h-0 space-y-2">
           <div className="flex items-center gap-1 text-xs text-muted-foreground font-medium mb-1">
             <Clock className="w-3 h-3" />
+            {/* TODO i18n: missing key for "Recent Activity" */}
             Recent Activity
           </div>
           <div className="space-y-1.5 max-h-full overflow-y-auto pr-1">
@@ -150,7 +154,8 @@ export function SessionStatsCard({ data, isLoading, className }: SessionStatsCar
                 <div className={cn('text-right shrink-0 ml-2', privacyMode && PRIVACY_BLUR_CLASS)}>
                   <div className="font-mono">${session.cost.toFixed(2)}</div>
                   <div className="text-[10px] text-muted-foreground">
-                    {formatCompact(session.inputTokens + session.outputTokens)} toks
+                    {formatCompact(session.tokens ?? session.inputTokens + session.outputTokens)}{' '}
+                    toks
                   </div>
                 </div>
               </div>

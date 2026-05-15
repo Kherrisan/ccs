@@ -6,35 +6,43 @@ import { Router, Request, Response } from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
 import {
+  isRunningUnderSupervisord,
+  restartCliproxyViaSupervisord,
+} from '../../docker/supervisord-lifecycle';
+import {
   fetchCliproxyStats,
   fetchCliproxyModels,
   isCliproxyRunning,
   fetchCliproxyErrorLogs,
   fetchCliproxyErrorLogContent,
-} from '../../cliproxy/stats-fetcher';
-import { fetchAccountQuota } from '../../cliproxy/quota-fetcher';
-import { fetchCodexQuota } from '../../cliproxy/quota-fetcher-codex';
-import { fetchClaudeQuota } from '../../cliproxy/quota-fetcher-claude';
-import { fetchGeminiCliQuota } from '../../cliproxy/quota-fetcher-gemini-cli';
-import { fetchGhcpQuota } from '../../cliproxy/quota-fetcher-ghcp';
-import { getCachedQuota, setCachedQuota } from '../../cliproxy/quota-response-cache';
+} from '../../cliproxy/services/stats-fetcher';
+import { fetchAccountQuota } from '../../cliproxy/quota/quota-fetcher';
+import { fetchCodexQuota } from '../../cliproxy/quota/quota-fetcher-codex';
+import { fetchClaudeQuota } from '../../cliproxy/quota/quota-fetcher-claude';
+import { fetchGeminiCliQuota } from '../../cliproxy/quota/quota-fetcher-gemini-cli';
+import { fetchGhcpQuota } from '../../cliproxy/quota/quota-fetcher-ghcp';
+import { getCachedQuota, setCachedQuota } from '../../cliproxy/quota/quota-response-cache';
 import type {
   CodexQuotaResult,
   ClaudeQuotaResult,
   GeminiCliQuotaResult,
   GhcpQuotaResult,
-} from '../../cliproxy/quota-types';
-import type { QuotaResult } from '../../cliproxy/quota-fetcher';
+} from '../../cliproxy/quota/quota-types';
+import type { QuotaResult } from '../../cliproxy/quota/quota-fetcher';
 import type { CLIProxyProvider } from '../../cliproxy/types';
 import { CLIPROXY_PROFILES } from '../../auth/profile-detector';
 import {
   getCliproxyWritablePath,
   getCliproxyConfigPath,
   getAuthDir,
-} from '../../cliproxy/config-generator';
+} from '../../cliproxy/config/config-generator';
 import { getProxyStatus as getProxyProcessStatus, stopProxy } from '../../cliproxy/session-tracker';
 import { ensureCliproxyService } from '../../cliproxy/service-manager';
-import { checkCliproxyUpdate, getInstalledCliproxyVersion } from '../../cliproxy/binary-manager';
+import {
+  checkCliproxyUpdate,
+  getInstalledCliproxyVersion,
+  getStoredConfiguredBackend,
+} from '../../cliproxy/binary-manager';
 import {
   fetchAllVersions,
   isNewerVersion,
@@ -43,16 +51,15 @@ import {
 import {
   CLIPROXY_MAX_STABLE_VERSION,
   CLIPROXY_FAULTY_RANGE,
-  DEFAULT_BACKEND,
-} from '../../cliproxy/platform-detector';
-import { loadOrCreateUnifiedConfig } from '../../config/unified-config-loader';
-import { CLIPROXY_DEFAULT_PORT } from '../../cliproxy/config/port-manager';
+} from '../../cliproxy/binary/platform-detector';
+import { resolveLifecyclePort } from '../../cliproxy/config/port-manager';
 import {
   MODEL_ENV_VAR_KEYS,
   canonicalizeModelIdForProvider,
   getDeniedModelIdReasonForProvider,
-} from '../../cliproxy/model-id-normalizer';
+} from '../../cliproxy/ai-providers/model-id-normalizer';
 import { installDashboardCliproxyVersion } from '../services/cliproxy-dashboard-install-service';
+import { requireLocalAccessWhenAuthDisabled } from '../middleware/auth-middleware';
 
 const router = Router();
 
@@ -65,6 +72,18 @@ interface QuotaRateLimitEntry {
 }
 
 const quotaRateLimits = new Map<string, QuotaRateLimitEntry>();
+
+router.use((req: Request, res: Response, next) => {
+  if (
+    requireLocalAccessWhenAuthDisabled(
+      req,
+      res,
+      'CLIProxy management endpoints require localhost access when dashboard auth is disabled.'
+    )
+  ) {
+    next();
+  }
+});
 
 function buildQuotaRateLimitKey(req: Request, provider: string): string {
   const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
@@ -126,14 +145,87 @@ export function shouldCacheQuotaResult(result: {
   return !transientPatterns.some((p) => msg.includes(p));
 }
 
-/** Get configured backend from config */
-function getConfiguredBackend() {
-  try {
-    const config = loadOrCreateUnifiedConfig();
-    return config.cliproxy?.backend || DEFAULT_BACKEND;
-  } catch {
-    return DEFAULT_BACKEND;
+function buildUpdateCheckFallback(
+  backend: ReturnType<typeof getStoredConfiguredBackend>,
+  getInstalledVersionFn: typeof getInstalledCliproxyVersion = getInstalledCliproxyVersion
+) {
+  const currentVersion = getInstalledVersionFn(backend);
+  const isStable = !isNewerVersion(currentVersion, CLIPROXY_MAX_STABLE_VERSION);
+  const backendLabel = backend === 'plus' ? 'CLIProxy Plus' : 'CLIProxy';
+
+  return {
+    hasUpdate: false,
+    currentVersion,
+    latestVersion: currentVersion,
+    fromCache: true,
+    checkedAt: Date.now(),
+    backend,
+    backendLabel,
+    isStable,
+    maxStableVersion: CLIPROXY_MAX_STABLE_VERSION,
+    stabilityMessage: isStable
+      ? undefined
+      : `v${currentVersion} has known stability issues. Max stable: v${CLIPROXY_MAX_STABLE_VERSION}`,
+  };
+}
+
+function buildVersionsFallback(
+  backend: ReturnType<typeof getStoredConfiguredBackend>,
+  getInstalledVersionFn: typeof getInstalledCliproxyVersion = getInstalledCliproxyVersion
+) {
+  const currentVersion = getInstalledVersionFn(backend);
+
+  return {
+    versions: currentVersion ? [currentVersion] : [],
+    latestStable: currentVersion || CLIPROXY_MAX_STABLE_VERSION,
+    latest: currentVersion || CLIPROXY_MAX_STABLE_VERSION,
+    fromCache: true,
+    checkedAt: Date.now(),
+    currentVersion,
+    maxStableVersion: CLIPROXY_MAX_STABLE_VERSION,
+    faultyRange: CLIPROXY_FAULTY_RANGE,
+  };
+}
+
+interface ResolveUpdateCheckDeps {
+  checkCliproxyUpdateFn?: typeof checkCliproxyUpdate;
+  getInstalledVersionFn?: typeof getInstalledCliproxyVersion;
+}
+
+interface ResolveVersionsDeps {
+  fetchAllVersionsFn?: typeof fetchAllVersions;
+  getInstalledVersionFn?: typeof getInstalledCliproxyVersion;
+}
+
+export async function resolveCliproxyUpdateCheckPayload(
+  backend: ReturnType<typeof getStoredConfiguredBackend>,
+  deps: ResolveUpdateCheckDeps = {}
+) {
+  const checkCliproxyUpdateFn = deps.checkCliproxyUpdateFn ?? checkCliproxyUpdate;
+  const getInstalledVersionFn = deps.getInstalledVersionFn ?? getInstalledCliproxyVersion;
+
+  return checkCliproxyUpdateFn(backend).catch(() =>
+    buildUpdateCheckFallback(backend, getInstalledVersionFn)
+  );
+}
+
+export async function resolveCliproxyVersionsPayload(
+  backend: ReturnType<typeof getStoredConfiguredBackend>,
+  deps: ResolveVersionsDeps = {}
+) {
+  const fetchAllVersionsFn = deps.fetchAllVersionsFn ?? fetchAllVersions;
+  const getInstalledVersionFn = deps.getInstalledVersionFn ?? getInstalledCliproxyVersion;
+  const result = await fetchAllVersionsFn(false, backend).catch(() => null);
+  if (!result) {
+    return buildVersionsFallback(backend, getInstalledVersionFn);
   }
+
+  return {
+    ...result,
+    currentVersion: getInstalledVersionFn(backend),
+    maxStableVersion: CLIPROXY_MAX_STABLE_VERSION,
+    faultyRange: CLIPROXY_FAULTY_RANGE,
+  };
 }
 
 /**
@@ -229,7 +321,7 @@ router.get('/usage', handleStatsRequest);
  */
 router.get('/status', async (_req: Request, res: Response): Promise<void> => {
   try {
-    const running = await isCliproxyRunning();
+    const running = await isCliproxyRunning(resolveLifecyclePort());
     res.json({ running });
   } catch (error) {
     console.error(`[cliproxy-stats] ${(error as Error).message}`);
@@ -244,8 +336,9 @@ router.get('/status', async (_req: Request, res: Response): Promise<void> => {
  */
 router.get('/proxy-status', async (_req: Request, res: Response): Promise<void> => {
   try {
+    const port = resolveLifecyclePort();
     // First check session tracker for detailed info
-    const sessionStatus = getProxyProcessStatus();
+    const sessionStatus = getProxyProcessStatus(port);
 
     // If session tracker says running, trust it
     if (sessionStatus.running) {
@@ -255,13 +348,13 @@ router.get('/proxy-status', async (_req: Request, res: Response): Promise<void> 
 
     // Session tracker says not running, but proxy might be running without session tracking
     // (e.g., started before session persistence was implemented)
-    const actuallyRunning = await isCliproxyRunning();
+    const actuallyRunning = await isCliproxyRunning(port);
 
     if (actuallyRunning) {
       // Proxy running but no session lock - legacy/untracked instance
       res.json({
         running: true,
-        port: CLIPROXY_DEFAULT_PORT,
+        port,
         sessionCount: 0, // Unknown sessions
         // No pid/startedAt since we don't have session lock
       });
@@ -281,7 +374,7 @@ router.get('/proxy-status', async (_req: Request, res: Response): Promise<void> 
  */
 router.post('/proxy-start', async (_req: Request, res: Response): Promise<void> => {
   try {
-    const result = await ensureCliproxyService();
+    const result = await ensureCliproxyService(resolveLifecyclePort());
     res.json(result);
   } catch (error) {
     console.error(`[cliproxy-stats] ${(error as Error).message}`);
@@ -295,7 +388,7 @@ router.post('/proxy-start', async (_req: Request, res: Response): Promise<void> 
  */
 router.post('/proxy-stop', async (_req: Request, res: Response): Promise<void> => {
   try {
-    const result = await stopProxy();
+    const result = await stopProxy(resolveLifecyclePort());
     res.json(result);
   } catch (error) {
     console.error(`[cliproxy-stats] ${(error as Error).message}`);
@@ -309,8 +402,9 @@ router.post('/proxy-stop', async (_req: Request, res: Response): Promise<void> =
  */
 router.get('/update-check', async (_req: Request, res: Response): Promise<void> => {
   try {
-    const backend = getConfiguredBackend();
-    const result = await checkCliproxyUpdate(backend);
+    const backend = getStoredConfiguredBackend();
+    const result = await resolveCliproxyUpdateCheckPayload(backend);
+
     res.json(result);
   } catch (error) {
     console.error(`[cliproxy-stats] ${(error as Error).message}`);
@@ -918,16 +1012,8 @@ router.get('/quota/:provider/:accountId', async (req: Request, res: Response): P
  */
 router.get('/versions', async (_req: Request, res: Response): Promise<void> => {
   try {
-    const backend = getConfiguredBackend();
-    const result = await fetchAllVersions(false, backend);
-    const currentVersion = getInstalledCliproxyVersion(backend);
-
-    res.json({
-      ...result,
-      currentVersion,
-      maxStableVersion: CLIPROXY_MAX_STABLE_VERSION,
-      faultyRange: CLIPROXY_FAULTY_RANGE,
-    });
+    const backend = getStoredConfiguredBackend();
+    res.json(await resolveCliproxyVersionsPayload(backend));
   } catch (error) {
     console.error(`[cliproxy-stats] ${(error as Error).message}`);
     res.status(500).json({ error: 'Internal server error' });
@@ -980,7 +1066,7 @@ router.post('/install', async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const backend = getConfiguredBackend();
+    const backend = getStoredConfiguredBackend();
     const installResult = await installDashboardCliproxyVersion(version, backend);
 
     res.json({
@@ -1001,14 +1087,22 @@ router.post('/install', async (req: Request, res: Response): Promise<void> => {
  */
 router.post('/restart', async (_req: Request, res: Response): Promise<void> => {
   try {
-    // Stop proxy first
-    await stopProxy();
+    const port = resolveLifecyclePort();
+    if (isRunningUnderSupervisord()) {
+      // Docker mode: delegate to supervisord which owns the process lifecycle
+      const result = restartCliproxyViaSupervisord();
+      res.json(result);
+      return;
+    }
+
+    // Local mode: direct process management
+    await stopProxy(port);
 
     // Small delay to ensure port is released
     await new Promise((r) => setTimeout(r, 500));
 
     // Start proxy
-    const startResult = await ensureCliproxyService();
+    const startResult = await ensureCliproxyService(port);
 
     if (startResult.started || startResult.alreadyRunning) {
       res.json({ success: true, port: startResult.port });

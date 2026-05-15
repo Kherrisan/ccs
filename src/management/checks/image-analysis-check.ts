@@ -5,12 +5,18 @@
  * Checks: enabled status, provider_models, timeout, CLIProxy availability.
  */
 
-import { getImageAnalysisConfig } from '../../config/unified-config-loader';
 import { DEFAULT_IMAGE_ANALYSIS_CONFIG } from '../../config/unified-config-types';
+import {
+  countManagedImageAnalysisHookFiles,
+  hasImageAnalysisMcpReady,
+  repairImageAnalysisRuntimeState,
+} from '../../utils/image-analysis';
 import { ok, warn, dim } from '../../utils/ui';
-import { isCliproxyRunning } from '../../cliproxy/stats-fetcher';
-import { CLIPROXY_DEFAULT_PORT } from '../../cliproxy/config-generator';
+import { isCliproxyRunning } from '../../cliproxy/services/stats-fetcher';
+import { CLIPROXY_DEFAULT_PORT } from '../../cliproxy/config/config-generator';
 import type { HealthCheck } from './types';
+import { hasImageAnalyzerHook } from '../../utils/hooks/image-analyzer-hook-installer';
+import { getImageAnalysisConfig } from '../../config/config-loader-facade';
 
 /**
  * Run image analysis configuration check
@@ -42,7 +48,7 @@ export async function runImageAnalysisCheck(results: HealthCheck): Promise<void>
     results.errors.push({
       name: 'Image Analysis',
       message: 'No provider models configured for image analysis',
-      fix: 'ccs config image-analysis --set-model agy gemini-2.5-flash',
+      fix: 'ccs config image-analysis --set-model agy gemini-3-1-flash-preview',
     });
     console.log(`  ${warn('Providers:')} None configured`);
     return;
@@ -65,20 +71,32 @@ export async function runImageAnalysisCheck(results: HealthCheck): Promise<void>
   }
   console.log(`  ${ok('Timeout:')} ${config.timeout}s`);
 
+  const staleHookCount = countManagedImageAnalysisHookFiles();
+  if (staleHookCount > 0) {
+    results.warnings.push({
+      name: 'Image Analysis',
+      message: `${staleHookCount} stale CCS-managed image hook setting file(s) were detected`,
+      fix: 'Run: ccs doctor --fix',
+    });
+    console.log(`  ${warn('Hooks:')} ${staleHookCount} stale setting file(s) can be repaired`);
+  }
+
   // Check 4: CLIProxy availability (only if enabled)
   const cliproxyAvailable = await isCliproxyRunning(CLIPROXY_DEFAULT_PORT);
   if (!cliproxyAvailable) {
     results.details['Image Analysis'] = {
       status: 'WARN',
-      info: `Enabled but CLIProxy not running`,
+      info: 'Enabled; local CLIProxy will start on launch if needed',
     };
     results.warnings.push({
       name: 'Image Analysis',
-      message: 'CLIProxy not running - image analysis will fail',
-      fix: 'ccs config (starts CLIProxy)',
+      message:
+        'CLIProxy not running yet - CCS will start it automatically when ImageAnalysis is used',
+      fix: 'Optional warm-up: ccs config',
     });
-    console.log(`  ${warn('CLIProxy:')} Not running at http://127.0.0.1:${CLIPROXY_DEFAULT_PORT}`);
-    console.log(`  ${dim('Note:')} Start with: ccs config`);
+    console.log(
+      `  ${warn('CLIProxy:')} Idle at http://127.0.0.1:${CLIPROXY_DEFAULT_PORT} (auto-start on launch)`
+    );
     return;
   }
   console.log(`  ${ok('CLIProxy:')} Available at http://127.0.0.1:${CLIPROXY_DEFAULT_PORT}`);
@@ -94,12 +112,14 @@ export async function runImageAnalysisCheck(results: HealthCheck): Promise<void>
  * Fix image analysis configuration issues
  */
 export async function fixImageAnalysisConfig(): Promise<boolean> {
-  const { updateUnifiedConfig, loadOrCreateUnifiedConfig } = await import(
-    '../../config/unified-config-loader'
+  const { updateConfig, loadOrCreateUnifiedConfig } = await import(
+    '../../config/config-loader-facade'
   );
 
   const config = loadOrCreateUnifiedConfig();
   let fixed = false;
+  const hadManagedToolReady = hasImageAnalysisMcpReady();
+  const hadSharedHookReady = hasImageAnalyzerHook();
 
   // Fix missing provider_models
   if (
@@ -125,8 +145,15 @@ export async function fixImageAnalysisConfig(): Promise<boolean> {
   }
 
   if (fixed) {
-    updateUnifiedConfig({ image_analysis: config.image_analysis });
+    updateConfig({ image_analysis: config.image_analysis });
   }
 
-  return fixed;
+  const repairStats = repairImageAnalysisRuntimeState();
+  return (
+    fixed ||
+    repairStats.cleanedSettingsFiles > 0 ||
+    repairStats.syncedInstances > 0 ||
+    (!hadManagedToolReady && repairStats.managedToolReady) ||
+    (!hadSharedHookReady && repairStats.sharedHookReady)
+  );
 }

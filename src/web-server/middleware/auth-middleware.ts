@@ -3,14 +3,19 @@
  * Session-based auth with httpOnly cookies for CCS dashboard.
  */
 
-import type { Request, Response, NextFunction } from 'express';
+import type { IncomingMessage } from 'http';
+import type { NextFunction, Request, Response } from 'express';
 import session from 'express-session';
 import rateLimit from 'express-rate-limit';
-import { getDashboardAuthConfig } from '../../config/unified-config-loader';
+
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
-import { getCcsDir } from '../../utils/config-manager';
+import {
+  getCcsDir,
+  getDashboardAuthConfig,
+  isDashboardAuthEnabled,
+} from '../../config/config-loader-facade';
 
 // Extend Express Request with session
 declare module 'express-session' {
@@ -78,13 +83,17 @@ export const loginRateLimiter = rateLimit({
   message: { error: 'Too many login attempts. Please try again later.' },
   standardHeaders: true,
   legacyHeaders: false,
-  skip: () => !getDashboardAuthConfig().enabled,
+  skip: () => !isDashboardAuthEnabled(),
 });
 
 /**
  * Create session middleware configured for CCS dashboard.
  */
-export function createSessionMiddleware() {
+export function createSessionMiddleware(): (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => void {
   const authConfig = getDashboardAuthConfig();
   const maxAge = (authConfig.session_timeout_hours ?? 24) * 60 * 60 * 1000;
 
@@ -106,10 +115,8 @@ export function createSessionMiddleware() {
  * Only active when dashboard_auth.enabled = true.
  */
 export function authMiddleware(req: Request, res: Response, next: NextFunction): void {
-  const authConfig = getDashboardAuthConfig();
-
   // Skip auth if disabled
-  if (!authConfig.enabled) {
+  if (!isDashboardAuthEnabled()) {
     return next();
   }
 
@@ -131,4 +138,117 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction):
 
   // Unauthorized
   res.status(401).json({ error: 'Authentication required' });
+}
+
+export function isLoopbackRemoteAddress(value: string | undefined): boolean {
+  if (!value) return false;
+  const normalized = value.trim().replace(/^\[|\]$/g, '');
+  return (
+    normalized === '::1' ||
+    normalized === '127.0.0.1' ||
+    normalized.startsWith('127.') ||
+    normalized === '::ffff:127.0.0.1' ||
+    normalized.startsWith('::ffff:127.')
+  );
+}
+
+function isLoopbackHostname(value: string | undefined): boolean {
+  if (!value) return false;
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/^\[|\]$/g, '');
+  return (
+    normalized === 'localhost' ||
+    normalized.endsWith('.localhost') ||
+    isLoopbackRemoteAddress(normalized)
+  );
+}
+
+function getSingleHeader(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function parseHostHeader(value: string | undefined): URL | null {
+  if (!value) return null;
+
+  try {
+    return new URL(`http://${value}`);
+  } catch {
+    return null;
+  }
+}
+
+function isHttpOrigin(origin: URL): boolean {
+  return origin.protocol === 'http:' || origin.protocol === 'https:';
+}
+
+export function isDashboardWebSocketOriginAllowed(req: IncomingMessage): boolean {
+  const originHeader = getSingleHeader(req.headers.origin);
+  if (!originHeader) return true;
+
+  let origin: URL;
+  try {
+    origin = new URL(originHeader);
+  } catch {
+    return false;
+  }
+
+  if (!isHttpOrigin(origin)) {
+    return false;
+  }
+
+  const host = parseHostHeader(getSingleHeader(req.headers.host));
+  if (!host) {
+    return false;
+  }
+
+  if (origin.host.toLowerCase() === host.host.toLowerCase()) {
+    return true;
+  }
+
+  return (
+    isLoopbackHostname(origin.hostname) &&
+    isLoopbackHostname(host.hostname) &&
+    origin.port === host.port
+  );
+}
+
+export function isDashboardWebSocketUpgradeAllowed(req: IncomingMessage): boolean {
+  if (!isDashboardWebSocketOriginAllowed(req)) {
+    return false;
+  }
+
+  if (!isDashboardAuthEnabled()) {
+    return isLoopbackRemoteAddress(req.socket.remoteAddress);
+  }
+
+  return Boolean((req as Request).session?.authenticated);
+}
+
+export function getDashboardWebSocketRejectionStatus(req?: IncomingMessage): 401 | 403 {
+  if (req && !isDashboardWebSocketOriginAllowed(req)) {
+    return 403;
+  }
+
+  if (!isDashboardAuthEnabled()) return 403;
+
+  return 401;
+}
+
+export function requireLocalAccessWhenAuthDisabled(
+  req: Request,
+  res: Response,
+  error = 'This endpoint requires localhost access when dashboard auth is disabled.'
+): boolean {
+  if (isDashboardAuthEnabled()) {
+    return true;
+  }
+
+  if (isLoopbackRemoteAddress(req.socket.remoteAddress)) {
+    return true;
+  }
+
+  res.status(403).json({ error });
+  return false;
 }

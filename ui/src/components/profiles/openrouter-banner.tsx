@@ -5,6 +5,7 @@
 
 /* eslint-disable react-hooks/set-state-in-effect */
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { X, Sparkles, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useOpenRouterReady } from '@/hooks/use-openrouter-models';
@@ -16,6 +17,7 @@ interface OpenRouterBannerProps {
 }
 
 export function OpenRouterBanner({ onCreateClick }: OpenRouterBannerProps) {
+  const { t } = useTranslation();
   const [dismissed, setDismissed] = useState(true); // Start hidden to avoid flash
   const { modelCount, isLoading } = useOpenRouterReady();
 
@@ -40,10 +42,13 @@ export function OpenRouterBanner({ onCreateClick }: OpenRouterBannerProps) {
             <Sparkles className="w-4 h-4" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="font-medium text-sm">NEW: OpenRouter Integration</p>
+            <p className="font-medium text-sm">
+              {t('openrouterBadge.new')}: {t('openrouterBadge.integration')}
+            </p>
             <p className="text-xs text-white/80 truncate">
-              Browse {isLoading ? '300+' : `${modelCount}+`} models from OpenAI, Anthropic, Google,
-              Meta and more.
+              {t('openrouterBanner.accessModels', {
+                count: isLoading ? 300 : modelCount,
+              })}
             </p>
           </div>
         </div>
@@ -56,7 +61,7 @@ export function OpenRouterBanner({ onCreateClick }: OpenRouterBannerProps) {
               onClick={onCreateClick}
               className="bg-white text-accent hover:bg-white/90 h-8"
             >
-              Try it now
+              {t('openrouterBanner.add')}
             </Button>
           )}
           <a

@@ -1,8 +1,10 @@
 import { useProfiles } from '@/hooks/use-profiles';
 import { ProfileCard } from './profile-card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useTranslation } from 'react-i18next';
 
 export function ProfileDeck() {
+  const { t } = useTranslation();
   const { data: response, isLoading, error } = useProfiles();
 
   if (isLoading) {
@@ -18,7 +20,11 @@ export function ProfileDeck() {
   }
 
   if (error) {
-    return <div className="text-destructive text-sm">Failed to load profiles: {error.message}</div>;
+    return (
+      <div className="text-destructive text-sm">
+        {t('apiProfiles.failedLoadTitle')}: {error.message}
+      </div>
+    );
   }
 
   const profiles = response?.profiles || [];
@@ -26,7 +32,7 @@ export function ProfileDeck() {
   if (!profiles || profiles.length === 0) {
     return (
       <div className="text-muted-foreground text-center py-8">
-        No profiles configured. Create your first profile to get started.
+        {t('apiProfiles.noProfilesDesc')}
       </div>
     );
   }
@@ -39,7 +45,7 @@ export function ProfileDeck() {
 
   return (
     <div className="space-y-4">
-      <h2 className="text-lg font-semibold">Profiles</h2>
+      <h2 className="text-lg font-semibold">{t('profileDeck.profiles')}</h2>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {normalizedProfiles.map((profile) => (
           <ProfileCard

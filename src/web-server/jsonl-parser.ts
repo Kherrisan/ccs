@@ -82,6 +82,18 @@ function toNonNegativeNumber(value: unknown): number {
   return numeric;
 }
 
+function parseRequiredNonNegativeNumber(value: unknown): number | null {
+  const numeric = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(numeric) || numeric < 0) {
+    return null;
+  }
+  return numeric;
+}
+
+function isValidTimestamp(value: unknown): value is string {
+  return typeof value === 'string' && Number.isFinite(Date.parse(value));
+}
+
 export function parseUsageEntry(line: string, projectPath: string): RawUsageEntry | null {
   // Strip UTF-8 BOM if present (can occur on first line of some files)
   const cleanLine = line.replace(/^\uFEFF/, '').trim();
@@ -97,16 +109,25 @@ export function parseUsageEntry(line: string, projectPath: string): RawUsageEntr
 
     const usage = entry.message.usage;
     const assistant = entry as JsonlAssistantEntry;
+    const inputTokens = parseRequiredNonNegativeNumber(usage.input_tokens);
+    const outputTokens = parseRequiredNonNegativeNumber(usage.output_tokens);
+    if (inputTokens === null || outputTokens === null || !isValidTimestamp(assistant.timestamp)) {
+      return null;
+    }
+    const normalizedProjectPath =
+      typeof assistant.cwd === 'string' && assistant.cwd.trim().length > 0
+        ? assistant.cwd
+        : projectPath;
 
     return {
-      inputTokens: toNonNegativeNumber(usage.input_tokens),
-      outputTokens: toNonNegativeNumber(usage.output_tokens),
+      inputTokens,
+      outputTokens,
       cacheCreationTokens: toNonNegativeNumber(usage.cache_creation_input_tokens),
       cacheReadTokens: toNonNegativeNumber(usage.cache_read_input_tokens),
       model: assistant.message.model,
       sessionId: assistant.sessionId || '',
-      timestamp: assistant.timestamp || new Date().toISOString(),
-      projectPath,
+      timestamp: assistant.timestamp,
+      projectPath: normalizedProjectPath,
       version: assistant.version,
       target:
         typeof (entry as { target?: unknown }).target === 'string'

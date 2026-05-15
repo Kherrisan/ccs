@@ -7,8 +7,12 @@
 import { spawn, ChildProcess } from 'child_process';
 import { initUI, header, color, fail, warn, info, infoBox, warnBox } from '../../utils/ui';
 import { getClaudeCliInfo } from '../../utils/claude-detector';
-import { escapeShellArg, stripClaudeCodeEnv } from '../../utils/shell-executor';
-import { isUnifiedMode } from '../../config/unified-config-loader';
+import {
+  escapeShellArg,
+  getWindowsEscapedCommandShell,
+  stripClaudeCodeEnv,
+} from '../../utils/shell-executor';
+
 import { ProfileMetadata } from '../../types';
 import {
   resolveCreateAccountContext,
@@ -17,10 +21,15 @@ import {
   isValidAccountProfileName,
   resolveAccountContextPolicy,
 } from '../account-context';
+import {
+  isProfileLocalSharedResourceMode,
+  sharedResourceModeToMetadata,
+} from '../shared-resource-policy';
 import { exitWithError } from '../../errors';
 import { ExitCode } from '../../errors/exit-codes';
-import { CommandContext, parseArgs } from './types';
+import { CommandContext, parseArgs, rejectUnsupportedAuthOptions } from './types';
 import { stripAmbientProviderCredentials } from './create-command-env';
+import { isUnifiedMode } from '../../config/config-loader-facade';
 
 function sanitizeProfileNameForInstance(name: string): string {
   return name.replace(/[^a-zA-Z0-9_-]/g, '-').toLowerCase();
@@ -31,20 +40,13 @@ function sanitizeProfileNameForInstance(name: string): string {
  */
 export async function handleCreate(ctx: CommandContext, args: string[]): Promise<void> {
   await initUI();
-  const { profileName, force, shareContext, contextGroup, deeperContinuity, bare, unknownFlags } =
-    parseArgs(args);
+  const parsed = parseArgs(args);
+  const { profileName, force, shareContext, contextGroup, deeperContinuity, bare } = parsed;
 
-  if (unknownFlags && unknownFlags.length > 0) {
-    const unknownList = unknownFlags.map((flag) => `"${flag}"`).join(', ');
-    console.log(fail(`Unknown option(s): ${unknownList}`));
-    console.log('');
-    console.log(
-      `Usage: ${color('ccs auth create <profile> [--force] [--bare] [--share-context] [--context-group <name>] [--deeper-continuity]', 'command')}`
-    );
-    console.log(`Help:  ${color('ccs auth --help', 'command')}`);
-    console.log('');
-    exitWithError(`Unknown option(s): ${unknownList}`, ExitCode.PROFILE_ERROR);
-  }
+  rejectUnsupportedAuthOptions(parsed, {
+    usage:
+      'ccs auth create <profile> [--force] [--bare] [--share-context] [--context-group <name>] [--deeper-continuity]',
+  });
 
   if (!profileName) {
     console.log(fail('Profile name is required'));
@@ -112,8 +114,10 @@ export async function handleCreate(ctx: CommandContext, args: string[]): Promise
     ? ctx.registry.getAllAccountsUnified()[profileName]
     : undefined;
   const previousBare =
-    previousLegacyProfile?.bare === true || previousUnifiedProfile?.bare === true;
+    isProfileLocalSharedResourceMode(previousLegacyProfile) ||
+    isProfileLocalSharedResourceMode(previousUnifiedProfile);
   const effectiveBare = bare === true || (profileExistedBeforeCreate && previousBare);
+  const resourceMetadata = effectiveBare ? sharedResourceModeToMetadata('profile-local') : {};
   const previousContextPolicy =
     profileExistedBeforeCreate && (previousUnifiedProfile || previousLegacyProfile)
       ? resolveAccountContextPolicy(previousUnifiedProfile || previousLegacyProfile)
@@ -163,7 +167,7 @@ export async function handleCreate(ctx: CommandContext, args: string[]): Promise
 
     if (!profileExistedBeforeCreate) {
       try {
-        ctx.instanceMgr.deleteInstance(profileName);
+        await ctx.instanceMgr.deleteInstance(profileName);
       } catch {
         // Best-effort cleanup.
       }
@@ -195,13 +199,13 @@ export async function handleCreate(ctx: CommandContext, args: string[]): Promise
         ctx.registry.updateAccountUnified(profileName, {
           context_mode: contextMetadata.context_mode,
           context_group: contextMetadata.context_group,
-          ...(effectiveBare ? { bare: true } : {}),
+          ...resourceMetadata,
         });
         ctx.registry.touchAccountUnified(profileName);
       } else {
         ctx.registry.createAccountUnified(profileName, {
           ...contextMetadata,
-          ...(effectiveBare ? { bare: true } : {}),
+          ...resourceMetadata,
         });
       }
     } else {
@@ -211,14 +215,14 @@ export async function handleCreate(ctx: CommandContext, args: string[]): Promise
           type: 'account',
           context_mode: contextMetadata.context_mode,
           context_group: contextMetadata.context_group,
-          ...(effectiveBare ? { bare: true } : {}),
+          ...resourceMetadata,
         });
       } else {
         ctx.registry.createProfile(profileName, {
           type: 'account',
           context_mode: contextMetadata.context_mode,
           context_group: contextMetadata.context_group,
-          ...(effectiveBare ? { bare: true } : {}),
+          ...resourceMetadata,
         });
       }
     }
@@ -249,7 +253,7 @@ export async function handleCreate(ctx: CommandContext, args: string[]): Promise
         child = spawn(cmdString, {
           stdio: 'inherit',
           windowsHide: true,
-          shell: true,
+          shell: getWindowsEscapedCommandShell(),
           env: childEnv,
         });
       } else {
@@ -275,7 +279,9 @@ export async function handleCreate(ctx: CommandContext, args: string[]): Promise
             `Profile:  ${profileName}\n` +
               `Instance: ${instancePath}\n` +
               `Type:     account\n` +
-              `Context:  ${formatAccountContextPolicy(contextPolicy)}` +
+              `Context:  ${formatAccountContextPolicy(contextPolicy)}\n` +
+              `Tokens:   isolated per account\n` +
+              `Resources: ${effectiveBare ? 'profile-local (bare)' : 'shared with ~/.claude'}` +
               (effectiveBare ? '\nMode:     bare (no shared symlinks)' : ''),
             'Profile Created'
           )
@@ -283,6 +289,14 @@ export async function handleCreate(ctx: CommandContext, args: string[]): Promise
         console.log('');
         console.log(header('Usage'));
         console.log(`  ${color(`ccs ${profileName} "your prompt here"`, 'command')}`);
+        console.log('');
+        console.log(
+          'To keep two accounts separate, create another account and run either profile by name:'
+        );
+        console.log(`  ${color('ccs auth create personal', 'command')}`);
+        console.log(
+          `  ${color(`ccs ${profileName}`, 'command')} / ${color('ccs personal', 'command')}`
+        );
         console.log('');
         console.log(
           warnBox(

@@ -28,6 +28,7 @@ import {
 } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
+import { ProviderLogo } from '@/components/cliproxy/provider-logo';
 import { useCreateProfile } from '@/hooks/use-profiles';
 import { useOpenRouterCatalog } from '@/hooks/use-openrouter-models';
 import { Loader2, Plus, AlertTriangle, Info, Eye, EyeOff, Settings2, Sparkles } from 'lucide-react';
@@ -69,7 +70,7 @@ const schema = z.object({
   opusModel: z.string().optional(),
   sonnetModel: z.string().optional(),
   haikuModel: z.string().optional(),
-  target: z.enum(['claude', 'droid']),
+  target: z.enum(['claude', 'droid', 'codex']),
 });
 
 type FormData = z.infer<typeof schema>;
@@ -79,13 +80,14 @@ interface ProfileCreateDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSuccess: (name: string) => void;
-  initialMode?: 'normal' | 'openrouter' | 'alibaba-coding-plan';
+  initialMode?: ProviderPreset['id'] | 'normal';
 }
 
 // Common URL mistakes to warn about
 const PROBLEMATIC_PATHS = ['/chat/completions', '/v1/messages', '/messages', '/completions'];
 const CUSTOM_PRESET_ID = 'custom';
 const DEFAULT_PRESET_ID: ProviderPreset['id'] = 'openrouter';
+const LOCAL_PRESET_IDS = new Set<ProviderPreset['id']>(['ollama', 'llamacpp']);
 
 const EMPTY_FORM_VALUES: FormData = {
   name: '',
@@ -99,11 +101,14 @@ const EMPTY_FORM_VALUES: FormData = {
 };
 
 const RECOMMENDED_PRESETS = getPresetsByCategory('recommended');
+const FEATURED_PREMIUM_PRESETS = RECOMMENDED_PRESETS.filter(
+  (preset) => !LOCAL_PRESET_IDS.has(preset.id)
+);
+const LOCAL_RUNTIME_PRESETS = RECOMMENDED_PRESETS.filter((preset) =>
+  LOCAL_PRESET_IDS.has(preset.id)
+);
 const QUICK_TEMPLATE_PRESETS = PROVIDER_PRESETS.filter(
   (preset) => preset.category !== 'recommended'
-);
-const QUICK_TEMPLATE_PRESET_IDS = new Set<string>(
-  QUICK_TEMPLATE_PRESETS.map((preset) => preset.id)
 );
 
 export function ProfileCreateDialog({
@@ -152,6 +157,7 @@ export function ProfileCreateDialog({
         opusModel: preset.defaultModel,
         sonnetModel: preset.defaultModel,
         haikuModel: preset.defaultModel,
+        target: preset.defaultTarget ?? 'claude',
       });
     },
     [reset]
@@ -200,7 +206,7 @@ export function ProfileCreateDialog({
         applyPresetToForm(null);
       }
     }
-  }, [open, initialMode, applyPresetToForm]);
+  }, [open, initialMode, applyPresetToForm, reset]);
 
   // Handle preset selection
   const handlePresetSelect = (presetId: string) => {
@@ -224,13 +230,13 @@ export function ProfileCreateDialog({
     setValue('haikuModel', model.id);
     setModelSearch(model.name);
     // Show feedback that model was applied to all tiers
-    toast.success(`Applied "${model.name}" to all model tiers`, {
+    toast.success(t('profileCreateDialog.appliedModelToTiers', { model: model.name }), {
       duration: 2000,
     });
   };
 
   // Check for common URL mistakes - only for truly custom URLs
-  // Presets (OpenRouter, GLM, GLMT, Kimi) have vetted URLs that may require full paths
+  // Presets (OpenRouter, GLM, Kimi) have vetted URLs that may require full paths
   useEffect(() => {
     // Only warn for custom URLs, not preset-selected ones
     const isCustomUrl = selectedPreset === CUSTOM_PRESET_ID;
@@ -262,90 +268,118 @@ export function ProfileCreateDialog({
     };
     try {
       await createMutation.mutateAsync(finalData);
-      toast.success(`Profile "${finalData.name}" created`);
+      toast.success(t('profileCreateDialog.profileCreated', { name: finalData.name }));
       onSuccess(finalData.name);
       onOpenChange(false);
     } catch (error) {
-      toast.error((error as Error).message || 'Failed to create profile');
+      toast.error((error as Error).message || t('profileCreateDialog.failedCreate'));
     }
   };
 
   const hasBasicErrors = !!errors.name || !!errors.baseUrl || !!errors.apiKey;
   const hasModelErrors =
     !!errors.model || !!errors.opusModel || !!errors.sonnetModel || !!errors.haikuModel;
+  const isCreating = createMutation.isPending;
 
-  const isQuickTemplateSelected =
-    selectedPreset !== CUSTOM_PRESET_ID && QUICK_TEMPLATE_PRESET_IDS.has(selectedPreset);
   const isOpenRouter = currentPreset?.id === DEFAULT_PRESET_ID;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[700px] p-0 gap-0 overflow-hidden max-h-[90vh] !flex !flex-col">
-        <DialogHeader className="p-6 pb-4 border-b">
+      <DialogContent
+        data-testid="profile-create-dialog"
+        className="h-[calc(100dvh-2rem)] max-h-[900px] gap-0 overflow-hidden p-0 sm:max-w-[700px] !flex !flex-col"
+      >
+        <DialogHeader className="shrink-0 border-b p-6 pb-4">
           <DialogTitle className="flex items-center gap-2">
             <Plus className="w-5 h-5 text-primary" />
-            Create API Profile
+            {t('profileCreateDialog.createProfile')}
           </DialogTitle>
-          <DialogDescription>
-            Choose a provider or configure a custom API endpoint.
-          </DialogDescription>
+          <DialogDescription>{t('profileCreateDialog.chooseProviderHint')}</DialogDescription>
         </DialogHeader>
 
         <form
           onSubmit={handleSubmit(onSubmit)}
           className="flex flex-col flex-1 min-h-0 overflow-hidden"
         >
-          {/* Provider Preset Cards - Compact horizontal layout */}
-          <div className="px-6 py-3 border-b bg-muted/30 space-y-2">
-            {/* Main Options: OpenRouter + Custom */}
-            <div>
-              <Label className="text-xs text-muted-foreground mb-1.5 block">
-                {t('profileEditor.provider')}
-              </Label>
-              <div className="flex gap-2">
-                {RECOMMENDED_PRESETS.map((preset) => (
-                  <CompactPresetCard
-                    key={preset.id}
-                    preset={preset}
-                    isSelected={selectedPreset === preset.id}
-                    onClick={() => handlePresetSelect(preset.id)}
-                  />
-                ))}
-                {/* Custom option */}
-                <button
-                  type="button"
-                  onClick={() => handlePresetSelect(CUSTOM_PRESET_ID)}
-                  className={cn(
-                    'flex items-center gap-2 px-4 py-2 rounded-md border-2 transition-all text-sm font-medium',
-                    selectedPreset === CUSTOM_PRESET_ID || isQuickTemplateSelected
-                      ? 'border-primary bg-primary/10 text-primary dark:bg-primary/20'
-                      : 'border-dashed border-muted-foreground/40 hover:border-primary/50 hover:bg-muted/50 text-muted-foreground hover:text-foreground'
-                  )}
-                >
-                  <Settings2 className="w-4 h-4" />
-                  <span>{t('profileEditor.custom')}</span>
-                </button>
+          <div
+            data-testid="profile-create-provider-chooser"
+            className="max-h-[34dvh] shrink-0 space-y-3 overflow-y-auto overscroll-contain border-b bg-muted/10 px-6 py-3"
+          >
+            <div className="space-y-3">
+              <div className="flex items-start justify-between gap-4">
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">
+                    {t('profileEditor.provider')}
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    {t('profileEditor.providerChooserHint')}
+                  </p>
+                </div>
+                <span className="pt-0.5 text-[11px] text-muted-foreground">
+                  {t('profileEditor.scrollHint')}
+                </span>
               </div>
-            </div>
 
-            {/* Show quick templates when custom mode or non-recommended preset is selected */}
-            {(selectedPreset === CUSTOM_PRESET_ID || isQuickTemplateSelected) && (
-              <div className="pt-3 mt-2 border-t border-dashed border-muted-foreground/30">
-                <Label className="text-xs font-medium text-foreground/70 mb-2 block">
-                  Quick Templates
+              <div className="space-y-2">
+                <Label className="text-xs font-medium uppercase tracking-[0.12em] text-foreground/70">
+                  {t('profileEditor.featuredProviders')}
                 </Label>
-                <div className="flex gap-2 flex-wrap">
-                  {QUICK_TEMPLATE_PRESETS.map((preset) => (
+                <div className="-mx-1 overflow-x-auto pb-1">
+                  <div className="flex min-w-max items-stretch gap-2 px-1">
+                    {FEATURED_PREMIUM_PRESETS.map((preset) => (
+                      <CompactPresetCard
+                        key={preset.id}
+                        preset={preset}
+                        isSelected={selectedPreset === preset.id}
+                        onClick={() => handlePresetSelect(preset.id)}
+                        density="featured"
+                      />
+                    ))}
+                    <div className="mx-1 hidden w-px rounded-full bg-border/70 sm:block" />
+                    <CustomPresetCard
+                      isSelected={selectedPreset === CUSTOM_PRESET_ID}
+                      onClick={() => handlePresetSelect(CUSTOM_PRESET_ID)}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-xs font-medium uppercase tracking-[0.12em] text-foreground/70">
+                  {t('profileEditor.morePresets')}
+                </Label>
+                <div className="-mx-1 overflow-x-auto pb-1">
+                  <div className="flex min-w-max items-stretch gap-2 px-1">
+                    {QUICK_TEMPLATE_PRESETS.map((preset) => (
+                      <CompactPresetCard
+                        key={preset.id}
+                        preset={preset}
+                        isSelected={selectedPreset === preset.id}
+                        onClick={() => handlePresetSelect(preset.id)}
+                        density="compact"
+                      />
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-xs font-medium uppercase tracking-[0.12em] text-foreground/70">
+                  {t('openrouterQuickStart.localRuntimesTitle')}
+                </Label>
+                <div className="flex flex-wrap gap-2">
+                  {LOCAL_RUNTIME_PRESETS.map((preset) => (
                     <CompactPresetCard
                       key={preset.id}
                       preset={preset}
                       isSelected={selectedPreset === preset.id}
                       onClick={() => handlePresetSelect(preset.id)}
+                      density="compact"
                     />
                   ))}
                 </div>
               </div>
-            )}
+            </div>
           </div>
 
           <Tabs
@@ -356,13 +390,13 @@ export function ProfileCreateDialog({
             <div className="px-6 pt-4">
               <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="basic" className="relative">
-                  Basic Information
+                  {t('profileCreateDialog.basicInformation')}
                   {hasBasicErrors && (
                     <span className="absolute top-1 right-2 w-2 h-2 rounded-full bg-destructive animate-pulse" />
                   )}
                 </TabsTrigger>
                 <TabsTrigger value="models" className="relative">
-                  Model Configuration
+                  {t('profileCreateDialog.modelConfiguration')}
                   {hasModelErrors && (
                     <span className="absolute top-1 right-2 w-2 h-2 rounded-full bg-destructive animate-pulse" />
                   )}
@@ -370,24 +404,24 @@ export function ProfileCreateDialog({
               </TabsList>
             </div>
 
-            <div className="flex-1 min-h-0 overflow-y-auto">
+            <div data-testid="profile-create-tab-scroll" className="flex-1 min-h-0 overflow-y-auto">
               <TabsContent value="basic" className="p-6 space-y-4 mt-0">
                 {/* Profile Name */}
                 <div className="space-y-1.5">
                   <Label htmlFor="name">
-                    Profile Name <span className="text-destructive">*</span>
+                    {t('profileDialog.name')} <span className="text-destructive">*</span>
                   </Label>
                   <Input
                     id="name"
                     {...register('name')}
-                    placeholder="my-api"
+                    placeholder={t('profileDialog.namePlaceholder')}
                     className="font-mono"
                   />
                   {errors.name ? (
                     <p className="text-xs text-destructive">{errors.name.message}</p>
                   ) : (
                     <p className="text-xs text-muted-foreground">
-                      Used in CLI:{' '}
+                      {t('profileCreateDialog.usedInCli')}{' '}
                       <code className="bg-muted px-1 rounded text-[10px]">ccs my-api "prompt"</code>
                     </p>
                   )}
@@ -395,11 +429,11 @@ export function ProfileCreateDialog({
 
                 {/* Base URL - always editable, pre-filled from preset */}
                 <div className="space-y-1.5">
-                  <Label htmlFor="baseUrl">API Base URL</Label>
+                  <Label htmlFor="baseUrl">{t('profileCreateDialog.apiBaseUrl')}</Label>
                   <Input
                     id="baseUrl"
                     {...register('baseUrl')}
-                    placeholder="https://api.example.com/v1"
+                    placeholder={t('profileCreateDialog.baseUrlPlaceholder')}
                   />
                   {errors.baseUrl ? (
                     <p className="text-xs text-destructive">{errors.baseUrl.message}</p>
@@ -411,12 +445,12 @@ export function ProfileCreateDialog({
                   ) : currentPreset ? (
                     <p className="text-xs text-muted-foreground">
                       {currentPreset.baseUrl
-                        ? `Pre-filled from ${currentPreset.name}. You can customize if needed.`
-                        : `Optional for ${currentPreset.name}. Leave blank to use native Anthropic auth.`}
+                        ? t('profileCreateDialog.prefilledFromPreset', { name: currentPreset.name })
+                        : t('profileCreateDialog.optionalForPreset', { name: currentPreset.name })}
                     </p>
                   ) : (
                     <p className="text-xs text-muted-foreground">
-                      The endpoint that accepts OpenAI-compatible and Anthropic requests
+                      {t('profileCreateDialog.endpointHint')}
                     </p>
                   )}
                 </div>
@@ -424,12 +458,14 @@ export function ProfileCreateDialog({
                 {/* API Key - optional for presets that don't require it */}
                 <div className="space-y-1.5">
                   <Label htmlFor="apiKey">
-                    API Key{' '}
+                    {t('profileDialog.apiKey')}{' '}
                     {currentPreset?.requiresApiKey !== false && (
                       <span className="text-destructive">*</span>
                     )}
                     {currentPreset?.requiresApiKey === false && (
-                      <span className="text-muted-foreground text-xs font-normal">(optional)</span>
+                      <span className="text-muted-foreground text-xs font-normal">
+                        {t('profileCreateDialog.optional')}
+                      </span>
                     )}
                   </Label>
                   <div className="relative">
@@ -439,8 +475,9 @@ export function ProfileCreateDialog({
                       {...register('apiKey')}
                       placeholder={
                         currentPreset?.requiresApiKey === false
-                          ? 'Optional - only if auth is enabled'
-                          : (currentPreset?.apiKeyPlaceholder ?? 'sk-...')
+                          ? t('profileCreateDialog.apiKeyOptionalPlaceholder')
+                          : (currentPreset?.apiKeyPlaceholder ??
+                            t('profileCreateDialog.apiKeyPlaceholder'))
                       }
                       className="pr-10"
                     />
@@ -459,7 +496,7 @@ export function ProfileCreateDialog({
                     <p className="text-xs text-destructive">{errors.apiKey.message}</p>
                   ) : currentPreset?.requiresApiKey === false ? (
                     <p className="text-xs text-muted-foreground">
-                      Only needed if your local endpoint has authentication enabled
+                      {t('profileCreateDialog.apiKeyOptionalHint')}
                     </p>
                   ) : (
                     currentPreset?.apiKeyHint && (
@@ -469,7 +506,7 @@ export function ProfileCreateDialog({
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label htmlFor="target">Default Target CLI</Label>
+                  <Label htmlFor="target">{t('codex.defaultTargetCli')}</Label>
                   <Select
                     value={targetValue}
                     onValueChange={(value) => setValue('target', value as CliTarget)}
@@ -478,16 +515,42 @@ export function ProfileCreateDialog({
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="claude">Claude Code (default)</SelectItem>
-                      <SelectItem value="droid">Factory Droid</SelectItem>
+                      <SelectItem value="claude">{t('profileCard.claudeCodeDefault')}</SelectItem>
+                      <SelectItem value="droid">{t('profileCard.factoryDroid')}</SelectItem>
+                      <SelectItem value="codex">{t('profileCard.codexCli')}</SelectItem>
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">
-                    Run with{' '}
-                    <code className="bg-muted px-1 rounded text-[10px]">
-                      {targetValue === 'droid' ? 'ccsd' : 'ccs'}
-                    </code>{' '}
-                    by default. You can still override each run with{' '}
+                    {targetValue === 'droid' ? (
+                      <>
+                        {t('profileEditor.targetHintPreferredAlias')}{' '}
+                        <code className="bg-muted px-1 rounded text-[10px]">ccs-droid</code>.
+                      </>
+                    ) : targetValue === 'codex' ? (
+                      <>
+                        {t('profileEditor.targetHintPreferredAlias')}{' '}
+                        <code className="bg-muted px-1 rounded text-[10px]">ccsx</code>.
+                      </>
+                    ) : (
+                      <>
+                        {t('profileEditor.targetHintClaudeDefault')}{' '}
+                        <code className="bg-muted px-1 rounded text-[10px]">ccs</code>.
+                      </>
+                    )}
+                    {targetValue === 'droid' ? (
+                      <>
+                        {' '}
+                        {t('profileEditor.targetHintLegacyAlias')}{' '}
+                        <code className="bg-muted px-1 rounded text-[10px]">ccsd</code>.
+                      </>
+                    ) : targetValue === 'codex' ? (
+                      <>
+                        {' '}
+                        {t('profileEditor.targetHintLegacyAlias')}{' '}
+                        <code className="bg-muted px-1 rounded text-[10px]">ccs-codex</code>.
+                      </>
+                    ) : null}{' '}
+                    {t('profileEditor.targetHintOverride')}{' '}
                     <code className="bg-muted px-1 rounded text-[10px]">--target</code>.
                   </p>
                 </div>
@@ -497,10 +560,9 @@ export function ProfileCreateDialog({
                 <div className="flex items-start gap-3 p-3 bg-blue-50 dark:bg-blue-950/20 text-blue-800 dark:text-blue-300 rounded-md text-sm border border-blue-100 dark:border-blue-900/30">
                   <Info className="w-5 h-5 shrink-0 mt-0.5" />
                   <div>
-                    <p className="font-medium mb-1">Model Mapping</p>
+                    <p className="font-medium mb-1">{t('profileCreateDialog.modelMapping')}</p>
                     <p className="text-xs opacity-90">
-                      Map Claude Code tiers (Opus/Sonnet/Haiku) to models supported by your
-                      provider.
+                      {t('profileCreateDialog.modelMappingDesc')}
                     </p>
                   </div>
                 </div>
@@ -508,11 +570,11 @@ export function ProfileCreateDialog({
                 {/* OpenRouter Model Picker */}
                 {isOpenRouter && (
                   <div className="space-y-2">
-                    <Label>Search Models</Label>
+                    <Label>{t('openrouterModelPicker.searchModels')}</Label>
                     <Input
                       value={modelSearch}
                       onChange={(e) => setModelSearch(e.target.value)}
-                      placeholder="Type to search (e.g., opus, sonnet, gpt-4o)..."
+                      placeholder={t('profileCreateDialog.searchModelsPlaceholder')}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter' && filteredModels.length > 0) {
                           e.preventDefault();
@@ -524,15 +586,15 @@ export function ProfileCreateDialog({
                       {filteredModels.length === 0 ? (
                         <p className="text-sm text-muted-foreground p-3 text-center">
                           {modelSearch
-                            ? `No models found for "${modelSearch}"`
-                            : 'Loading models...'}
+                            ? t('profileCreateDialog.noModelsFound', { query: modelSearch })
+                            : t('profileCreateDialog.loadingModels')}
                         </p>
                       ) : (
                         <div className="p-1">
                           {!modelSearch && (
                             <div className="flex items-center gap-1.5 px-2 py-1 text-xs text-muted-foreground">
                               <Sparkles className="w-3 h-3 text-accent" />
-                              <span>Newest Models</span>
+                              <span>{t('openrouterModelPicker.newestModels')}</span>
                             </div>
                           )}
                           {filteredModels.map((model) => (
@@ -553,7 +615,7 @@ export function ProfileCreateDialog({
                 <div className="space-y-3">
                   <div className="space-y-1.5">
                     <Label htmlFor="model">
-                      Default Model
+                      {t('profileCreateDialog.defaultModel')}
                       <Badge variant="outline" className="ml-2 text-[10px] font-mono">
                         ANTHROPIC_MODEL
                       </Badge>
@@ -569,7 +631,7 @@ export function ProfileCreateDialog({
                   <div className="grid gap-3 pt-2 border-t">
                     <div className="space-y-1.5">
                       <Label htmlFor="sonnetModel" className="text-sm">
-                        Sonnet Mapping
+                        {t('profileCreateDialog.sonnetMapping')}
                         <Badge variant="outline" className="ml-2 text-[10px] font-mono">
                           DEFAULT_SONNET
                         </Badge>
@@ -577,14 +639,14 @@ export function ProfileCreateDialog({
                       <Input
                         id="sonnetModel"
                         {...register('sonnetModel')}
-                        placeholder="e.g. gpt-4o, claude-sonnet-4"
+                        placeholder={t('profileCreateDialog.sonnetMappingPlaceholder')}
                         className="font-mono text-sm h-9"
                       />
                     </div>
 
                     <div className="space-y-1.5">
                       <Label htmlFor="opusModel" className="text-sm">
-                        Opus Mapping
+                        {t('profileCreateDialog.opusMapping')}
                         <Badge variant="outline" className="ml-2 text-[10px] font-mono">
                           DEFAULT_OPUS
                         </Badge>
@@ -592,14 +654,14 @@ export function ProfileCreateDialog({
                       <Input
                         id="opusModel"
                         {...register('opusModel')}
-                        placeholder="e.g. o1, claude-opus-4.5"
+                        placeholder={t('profileCreateDialog.opusMappingPlaceholder')}
                         className="font-mono text-sm h-9"
                       />
                     </div>
 
                     <div className="space-y-1.5">
                       <Label htmlFor="haikuModel" className="text-sm">
-                        Haiku Mapping
+                        {t('profileCreateDialog.haikuMapping')}
                         <Badge variant="outline" className="ml-2 text-[10px] font-mono">
                           DEFAULT_HAIKU
                         </Badge>
@@ -607,7 +669,7 @@ export function ProfileCreateDialog({
                       <Input
                         id="haikuModel"
                         {...register('haikuModel')}
-                        placeholder="e.g. gpt-4o-mini, claude-3.5-haiku"
+                        placeholder={t('profileCreateDialog.haikuMappingPlaceholder')}
                         className="font-mono text-sm h-9"
                       />
                     </div>
@@ -616,24 +678,27 @@ export function ProfileCreateDialog({
               </TabsContent>
             </div>
 
-            <DialogFooter className="p-6 pt-4 border-t bg-muted/10">
+            <DialogFooter
+              data-testid="profile-create-footer"
+              className="shrink-0 border-t bg-muted/10 p-6 pt-4"
+            >
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-                Cancel
+                {t('profileDialog.cancel')}
               </Button>
               <Button
                 type="submit"
-                disabled={createMutation.isPending}
-                className={cn(createMutation.isPending && 'opacity-80')}
+                disabled={isCreating}
+                className={cn(isCreating && 'opacity-80')}
               >
-                {createMutation.isPending ? (
+                {isCreating ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Creating...
+                    {t('cliproxyDialog.creating')}
                   </>
                 ) : (
                   <>
                     <Plus className="w-4 h-4 mr-2" />
-                    Create Profile
+                    {t('profileCreateDialog.createProfile')}
                   </>
                 )}
               </Button>
@@ -650,40 +715,89 @@ function CompactPresetCard({
   preset,
   isSelected,
   onClick,
+  density = 'compact',
 }: {
   preset: ProviderPreset;
   isSelected: boolean;
   onClick: () => void;
+  density?: 'featured' | 'compact';
 }) {
+  const isAnthropicDirect = preset.id === 'anthropic';
+  const isFeaturedDensity = density === 'featured';
+
   return (
     <button
       type="button"
       onClick={onClick}
       className={cn(
-        'flex items-center gap-2 px-3 py-2 rounded-md border transition-all text-sm',
+        'flex flex-none items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-all',
+        isFeaturedDensity ? 'h-[68px] w-[236px]' : 'h-[64px] w-[168px]',
         isSelected
-          ? preset.featured
-            ? 'border-accent bg-accent/10 dark:bg-accent/20 font-medium'
-            : 'border-primary bg-primary/10 dark:bg-primary/20 font-medium'
-          : 'border-muted-foreground/20 hover:border-muted-foreground/40 hover:bg-muted/50'
+          ? 'border-primary bg-primary/8 shadow-sm ring-1 ring-primary/10'
+          : 'border-border/60 bg-background hover:border-primary/40 hover:bg-accent/20'
       )}
     >
-      {preset.icon ? (
-        <img src={preset.icon} alt="" className="w-4 h-4" />
-      ) : (
-        <div className="w-4 h-4 rounded-full bg-muted-foreground/20 flex items-center justify-center text-[9px] font-bold text-foreground/70">
-          {preset.name.charAt(0)}
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-background">
+        {isAnthropicDirect ? (
+          <ProviderLogo provider="claude" size="md" className="rounded-lg" />
+        ) : preset.icon ? (
+          <img src={preset.icon} alt="" className="h-5 w-5 object-contain" />
+        ) : (
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted/70 text-xs font-semibold text-foreground/70">
+            {preset.name.charAt(0)}
+          </div>
+        )}
+      </div>
+
+      <div className="min-w-0 flex-1 space-y-1">
+        <div className="space-y-1">
+          <div className="truncate text-[13px] font-semibold leading-tight tracking-[-0.01em]">
+            {preset.name}
+          </div>
+          {preset.badge && isFeaturedDensity && (
+            <Badge
+              variant="secondary"
+              className="inline-flex bg-muted px-1.5 py-0 text-[10px] text-muted-foreground"
+            >
+              {preset.badge}
+            </Badge>
+          )}
         </div>
+        {preset.badge && !isFeaturedDensity && (
+          <Badge
+            variant="secondary"
+            className="inline-flex w-fit bg-muted px-1.5 py-0 text-[10px] text-muted-foreground"
+          >
+            {preset.badge}
+          </Badge>
+        )}
+      </div>
+    </button>
+  );
+}
+
+function CustomPresetCard({ isSelected, onClick }: { isSelected: boolean; onClick: () => void }) {
+  const { t } = useTranslation();
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'flex h-[68px] w-[236px] flex-none items-center gap-3 rounded-xl border border-dashed px-3 py-2.5 text-left transition-all',
+        isSelected
+          ? 'border-primary bg-primary/8 shadow-sm ring-1 ring-primary/10'
+          : 'border-muted-foreground/30 bg-background hover:border-primary/40 hover:bg-accent/20'
       )}
-      <span className="font-medium">{preset.name}</span>
-      {preset.badge && (
-        <Badge
-          variant="secondary"
-          className="text-[10px] px-1.5 py-0 ml-0.5 bg-muted-foreground/10 text-muted-foreground"
-        >
-          {preset.badge}
-        </Badge>
-      )}
+    >
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-dashed border-current/30 bg-muted/70">
+        <Settings2 className="h-4 w-4 text-muted-foreground" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-semibold leading-tight">
+          {t('profileEditor.customEndpoint')}
+        </div>
+      </div>
     </button>
   );
 }
@@ -698,6 +812,7 @@ function ModelSearchItem({
   onClick: () => void;
   showAge?: boolean;
 }) {
+  const { t } = useTranslation();
   return (
     <button
       type="button"
@@ -719,7 +834,7 @@ function ModelSearchItem({
             variant="secondary"
             className="text-xs group-hover:bg-accent-foreground/20 group-hover:text-accent-foreground"
           >
-            Free
+            {t('profileCreateDialog.free')}
           </Badge>
         ) : (
           <span>{formatPricingPair(model.pricing)}</span>

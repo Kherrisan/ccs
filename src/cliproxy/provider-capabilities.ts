@@ -33,7 +33,7 @@ export const PROVIDER_CAPABILITIES: Record<CLIProxyProvider, ProviderCapabilitie
     callbackPort: 8085,
     callbackProviderName: 'gemini',
     authUrlProviderName: 'gemini-cli',
-    refreshOwnership: 'ccs',
+    refreshOwnership: 'cliproxy',
     authFilePrefixes: ['gemini-', 'google-'],
     tokenTypeValues: ['gemini'],
     aliases: ['gemini-cli'],
@@ -100,7 +100,7 @@ export const PROVIDER_CAPABILITIES: Record<CLIProxyProvider, ProviderCapabilitie
   },
   ghcp: {
     displayName: 'GitHub Copilot (OAuth)',
-    description: 'GitHub Copilot via OAuth',
+    description: 'Deprecated GitHub Copilot compatibility via OAuth',
     oauthFlow: 'device_code',
     callbackPort: null,
     callbackProviderName: 'copilot',
@@ -134,11 +134,65 @@ export const PROVIDER_CAPABILITIES: Record<CLIProxyProvider, ProviderCapabilitie
     tokenTypeValues: ['kimi'],
     aliases: ['moonshot'],
   },
+  cursor: {
+    displayName: 'Cursor',
+    description: 'Cursor browser-authenticated provider',
+    oauthFlow: 'device_code',
+    callbackPort: null,
+    callbackProviderName: 'cursor',
+    authUrlProviderName: 'cursor',
+    refreshOwnership: 'cliproxy',
+    authFilePrefixes: ['cursor.', 'cursor-'],
+    tokenTypeValues: ['cursor'],
+    aliases: [],
+  },
+  gitlab: {
+    displayName: 'GitLab Duo',
+    description: 'GitLab Duo with OAuth or PAT auth',
+    oauthFlow: 'authorization_code',
+    callbackPort: 17171,
+    callbackProviderName: 'gitlab',
+    authUrlProviderName: 'gitlab',
+    refreshOwnership: 'cliproxy',
+    authFilePrefixes: ['gitlab-'],
+    tokenTypeValues: ['gitlab'],
+    aliases: ['gitlab-duo'],
+  },
+  codebuddy: {
+    displayName: 'CodeBuddy (Tencent)',
+    description: 'Tencent CodeBuddy AI assistant',
+    oauthFlow: 'device_code',
+    callbackPort: null,
+    callbackProviderName: 'codebuddy',
+    authUrlProviderName: 'codebuddy',
+    refreshOwnership: 'cliproxy',
+    authFilePrefixes: ['codebuddy-'],
+    tokenTypeValues: ['codebuddy'],
+    aliases: ['tencent'],
+  },
+  kilo: {
+    displayName: 'Kilo AI',
+    description: 'Kilo AI coding assistant',
+    oauthFlow: 'device_code',
+    callbackPort: null,
+    callbackProviderName: 'kilo',
+    authUrlProviderName: 'kilo',
+    refreshOwnership: 'unsupported',
+    authFilePrefixes: ['kilo-'],
+    tokenTypeValues: ['kilo'],
+    aliases: [],
+  },
 };
 
 export const CLIPROXY_PROVIDER_IDS = Object.freeze(
   Object.keys(PROVIDER_CAPABILITIES) as CLIProxyProvider[]
 );
+
+export const BROWSER_URL_AUTH_PROVIDER_IDS = Object.freeze([
+  'cursor',
+] as const satisfies readonly CLIProxyProvider[]);
+
+const BROWSER_URL_AUTH_PROVIDER_SET = new Set<CLIProxyProvider>(BROWSER_URL_AUTH_PROVIDER_IDS);
 
 /** Providers currently supported by quota status fetchers. */
 export const QUOTA_SUPPORTED_PROVIDER_IDS = Object.freeze([
@@ -227,6 +281,16 @@ export function getProviderDescription(provider: CLIProxyProvider): string {
 export function getProvidersByOAuthFlow(flowType: OAuthFlowType): CLIProxyProvider[] {
   return CLIPROXY_PROVIDER_IDS.filter(
     (provider) => PROVIDER_CAPABILITIES[provider].oauthFlow === flowType
+  );
+}
+
+export function isBrowserUrlAuthProvider(provider: CLIProxyProvider): boolean {
+  return BROWSER_URL_AUTH_PROVIDER_SET.has(provider);
+}
+
+export function getDeviceCodeVerificationProviders(): CLIProxyProvider[] {
+  return getProvidersByOAuthFlow('device_code').filter(
+    (provider) => !isBrowserUrlAuthProvider(provider)
   );
 }
 

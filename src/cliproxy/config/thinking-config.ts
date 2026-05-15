@@ -3,20 +3,28 @@
  * Manages thinking budget suffixes for CLIProxyAPIPlus
  */
 
-import { CLIProxyProvider } from '../types';
-import { ThinkingConfig, DEFAULT_THINKING_TIER_DEFAULTS } from '../../config/unified-config-types';
-import { getThinkingConfig } from '../../config/unified-config-loader';
-import { supportsThinking } from '../model-catalog';
+import type { CLIProxyProvider } from '../types';
+import { DEFAULT_THINKING_TIER_DEFAULTS } from '../../config/unified-config-types';
+import type { ThinkingConfig } from '../../config/unified-config-types';
+
+import { getModelThinkingSupport, supportsThinking } from '../model-catalog';
 import { isThinkingOffValue, validateThinking } from '../thinking-validator';
-import { normalizeModelIdForProvider } from '../model-id-normalizer';
+import { normalizeModelIdForProvider } from '../ai-providers/model-id-normalizer';
 import { warn } from '../../utils/ui';
+import { getThinkingConfig } from '../../config/config-loader-facade';
 
 /** Model tier types for thinking budget defaults */
 export type ModelTier = 'opus' | 'sonnet' | 'haiku';
 
+const CODEX_EFFORT_REGEX = /^(medium|high|xhigh)$/i;
+const CODEX_FAST_TUNING_VALUE_REGEX =
+  /^(?:(medium|high|xhigh)-fast|fast-(medium|high|xhigh)|fast)$/i;
+const CODEX_TUNING_SUFFIX_REGEX =
+  /(?:-(?:xhigh|high|medium)(?:-fast)?|-fast(?:-(?:xhigh|high|medium))?)$/i;
+
 /**
  * Normalize model ID for provider capability lookup.
- * Codex may carry effort suffixes in either legacy "(high)" or current "-high" forms.
+ * Codex may carry effort/service-tier suffixes in legacy "(high)" or current "-high-fast" forms.
  */
 function normalizeModelForThinkingLookup(model: string, provider: CLIProxyProvider): string {
   const withoutExtendedContext = model.replace(/\[1m\]$/i, '').trim();
@@ -24,8 +32,10 @@ function normalizeModelForThinkingLookup(model: string, provider: CLIProxyProvid
 
   if (provider !== 'codex') return providerNormalized;
 
-  // New codex suffix form: gpt-5.3-codex-high -> gpt-5.3-codex
-  const codexSuffixMatch = providerNormalized.match(/^(.*)-(xhigh|high|medium)$/i);
+  // New codex suffix forms: gpt-5.4-high-fast, gpt-5.4-fast-high -> gpt-5.4
+  const codexSuffixMatch = providerNormalized.match(
+    /^(.*?)(?:-(?:xhigh|high|medium)(?:-fast)?|-fast(?:-(?:xhigh|high|medium))?)$/i
+  );
   if (codexSuffixMatch?.[1]) {
     return codexSuffixMatch[1].trim();
   }
@@ -64,7 +74,7 @@ export function detectTierFromModel(modelName: string): ModelTier {
  *
  * @param model - Base model name
  * @param thinkingValue - Level name (e.g., 'high') or numeric budget
- * @returns Model name with thinking suffix, e.g., "gemini-3-pro-preview(high)"
+ * @returns Model name with thinking suffix, e.g., "gemini-3.1-pro-preview(high)"
  */
 export function applyThinkingSuffix(model: string, thinkingValue: string | number): string {
   return applyThinkingSuffixForProvider(model, thinkingValue);
@@ -80,29 +90,37 @@ function applyThinkingSuffixForProvider(
   thinkingValue: string | number,
   provider?: CLIProxyProvider
 ): string {
-  const codexEffortRegex = /^(medium|high|xhigh)$/i;
-  const codexModelSuffixRegex = /-(medium|high|xhigh)$/i;
   const parenthesizedSuffixMatch = model.match(/\(([^)]+)\)$/);
 
   // Existing parenthesized suffix:
-  // - keep as-is for non-codex providers
+  // - keep as-is for non-codex providers unless the target model now expects
+  //   named levels and we need to rewrite an old numeric suffix
   // - for codex effort levels, normalize to codex model suffix style
   if (parenthesizedSuffixMatch) {
     if (provider === 'codex') {
       const normalizedParensValue = parenthesizedSuffixMatch[1]?.trim().toLowerCase() || '';
-      if (codexEffortRegex.test(normalizedParensValue)) {
+      if (CODEX_EFFORT_REGEX.test(normalizedParensValue)) {
         return model.replace(/\([^)]+\)$/, `-${normalizedParensValue}`);
       }
     }
+
+    if (provider) {
+      const normalizedBaseModel = normalizeModelForThinkingLookup(model, provider);
+      const thinking = getModelThinkingSupport(provider, normalizedBaseModel);
+      if (thinking?.type === 'levels') {
+        return model.replace(/\([^)]+\)$/, `(${thinkingValue})`);
+      }
+    }
+
     return model;
   }
 
   if (provider === 'codex') {
-    if (codexModelSuffixRegex.test(model)) {
+    if (CODEX_TUNING_SUFFIX_REGEX.test(model)) {
       return model;
     }
     const normalized = String(thinkingValue).trim().toLowerCase();
-    if (codexEffortRegex.test(normalized)) {
+    if (CODEX_EFFORT_REGEX.test(normalized) || CODEX_FAST_TUNING_VALUE_REGEX.test(normalized)) {
       return `${model}-${normalized}`;
     }
   }
@@ -299,6 +317,16 @@ export function applyThinkingConfig(
       }
 
       // If per-tier thinking is 'off', skip this tier
+      if (isThinkingOffValue(tierThinkingValue)) {
+        continue;
+      }
+
+      // Validate/clamp tier thinking against this specific tier model capabilities.
+      const tierValidation = validateThinking(tierProvider, normalizedTierModel, tierThinkingValue);
+      if (tierValidation.warning && shouldShowWarnings(thinkingConfig)) {
+        console.warn(warn(tierValidation.warning));
+      }
+      tierThinkingValue = tierValidation.value;
       if (isThinkingOffValue(tierThinkingValue)) {
         continue;
       }

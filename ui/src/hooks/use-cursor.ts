@@ -57,26 +57,57 @@ interface CursorAuthResult {
   message: string;
 }
 
+const LEGACY_CURSOR_API_BASE = '/legacy/cursor';
+
+export interface CursorProbeResult {
+  ok: boolean;
+  stage: 'config' | 'auth' | 'daemon' | 'runtime';
+  status: number;
+  duration_ms: number;
+  model?: string;
+  error_type?: string | null;
+  message: string;
+}
+
+function isCursorProbeResult(value: unknown): value is CursorProbeResult {
+  if (!value || typeof value !== 'object') return false;
+
+  const candidate = value as Partial<CursorProbeResult>;
+  return (
+    typeof candidate.message === 'string' &&
+    typeof candidate.stage === 'string' &&
+    typeof candidate.status === 'number' &&
+    typeof candidate.duration_ms === 'number' &&
+    typeof candidate.ok === 'boolean'
+  );
+}
+
+function getProbeErrorMessage(value: unknown): string | null {
+  if (!value || typeof value !== 'object' || !('error' in value)) return null;
+  const candidate = value as { error?: unknown };
+  return typeof candidate.error === 'string' ? candidate.error : null;
+}
+
 async function fetchCursorStatus(): Promise<CursorStatus> {
-  const res = await fetch(withApiBase('/cursor/status'));
+  const res = await fetch(withApiBase(`${LEGACY_CURSOR_API_BASE}/status`));
   if (!res.ok) throw new Error('Failed to fetch cursor status');
   return res.json();
 }
 
 async function fetchCursorConfig(): Promise<CursorConfig> {
-  const res = await fetch(withApiBase('/cursor/settings'));
+  const res = await fetch(withApiBase(`${LEGACY_CURSOR_API_BASE}/settings`));
   if (!res.ok) throw new Error('Failed to fetch cursor config');
   return res.json();
 }
 
 async function fetchCursorModels(): Promise<CursorModelsResponse> {
-  const res = await fetch(withApiBase('/cursor/models'));
+  const res = await fetch(withApiBase(`${LEGACY_CURSOR_API_BASE}/models`));
   if (!res.ok) throw new Error('Failed to fetch cursor models');
   return res.json();
 }
 
 async function fetchCursorRawSettings(): Promise<CursorRawSettings> {
-  const res = await fetch(withApiBase('/cursor/settings/raw'));
+  const res = await fetch(withApiBase(`${LEGACY_CURSOR_API_BASE}/settings/raw`));
   if (!res.ok) throw new Error('Failed to fetch cursor raw settings');
   return res.json();
 }
@@ -84,7 +115,7 @@ async function fetchCursorRawSettings(): Promise<CursorRawSettings> {
 async function updateCursorConfig(
   updates: Partial<CursorConfig>
 ): Promise<{ success: boolean; cursor: CursorConfig }> {
-  const res = await fetch(withApiBase('/cursor/settings'), {
+  const res = await fetch(withApiBase(`${LEGACY_CURSOR_API_BASE}/settings`), {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(updates),
@@ -97,7 +128,7 @@ async function saveCursorRawSettings(data: {
   settings: CursorRawSettings['settings'];
   expectedMtime?: number;
 }): Promise<{ success: boolean; mtime: number }> {
-  const res = await fetch(withApiBase('/cursor/settings/raw'), {
+  const res = await fetch(withApiBase(`${LEGACY_CURSOR_API_BASE}/settings/raw`), {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
@@ -108,7 +139,9 @@ async function saveCursorRawSettings(data: {
 }
 
 async function autoDetectCursorAuth(): Promise<CursorAuthResult> {
-  const res = await fetch(withApiBase('/cursor/auth/auto-detect'), { method: 'POST' });
+  const res = await fetch(withApiBase(`${LEGACY_CURSOR_API_BASE}/auth/auto-detect`), {
+    method: 'POST',
+  });
   if (!res.ok) {
     const error = await res.json().catch(() => ({ error: 'Auto-detect failed' }));
     throw new Error(error.error || 'Auto-detect failed');
@@ -120,7 +153,7 @@ async function importCursorAuthManual(data: {
   accessToken: string;
   machineId: string;
 }): Promise<CursorAuthResult> {
-  const res = await fetch(withApiBase('/cursor/auth/import'), {
+  const res = await fetch(withApiBase(`${LEGACY_CURSOR_API_BASE}/auth/import`), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
@@ -133,15 +166,37 @@ async function importCursorAuthManual(data: {
 }
 
 async function startCursorDaemon(): Promise<{ success: boolean; pid?: number; error?: string }> {
-  const res = await fetch(withApiBase('/cursor/daemon/start'), { method: 'POST' });
+  const res = await fetch(withApiBase(`${LEGACY_CURSOR_API_BASE}/daemon/start`), {
+    method: 'POST',
+  });
   if (!res.ok) throw new Error('Failed to start cursor daemon');
   return res.json();
 }
 
 async function stopCursorDaemon(): Promise<{ success: boolean; error?: string }> {
-  const res = await fetch(withApiBase('/cursor/daemon/stop'), { method: 'POST' });
+  const res = await fetch(withApiBase(`${LEGACY_CURSOR_API_BASE}/daemon/stop`), {
+    method: 'POST',
+  });
   if (!res.ok) throw new Error('Failed to stop cursor daemon');
   return res.json();
+}
+
+async function probeCursorRuntime(): Promise<CursorProbeResult> {
+  const res = await fetch(withApiBase(`${LEGACY_CURSOR_API_BASE}/probe`), { method: 'POST' });
+  const payload = await res.json().catch(() => null);
+
+  if (isCursorProbeResult(payload)) {
+    return payload;
+  }
+
+  return {
+    ok: false,
+    stage: 'runtime',
+    status: res.status,
+    duration_ms: 0,
+    error_type: 'runtime_error',
+    message: getProbeErrorMessage(payload) ?? 'Failed to run live probe',
+  };
 }
 
 export function useCursor() {
@@ -205,6 +260,14 @@ export function useCursor() {
     onSuccess: invalidateCursorQueries,
   });
 
+  const probeMutation = useMutation({
+    mutationFn: probeCursorRuntime,
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['cursor-status'] });
+      queryClient.invalidateQueries({ queryKey: ['cursor-models'] });
+    },
+  });
+
   return useMemo(
     () => ({
       status: statusQuery.data,
@@ -214,6 +277,7 @@ export function useCursor() {
 
       config: configQuery.data,
       configLoading: configQuery.isLoading,
+      refetchConfig: configQuery.refetch,
 
       models: modelsQuery.data?.models ?? [],
       currentModel: modelsQuery.data?.current ?? null,
@@ -248,6 +312,12 @@ export function useCursor() {
       stopDaemon: stopDaemonMutation.mutate,
       stopDaemonAsync: stopDaemonMutation.mutateAsync,
       isStoppingDaemon: stopDaemonMutation.isPending,
+
+      runProbe: probeMutation.mutate,
+      runProbeAsync: probeMutation.mutateAsync,
+      isRunningProbe: probeMutation.isPending,
+      probeResult: probeMutation.data,
+      resetProbe: probeMutation.reset,
     }),
     [
       statusQuery.data,
@@ -256,6 +326,7 @@ export function useCursor() {
       statusQuery.refetch,
       configQuery.data,
       configQuery.isLoading,
+      configQuery.refetch,
       modelsQuery.data,
       modelsQuery.isLoading,
       rawSettingsQuery.data,
@@ -281,6 +352,11 @@ export function useCursor() {
       stopDaemonMutation.mutate,
       stopDaemonMutation.mutateAsync,
       stopDaemonMutation.isPending,
+      probeMutation.mutate,
+      probeMutation.mutateAsync,
+      probeMutation.isPending,
+      probeMutation.data,
+      probeMutation.reset,
     ]
   );
 }

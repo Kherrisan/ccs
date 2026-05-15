@@ -55,6 +55,15 @@ let getTokenStoragePath: () => string;
 let getDaemonStartPreconditionError: (
   input: { enabled: boolean; authenticated: boolean; tokenExpired?: boolean }
 ) => { status: number; error: string } | null;
+let getAutoDetectFailureStatus: (
+  reason?:
+    | 'db_not_found'
+    | 'sqlite_unavailable'
+    | 'db_query_failed'
+    | 'access_token_not_found'
+    | 'machine_id_not_found'
+    | 'invalid_token_format'
+) => number;
 
 function seedCursorConfig(overrides: {
   enabled?: boolean;
@@ -107,6 +116,7 @@ beforeAll(async () => {
 
   const cursorRoutesModule = await import('../../../src/web-server/routes/cursor-routes');
   getDaemonStartPreconditionError = cursorRoutesModule.getDaemonStartPreconditionError;
+  getAutoDetectFailureStatus = cursorRoutesModule.getAutoDetectFailureStatus;
 
   const app = express();
   app.use(express.json());
@@ -207,6 +217,10 @@ describe('Cursor Routes Logic', () => {
   });
 
   describe('HTTP contracts', () => {
+    it('maps invalid_token_format auto-detect failures to HTTP 400', () => {
+      expect(getAutoDetectFailureStatus('invalid_token_format')).toBe(400);
+    });
+
     it('GET /api/cursor/status returns current state', async () => {
       const res = await fetch(`${baseUrl}/api/cursor/status`);
       expect(res.status).toBe(200);
@@ -280,9 +294,11 @@ describe('Cursor Routes Logic', () => {
         });
 
         expect(res.status).toBe(404);
-        const json = (await res.json()) as { error?: string };
+        const json = (await res.json()) as { error?: string; reason?: string };
         expect(typeof json.error).toBe('string');
         expect(json.error?.length).toBeGreaterThan(0);
+        expect(json.reason).toBe('db_not_found');
+        expect(json.error).not.toContain(isolatedHome);
       } finally {
         if (originalHome !== undefined) {
           process.env.HOME = originalHome;
@@ -335,6 +351,87 @@ describe('Cursor Routes Logic', () => {
         expect(auth.authenticated).toBe(true);
         expect(auth.credentials?.authMethod).toBe('auto-detect');
         expect(auth.credentials?.machineId).toBe(machineId);
+      } finally {
+        if (originalHome !== undefined) {
+          process.env.HOME = originalHome;
+        } else {
+          delete process.env.HOME;
+        }
+      }
+    });
+
+    it('POST /api/cursor/auth/auto-detect returns 503 when sqlite3 is unavailable', async () => {
+      if (process.platform === 'win32') {
+        return;
+      }
+
+      const originalHome = process.env.HOME;
+      const originalPath = process.env.PATH;
+      const originalSqliteBin = process.env.CCS_CURSOR_SQLITE_BIN;
+      const fakeHome = path.join(tempDir, 'sqlite-missing-home');
+      process.env.HOME = fakeHome;
+      process.env.CCS_CURSOR_SQLITE_BIN = 'definitely-missing-sqlite3';
+
+      try {
+        const dbPath = getTokenStoragePath();
+        fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+        fs.writeFileSync(dbPath, '');
+
+        const res = await fetch(`${baseUrl}/api/cursor/auth/auto-detect`, {
+          method: 'POST',
+        });
+
+        expect(res.status).toBe(503);
+        const json = (await res.json()) as { reason?: string; db_path?: string };
+        expect(json.reason).toBe('sqlite_unavailable');
+        expect(json.db_path).toBeUndefined();
+      } finally {
+        if (originalHome !== undefined) {
+          process.env.HOME = originalHome;
+        } else {
+          delete process.env.HOME;
+        }
+
+        if (originalPath !== undefined) {
+          process.env.PATH = originalPath;
+        } else {
+          delete process.env.PATH;
+        }
+        if (originalSqliteBin !== undefined) {
+          process.env.CCS_CURSOR_SQLITE_BIN = originalSqliteBin;
+        } else {
+          delete process.env.CCS_CURSOR_SQLITE_BIN;
+        }
+      }
+    });
+
+    it('POST /api/cursor/auth/auto-detect returns 500 when the database exists but cannot be queried', async () => {
+      if (process.platform === 'win32') {
+        return;
+      }
+
+      const sqliteCheck = spawnSync('sqlite3', ['--version'], { stdio: 'ignore' });
+      if (sqliteCheck.status !== 0) {
+        return;
+      }
+
+      const originalHome = process.env.HOME;
+      const fakeHome = path.join(tempDir, 'query-failed-home');
+      process.env.HOME = fakeHome;
+
+      try {
+        const dbPath = getTokenStoragePath();
+        fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+        fs.writeFileSync(dbPath, 'not-a-sqlite-database');
+
+        const res = await fetch(`${baseUrl}/api/cursor/auth/auto-detect`, {
+          method: 'POST',
+        });
+
+        expect(res.status).toBe(500);
+        const json = (await res.json()) as { reason?: string; db_path?: string };
+        expect(json.reason).toBe('db_query_failed');
+        expect(json.db_path).toBeUndefined();
       } finally {
         if (originalHome !== undefined) {
           process.env.HOME = originalHome;
@@ -411,6 +508,29 @@ describe('Cursor Routes Logic', () => {
       expect(Array.isArray(json.models)).toBe(true);
       expect(json.models.length).toBeGreaterThan(0);
       expect(json.current).toBe('gpt-5.3-codex');
+    });
+
+    it('POST /api/cursor/probe returns auth failure when credentials are missing', async () => {
+      const res = await fetch(`${baseUrl}/api/cursor/probe`, { method: 'POST' });
+      expect(res.status).toBe(401);
+
+      const json = (await res.json()) as { ok?: boolean; stage?: string; error_type?: string };
+      expect(json.ok).toBe(false);
+      expect(json.stage).toBe('auth');
+      expect(json.error_type).toBe('authentication_error');
+    });
+
+    it('POST /api/cursor/probe returns daemon failure when daemon is down and auto_start is false', async () => {
+      seedCursorConfig({ enabled: true, auto_start: false });
+      seedCredentials(false);
+
+      const res = await fetch(`${baseUrl}/api/cursor/probe`, { method: 'POST' });
+      expect(res.status).toBe(503);
+
+      const json = (await res.json()) as { ok?: boolean; stage?: string; error_type?: string };
+      expect(json.ok).toBe(false);
+      expect(json.stage).toBe('daemon');
+      expect(json.error_type).toBe('daemon_not_running');
     });
   });
 });

@@ -94,5 +94,31 @@ describe('droid-provider', () => {
       expect(resolveDroidProvider({ baseUrl: 'http://127.0.0.1:8317' })).toBe('anthropic');
       expect(resolveDroidProvider({})).toBe('anthropic');
     });
+
+    it('defaults ollama.com to anthropic', () => {
+      expect(resolveDroidProvider({ baseUrl: 'https://ollama.com' })).toBe('anthropic');
+      expect(resolveDroidProvider({ baseUrl: 'https://ollama.com/v1/messages' })).toBe('anthropic');
+    });
+
+    it('keeps ollama.com anthropic even for generic model families', () => {
+      expect(
+        resolveDroidProvider({
+          baseUrl: 'https://ollama.com',
+          model: 'qwen3-coder-plus',
+        })
+      ).toBe('anthropic');
+      expect(
+        resolveDroidProvider({
+          baseUrl: 'https://ollama.com/v1/messages',
+          model: 'deepseek-v3.1',
+        })
+      ).toBe('anthropic');
+    });
+
+    it('routes ollama.com /chat/completions to generic', () => {
+      expect(resolveDroidProvider({ baseUrl: 'https://ollama.com/v1/chat/completions' })).toBe(
+        'generic-chat-completion-api'
+      );
+    });
   });
 });

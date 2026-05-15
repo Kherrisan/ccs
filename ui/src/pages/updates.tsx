@@ -6,7 +6,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { UpdatesDetailsPanel } from '@/components/updates/updates-details-panel';
 import { UpdatesInboxItem } from '@/components/updates/updates-inbox-item';
 import {
-  SUPPORT_NOTICES,
+  getSupportNotices,
   getSupportEntriesForNotice,
   type SupportNotice,
 } from '@/lib/support-updates-catalog';
@@ -45,9 +45,8 @@ function noticeMatchesQuery(notice: SupportNotice, queryValue: string): boolean 
 
 export function UpdatesPage() {
   const { t } = useTranslation();
-  const notices = useMemo(
-    () => [...SUPPORT_NOTICES].sort((a, b) => b.publishedAt.localeCompare(a.publishedAt)),
-    []
+  const notices = [...getSupportNotices()].sort((a, b) =>
+    b.publishedAt.localeCompare(a.publishedAt)
   );
   const [viewMode, setViewMode] = useState<NoticeViewMode>('inbox');
   const [query, setQuery] = useState('');
@@ -102,7 +101,7 @@ export function UpdatesPage() {
   );
 
   return (
-    <div className="h-[calc(100vh-100px)] flex overflow-hidden">
+    <div className="flex h-full min-h-0 overflow-hidden">
       <div className="w-80 border-r bg-muted/30 flex flex-col overflow-hidden">
         <div className="p-4 border-b bg-background space-y-3">
           <div className="space-y-1">

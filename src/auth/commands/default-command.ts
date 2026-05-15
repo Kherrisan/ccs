@@ -5,17 +5,22 @@
  */
 
 import { initUI, color, dim, ok, fail } from '../../utils/ui';
-import { isUnifiedMode } from '../../config/unified-config-loader';
+
 import { exitWithError } from '../../errors';
 import { ExitCode } from '../../errors/exit-codes';
-import { CommandContext, parseArgs } from './types';
+import { CommandContext, parseArgs, rejectUnsupportedAuthOptions } from './types';
+import { isUnifiedMode } from '../../config/config-loader-facade';
 
 /**
  * Handle the default command (set default profile)
  */
 export async function handleDefault(ctx: CommandContext, args: string[]): Promise<void> {
   await initUI();
-  const { profileName } = parseArgs(args);
+  const parsed = parseArgs(args);
+  const { profileName } = parsed;
+  rejectUnsupportedAuthOptions(parsed, {
+    usage: 'ccs auth default <profile>',
+  });
 
   if (!profileName) {
     console.log(fail('Profile name is required'));
@@ -47,8 +52,12 @@ export async function handleDefault(ctx: CommandContext, args: string[]): Promis
 /**
  * Handle the reset-default command (clear the custom default)
  */
-export async function handleResetDefault(ctx: CommandContext): Promise<void> {
+export async function handleResetDefault(ctx: CommandContext, args: string[] = []): Promise<void> {
   await initUI();
+  const parsed = parseArgs(args);
+  rejectUnsupportedAuthOptions(parsed, {
+    usage: 'ccs auth reset-default',
+  });
 
   try {
     // Use unified or legacy based on config mode

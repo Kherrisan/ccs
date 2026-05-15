@@ -192,10 +192,31 @@ export interface MessageId {
   role: RoleType;
 }
 
-/** Compression flags for ConnectRPC frames */
+/** Bit flags for ConnectRPC envelopes. */
+export const CONNECT_FRAME_FLAG = {
+  COMPRESSED: 0x01,
+  END_STREAM: 0x02,
+} as const;
+
+/** ConnectRPC frame flag presets. */
 export const COMPRESS_FLAG = {
   NONE: 0x00,
-  GZIP: 0x01,
-  GZIP_ALT: 0x02,
-  GZIP_BOTH: 0x03,
+  GZIP: CONNECT_FRAME_FLAG.COMPRESSED,
+  END_STREAM: CONNECT_FRAME_FLAG.END_STREAM,
+  GZIP_END_STREAM: CONNECT_FRAME_FLAG.COMPRESSED | CONNECT_FRAME_FLAG.END_STREAM,
 } as const;
+
+export const CONNECT_FRAME_FLAG_MASK =
+  CONNECT_FRAME_FLAG.COMPRESSED | CONNECT_FRAME_FLAG.END_STREAM;
+
+export function isCompressedConnectFrame(flags: number): boolean {
+  return (flags & CONNECT_FRAME_FLAG.COMPRESSED) === CONNECT_FRAME_FLAG.COMPRESSED;
+}
+
+export function isEndStreamConnectFrame(flags: number): boolean {
+  return (flags & CONNECT_FRAME_FLAG.END_STREAM) === CONNECT_FRAME_FLAG.END_STREAM;
+}
+
+export function hasUnknownConnectFrameFlags(flags: number): boolean {
+  return (flags & ~CONNECT_FRAME_FLAG_MASK) !== 0;
+}

@@ -78,6 +78,7 @@ export function AntigravityResponsibilityChecklist({
               disabled={disabled}
             />
             <Label htmlFor="agy-step-reviewed-issue" className="text-xs leading-5">
+              {/* TODO i18n: missing key for step 1 */}
               Step 1: I reviewed issue #509 and understand AGY OAuth can trigger account
               bans/suspensions.
             </Label>
@@ -91,6 +92,7 @@ export function AntigravityResponsibilityChecklist({
               disabled={disabled}
             />
             <Label htmlFor="agy-step-understands-risk" className="text-xs leading-5">
+              {/* TODO i18n: missing key for step 2 */}
               Step 2: I understand this OAuth action is my own decision and I accept the upstream
               risk.
             </Label>
@@ -106,6 +108,7 @@ export function AntigravityResponsibilityChecklist({
               disabled={disabled}
             />
             <Label htmlFor="agy-step-accept-responsibility" className="text-xs leading-5">
+              {/* TODO i18n: missing key for step 3 */}
               Step 3: I accept full responsibility. CCS is not liable for suspension, bans, or
               access loss.
             </Label>
@@ -115,6 +118,7 @@ export function AntigravityResponsibilityChecklist({
         <div className="space-y-2 rounded-lg border border-amber-500/25 bg-amber-500/5 p-3">
           <div className="flex items-center gap-1.5 text-xs font-medium text-amber-800 dark:text-amber-200">
             <ShieldAlert className="h-3.5 w-3.5" />
+            {/* TODO i18n: missing key for step 4 */}
             Step 4: Type exact phrase to continue
           </div>
           <Input
@@ -133,7 +137,7 @@ export function AntigravityResponsibilityChecklist({
             rel="noreferrer"
             className="inline-flex items-center gap-1.5 rounded-md border border-rose-500/30 bg-rose-500/10 px-2.5 py-1 font-medium text-rose-800 transition-colors hover:bg-rose-500/15 dark:text-rose-200"
           >
-            Read issue #509
+            {/* TODO i18n: missing key */}Read issue #509
             <ExternalLink className="h-3.5 w-3.5" />
           </a>
         </div>

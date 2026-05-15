@@ -3,6 +3,7 @@
  */
 
 import { CheckCircle2, XCircle } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 interface InlineStatsBadgeProps {
   success: number;
@@ -10,8 +11,13 @@ interface InlineStatsBadgeProps {
 }
 
 export function InlineStatsBadge({ success, failure }: InlineStatsBadgeProps) {
+  const { t } = useTranslation();
   if (success === 0 && failure === 0) {
-    return <span className="text-[9px] text-muted-foreground/50 font-mono">no activity</span>;
+    return (
+      <span className="text-[9px] text-muted-foreground/50 font-mono">
+        {t('authMonitorLive.noActivity')}
+      </span>
+    );
   }
 
   return (
